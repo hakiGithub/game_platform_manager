@@ -1,0 +1,45 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI/Agent working directories
+.claude/
+.workbuddy/
+
+# Logs
+logs/
+*.log
+
+# Temp files
+*.tmp
+*.temp
+*.bak
+
+# Environment
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+out/
+target/
+
+# Dependencies (for root level)
+node_modules/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage
+coverage/
+*.lcov
