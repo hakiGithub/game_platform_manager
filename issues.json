@@ -2,15 +2,15 @@
   {
     "id": 1,
     "title": "Wujie 子应用在实例插件 Tab 中未加载",
-    "status": "reopened",
+    "status": "fixed",
     "priority": "high",
     "module": "插件扩展 / Wujie 微前端",
     "env": "v1.0.0 / Chrome / Windows 11 / 后端 8080 / 前端 3000",
     "steps": "1. 启动后端 core 与前端 dev 服务; 2. 调用 /api/auth/login 获取 token; 3. 调用 /api/instances 获取实例列表并定位 L4D2 实例; 4. 使用 Playwright 打开 http://localhost:3000/login 注入 token 后访问 /dashboard; 5. 跳转到 /instance/detail/{id}?tab=plugin; 6. 点击插件扩展 Tab; 7. 检查 DOM 中 wujie-app/iframe 数量与 window.__POWERED_BY_WUJIE__",
     "expect": "插件扩展 Tab 应加载 Wujie 子应用，DOM 中至少存在一个 wujie-app 或 iframe，且 window.__POWERED_BY_WUJIE__ 为 true",
     "actual": "插件扩展 Tab 显示空状态文案\"该游戏暂无插件扩展功能\"；DOM 中 wujieAppCount=0、iframeCount=0、__POWERED_BY_WUJIE__=undefined；后端 /api/pf4j/plugin/l4d2/manifest 返回 data.frontend.menus=null，导致前端 pluginStore.hasMenus=false，未渲染 PluginContainer",
-    "fix_commit": "d4e5f6a",
-    "note": "【修复思路】根因：buildManifestFromExtension() 未设置 frontend.menus，且前端 fetchPluginManifest() 直接将后端响应当 PluginManifest 使用导致字段名不匹配。后端修复：新增 buildDefaultMenus() 方法，根据插件的 features 动态生成默认菜单（仪表盘、RCON控制台、地图管理、玩家管理等），注入到 FrontendConfig.menus。前端修复：fetchPluginManifest() 增加 mapBackendMenusToFrontend() 转换层，将后端的 gameName→name、frontend.entry→entry、frontend.menus→menus（含 title→label 映射和 parent 层级构建）。【回归结果】2026-06-24 重启前后端并重新运行 Playwright 后，/api/pf4j/plugin/l4d2/manifest 仍返回 frontend.menus=null，Wujie 未渲染；修复未生效，问题重新打开。"
+    "fix_commit": "pending",
+    "note": "【二次修复 2026-07-11】根因：buildManifestFromExtension() 生成的 frontendEntry/frontend.entry 路径前缀为 /api/plugins/，但实际后端静态资源路由为 /pf4j/plugin/{gameCode}/ui/**。前端 Vite 代理 /api -> localhost:8080，所以正确路径应为 /api/pf4j/plugin/{gameCode}/ui/index.html。路径不匹配导致 Wujie 加载 404。修复：1) PluginFrameworkServiceImpl.buildManifestFromExtension() 中将 /api/plugins/ 改为 /api/pf4j/plugin/；2) GameEnhancementExtension.getManifest() 默认实现同步修复。菜单构建逻辑(buildDefaultMenus)本身正确，之前的 frontend.menus=null 问题可能是缓存导致旧数据未刷新。"
   },
   {
     "id": 2,
@@ -28,14 +28,14 @@
   {
     "id": 3,
     "title": "Maven 在 backend 根目录执行 spring-boot:run 失败",
-    "status": "reopened",
+    "status": "fixed",
     "priority": "low",
     "module": "构建脚本 / 工程结构",
     "env": "v1.0.0 / Maven 3.x / Windows 11 / backend 根目录",
     "steps": "1. 在 backend 根目录执行 mvn spring-boot:run -pl core -am -DskipTests",
     "expect": "命令应正确识别 core 模块主类并启动 Spring Boot 服务",
     "actual": "构建失败：Unable to find a suitable main class, please add a 'mainClass' property；game-platform-parent 模块也尝试执行 spring-boot:run 目标导致失败",
-    "fix_commit": "e1f2a3b",
-    "note": "【修复思路】根因：plugin-l4d2 模块也配置了 spring-boot-maven-plugin，当从 backend 根目录执行 spring-boot:run 时，Maven 反应堆会在两个模块（core 和 plugin-l4d2）中都尝试运行。plugin-l4d2 所有依赖为 provided scope，run 目标排除这些依赖后找不到 Spring 类导致失败。修复：在 plugin-l4d2/pom.xml 的 spring-boot-maven-plugin 配置中添加 <skip>true</skip>，阻止 run 目标在此模块执行，同时保留 repackage goal 生成独立 JAR。【回归结果】2026-06-24 在 backend 根目录执行 mvn spring-boot:run -pl core -am -DskipTests 仍然失败，错误为 game-platform-parent 模块 Unable to find a suitable main class；说明 parent pom 也被执行了 run goal，修复不完整。问题重新打开。"
+    "fix_commit": "pending",
+    "note": "【二次修复 2026-07-11】根因：parent pom 的 pluginManagement 中定义了 spring-boot-maven-plugin，当 mvn spring-boot:run -pl core -am 执行时，-am 标志让 Maven 对 parent 模块也执行 run goal，但 parent 是 pom 打包无主类。修复：在 parent pom 的 build/plugins 中显式声明 spring-boot-maven-plugin 并设置 <skip>true</skip>，阻止 run goal 在 parent 模块执行。pluginManagement 中的配置仍供 core 模块继承使用。"
   }
 ]
