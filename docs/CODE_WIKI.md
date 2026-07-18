@@ -360,7 +360,7 @@ public class GamePlatformApplication {
 | 控制器 | 基础路径 | 主要端点 |
 |--------|----------|----------|
 | `AuthController` | `/auth` | `POST /login`、`POST /logout`、`GET /info`、`PUT /password`、`POST /refresh` |
-| `HostController` | `/hosts` | CRUD、`POST /{id}/test`（SSH 测试）、`GET /{id}/status`、`GET /{id}/resources`、`GET /{id}/ports` |
+| `HostController` | `/hosts` | CRUD、`POST /{id}/test`（SSH 测试）、`GET /{id}/status`、`GET /{id}/resources`、`GET /{id}/ports`、`POST /{id}/hosts-preview`（hosts 预检）、`POST /{id}/hosts-refresh`（hosts 刷新） |
 | `InstanceController` | `/instances` | CRUD、`POST /{id}/start|stop|restart`、`GET /{id}/status|logs|config`、`PUT /{id}/config`、文件管理（`GET/POST/DELETE /{id}/files`）、按主机/游戏查询 |
 | `GameMetadataController` | `/games` | CRUD、`POST /scan`、`POST /scan/external`、`GET /{gameCode}/export`、`POST /import`、`POST /validate`、`GET /scan/stats` |
 | `BackupController` | `/instances/{instanceId}/backups` | `POST /database`、`POST /files`、`GET /{id}`、`GET /{id}/progress`、`POST /{id}/cancel|restore|verify`、`DELETE /{id}`、`GET /{id}/download` |
@@ -391,7 +391,7 @@ public class GamePlatformApplication {
 | Service | 关键方法 | 业务要点 |
 |---------|----------|----------|
 | `UserService` / `UserServiceImpl` | `login`、`logout`、`getCurrentUser`、`changePassword` | SHA-256 校验密码（注：与 AGENTS.md 所述 BCrypt 不一致，实际用 Hutool `SecureUtil.sha256`）；登录生成 JWT 并更新登录信息 |
-| `HostService` / `HostServiceImpl` | `createHost`、`testConnection`、`refreshStatus`、`refreshAllHostsStatus`、`getHostResourceInfo` | SSH 私钥/密码 AES 加密存储（密钥 `GamePlatform2024`）；`refreshStatus` 通过 SSH 获取 CPU/内存/磁盘使用率；VO 转换剔除敏感字段 |
+| `HostService` / `HostServiceImpl` | `createHost`、`testConnection`、`refreshStatus`、`refreshAllHostsStatus`、`getHostResourceInfo`、`previewHostsRefresh`、`refreshHosts` | SSH 私钥/密码 AES 加密存储（密钥 `GamePlatform2024`）；`refreshStatus` 通过 SSH 获取 CPU/内存/磁盘使用率；VO 转换剔除敏感字段；`previewHostsRefresh` 读取宿主机 `/etc/hosts` 识别待改域名；`refreshHosts` 将 127.0.0.1 域名改为 LAN IP 并刷新 DNS 缓存 |
 | `InstanceService` / `InstanceServiceImpl` | `createInstance`、`startInstance`、`getInstanceStatus`、`deleteInstance` | 通过 `adapterFactory.getAdapter(deployType)` 选择适配器；启动流程：状态预校验→更新"启动中"→`adapter.start`→成功置运行；`getInstanceStatus` 自动同步 DB 与实际状态；删除前先停止 |
 | `GameService` / `GameServiceImpl` | `createGame`、`updateGame`、`pageGames` | gameCode 唯一性校验；更新时 id/gameCode 不可改；支持 gameName/gameCode 关键词搜索 |
 | `BackupService` / `BackupServiceImpl` | `createDatabaseBackup`、`createFileBackup`、`restoreBackup`、`verifyBackup`、`cancelBackup` | `@Async` 异步执行；`ConcurrentHashMap<Long,AtomicBoolean>` 跟踪取消标志；MySQL 用 mysqldump、PostgreSQL 用 pg_dump（PGPASSWORD）、SQLite 用 `.dump`；文件备份远程 `tar -czf` 后下载；还原先停实例再解压最后启动；`verifyBackup` 三重校验（存在+大小+MD5） |
@@ -405,6 +405,7 @@ public class GamePlatformApplication {
 | `DeployService` | 部署流程统一编排器，8 阶段进度（INIT→ENV_CHECK→PORT_CHECK→RESOURCE_CHECK→PRE_DEPLOY→DEPLOY→HEALTH_CHECK→UPDATE_STATUS），支持 `@Async` 异步部署、失败回滚、`DeployProgressCallback` 回调 |
 | `ConfigService` | 多格式配置文件读写，支持 Properties/YAML/JSON/INI 四种格式，支持嵌套 key（`.` 分隔）、格式互转 |
 | `FileService` | 基于 SFTP 的远程文件操作（MINA SSHD `SshClient`/`SftpClient`），CRUD + 目录递归删除 + 文本读写，认证信息通过 `AesUtil.decrypt` 解密 |
+| `HostsFileRefresher` | 宿主机 `/etc/hosts` 刷新服务：`previewRefresh`（SSH 读取 hosts 识别 127.0.0.1 回环域名）+ `refreshHosts`（生成新内容 → SFTP 上传 → sudo cp 覆盖 → 刷新 DNS 缓存）；支持 `selectedDomains` 选择性刷新；正确处理 `#` 行内注释 |
 | `GameMetadataScanner` | `@PostConstruct` 启动时扫描 `classpath:games/*.yml`，SnakeYAML 解析 → 验证 → 转 `GameMetadata` 实体 → saveOrUpdate；支持外部目录扫描、导出 YAML |
 | `LogService` | 操作日志异步记录 |
 
@@ -420,8 +421,8 @@ public class GamePlatformApplication {
 | `AbstractDeployAdapter`（抽象基类） | 注入 `SshUtil`/`HostMapper`/`InstanceMapper`/`AesUtil`；提供通用能力：`getHost`/`getInstance`/`executeCommand`（远程 SSH 命令）、`uploadFile`/`downloadFile`（SFTP）、`isPortInUse`、`isDockerInstalled`、`getAvailableDiskSpace`/`getAvailableMemory`、进度回调通知（`notifyProgress`/`notifyStageStart`/`notifyError`/`notifyComplete`） |
 | `DeployAdapterFactory` | `@PostConstruct` 收集所有 `DeployAdapter` Bean 到 Map；`getAdapter(DeployType)` / `getAdapter(String typeCode)` / `supports()` |
 | `LinuxGsmAdapter` | LinuxGSM 部署方式 |
-| `DockerAdapter` | Docker 部署方式 |
-| `DockerComposeAdapter` | Docker Compose 部署方式 |
+| `DockerAdapter` | Docker 部署方式，`buildDockerRunCommand` 按 `mountHostCerts` 追加 `-v` 挂载宿主机证书 + `/etc/hosts:ro` |
+| `DockerComposeAdapter` | Docker Compose 部署方式，`injectHostCertsMount` 动态注入 compose volumes（证书 + hosts）；compose V1/V2 兼容 |
 | `DeployProgressCallback`（接口） | 部署进度回调：`onProgress`/`onStageStart`/`onStageComplete`/`onError`/`onLog`/`onComplete` |
 
 `InstanceServiceImpl` 与 `DeployService` 均通过 `adapterFactory.getAdapter(deployType)` 获取适配器，`deployType` 为字符串（空值降级为 `native`）。
@@ -928,6 +929,10 @@ npm run build    # 产物输出到 src/main/resources/ui/，随 JAR 打包
 
 9. **统一响应与异常**：`Result<T>` 包装 + `GlobalExceptionHandler` 全局异常处理 + `@OperationLog` AOP 日志。
 
+10. **宿主机 hosts 刷新与容器共享**：`HostsFileRefresher` 通过 SSH 读取宿主机 `/etc/hosts`，将 127.0.0.1 回环域名改为 LAN IP（支持用户选择性刷新），`sudo cp` 覆盖后刷新 DNS 缓存。部署时若启用 `mountHostCerts`，三个 Docker 类适配器会将宿主机 `/etc/hosts` 只读挂载到容器，使容器直接共享宿主机刷新后的 hosts 解析结果，避免 bridge 网络下容器 DNS 解析到 127.0.0.1 导致反向代理失败。
+
+11. **SshUtil 连接池复用**：采用共享 `SshClient` + `ConcurrentHashMap<HostKey, CachedSession>` 会话池，按 `host+port+username` 复用已认证会话；后台守护线程每 60s 清理闲置超时会话（5min）；SFTP 和命令执行通过 `executeWithRetry` 自动重建失效会话。相比每次新建连接（约 3.3s），metrics 接口从 14.9s 降至 2.1s（约 7 倍提升）。
+
 ### 11.2 已知改进点（代码中 TODO）
 
 - `UserServiceImpl` 密码哈希用 SHA-256，与 AGENTS.md 所述 BCrypt 不一致；`SecurityConfig` 已提供 `BCryptPasswordEncoder` Bean 但未使用。
@@ -942,4 +947,4 @@ npm run build    # 产物输出到 src/main/resources/ui/，随 JAR 打包
 
 ---
 
-*文档生成时间：2026-07-14 · 基于源码静态分析*
+*文档生成时间：2026-07-14 · 最后更新：2026-07-19（hosts 刷新 + mountHostCerts + SshUtil 连接池）*
