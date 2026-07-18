@@ -1,7 +1,0 @@
-chore: 更新 backend/frontend 子模块引用（LinuxGSM Docker 集成与 138 款游戏）
-
-- backend: 集成 LinuxGSM Docker 部署方式，新增 LinuxGsmDockerAdapter
-- backend: 修复 SSH 认证、ANSI 颜色字符、配置传递等多项 bug
-- backend: 新增 138 款游戏的 yml 配置（含 linuxgsm-docker 部署类型）
-- frontend: 新增 138 款游戏的 SVG 图标
-- frontend: 修复实例详情页配置管理、控制台 WebSocket 等问题
