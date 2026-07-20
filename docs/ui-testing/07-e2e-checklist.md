@@ -220,6 +220,19 @@ curl -X POST http://localhost:8080/api/auth/login \
 | E2E-102 | 还原备份 | 确认对话框 |
 | E2E-103 | 删除备份 | 确认后删除 |
 
+### 3.12 实例状态双向同步 ✅
+
+| ID | 步骤 | 期望结果 |
+|----|------|----------|
+| E2E-110 | 应用启动后等待 10s，查看后端日志 | 出现 `[InstanceSync] 启动同步开始执行` 和 `SyncSummary[...]` |
+| E2E-111 | 在主机上 `docker stop <container>` 后等待 5 分钟（或手动触发 HostMonitorTask） | 实例列表中该 Docker 实例 run_status 变为「已停止」 |
+| E2E-112 | 在主机上 `docker start <container>` 后等待 5 分钟 | 实例列表中该 Docker 实例 run_status 变为「运行中」 |
+| E2E-113 | 在主机上 kill掉 Native 实例进程后等待 5 分钟 | 实例列表中该 Native 实例 run_status 变为「已停止」，remark 含「进程未运行」 |
+| E2E-114 | 配置 `game-platform.instance-sync.enabled=false` 重启后端 | 启动日志显示「同步已禁用」，不执行同步 |
+| E2E-115 | 主机关机后等待 5 分钟 | 该主机上所有实例不被错误标记为停止（主机级异常隔离） |
+| E2E-116 | 多台主机其中一台 SSH 不通，等待同步周期 | 其他主机实例正常同步，失败主机在日志中记录 ERROR |
+| E2E-117 | 部署一个新实例后立即查看实例列表 | 新实例 run_status 正确，下一次同步周期后状态与主机实际一致 |
+
 ---
 
 ## 4. 跨场景回归
