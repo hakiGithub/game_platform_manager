@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Game Platform Manager - 全栈编译并重启脚本 (Windows PowerShell)
 
@@ -111,11 +111,12 @@ if (-not (Test-Path $backendScript)) {
     exit 1
 }
 
-$backendArgs = @()
-if ($SkipBackendCompile) { $backendArgs += "-SkipCompile" }
-if ($SkipPlugins) { $backendArgs += "-SkipPlugins" }
+$backendArgs = @{}
+if ($SkipBackendCompile) { $backendArgs['SkipCompile'] = $true }
+if ($SkipPlugins) { $backendArgs['SkipPlugins'] = $true }
 
-Write-LogInfo "调用: $backendScript $($backendArgs -join ' ')"
+$argDisplay = ($backendArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' '
+Write-LogInfo "调用: $backendScript $argDisplay"
 & $backendScript @backendArgs
 $backendExitCode = $LASTEXITCODE
 
