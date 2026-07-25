@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Game Platform Manager - 全栈编译并重启脚本 (Windows PowerShell)
 
@@ -118,11 +118,23 @@ if ($SkipPlugins) { $backendArgs['SkipPlugins'] = $true }
 $argDisplay = ($backendArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' '
 Write-LogInfo "调用: $backendScript $argDisplay"
 & $backendScript @backendArgs
-$backendExitCode = $LASTEXITCODE
+# rebuild-restart.ps1 通过 start-backend.bat 启动后台 Java 进程，$LASTEXITCODE 可能是 null，
+# 不能依赖它判断后端是否启动成功。改为检查 8080 端口是否监听。
+$backendOk = $false
+if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+    # 等待最多 10 秒确认 8080 端口监听
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Seconds 1
+        $listening = netstat -ano | Select-String ":8080\s+.*LISTENING"
+        if ($listening) { $backendOk = $true; break }
+    }
+} else {
+    $backendOk = $false
+}
 
-if ($backendExitCode -ne 0) {
-    Write-LogError "后端重启失败 (exit code: $backendExitCode)"
-    exit $backendExitCode
+if (-not $backendOk) {
+    Write-LogError "后端重启失败 (exit code: $LASTEXITCODE, 8080 端口未监听)"
+    exit 1
 }
 
 Write-LogInfo "后端重启成功"
@@ -139,11 +151,22 @@ if (-not $SkipFrontend) {
 
     Write-LogInfo "调用: $frontendScript -Port $FrontendPort"
     & $frontendScript -Port $FrontendPort
-    $frontendExitCode = $LASTEXITCODE
+    # 前端脚本同样通过 start-frontend.bat 启动后台 Vite 进程，$LASTEXITCODE 可能是 null，
+    # 改为检查指定端口是否监听。
+    $frontendOk = $false
+    if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Seconds 1
+            $listening = netstat -ano | Select-String ":$FrontendPort\s+.*LISTENING"
+            if ($listening) { $frontendOk = $true; break }
+        }
+    } else {
+        $frontendOk = $false
+    }
 
-    if ($frontendExitCode -ne 0) {
-        Write-LogError "前端重启失败 (exit code: $frontendExitCode)"
-        exit $frontendExitCode
+    if (-not $frontendOk) {
+        Write-LogError "前端重启失败 (exit code: $LASTEXITCODE, $FrontendPort 端口未监听)"
+        exit 1
     }
 
     Write-LogInfo "前端重启成功"
