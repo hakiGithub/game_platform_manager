@@ -6,14 +6,16 @@
 
 ## 项目概述
 
-游戏服务器统一管理平台是一个面向个人游戏服运维场景的轻量级管理后台，采用前后端分离架构，支持多游戏、多主机的统一管理。
+游戏服务器统一管理平台是一个面向个人游戏服运维场景的轻量级管理后台，采用前后端分离 + 插件化架构，支持多游戏、多主机的统一管理。
 
 ### 核心功能
 - **主机纳管**: SSH连接管理、资源监控、Web终端
 - **游戏部署**: 支持 LinuxGSM/Docker/Docker Compose 三种部署方式
-- **实例管理**: 游戏实例生命周期管理、配置管理、文件管理
-- **插件扩展**: PF4J插件框架，支持4种标准化扩展插槽
+- **实例管理**: 游戏实例生命周期管理、配置管理、文件管理、状态同步
+- **插件扩展**: PF4J插件框架，支持游戏增强扩展点与微前端集成
+- **RCON 控制台**: 游戏服务器远程命令控制
 - **备份还原**: 实例数据备份与恢复
+- **操作审计**: 操作日志记录与导出
 
 ---
 
@@ -32,6 +34,7 @@
 | Docker Java | 3.3.4 | Docker API |
 | PF4J | 3.10.0 | 插件框架 |
 | JWT | 0.12.5 | 令牌认证 |
+| Hutool | 5.8.26 | 工具类库 |
 
 ### 前端 (Frontend)
 | 技术 | 版本 | 用途 |
@@ -42,8 +45,10 @@
 | Element Plus | 2.6.1 | UI组件库 |
 | Axios | 1.6.8 | HTTP请求 |
 | XTerm.js | 5.3.0 | Web终端 |
+| Wujie | - | 微前端插件集成 |
 | Vite | 5.2.0 | 构建工具 |
-| Vitest | 1.4.0 | 测试框架 |
+| Vitest | 1.4.0 | 单元/组件测试 |
+| Playwright | - | E2E / UI 自动化 |
 
 ---
 
@@ -51,34 +56,18 @@
 
 ```
 game_platform_manger/
-├── backend/                          # 后端项目 (Spring Boot)
-│   ├── src/main/java/com/gameplatform/
-│   │   ├── adapter/                  # 部署适配器
-│   │   ├── annotation/               # 自定义注解
-│   │   ├── aspect/                   # AOP切面
-│   │   ├── common/                   # 公共类
-│   │   ├── config/                   # 配置类
-│   │   ├── controller/               # 控制器层
-│   │   ├── dto/                      # 数据传输对象
-│   │   ├── entity/                   # 实体类
-│   │   ├── handler/                  # 类型处理器
-│   │   ├── listener/                 # 监听器
-│   │   ├── mapper/                   # MyBatis Mapper
-│   │   ├── service/                  # 服务层
-│   │   ├── task/                     # 定时任务
-│   │   ├── util/                     # 工具类
-│   │   ├── vo/                       # 视图对象
-│   │   └── websocket/                # WebSocket处理器
-│   ├── src/main/resources/
-│   │   ├── db/                       # 数据库脚本
-│   │   ├── games/                    # 游戏元数据配置
-│   │   ├── mapper/                   # Mapper XML
-│   │   └── application.yml           # 主配置
-│   ├── src/test/                     # 测试代码
-│   ├── pom.xml                       # Maven配置
+├── backend/                          # 后端项目 (Spring Boot 多模块)
+│   ├── api/                          # API 契约模块 (DTO/VO)
+│   ├── core/                         # 核心应用模块 (启动类、控制器、服务)
+│   ├── plugin/                       # 插件 SDK 模块 (扩展点、服务接口)
+│   ├── plugin-l4d2/                  # L4D2 游戏增强插件
+│   │   ├── frontend/                 # 插件前端 (Vue 3 + Vite)
+│   │   ├── plugin-l4d2-core/         # 插件核心 JAR
+│   │   └── plugin-l4d2-standalone/   # 插件独立运行模式
+│   ├── scripts/                      # 后端重启脚本
 │   └── AGENTS.md                     # 后端开发指南
 │
-├── frontend/                         # 前端项目 (Vue 3)
+├── frontend/                         # 主前端项目 (Vue 3 + Vite)
 │   ├── src/
 │   │   ├── api/                      # API接口
 │   │   ├── components/               # 公共组件
@@ -89,11 +78,17 @@ game_platform_manger/
 │   │   ├── tests/                    # 测试文件
 │   │   ├── App.vue                   # 根组件
 │   │   └── main.js                   # 入口文件
+│   ├── scripts/                      # 前端重启脚本
 │   ├── package.json                  # NPM配置
 │   └── AGENTS.md                     # 前端开发指南
 │
 ├── docs/                             # 文档
-│   └── api-doc.md                    # API接口文档
+│   ├── api-doc.md                    # API接口文档
+│   ├── ARCHITECTURE.md               # 架构文档
+│   ├── PLUGIN_DEV_GUIDE.md           # 插件开发指南
+│   ├── ui-testing/                   # UI 测试分层文档
+│   └── tests/                        # 其他测试用例文档
+├── scripts/                          # 全栈一键脚本
 ├── AGENTS.md                         # 项目总览 (本文件)
 └── UE和UI设计稿.md                   # UI/UE设计规范
 ```
@@ -106,27 +101,29 @@ game_platform_manger/
 
 | 模块 | 职责 |
 |------|------|
-| adapter | 部署适配器，支持 LinuxGSM/Docker/Docker Compose |
-| controller | REST API 控制器，处理 HTTP 请求 |
-| service | 业务逻辑层，核心业务实现 |
-| mapper | 数据访问层，MyBatis Mapper 接口 |
-| entity | 数据库实体类 |
-| dto | 数据传输对象，请求参数封装 |
-| vo | 视图对象，响应数据封装 |
-| config | 配置类，Spring Bean 配置 |
-| websocket | WebSocket 处理器，实时通信 |
-| util | 工具类 |
+| api | DTO/VO 契约，供 core 与 plugin 共享 |
+| core | 主应用：控制器、服务实现、数据库访问、WebSocket、Docker/SSH 交互 |
+| plugin | 插件 SDK：扩展点接口、插件框架服务、宿主能力服务接口 |
+| plugin-l4d2 | L4D2 游戏增强插件：RCON、地图、SourceMod 插件管理、配置预设 |
 
 ### 前端模块
 
 | 模块 | 职责 |
 |------|------|
-| api | API 请求封装 |
-| components | 可复用组件 |
-| layouts | 页面布局组件 |
-| router | 路由配置 |
-| stores | Pinia 状态管理 |
-| styles | 全局样式 |
+| frontend | 主应用：主机、实例、游戏、系统管理、插件菜单、Wujie 微前端容器 |
+| plugin-l4d2/frontend | 插件子应用：L4D2 专属管理页面 |
+
+---
+
+## 运行模式
+
+前端支持三种运行模式，通过 `detectMode()` 区分：
+
+| 模式 | 路由基座 | 用途 |
+|------|----------|------|
+| Wujie 插件模式 | `/plugin/l4d2/ui/` | 以微前端方式嵌入主应用 |
+| Standalone 部署模式 | `/ui/` | 独立部署，根路径重定向到 `/ui/index.html` |
+| Vite 开发模式 | `/` | 本地开发，proxy 转发 `/api` 到后端 8080 |
 
 ---
 
@@ -172,6 +169,7 @@ game_platform_manger/
 | `/ws/ssh` | Web SSH 终端 |
 | `/ws/instance/console` | 实例控制台 |
 | `/ws/instance/log` | 实例日志流 |
+| `/ws/docker/{hostId}/containers/{containerId}/exec` | Docker 容器终端 |
 
 ---
 
@@ -217,6 +215,36 @@ npm run test
 npm run lint
 ```
 
+### 全栈一键脚本
+```powershell
+# 编译 + 插件打包 + 启动前后端
+.\scripts\rebuild-restart-all.ps1
+
+# 仅改后端 Java 代码
+.\scripts\rebuild-restart-all.ps1 -SkipPlugins
+
+# 仅改前端代码
+.\scripts\rebuild-restart-all.ps1 -SkipBackendCompile -SkipPlugins
+```
+
+---
+
+## 关键工程约定
+
+- 扩展资源基类使用 Hutool 雪花 ID（String 类型 PRIMARY KEY），保留 name 作为 NOT NULL UNIQUE 业务标识
+- 游戏实例表使用 `host_id` + `instance_name` 联合唯一索引
+- Docker 类部署（docker / docker-compose / linuxgsm-docker）统一支持 `mountHostCerts` 选项，默认关闭
+- `DockerComposeAdapter` 优先使用 `docker compose`，回退 `docker-compose`
+- `LinuxGsmDockerAdapter` 无条件注入 `/etc/ssl/certs/ca-certificates.crt` 只读挂载
+- SSH 认证优先使用解析后的私钥，其次解密密码，禁止将用户名作为密码
+- `SshUtil` 使用连接池模式（共享 SshClient + CachedSession 会话池），后台每 60s 清理空闲超时会话
+- RCON 连接采用 `RconConnectionResolver` → `RconConnectionManager` → `RconService` 三层架构
+- 实例详情拆分为静态接口 `GET /instances/{id}` 与动态接口 `GET /instances/{id}/metrics`
+- 插件 UI 资源路径需在 `SecurityConfig` 中放行 `/pf4j/plugin/*/ui/**` 和 `/pf4j/plugins/*/ui/**`
+- `PluginFrameworkController.getPluginResource` 对 `index.html` 返回 `Cache-Control: no-store`，其余带 hash 的 JS/CSS 保留 7 天缓存
+- `InstanceVO` 必须包含 `iconUrl` 与 `runtimeMetadata` 字段
+- 部署向导展示游戏所有默认端口（`defaultPorts` Map），主端口 `game` 单独输入，其余作为附加端口允许编辑
+
 ---
 
 ## 安全规范
@@ -244,13 +272,25 @@ npm run lint
 
 ---
 
+## 测试文档
+
+| 文档 | 描述 |
+|------|------|
+| [UI 测试文档总览](docs/ui-testing/README.md) | UI 测试策略、工具链、用例模板 |
+| [E2E 验证清单](docs/ui-testing/07-e2e-checklist.md) | 发布前验收清单 |
+| [部署任务状态机测试用例](docs/tests/deploy-task-status-machine-ui-test-cases.md) | 部署任务相关用例 |
+
+---
+
 ## 相关文档
 
 - [后端开发指南](backend/AGENTS.md)
 - [前端开发指南](frontend/AGENTS.md)
 - [API接口文档](docs/api-doc.md)
 - [UI/UE设计规范](UE和UI设计稿.md)
+- [架构文档](docs/ARCHITECTURE.md)
+- [插件开发指南](docs/PLUGIN_DEV_GUIDE.md)
 
 ---
 
-*最后更新: 2026-05-10*
+*最后更新: 2026-08-01*

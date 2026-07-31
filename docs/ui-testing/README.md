@@ -59,23 +59,43 @@
 - **调试 Wujie 集成** → 阅读 06 中的常见问题章节
 - **环境启动失败** → 阅读 [02-toolchain.md §5.5](./02-toolchain.md) 一键启动脚本参数说明
 
+## UI Audit 与交互遍历
+
+项目使用 Playwright 进行自动化 UI 审查与交互遍历，覆盖主应用全部页面：
+
+1. **页面截图审查**：遍历关键页面，生成截图并依据 UI/UX 最佳实践分析视觉一致性、布局对齐、标签截断、按钮状态等问题。
+2. **逐元素交互遍历**：识别页面中所有可交互元素（按钮、链接、下拉菜单、输入框、开关、图标按钮等），执行点击/悬停/输入等操作，截图记录操作前后变化；处理弹窗或跳转后返回原页面继续遍历。
+3. **回归验证**：修复问题后重新执行截图对比，确认修复生效且未引入新问题。
+
+审计产物命名约定：
+
+| 产物 | 文件/目录 |
+|------|----------|
+| 审计报告 | `ui_audit_report.md` |
+| 交互审计报告 | `ui_interactive_audit_report.md` |
+| 回归报告 | `ui_regression_report.md` |
+| 截图目录 | `ui_audit_screenshots/`、`ui_interactive_audit_screenshots/`、`ui_regression_screenshots/` |
+
+> 注意：审计脚本与临时截图目录为工作产物，不纳入版本控制。
+
 ## 当前状态
 
 | 维度 | 状态 | 备注 |
 |------|------|------|
 | 单元测试 | ✅ 已有 | 主应用 frontend/src/tests/、插件 backend/plugin-l4d2/frontend/src/ |
 | 组件测试 | ✅ 已有 | 覆盖 BackupForm、PluginContainer 等关键组件 |
-| E2E 测试 | ⚠️ 部分 | 浏览器自动化验证通过 TRAE browser_use 工具执行 |
-| 视觉回归 | 📋 规划中 | 待引入 Playwright screenshot 对比 |
+| E2E 测试 | ✅ 已有 | 基于 Playwright 的页面遍历与回归验证 |
+| 视觉回归 | ✅ 已有 | 通过 Playwright screenshot 进行 UI Audit 与回归对比 |
 | 性能测试 | 📋 规划中 | Lighthouse CI 接入 |
 
 ## 维护约定
 
 1. **新增功能**：同步更新对应测试用例文档
-2. **Bug 修复**：在 E2E 清单中补充回归用例
+2. **Bug 修复**：在 E2E 清单中补充回归用例；涉及 UI 问题的修复需在 UI Audit 报告中记录并执行回归验证
 3. **架构变更**：更新 01-strategy 和 03-test-pyramid
 4. **工具链升级**：更新 02-toolchain 和 08-ci-integration
+5. **UI 优化**：同步更新 UI/UE 设计规范与 E2E 清单，确保设计稿、实现、测试三者一致
 
 ---
 
-*最后更新: 2026-07-20*
+*最后更新: 2026-08-01*
