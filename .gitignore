@@ -43,3 +43,42 @@ node_modules/
 # Coverage
 coverage/
 *.lcov
+
+# Temporary scripts and working artifacts
+*.pid
+__pycache__/
+*.pyc
+*.class
+*.jar
+.temp/
+temp_*/
+regression_screenshots/
+ui_*_screenshots/
+instance_detail_config_tab.png
+temp_jar_check/
+
+# UI audit / test reports (work products, not source docs)
+ui_audit_report.md
+ui_regression_report.md
+ui_interactive_audit_report.md
+ui_audit.py
+ui_regression.py
+ui_interactive_audit.py
+console_logs.json
+
+# Temporary scripts at repository root
+tmp_*.py
+tmp_*.sh
+tmp_*.java
+tmp_*.class
+
+# E2E temporary scripts and screenshots
+tests/e2e/*.py
+tests/e2e/*.sh
+tests/e2e/*.java
+tests/e2e/*.class
+tests/e2e/screenshots/
+
+# Agent workspace directories
+.style-audit/
+.trae/documents/
