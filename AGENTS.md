@@ -233,6 +233,7 @@ npm run lint
 
 ## 关键工程约定
 
+- **范围隔离（ADR-0002）**：主应用 `core/` 不得包含插件业务配置（`plugin.{gameCode}` 前缀）和插件专属表（`{gameCode}_*` 前缀）；插件配置由 `@ConfigurationProperties` 字段默认值自负，插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式自管。游戏元数据 `games/{gameCode}.yml` 是例外，由主应用维护。详见 [ADR-0002](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
 - 扩展资源基类使用 Hutool 雪花 ID（String 类型 PRIMARY KEY），保留 name 作为 NOT NULL UNIQUE 业务标识
 - 游戏实例表使用 `host_id` + `instance_name` 联合唯一索引
 - Docker 类部署（docker / docker-compose / linuxgsm-docker）统一支持 `mountHostCerts` 选项，默认关闭
@@ -294,8 +295,10 @@ npm run lint
 - [UI/UE设计规范](docs/design/ui-design-spec.md)
 - [架构文档](docs/architecture/ARCHITECTURE.md)
 - [ADR 决策记录](docs/design/adr/README.md)
+  - [ADR-0001 插件菜单归属](docs/design/adr/0001-plugin-menu-ownership.md)
+  - [ADR-0002 主应用与插件范围隔离规约](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---
 
-*最后更新: 2026-08-02*
+*最后更新: 2026-08-03*

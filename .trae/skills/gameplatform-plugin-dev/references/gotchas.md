@@ -94,7 +94,19 @@ ExtensionStoreException (扩展资源存储基类)
 
 `plugin-{gameCode}-standalone` 提供独立 Spring Boot 应用 + 宿主服务独立实现（`StandaloneHostQueryService`/`StandaloneInstanceQueryService`/`StandaloneFileAccessService`/`StandaloneExtensionClient`），使插件脱离主应用运行。前端经 `/api/standalone/*` 取实例，实例信息存 localStorage。参考 `plugin-l4d2-standalone`。
 
-## 12. 版本与维护
+## 12. 范围隔离（ADR-0002，v3.2.0 起变更）
+
+**主应用 `core/` 与插件严格隔离，插件配置和表自管。**
+
+- **配置**：插件 `@ConfigurationProperties` 类的字段 Java 默认值即配置来源；**禁止**在主应用 `application.yml` 写 `plugin.{gameCode}` 块。需要覆盖默认值时由 standalone yml 或环境变量处理。
+- **表**：插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式通过 `DdlTemplate` 动态建表；**禁止**在主应用 `db/migration/` 写 `{gameCode}_*` 前缀的插件专属表。
+- **代码**：主应用 `core/` 不得 `import com.gameplatform.plugin.{gameCode}.*`。
+- **例外**：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入），不属于插件业务。
+- **standalone 模式自治**：`plugin-{gameCode}-standalone/application.yml` 不受本规约约束。
+
+详见 [ADR-0002](../../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
+
+## 13. 版本与维护
 
 - 本 SKILL 目录（`references/`）为插件开发文档唯一权威源（v3.1.0 起）。
 - 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。

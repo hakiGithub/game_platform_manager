@@ -10,6 +10,7 @@
 | 编号 | 标题 | 状态 | 日期 |
 |------|------|------|------|
 | [0001](0001-plugin-menu-ownership.md) | 插件菜单归属与 `getMenus()` 扩展点 | Accepted | 2026-08-02 |
+| [0002](0002-main-app-plugin-scope-isolation.md) | 主应用与插件范围隔离规约 | Accepted | 2026-08-03 |
 
 ## 术语表
 

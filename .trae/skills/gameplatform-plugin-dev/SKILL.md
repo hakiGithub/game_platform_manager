@@ -24,7 +24,7 @@ agent_created: true
 | `references/walkthrough_l4d2.md` | plugin-l4d2 完整双端参考实现剖析（后端入口/扩展资源/控制器/任务/前端/standalone） | 对照参考实现开发新插件 |
 | `references/checklist.md` | 路径常量速查、安全配置约定、发布检查清单、验收标准 | 发布前自检、路径常量查阅 |
 | `references/sdk_reference.md` | 扩展点（含 getMenus/PluginMenuDeclaration）、ExtensionClient、宿主服务面、PluginManifestVO、PluginConstants 接口签名速查 | 编码时查阅方法签名 |
-| `references/gotchas.md` | 菜单机制陷阱（ADR-0001 迁移要点）、路径对齐、异常层级、文件路径安全、任务约束 | 排查非显而易见的问题 |
+| `references/gotchas.md` | 菜单机制陷阱（ADR-0001）、范围隔离规约（ADR-0002）、路径对齐、异常层级、文件路径安全、任务约束 | 排查非显而易见的问题 |
 | `references/changelog.md` | 版本与维护约定、历史快照、Changelog | 查阅版本演进、维护文档 |
 
 ## 何时使用
@@ -45,6 +45,12 @@ agent_created: true
 4. **持久化唯一入口**：`ExtensionClient`，绑定 pluginId，自动 `group_name`+`kind` 身份过滤。`PluginContext`（v3.0+）仅持元数据，不持数据访问。
 5. **双端配对链路**：`getMenus()` → 宿主 `buildMenusFromDeclarations` 校验序列化 → `/api/pf4j/plugin/{gameCode}/manifest` → 主应用侧边栏 → Wujie 加载子应用。子应用路由 path 必须与 `getMenus()` 声明的 path 严格对齐。
 6. **PluginMenuDeclaration 强类型**（v3.1.0 新增）：`title`/`path`/`icon`/`order`/`parent`/`requireInstance`（默认 true，纯资源页如地图中心显式设 `Boolean.FALSE`）。同插件内 path 重复或为空抛 `IllegalStateException`。
+7. **范围隔离（ADR-0002，v3.2.0）**：主应用 `core/` 与插件严格隔离——
+   - 主应用配置文件（`application.yml`）**不得包含** `plugin.{gameCode}` 前缀的插件业务配置；插件配置由 `@ConfigurationProperties` 字段 Java 默认值自负，需要覆盖时由 standalone yml 或环境变量处理。
+   - 主应用迁移目录（`db/migration/`）**不得包含** `{gameCode}_*` 前缀的插件专属表；插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式通过 `DdlTemplate` 动态建表。
+   - 主应用代码**不得 import** `com.gameplatform.plugin.{gameCode}.*` 插件业务包。
+   - 例外：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入）。
+   - 详见 [ADR-0002](../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
 
 ## 可用类速查（接入规范）
 

@@ -5,7 +5,7 @@
 | 状态 | Accepted |
 | 日期 | 2026-08-02 |
 | 决策者 | User (grilling session) |
-| 相关 spec | [2026-08-02-plugin-menu-decoupling-design.md](../superpowers/specs/2026-08-02-plugin-menu-decoupling-design.md) |
+| 相关 spec | [2026-08-02-plugin-menu-decoupling-design.md](../specs/2026-08-02-plugin-menu-decoupling-design.md) |
 | Supersedes | 无 |
 
 ## 背景（Context）
