@@ -12,6 +12,7 @@ Thumbs.db
 # AI/Agent working directories
 .claude/
 .workbuddy/
+.agents/
 
 # Logs
 logs/
