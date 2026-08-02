@@ -85,9 +85,11 @@ game_platform_manger/
 ├── docs/                             # 文档
 │   ├── api-doc.md                    # API接口文档
 │   ├── ARCHITECTURE.md               # 架构文档
-│   ├── PLUGIN_DEV_GUIDE.md           # 插件开发指南
+│   ├── adr/                          # 架构决策记录（ADR）
 │   ├── ui-testing/                   # UI 测试分层文档
 │   └── tests/                        # 其他测试用例文档
+├── .trae/skills/                     # SKILL 文档（插件开发等）
+│   └── gameplatform-plugin-dev/      # 插件开发 SKILL（references/ 分主题文档）
 ├── scripts/                          # 全栈一键脚本
 ├── AGENTS.md                         # 项目总览 (本文件)
 └── UE和UI设计稿.md                   # UI/UE设计规范
@@ -289,7 +291,7 @@ npm run lint
 - [API接口文档](docs/api-doc.md)
 - [UI/UE设计规范](UE和UI设计稿.md)
 - [架构文档](docs/ARCHITECTURE.md)
-- [插件开发指南](docs/PLUGIN_DEV_GUIDE.md)
+- [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---
 

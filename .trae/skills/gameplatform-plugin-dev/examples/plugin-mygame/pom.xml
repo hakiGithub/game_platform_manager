@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  最小可运行双端插件示例（plugin-mygame）
+
+  说明：
+    - 通过 Maven 依赖宿主的 game-platform-plugin（扩展点 SDK）与 game-platform-api（DTO/VO 契约）。
+    - 所有 Spring Boot / PF4J / Hutool 依赖均使用 provided scope：运行期由主应用 ClassLoader 提供，插件 JAR 保持轻量。
+    - 打包后产出单个 JAR，放入主应用 plugins/ 目录即被加载。
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.gameplatform</groupId>
+    <artifactId>plugin-mygame</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>MyGame Plugin (Demo)</name>
+    <description>最小可运行双端插件示例 - 演示扩展点 / 菜单声明 / ExtensionClient 持久化 / 前端三模式</description>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- PF4J Manifest 属性 -->
+        <plugin.id>plugin-mygame</plugin.id>
+        <plugin.class>com.gameplatform.plugin.mygame.MyGamePlugin</plugin.class>
+        <plugin.version>1.0.0</plugin.version>
+        <plugin.provider>GamePlatform</plugin.provider>
+        <plugin.description>MyGame demo plugin</plugin.description>
+
+        <!-- 宿主版本（外部项目按实际主应用版本对齐） -->
+        <gameplatform.version>1.0.0</gameplatform.version>
+    </properties>
+
+    <dependencies>
+        <!-- 插件扩展点 SDK（GameEnhancementExtension / PluginMenuDeclaration / ExtensionClient / 宿主服务面） -->
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-plugin</artifactId>
+            <version>${gameplatform.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- API 契约（Result / InstanceVO / AbstractExtension 等） -->
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-api</artifactId>
+            <version>${gameplatform.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- PF4J 插件框架（Plugin / PluginWrapper / ExtensionPoint） -->
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+            <version>3.10.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Spring Boot（RestController / Service / RequestMapping） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <version>3.2.5</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Lombok（@Data / @Slf4j / @RequiredArgsConstructor） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.30</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Jakarta Validation（@Valid / @NotBlank） -->
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+            <version>3.0.2</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 显式声明 compiler 插件并指定 UTF-8 编码（Windows 默认 GBK 会导致中文常量错乱） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- 写入 PF4J Manifest（Plugin-Id / Plugin-Class / Plugin-Version） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Plugin-Id>${plugin.id}</Plugin-Id>
+                            <Plugin-Class>${plugin.class}</Plugin-Class>
+                            <Plugin-Version>${plugin.version}</Plugin-Version>
+                            <Plugin-Provider>${plugin.provider}</Plugin-Provider>
+                            <Plugin-Description>${plugin.description}</Plugin-Description>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

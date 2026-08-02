@@ -82,3 +82,6 @@ tests/e2e/screenshots/
 # Agent workspace directories
 .style-audit/
 .trae/documents/
+
+# SKILL 打包产物（zip 是 skills 的分发压缩包，不纳入版本管理）
+gameplatform-plugin-dev.zip
