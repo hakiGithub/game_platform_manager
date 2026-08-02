@@ -1,6 +1,6 @@
 # 插件扩展存储（Extension 宽表）实现计划
 
-> 对应设计文档：[2026-07-14-plugin-extension-storage-design.md](../specs/2026-07-14-plugin-extension-storage-design.md)
+> 对应设计文档：[2026-07-14-plugin-extension-storage-design.md](../../design/specs/2026-07-14-plugin-extension-storage-design.md)
 >
 > 本计划按"编译在每个里程碑末尾保持绿色"原则排序。每个阶段结束有验证点。
 

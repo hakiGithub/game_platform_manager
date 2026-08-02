@@ -1,8 +1,8 @@
 # GamePlatform 架构文档
 
-> 版本: 2.1.0 | 更新日期: 2026-08-02
+> 版本: 2.2.0 | 更新日期: 2026-08-03
 >
-> 本文聚焦插件框架架构。任务中心、实例状态同步等子系统设计参见 [docs/design/specs/](../design/specs/) 与 [ADR](../design/adr/)。
+> 本文聚焦插件框架架构（PF4J + Wujie 微前端 + ExtensionClient 持久化）。任务中心、实例状态同步、部署适配器等子系统设计参见 [docs/design/specs/](../design/specs/) 与 [ADR](../design/adr/)。
 
 ---
 
@@ -457,20 +457,8 @@ GET /api/pf4j/plugin/{gameCode}/manifest
     ├── pluginId, gameCode, gameName, version
     ├── frontendEntry (Wujie 入口 URL)
     ├── frontend.routes (前端路由)
-    ├── frontend.menus (菜单项)
+    ├── frontend.menus (菜单项，由 ADR-0001 getMenus() 扩展点声明)
     └── api.basePath, api.endpoints (API 信息)
 ```
 
----
-
-## 12. v2.0 改进总结
-
-| 改进领域 | 改进内容 | 影响 |
-|---------|---------|------|
-| **基础设施** | 新增 PluginConstants、异常体系、PluginContextHolder | 消除硬编码，统一异常处理 |
-| **扩展点** | 新增 onLoad/onUnload/onLoadError 钩子、getConfigFields、getDependencies | 更丰富的插件生命周期控制 |
-| **数据访问** | 新增事务、批量操作、RowMapper、Map 查询 | 插件数据处理能力大幅提升 |
-| **代码质量** | 消除 findPluginIdByExtension 3处重复、控制器注册逻辑统一 | 可维护性显著改善 |
-| **线程安全** | manifestCache 改用 ConcurrentHashMap | 修复并发隐患 |
-| **路径冲突** | 新增路径冲突检测和异常 | 避免插件间路由冲突 |
-| **文档** | 新增架构文档和开发规范 | 降低插件开发门槛 |
+> 菜单声明机制详见 [ADR-0001](../design/adr/0001-plugin-menu-ownership.md)，插件开发完整指南参见 [SKILL.md](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)。

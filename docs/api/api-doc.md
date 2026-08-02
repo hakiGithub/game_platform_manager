@@ -15,7 +15,7 @@
 - [4. 主机管理模块](#4-主机管理模块)
 - [5. 游戏元数据模块](#5-游戏元数据模块)
 - [6. 游戏实例模块](#6-游戏实例模块)
-- [7. 插件管理模块](#7-插件管理模块)
+- [7. 插件框架模块](#7-插件框架模块)
 - [8. 系统设置模块](#8-系统设置模块)
 - [9. 错误码说明](#9-错误码说明)
 - [10. Docker 实例管理模块](#10-docker-实例管理模块)
@@ -27,6 +27,10 @@
 本文档描述游戏服务器统一管理平台的所有API接口规范，**以代码实际实现为准**。文档与代码存在差异时，以代码为准。
 
 > **当前实现状态**（2026-08-02）：核心业务接口与插件框架已完成。包含主机管理、游戏实例、部署向导、Docker 管理、备份还原、操作日志（含导出）、插件框架（PF4J + Wujie 微前端）、任务中心等模块。用户注册功能不在 MVP 范围内。
+>
+> **本文档范围说明**：
+> - 任务中心 API（`/api/tasks/*`）与备份还原 API（`/api/instances/{id}/backups/*`）由对应控制器实现，端点结构遵循统一响应格式，详细字段请参阅 [API 源码](../../backend/core/src/main/java/com/gameplatform/controller/)。
+> - 插件业务 API 由各插件通过 `@RestController` 动态注册，路径形如 `/api/plugin/{gameCode}/**`，具体端点参见各插件文档。
 
 ### 1.1 基础信息
 
@@ -1752,220 +1756,60 @@ Content-Disposition: attachment; filename="PalWorldSettings.ini"
 
 ---
 
-## 7. 插件管理模块
+## 7. 插件框架模块
 
-**模块路径**: `/api/plugins`
+**模块路径**: `/api/pf4j`
 
-### 7.1 获取插件列表
+> **说明**：本平台插件框架基于 [PF4J](https://github.com/pf4j/pf4j) 实现，采用扩展点（`GameEnhancementExtension`）+ Wujie 微前端架构，**不是**简单的数据库 CRUD 模型。完整的插件生命周期、清单（manifest）、菜单声明（ADR-0001）、扩展资源持久化（`ExtensionClient`）、任务中心 SDK 等设计参见插件开发指南。
 
-**接口**: `GET /api/plugins/list`
+### 7.1 框架端点概览
 
-**描述**: 获取所有插件列表
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/pf4j/plugins` | GET | 获取已加载插件列表（含运行状态、版本、gameCode） |
+| `/api/pf4j/plugins/{pluginId}` | GET | 获取插件详情 |
+| `/api/pf4j/plugins/{pluginId}/start` | POST | 启动插件 |
+| `/api/pf4j/plugins/{pluginId}/stop` | POST | 停止插件 |
+| `/api/pf4j/plugins/{pluginId}/reload` | POST | 热重载插件 |
+| `/api/pf4j/plugins/{pluginId}/unload` | POST | 卸载插件 |
+| `/api/pf4j/plugin/{gameCode}/manifest` | GET | 获取插件清单（`PluginManifestVO`，含前端入口、菜单、API 基路径） |
+| `/api/pf4j/plugin/{gameCode}/ui/**` | GET | 插件静态资源（Wujie 子应用入口，`index.html` 设 `Cache-Control: no-store`） |
+| `/api/plugin/{gameCode}/**` | * | 插件自定义业务 API（由插件 `@RestController` 动态注册） |
 
-**认证**: 需要JWT令牌
-
-**请求参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| keyword | String | 否 | 关键词搜索 |
-| status | Integer | 否 | 状态：0-禁用，1-启用 |
-
-**响应参数**:
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| id | Long | 插件ID |
-| pluginId | String | 插件唯一标识 |
-| pluginName | String | 插件名称 |
-| pluginVersion | String | 插件版本号 |
-| pluginDesc | String | 插件描述 |
-| author | String | 插件作者 |
-| pluginClass | String | 插件主类 |
-| pluginPath | String | 插件路径 |
-| status | Integer | 状态：0-禁用，1-启用 |
-| installTime | DateTime | 安装时间 |
-| createTime | DateTime | 创建时间 |
-
-**响应示例**:
+### 7.2 插件清单响应示例
 
 ```json
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    {
-      "id": 1,
-      "pluginId": "auto-backup",
-      "pluginName": "自动备份插件",
-      "pluginVersion": "1.0.0",
-      "pluginDesc": "定时自动备份游戏实例数据",
-      "author": "GamePlatform",
-      "pluginClass": "com.gameplatform.plugin.AutoBackupPlugin",
-      "pluginPath": "/opt/gameplatform/plugins/auto-backup.jar",
-      "status": 1,
-      "installTime": "2026-03-20T08:00:00",
-      "createTime": "2026-03-20T08:00:00"
+  "data": {
+    "pluginId": "plugin-l4d2",
+    "gameCode": "l4d2",
+    "gameName": "Left 4 Dead 2",
+    "version": "1.0.0",
+    "frontend": {
+      "entry": "/api/pf4j/plugin/l4d2/ui/index.html",
+      "menus": [
+        { "title": "RCON 控制台", "path": "/rcon", "icon": "Monitor", "order": 1, "requireInstance": true },
+        { "title": "地图中心", "path": "/map-center", "icon": "MapLocation", "order": 2, "requireInstance": false }
+      ],
+      "capabilities": ["/rcon", "/map-center", "/maps", "/plugins"]
+    },
+    "api": {
+      "basePath": "/api/plugin/l4d2",
+      "endpoints": ["/rcon/status", "/maps", "/plugins"]
     }
-  ],
-  "timestamp": 1711084800000
-}
-```
-
----
-
-### 7.2 获取插件详情
-
-**接口**: `GET /api/plugins/{id}`
-
-**描述**: 根据ID获取插件详情
-
-**认证**: 需要JWT令牌
-
-**路径参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | Long | 是 | 插件ID |
-
-**响应参数**: 同插件列表中的单个对象
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": {
-    "id": 1,
-    "pluginId": "auto-backup",
-    "pluginName": "自动备份插件",
-    "pluginVersion": "1.0.0",
-    "pluginDesc": "定时自动备份游戏实例数据",
-    "author": "GamePlatform",
-    "pluginClass": "com.gameplatform.plugin.AutoBackupPlugin",
-    "pluginPath": "/opt/gameplatform/plugins/auto-backup.jar",
-    "status": 1,
-    "installTime": "2026-03-20T08:00:00",
-    "createTime": "2026-03-20T08:00:00",
-    "updateTime": "2026-03-22T10:00:00"
   },
   "timestamp": 1711084800000
 }
 ```
 
----
+### 7.3 相关文档
 
-### 7.3 启用插件
-
-**接口**: `PUT /api/plugins/{id}/enable`
-
-**描述**: 启用插件
-
-**认证**: 需要JWT令牌
-
-**路径参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | Long | 是 | 插件ID |
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "message": "插件启用成功",
-  "data": null,
-  "timestamp": 1711084800000
-}
-```
-
----
-
-### 7.4 禁用插件
-
-**接口**: `PUT /api/plugins/{id}/disable`
-
-**描述**: 禁用插件
-
-**认证**: 需要JWT令牌
-
-**路径参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | Long | 是 | 插件ID |
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "message": "插件禁用成功",
-  "data": null,
-  "timestamp": 1711084800000
-}
-```
-
----
-
-### 7.5 安装插件
-
-**接口**: `POST /api/plugins`
-
-**描述**: 安装新插件
-
-**认证**: 需要JWT令牌
-
-**Content-Type**: `multipart/form-data`
-
-**请求参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| file | File | 是 | 插件文件(.jar) |
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "message": "插件安装成功",
-  "data": {
-    "id": 2,
-    "pluginId": "monitor-alert"
-  },
-  "timestamp": 1711084800000
-}
-```
-
----
-
-### 7.6 卸载插件
-
-**接口**: `DELETE /api/plugins/{id}`
-
-**描述**: 卸载插件
-
-**认证**: 需要JWT令牌
-
-**路径参数**:
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | Long | 是 | 插件ID |
-
-**响应示例**:
-
-```json
-{
-  "code": 200,
-  "message": "插件卸载成功",
-  "data": null,
-  "timestamp": 1711084800000
-}
-```
+- **插件开发完整指南**：[`.trae/skills/gameplatform-plugin-dev/SKILL.md`](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
+- **架构文档（插件框架）**：[`docs/architecture/ARCHITECTURE.md`](../architecture/ARCHITECTURE.md)
+- **ADR-0001：插件菜单归属与 `getMenus()` 扩展点**：[`docs/design/adr/0001-plugin-menu-ownership.md`](../design/adr/0001-plugin-menu-ownership.md)
+- **参考实现**：`backend/plugin-l4d2/`（L4D2 增强插件）、`examples/plugin-mygame/`（最小示例）
 
 ---
 
@@ -4041,5 +3885,5 @@ ws://localhost:8080/ws/docker/logs?hostId=1&containerId=a1b2c3d4e5f6&token=xxx&t
 
 ---
 
-**文档版本**: v1.1.0  
-**最后更新**: 2026-03-24
+**文档版本**: v1.2.0  
+**最后更新**: 2026-08-02

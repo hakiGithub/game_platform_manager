@@ -80,4 +80,4 @@
 - [ADR 索引](README.md)
 - [ADR-0001: 插件菜单归属与 getMenus() 扩展点](0001-plugin-menu-ownership.md)
 - [插件开发指南](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
-- [架构文档](../ARCHITECTURE.md)
+- [架构文档](../../architecture/ARCHITECTURE.md)

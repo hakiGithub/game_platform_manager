@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 17 + Spring Boot 3.2.5 + MyBatis-Plus + SQLite + JSoup（无需新增依赖）+ Vitest（前端无改动）
 
-**Spec:** [docs/superpowers/specs/2026-07-20-instance-status-sync-design.md](../specs/2026-07-20-instance-status-sync-design.md)
+**Spec:** [2026-07-20-instance-status-sync-design.md](../../design/specs/2026-07-20-instance-status-sync-design.md)
 
 ---
 
