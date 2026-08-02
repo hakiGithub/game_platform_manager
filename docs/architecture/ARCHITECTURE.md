@@ -1,6 +1,8 @@
-# GamePlatform 插件框架架构文档
+# GamePlatform 架构文档
 
-> 版本: 2.0.0 | 更新日期: 2026-08-01
+> 版本: 2.1.0 | 更新日期: 2026-08-02
+>
+> 本文聚焦插件框架架构。任务中心、实例状态同步等子系统设计参见 [docs/design/specs/](../design/specs/) 与 [ADR](../design/adr/)。
 
 ---
 

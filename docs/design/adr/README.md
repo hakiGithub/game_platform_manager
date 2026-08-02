@@ -24,6 +24,6 @@
 
 ## 相关文档
 
-- [插件开发指南](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
-- [架构文档](../ARCHITECTURE.md)
-- [设计 spec 文档目录](../superpowers/specs/)
+- [插件开发指南](../../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
+- [架构文档](../../architecture/ARCHITECTURE.md)
+- [设计 spec 文档目录](../specs/)

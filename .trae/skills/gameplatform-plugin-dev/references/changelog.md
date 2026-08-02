@@ -1,7 +1,7 @@
 # 版本与维护约定 / Changelog
 
 > 对齐主应用: `backend/` @ 2026-08-02
-> 关联 ADR: [ADR-0001 插件菜单归属与 getMenus() 扩展点](../../../../docs/adr/0001-plugin-menu-ownership.md)
+> 关联 ADR: [ADR-0001 插件菜单归属与 getMenus() 扩展点](../../../../docs/design/adr/0001-plugin-menu-ownership.md)
 
 ## 1. 版本与维护约定
 

@@ -82,17 +82,17 @@ game_platform_manger/
 │   ├── package.json                  # NPM配置
 │   └── AGENTS.md                     # 前端开发指南
 │
-├── docs/                             # 文档
-│   ├── api-doc.md                    # API接口文档
-│   ├── ARCHITECTURE.md               # 架构文档
-│   ├── adr/                          # 架构决策记录（ADR）
-│   ├── ui-testing/                   # UI 测试分层文档
-│   └── tests/                        # 其他测试用例文档
+├── docs/                             # 文档（分层组织）
+│   ├── architecture/                 # 架构文档
+│   ├── api/                          # API 接口文档
+│   ├── design/                       # 设计文档（adr/ specs/ docker/ ui-design-spec）
+│   ├── testing/                      # 测试文档（ui-testing/ + 用例）
+│   └── archive/                      # 归档文档（历史实施计划）
 ├── .trae/skills/                     # SKILL 文档（插件开发等）
 │   └── gameplatform-plugin-dev/      # 插件开发 SKILL（references/ 分主题文档）
 ├── scripts/                          # 全栈一键脚本
 ├── AGENTS.md                         # 项目总览 (本文件)
-└── UE和UI设计稿.md                   # UI/UE设计规范
+└── README.md                         # 项目入口
 ```
 
 ---
@@ -278,21 +278,24 @@ npm run lint
 
 | 文档 | 描述 |
 |------|------|
-| [UI 测试文档总览](docs/ui-testing/README.md) | UI 测试策略、工具链、用例模板 |
-| [E2E 验证清单](docs/ui-testing/07-e2e-checklist.md) | 发布前验收清单 |
-| [部署任务状态机测试用例](docs/tests/deploy-task-status-machine-ui-test-cases.md) | 部署任务相关用例 |
+| [UI 测试文档总览](docs/testing/ui-testing/README.md) | UI 测试策略、工具链、用例模板 |
+| [E2E 验证清单](docs/testing/ui-testing/07-e2e-checklist.md) | 发布前验收清单 |
+| [部署任务状态机测试用例](docs/testing/deploy-task-status-machine-ui-test-cases.md) | 部署任务相关用例 |
 
 ---
 
 ## 相关文档
 
+- [项目 README](README.md) — 项目总览与快速开始
+- [文档导航](docs/README.md) — docs/ 目录分层说明
 - [后端开发指南](backend/AGENTS.md)
 - [前端开发指南](frontend/AGENTS.md)
-- [API接口文档](docs/api-doc.md)
-- [UI/UE设计规范](UE和UI设计稿.md)
-- [架构文档](docs/ARCHITECTURE.md)
+- [API接口文档](docs/api/api-doc.md)
+- [UI/UE设计规范](docs/design/ui-design-spec.md)
+- [架构文档](docs/architecture/ARCHITECTURE.md)
+- [ADR 决策记录](docs/design/adr/README.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---
 
-*最后更新: 2026-08-01*
+*最后更新: 2026-08-02*

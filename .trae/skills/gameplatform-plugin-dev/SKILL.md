@@ -190,4 +190,4 @@ agent_created: true
 - 本 SKILL 目录为插件开发文档的**唯一权威源**（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此）。
 - 接口签名、路径常量、异常类均以 `backend/plugin/` 源码为准，新增即补登记到对应 `references/` 文件。
 - 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。
-- ADR 关联：`docs/adr/0001-plugin-menu-ownership.md`（菜单归属权）。
+- ADR 关联：`docs/design/adr/0001-plugin-menu-ownership.md`（菜单归属权）。
