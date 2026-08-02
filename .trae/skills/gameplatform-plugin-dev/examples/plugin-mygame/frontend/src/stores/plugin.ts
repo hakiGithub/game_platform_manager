@@ -16,7 +16,7 @@ export interface InstanceInfo {
 }
 
 export const usePluginStore = defineStore('plugin', () => {
-  const mode = ref<'wujie' | 'standalone' | 'dev'>(detectMode())
+  const mode = ref<'wujie' | 'dev'>(detectMode())
   const instanceInfo = ref<InstanceInfo | null>(null)
   const token = ref<string>('')
   const isWujie = ref(mode.value === 'wujie')

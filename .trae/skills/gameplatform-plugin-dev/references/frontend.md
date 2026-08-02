@@ -1,16 +1,17 @@
 # 前端插件开发
 
-> 对齐版本：v3.1.0（ADR-0001）｜ 权威源：`backend/plugin/` + `backend/plugin-l4d2/frontend/` 源码
+> 对齐版本：v3.3.0（ADR-0003）｜ 权威源：`backend/plugin/` + `backend/plugin-l4d2/frontend/` 源码
 
-## 1. 前端三种运行模式
+## 1. 前端两种运行模式
 
 通过 `detectMode()` 区分：
 
 | 模式 | 检测条件 | 路由 history |
 |---|---|---|
 | Wujie 插件模式 | `window.__POWERED_BY_WUJIE__` 或 `props.mode==='wujie'` | `createWebHashHistory()` |
-| Vite 开发模式 | `import.meta.env.DEV` | `createWebHistory('/')` |
-| Standalone 部署模式 | 其余 | `createWebHistory('/ui/')` |
+| Vite 开发模式 | 其余 | `createWebHistory('/')` |
+
+> `standalone` 模式已废弃（ADR-0003，v3.3.0）。
 
 ## 2. 三种形态
 
@@ -29,11 +30,10 @@
 子应用通过 `utils/runtime.ts` 的 `detectMode()` 区分模式：
 
 ```ts
-export type RuntimeMode = 'wujie' | 'standalone' | 'dev'
+export type RuntimeMode = 'wujie' | 'dev'
 export function detectMode(props: Record<string, any> = {}): RuntimeMode {
   if (props.mode === 'wujie' || window.__POWERED_BY_WUJIE__) return 'wujie'
-  if (import.meta.env.DEV) return 'dev'
-  return 'standalone'
+  return 'dev'
 }
 ```
 
@@ -42,17 +42,13 @@ export function detectMode(props: Record<string, any> = {}): RuntimeMode {
 ```ts
 // router/index.ts
 const isWujie = Boolean(window.__POWERED_BY_WUJIE__)
-const isDev   = Boolean(import.meta.env.DEV)
 const history = isWujie ? createWebHashHistory()        // Wujie: hash 路由
-              : isDev   ? createWebHistory('/')          // dev: 根路径
-                         : createWebHistory('/ui/')      // standalone: /ui/ 前缀
+              : createWebHistory('/')                    // dev: 根路径
 ```
 
 主应用通过 Wujie `props.route` 可指定子应用初始路由。
 
 > **运行模式约定**：
-> - standalone 模式需通过 WebMvcConfigurer 配置将 core JAR 中的 classpath:/ui/ 映射到 /ui/**，并设置根路径 / 重定向到 /ui/index.html
-> - standalone 模式下前端需新增实例选择页，通过 /api/standalone/instances 获取实例列表
 > - 前端必须使用 3000 端口运行，通过 proxy 转发 /api 到后端 8080
 
 ## 5. 前后端通信（Wujie）
@@ -63,27 +59,12 @@ const history = isWujie ? createWebHashHistory()        // Wujie: hash 路由
 
 > 已切换为 Wujie 微前端架构，旧版 postMessage 通信仅作兼容。
 
-## 6. Standalone 模式后端
-
-Standalone 模式让插件脱离主应用独立运行（如 `plugin-l4d2-standalone`）。它提供独立的 Spring Boot 应用与宿主服务的独立实现：
-
-| 独立实现 | 替代的宿主服务 |
-|---|---|
-| `L4D2StandaloneApp` | 主应用启动类 |
-| `StandaloneHostQueryService` | `HostQueryService` |
-| `StandaloneInstanceQueryService` | `InstanceQueryService` |
-| `StandaloneFileAccessService` | `FileAccessService` |
-| `StandaloneExtensionClient` | `ExtensionClient` |
-| `StandaloneSpaController` | 主应用前端资源服务（`/ui/`） |
-
-前端通过 `/api/standalone/*` 端点获取实例列表（`StandaloneInstanceController`、`StandaloneHostController`），实例信息持久化到 localStorage。
-
-## 7. 前端目录结构
+## 6. 前端目录结构
 
 ```
 plugin-{gameCode}/frontend/
 ├── src/
-│   ├── api/           # API 封装（Wujie/standalone 行为一致）
+│   ├── api/           # API 封装
 │   ├── pages/         # 页面（路径须与 getMenus() 声明的 path 对齐）
 │   ├── router/index.ts
 │   ├── stores/        # Pinia
@@ -93,7 +74,7 @@ plugin-{gameCode}/frontend/
 └── package.json
 ```
 
-## 8. 前端约定
+## 7. 前端约定
 
 - 子应用在 Wujie 模式下统一通过 App.vue 包裹 MainLayout（不再在每个页面嵌套 MainLayout），MainLayout 通过 `v-if="!isWujie"` 控制侧边栏渲染
 - PluginTab.vue 生成子应用 URL 时必须使用 hash 路由格式 `${entry}#${path}`（如 `/index.html#/maps`），子应用使用 `createWebHashHistory` 解析

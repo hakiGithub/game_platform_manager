@@ -10,8 +10,7 @@
 
 | 文件 | 测试对象 | 关键用例 |
 |------|----------|----------|
-| `utils/runtime.test.ts` | runtime.ts | 模式检测：wujie / standalone / dev |
-| `pages/InstanceSelect.test.ts` | InstanceSelect.vue | 实例列表加载、选择回调、空状态 |
+| `utils/runtime.test.ts` | runtime.ts | 模式检测：wujie / dev（ADR-0003，v3.3.0 起 standalone 模式已废弃） |
 
 ### 1.2 待补充用例（按优先级）
 
@@ -258,39 +257,6 @@ describe('MapSelectorModal', () => {
 | 多 tick 同步 | marker 保留策略、差异更新 |
 | 重置配置 | 确认弹窗、恢复默认值 |
 
-### 3.5 InstanceSelect
-
-| 用例 | 验证点 |
-|------|--------|
-| 加载实例列表 | 按 gameCode 过滤、显示列表 |
-| 空状态 | 无实例时显示提示 |
-| 选择实例 | 点击触发 select 事件、关闭对话框 |
-| 取消选择 | 点击取消、不触发 select |
-
 ---
 
-## 4. Standalone 模式测试
-
-部分用例需要在 standalone 模式下运行（非 Wujie）：
-
-```typescript
-describe('Standalone 模式', () => {
-  beforeEach(() => {
-    ;(window as any).__POWERED_BY_WUJIE__ = false
-  })
-
-  it('应该显示侧边栏菜单', async () => {
-    const wrapper = await mountApp()
-    expect(wrapper.find('.sidebar').exists()).toBe(true)
-  })
-
-  it('应该显示实例选择页', async () => {
-    const wrapper = await mountApp()
-    expect(wrapper.find('[data-testid=instance-select]').exists()).toBe(true)
-  })
-})
-```
-
----
-
-*最后更新: 2026-07-20*
+*最后更新: 2026-08-03（ADR-0003 废弃 standalone 模式，移除 InstanceSelect 与 standalone 测试章节）*

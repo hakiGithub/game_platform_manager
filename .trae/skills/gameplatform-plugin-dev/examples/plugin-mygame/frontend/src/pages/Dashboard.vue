@@ -102,7 +102,7 @@ const editForm = ref<{ id: string; version: number; title: string; content: stri
 
 async function refresh() {
   if (!pluginStore.instanceInfo?.instanceId) {
-    ElMessage.warning('未选中实例（Wujie 模式下由主应用下发，dev/standalone 模式需手动设置）')
+    ElMessage.warning('未选中实例（Wujie 模式下由主应用下发，dev 模式需手动设置）')
     return
   }
   loading.value = true

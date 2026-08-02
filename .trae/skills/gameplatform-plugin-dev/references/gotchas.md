@@ -26,14 +26,13 @@
 
 子应用 `frontend/src/router/index.ts` 的路由 path 必须与 `getMenus()` 声明的菜单 path **完全一致**，否则点击菜单白屏。例如 `getMenus()` 声明 `/map-center`，路由表必须有对应 `/map-center`。
 
-## 3. 前端三运行模式
+## 3. 前端两运行模式（ADR-0003，v3.3.0 起变更）
 
 `detectMode()`（`frontend/src/utils/runtime.ts`）：
 - `wujie`：`window.__POWERED_BY_WUJIE__` 或 `props.mode==='wujie'` → `createWebHashHistory()`
-- `dev`：`import.meta.env.DEV` → `createWebHistory('/')`
-- `standalone`：其余 → `createWebHistory('/ui/')`
+- `dev`：其余 → `createWebHistory('/')`
 
-主应用可通过 Wujie `props.route` 指定子应用初始路由。
+`standalone` 模式已废弃（ADR-0003）。主应用可通过 Wujie `props.route` 指定子应用初始路由。
 
 ## 4. 前后端通信（Wujie）
 
@@ -90,19 +89,18 @@ ExtensionStoreException (扩展资源存储基类)
 
 两个插件注册相同 URL → `PluginPathConflictException` 阻止加载。规避：路径严格按 `/api/plugin/{gameCode}/` 前缀，`gameCode` 全局唯一。
 
-## 11. standalone 模式
+## 11. standalone 模式（ADR-0003，v3.3.0 起废弃）
 
-`plugin-{gameCode}-standalone` 提供独立 Spring Boot 应用 + 宿主服务独立实现（`StandaloneHostQueryService`/`StandaloneInstanceQueryService`/`StandaloneFileAccessService`/`StandaloneExtensionClient`），使插件脱离主应用运行。前端经 `/api/standalone/*` 取实例，实例信息存 localStorage。参考 `plugin-l4d2-standalone`。
+`plugin-l4d2-standalone` 已物理删除。新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。需要独立部署的用户可部署完整主应用。详见 [ADR-0003](../../../../docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
 
 ## 12. 范围隔离（ADR-0002，v3.2.0 起变更）
 
 **主应用 `core/` 与插件严格隔离，插件配置和表自管。**
 
-- **配置**：插件 `@ConfigurationProperties` 类的字段 Java 默认值即配置来源；**禁止**在主应用 `application.yml` 写 `plugin.{gameCode}` 块。需要覆盖默认值时由 standalone yml 或环境变量处理。
+- **配置**：插件 `@ConfigurationProperties` 类的字段 Java 默认值即配置来源；**禁止**在主应用 `application.yml` 写 `plugin.{gameCode}` 块。需要覆盖默认值时由环境变量处理。
 - **表**：插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式通过 `DdlTemplate` 动态建表；**禁止**在主应用 `db/migration/` 写 `{gameCode}_*` 前缀的插件专属表。
 - **代码**：主应用 `core/` 不得 `import com.gameplatform.plugin.{gameCode}.*`。
 - **例外**：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入），不属于插件业务。
-- **standalone 模式自治**：`plugin-{gameCode}-standalone/application.yml` 不受本规约约束。
 
 详见 [ADR-0002](../../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
 

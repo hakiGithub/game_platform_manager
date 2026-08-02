@@ -5,10 +5,9 @@
  *   - 路由 path 必须与后端 MyGameExtension.getMenus() 声明的 path 严格对齐
  *   - 否则点击主应用侧边栏菜单时会白屏
  *
- * 三种 history 模式（由 detectMode() 决定）：
- *   - wujie:      createWebHashHistory()        hash 路由，避免与主应用 history 冲突
- *   - dev:        createWebHistory('/')         Vite 开发模式
- *   - standalone: createWebHistory('/ui/')      独立部署模式
+ * 两种 history 模式（由 detectMode() 决定，ADR-0003 起 standalone 模式已废弃）：
+ *   - wujie: createWebHashHistory()   hash 路由，避免与主应用 history 冲突
+ *   - dev:   createWebHistory('/')    Vite 开发模式
  */
 import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw, Router } from 'vue-router'
@@ -35,13 +34,11 @@ export const routes: RouteRecordRaw[] = [
 
 export function createPluginRouter(props: Record<string, any> = {}): Router {
   const isWujie = typeof window !== 'undefined' && Boolean(window.__POWERED_BY_WUJIE__)
-  const isDev = typeof window !== 'undefined' && Boolean(import.meta.env.DEV)
 
+  // Wujie: hash 路由；dev: 根路径
   const history = isWujie
     ? createWebHashHistory()
-    : isDev
-      ? createWebHistory('/')
-      : createWebHistory('/ui/')
+    : createWebHistory('/')
 
   const router = createRouter({ history, routes })
 

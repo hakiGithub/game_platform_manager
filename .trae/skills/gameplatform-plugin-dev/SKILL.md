@@ -19,9 +19,9 @@ agent_created: true
 | `references/extension_client.md` | @ExtensionModel 存储策略、ExtensionClient 全方法、ListOptions、安全约束 | 持久化扩展资源、CRUD |
 | `references/host_services.md` | HostQueryService / InstanceQueryService / InstanceFileService / FileAccessService、控制器规范 | 调用主机/实例/文件能力、路径前缀约束 |
 | `references/task_handler.md` | TaskHandler / TaskHandlerExtension / TaskService、注册/实现/提交、进度节流、取消超时、互斥键、生命周期钩子 | 异步任务开发 |
-| `references/frontend.md` | 三运行模式（detectMode）、三形态、Wujie 通信、Standalone 模式、前端目录结构、前端约定 | 双端插件前端开发 |
+| `references/frontend.md` | 两运行模式（detectMode）、Wujie 通信、前端目录结构、前端约定 | 双端插件前端开发 |
 | `references/exceptions.md` | 异常类层级、框架异常使用、基于真实异常的 FAQ | 异常处理、问题排查 |
-| `references/walkthrough_l4d2.md` | plugin-l4d2 完整双端参考实现剖析（后端入口/扩展资源/控制器/任务/前端/standalone） | 对照参考实现开发新插件 |
+| `references/walkthrough_l4d2.md` | plugin-l4d2 完整双端参考实现剖析（后端入口/扩展资源/控制器/任务/前端） | 对照参考实现开发新插件 |
 | `references/checklist.md` | 路径常量速查、安全配置约定、发布检查清单、验收标准 | 发布前自检、路径常量查阅 |
 | `references/sdk_reference.md` | 扩展点（含 getMenus/PluginMenuDeclaration）、ExtensionClient、宿主服务面、PluginManifestVO、PluginConstants 接口签名速查 | 编码时查阅方法签名 |
 | `references/gotchas.md` | 菜单机制陷阱（ADR-0001）、范围隔离规约（ADR-0002）、路径对齐、异常层级、文件路径安全、任务约束 | 排查非显而易见的问题 |
@@ -41,16 +41,17 @@ agent_created: true
    - `getManifest()` 的 `features` 字段**已废弃**，宿主不再读取；新插件不要写 `features`，旧插件需迁移到 `getMenus()`。
    - `getManifest()` 中的 `frontend.menus` 字段（如存在）会被忽略。
    - 主应用从 `manifest.frontend.menus` 的 path 集合推导 capabilities（不再依赖 features）。
-3. **前端三运行模式**：`detectMode()` → wujie(hash 路由) / dev(`/`) / standalone(`/ui/`)。
+3. **前端两运行模式**（ADR-0003，v3.3.0）：`detectMode()` → wujie(hash 路由) / dev(`/`)。`standalone` 模式已废弃。
 4. **持久化唯一入口**：`ExtensionClient`，绑定 pluginId，自动 `group_name`+`kind` 身份过滤。`PluginContext`（v3.0+）仅持元数据，不持数据访问。
 5. **双端配对链路**：`getMenus()` → 宿主 `buildMenusFromDeclarations` 校验序列化 → `/api/pf4j/plugin/{gameCode}/manifest` → 主应用侧边栏 → Wujie 加载子应用。子应用路由 path 必须与 `getMenus()` 声明的 path 严格对齐。
 6. **PluginMenuDeclaration 强类型**（v3.1.0 新增）：`title`/`path`/`icon`/`order`/`parent`/`requireInstance`（默认 true，纯资源页如地图中心显式设 `Boolean.FALSE`）。同插件内 path 重复或为空抛 `IllegalStateException`。
 7. **范围隔离（ADR-0002，v3.2.0）**：主应用 `core/` 与插件严格隔离——
-   - 主应用配置文件（`application.yml`）**不得包含** `plugin.{gameCode}` 前缀的插件业务配置；插件配置由 `@ConfigurationProperties` 字段 Java 默认值自负，需要覆盖时由 standalone yml 或环境变量处理。
+   - 主应用配置文件（`application.yml`）**不得包含** `plugin.{gameCode}` 前缀的插件业务配置；插件配置由 `@ConfigurationProperties` 字段 Java 默认值自负，需要覆盖时由环境变量处理。
    - 主应用迁移目录（`db/migration/`）**不得包含** `{gameCode}_*` 前缀的插件专属表；插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式通过 `DdlTemplate` 动态建表。
    - 主应用代码**不得 import** `com.gameplatform.plugin.{gameCode}.*` 插件业务包。
    - 例外：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入）。
    - 详见 [ADR-0002](../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
+8. **废弃 standalone 模式（ADR-0003，v3.3.0）**：`plugin-l4d2-standalone` 已物理删除，新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。详见 [ADR-0003](../../../docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
 
 ## 可用类速查（接入规范）
 
@@ -138,7 +139,7 @@ agent_created: true
 2. 建 `plugin-{gameCode}/frontend`（Vue 3 + Vite），`utils/runtime.ts` 实现 `detectMode()`。
 3. `router/index.ts` 路由 path 必须与 `getMenus()` 声明的 path **严格对齐**（否则点击菜单白屏）。
 4. Wujie 模式用 `createWebHashHistory()`；通过 `window.$wujie.props` 读初始数据，`window.$wujie.bus` 收发事件。
-5. standalone 模式需 `plugin-{gameCode}-standalone` 子模块提供宿主服务独立实现（参考 plugin-l4d2-standalone）。
+5. standalone 模式已废弃（ADR-0003），新增插件不应实现。
 
 ## 排查速查
 
@@ -187,7 +188,7 @@ agent_created: true
 
 ### 完整参考实现（backend/plugin-l4d2/）
 
-`backend/plugin-l4d2/` 是完整双端参考实现（core / standalone / frontend 三件套），含 17 项菜单、爬虫、RCON、地图、SourceMod 插件管理等完整能力。开发新插件时对照其 `L4D2Extension`、`L4D2Plugin`、`plugin.properties`、`extension/` 资源类、`frontend/src/router/index.ts`。完整剖析见 `references/walkthrough_l4d2.md`。
+`backend/plugin-l4d2/` 是完整双端参考实现（core / frontend 两件套），含 17 项菜单、爬虫、RCON、地图、SourceMod 插件管理等完整能力。开发新插件时对照其 `L4D2Extension`、`L4D2Plugin`、`plugin.properties`、`extension/` 资源类、`frontend/src/router/index.ts`。完整剖析见 `references/walkthrough_l4d2.md`。
 
 > 外部项目无法读取 `backend/plugin-l4d2/` 源码时，以 `examples/plugin-mygame/` 为起点，按需参考 `references/` 文档扩展能力。
 

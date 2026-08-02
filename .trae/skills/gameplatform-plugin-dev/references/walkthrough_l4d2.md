@@ -1,15 +1,16 @@
 # 参考实现剖析（plugin-l4d2）
 
-> 对齐版本：v3.1.0（ADR-0001）｜ 权威源：`backend/plugin-l4d2/` 源码
+> 对齐版本：v3.3.0（ADR-0003）｜ 权威源：`backend/plugin-l4d2/` 源码
 
-`plugin-l4d2` 是完整的双端插件参考实现，含三个子模块：
+`plugin-l4d2` 是完整的双端插件参考实现，含两个子模块：
 
 ```
 plugin-l4d2/
 ├── plugin-l4d2-core/         # 核心 JAR（嵌入式）
-├── plugin-l4d2-standalone/   # standalone 独立运行模式
 └── frontend/                 # Vue 3 + Vite 子应用
 ```
+
+> 注：`plugin-l4d2-standalone` 已废弃并物理删除（ADR-0003，v3.3.0）。
 
 ## 1. 后端入口
 
@@ -38,10 +39,6 @@ L4D2 声明了多个资源模型：`AdminResource`/`AdminSpec`、`PluginConfigRe
 
 ## 5. 前端子应用
 
-- `utils/runtime.ts` 的 `detectMode()` 区分三模式
+- `utils/runtime.ts` 的 `detectMode()` 区分两模式（wujie + dev，ADR-0003）
 - `router/index.ts` 路由 path（`/dashboard`、`/maps`、`/map-center`、`/rcon`、`/monitor`、`/player-stats` 等）与 `L4D2Extension.getMenus()` 声明的菜单 path 严格对齐（ADR-0001）
-- `stores/plugin.ts` 在 Wujie 模式从 `window.$wujie.props` 读取实例信息，standalone 模式从 localStorage + `/api/standalone/instances` 读取
-
-## 6. Standalone 模式
-
-`plugin-l4d2-standalone` 提供 `L4D2StandaloneApp`（独立 Spring Boot 启动）+ 宿主服务独立实现（`StandaloneHostQueryService` 等）+ `/api/standalone/*` 端点 + `StandaloneSpaController` 服务 `/ui/` 前端，使 L4D2 插件可脱离主应用独立部署运行。
+- `stores/plugin.ts` 在 Wujie 模式从 `window.$wujie.props` 读取实例信息

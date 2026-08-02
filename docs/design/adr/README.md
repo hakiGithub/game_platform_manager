@@ -11,6 +11,7 @@
 |------|------|------|------|
 | [0001](0001-plugin-menu-ownership.md) | 插件菜单归属与 `getMenus()` 扩展点 | Accepted | 2026-08-02 |
 | [0002](0002-main-app-plugin-scope-isolation.md) | 主应用与插件范围隔离规约 | Accepted | 2026-08-03 |
+| [0003](0003-deprecate-plugin-l4d2-standalone.md) | 废弃 plugin-l4d2-standalone 模块 | Accepted | 2026-08-03 |
 
 ## 术语表
 

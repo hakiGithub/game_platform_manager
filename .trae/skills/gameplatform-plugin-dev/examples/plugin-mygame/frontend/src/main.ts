@@ -4,8 +4,8 @@
  * 关键点：
  *   - 导出 Wujie 生命周期（bootstrap / mount / unmount），主应用通过 Wujie 加载子应用
  *   - 兼容旧版 window.__WUJIE_MOUNT 挂载方式
- *   - 独立运行（dev / standalone）时直接渲染
- *   - 挂载容器：Wujie 通过 props.container 传入，独立运行时使用 #app
+ *   - Vite 开发模式（dev）下直接渲染
+ *   - 挂载容器：Wujie 通过 props.container 传入，dev 模式使用 #app
  */
 import { createApp, type App as VueApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -82,6 +82,6 @@ if (window.__POWERED_BY_WUJIE__) {
   window.__WUJIE_MOUNT = () => mount(window.$wujie?.props || {})
   window.__WUJIE_UNMOUNT = () => unmount()
 } else {
-  // 独立运行（dev / standalone）时直接挂载
+  // Vite 开发模式直接挂载
   render()
 }

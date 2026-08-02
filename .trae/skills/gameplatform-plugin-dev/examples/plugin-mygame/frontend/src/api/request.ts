@@ -25,7 +25,7 @@ function getAuthToken(): string | null {
       return wujieToken
     }
   } catch { /* ignore */ }
-  // 2. 同源 localStorage（standalone/dev 模式与主应用共享同一 origin）
+  // 2. 同源 localStorage（dev 模式与主应用共享同一 origin）
   try {
     const ls = localStorage.getItem('token')
     if (ls) return ls

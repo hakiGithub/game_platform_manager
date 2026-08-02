@@ -194,4 +194,3 @@ plugin.properties keys: plugin.id / plugin.class / plugin.version / plugin.gameC
 | 插件 API | `/api/plugin/{gameCode}/**` |
 | 插件清单 | `/api/pf4j/plugin/{gameCode}/manifest` |
 | 插件管理 | `/api/pf4j/plugins/**` |
-| standalone 实例 | `/api/standalone/instances` |

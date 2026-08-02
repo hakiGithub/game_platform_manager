@@ -154,6 +154,5 @@ public class MyGamePlugin extends Plugin {
 |---|---|
 | 依赖 scope | 所有框架级依赖必须 `provided`，避免打包进插件 JAR |
 | 插件 JAR | 单个 JAR 放入主应用 `plugins/` 目录 |
-| Spring Boot repackage | 用 `standalone` classifier 区分原始 JAR 与重打包 JAR |
 
 > 插件模块 pom.xml 必须显式声明 `maven-compiler-plugin` 并设置 `<encoding>UTF-8</encoding>`，确保中文编译正确。

@@ -62,8 +62,7 @@ game_platform_manger/
 │   ├── plugin/                       # 插件 SDK 模块 (扩展点、服务接口)
 │   ├── plugin-l4d2/                  # L4D2 游戏增强插件
 │   │   ├── frontend/                 # 插件前端 (Vue 3 + Vite)
-│   │   ├── plugin-l4d2-core/         # 插件核心 JAR
-│   │   └── plugin-l4d2-standalone/   # 插件独立运行模式
+│   │   └── plugin-l4d2-core/         # 插件核心 JAR
 │   ├── scripts/                      # 后端重启脚本
 │   └── AGENTS.md                     # 后端开发指南
 │
@@ -119,12 +118,11 @@ game_platform_manger/
 
 ## 运行模式
 
-前端支持三种运行模式，通过 `detectMode()` 区分：
+前端支持两种运行模式，通过 `detectMode()` 区分：
 
 | 模式 | 路由基座 | 用途 |
 |------|----------|------|
 | Wujie 插件模式 | `/plugin/l4d2/ui/` | 以微前端方式嵌入主应用 |
-| Standalone 部署模式 | `/ui/` | 独立部署，根路径重定向到 `/ui/index.html` |
 | Vite 开发模式 | `/` | 本地开发，proxy 转发 `/api` 到后端 8080 |
 
 ---
@@ -234,6 +232,7 @@ npm run lint
 ## 关键工程约定
 
 - **范围隔离（ADR-0002）**：主应用 `core/` 不得包含插件业务配置（`plugin.{gameCode}` 前缀）和插件专属表（`{gameCode}_*` 前缀）；插件配置由 `@ConfigurationProperties` 字段默认值自负，插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式自管。游戏元数据 `games/{gameCode}.yml` 是例外，由主应用维护。详见 [ADR-0002](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
+- **插件运行模式（ADR-0003）**：废弃 `plugin-l4d2-standalone` 独立运行模式，前端只保留 Wujie + dev 两种模式；新增插件不应实现 standalone 模式。详见 [ADR-0003](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
 - 扩展资源基类使用 Hutool 雪花 ID（String 类型 PRIMARY KEY），保留 name 作为 NOT NULL UNIQUE 业务标识
 - 游戏实例表使用 `host_id` + `instance_name` 联合唯一索引
 - Docker 类部署（docker / docker-compose / linuxgsm-docker）统一支持 `mountHostCerts` 选项，默认关闭
@@ -297,6 +296,7 @@ npm run lint
 - [ADR 决策记录](docs/design/adr/README.md)
   - [ADR-0001 插件菜单归属](docs/design/adr/0001-plugin-menu-ownership.md)
   - [ADR-0002 主应用与插件范围隔离规约](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
+  - [ADR-0003 废弃 plugin-l4d2-standalone](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---

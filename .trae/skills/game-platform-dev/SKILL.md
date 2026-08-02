@@ -77,11 +77,10 @@ description: "Game Platform Manager 项目开发约定与模式指南。在修�
 
 ## 4. 前端约定
 
-### 三种运行模式
+### 两种运行模式（ADR-0003，v3.3.0 起 standalone 模式已废弃）
 通过 `detectMode()` 函数区分：
-- **Wujie 插件模式**：路由 `createWebHistory('/plugin/l4d2/ui/')`
-- **Standalone 部署模式**：路由 `createWebHistory('/ui/')`，新增实例选择页，通过 `/api/standalone/instances` 获取实例列表
-- **Vite 开发模式**：开发环境
+- **Wujie 插件模式**：路由 `createWebHashHistory()`，由主应用加载
+- **Vite 开发模式**：路由 `createWebHistory('/')`，本地开发
 
 ### 定时器管理（防泄漏）
 - `startPolling()` 开头**必须**先调用 `stopPolling()` 清除旧定时器，避免多个 watch 同时触发时定时器变量被覆盖导致泄漏。

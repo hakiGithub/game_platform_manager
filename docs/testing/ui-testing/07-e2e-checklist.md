@@ -163,7 +163,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 | E2E-041 | 无 Token 访问子应用 JS | 返回 200（permitAll） |
 | E2E-042 | 切换菜单（仪表盘 → 地图管理） | 仅请求 index.html，无 404 |
 | E2E-043 | 刷新当前菜单 | URL 保持，菜单定位正确 |
-| E2E-044 | 单独访问 index.html（非 Wujie） | 显示子应用内部侧边栏（standalone 模式） |
+| E2E-044 | 单独访问 index.html（非 Wujie） | dev 模式直接渲染，显示子应用内部侧边栏 |
 | E2E-045 | Wujie 模式访问 | 子应用内部无侧边栏（菜单由主应用提供） |
 
 ### 3.6 L4D2 仪表盘 ✅
