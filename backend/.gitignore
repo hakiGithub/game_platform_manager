@@ -1,0 +1,66 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log
+logs/
+*.log
+
+# Temp
+*.tmp
+*.temp
+temp/
+tmp/
+.gitkeep
+
+# Backup test artifacts
+C:*.sql
+core/C:*.sql
+# Application
+application-local.yml
+application-prod.yml
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Plugin
+plugins/
+
+# Node.js
+node_modules/
+
+# 本地 Maven 仓库（沙箱环境用）
+.m2-repo/
+
+# 前端构建产物（由 npm run build 输出到 core JAR 的 ui/ 目录，不纳入版本管理）
+plugin-l4d2/plugin-l4d2-core/src/main/resources/ui/assets/
+
+# 临时迁移脚本
+scripts/apply_migration.py

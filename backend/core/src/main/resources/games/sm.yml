@@ -1,0 +1,71 @@
+game:
+  code: sm
+  name: Soulmask
+  description: Soulmask 游戏服务端（基于 LinuxGSM Docker 部署）
+  version: "latest"
+  icon: /icons/sm.jpg
+
+  # 支持的部署方式
+  deployTypes:
+    - linuxgsm-docker
+
+  # 默认端口
+  defaultPorts:
+    game: 27015
+    query: 27016
+    rcon: 27017
+    steam: 27005
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:sm 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 smserver 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: smserver
+    imageRepo: gameservermanagers/gameserver
+    imageTag: sm
+    composeTemplate: |
+      services:
+        smserver:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-sm}
+          container_name: ${CONTAINER_NAME:-smserver-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-sm-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=smserver
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "smserver-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "sm"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "sm-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - sm-lgsm-data

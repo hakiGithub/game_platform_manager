@@ -1,0 +1,70 @@
+game:
+  code: squad
+  name: Squad
+  description: Squad 游戏服务端（基于 LinuxGSM Docker 部署）
+  version: "latest"
+  icon: /icons/squad.jpg
+
+  # 支持的部署方式
+  deployTypes:
+    - linuxgsm-docker
+
+  # 默认端口
+  defaultPorts:
+    game: 7787
+    query: 7788
+    rcon: 21114
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:squad 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 squadserver 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: squadserver
+    imageRepo: gameservermanagers/gameserver
+    imageTag: squad
+    composeTemplate: |
+      services:
+        squadserver:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-squad}
+          container_name: ${CONTAINER_NAME:-squadserver-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-squad-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=squadserver
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "squadserver-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "squad"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "squad-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - squad-lgsm-data

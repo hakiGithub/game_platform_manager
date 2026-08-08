@@ -1,0 +1,362 @@
+game:
+  code: l4d2
+  name: 求生之路2
+  description: Left 4 Dead 2 是一款经典的多人合作生存射击游戏
+  version: "latest"
+  icon: /icons/l4d2.jpg
+
+  # 支持的部署方式
+  deployTypes:
+    - docker
+    - linuxgsm
+    - docker-compose
+    - linuxgsm-docker
+
+  # 默认端口
+  # 注意：Source 引擎（L4D2）的 RCON 端口与游戏端口相同（27015）
+  defaultPorts:
+    game: 27015
+    query: 27016
+    rcon: 27015
+    steam: 27005
+
+  # 环境依赖
+  dependencies:
+    memory: "1G"
+    disk: "10G"
+    steamcmd: "required"
+
+  # Docker部署配置
+  docker:
+    image: cm2network/left4dead2
+    tag: latest
+    env:
+      SRCDS_TOKEN: ""
+      SRCDS_RCONPW: "rconpassword"
+      SRCDS_PW: ""
+      SRCDS_PORT: "27015"
+      SRCDS_TV_PORT: "27020"
+      SRCDS_NET_PUBLIC_ADDRESS: "0"
+      SRCDS_IP: "0"
+      SRCDS_MAXPLAYERS: "8"
+      SRCDS_TICKRATE: "30"
+      SRCDS_HOSTNAME: "Left 4 Dead 2 Server"
+      SRCDS_WORKSHOP: ""
+    volumes:
+      - /home/steam/l4d2-dedicated
+      - /home/steam/l4d2-dedicated/addons
+    ports:
+      - "27015:27015/tcp"
+      - "27015:27015/udp"
+      - "27016:27016/tcp"
+      - "27016:27016/udp"
+      - "27020:27020/udp"
+    restartPolicy: unless-stopped
+    resources:
+      memory: "2G"
+
+  # LinuxGSM部署配置
+  linuxgsm:
+    script: l4d2server
+    gameCode: l4d2
+    configFile: server.cfg
+    installDir: /home/l4d2server
+    startParams: "-secure +exec server.cfg"
+    ports:
+      - "27015/tcp"
+      - "27015/udp"
+      - "27016/udp"
+      - "27020/udp"
+
+  # Docker Compose部署配置
+  dockerCompose:
+    # 容器内游戏数据根目录（compose 模板将 left4dead2 挂载到 /l4d2/left4dead2）
+    workingDir: /l4d2
+    composeTemplate: |
+      volumes:
+        l4d2-data:
+
+      networks:
+        l4d2-network:
+
+      services:
+        l4d2:
+          image: laoyutang/l4d2-pure:latest
+          container_name: ${CONTAINER_NAME:-l4d2}
+          restart: unless-stopped
+          ports:
+            - "${L4D2_PORT:-27015}:27015"
+            - "${L4D2_PORT:-27015}:27015/udp"
+          volumes:
+            - l4d2-data:/l4d2/left4dead2
+            - /etc/localtime:/etc/localtime:ro
+            - /etc/timezone:/etc/timezone:ro
+          networks:
+            - l4d2-network
+          security_opt:
+            - seccomp:unconfined
+          environment:
+            - L4D2_TICK=${L4D2_TICK:-100}
+            - L4D2_VAC=${L4D2_VAC:-false}
+            - L4D2_PORT=${L4D2_PORT:-27015}
+            - L4D2_RCON_PASSWORD=${L4D2_RCON_PASSWORD}
+
+    variables:
+      - name: L4D2_PORT
+        label: 游戏端口
+        type: integer
+        defaultValue: "27015"
+        required: false
+        description: 客户端连接端口（TCP+UDP）
+      - name: L4D2_TICK
+        label: 服务器Tickrate
+        type: integer
+        defaultValue: "100"
+        required: false
+        description: 服务器刷新率，影响命中检测精度
+      - name: L4D2_VAC
+        label: VAC反作弊
+        type: boolean
+        defaultValue: "false"
+        required: false
+        description: 是否启用Valve反作弊
+      - name: L4D2_RCON_PASSWORD
+        label: RCON密码
+        type: password
+        required: true
+        description: 远程控制台密码，必填
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "l4d2"
+        required: false
+        description: Docker容器名称
+        hidden: true
+
+    namedVolumes:
+      - l4d2-data
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:l4d2server 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 l4d2server 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: l4d2server
+    imageRepo: gameservermanagers/gameserver
+    imageTag: l4d2
+    composeTemplate: |
+      services:
+        l4d2server:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-l4d2}
+          container_name: ${CONTAINER_NAME:-l4d2server-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-l4d2-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=l4d2server
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "l4d2server-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "l4d2"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "l4d2-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - l4d2-lgsm-data
+
+  # 配置Schema
+  configSchema:
+    properties:
+      hostname:
+        type: string
+        default: "Left 4 Dead 2 Server"
+        maxLength: 100
+        label: 服务器名称
+        component: input
+      maxPlayers:
+        type: integer
+        default: 8
+        minimum: 1
+        maximum: 32
+        label: 最大玩家数
+        component: number
+      serverPassword:
+        type: string
+        default: ""
+        label: 服务器密码
+        component: password
+      rconPassword:
+        type: string
+        default: ""
+        label: RCON密码
+        description: 远程管理密码
+        component: password
+      tickRate:
+        type: integer
+        default: 30
+        enum:
+          - 30
+          - 60
+          - 100
+        label: TickRate
+        description: 服务器刷新率，越高越流畅但占用更多资源
+        component: select
+      gameMode:
+        type: string
+        enum:
+          - coop
+          - versus
+          - survival
+          - scavenge
+          - realism
+        default: coop
+        label: 游戏模式
+        component: select
+      difficulty:
+        type: string
+        enum:
+          - Easy
+          - Normal
+          - Hard
+          - Expert
+        default: Normal
+        label: 游戏难度
+        component: select
+      allTalk:
+        type: boolean
+        default: false
+        label: 全局语音
+        description: 所有玩家可以互相听到语音
+        component: switch
+      allowSpectators:
+        type: boolean
+        default: true
+        label: 允许观战
+        component: switch
+      motdEnabled:
+        type: boolean
+        default: true
+        label: 启用欢迎信息
+        component: switch
+    required:
+      - hostname
+      - maxPlayers
+
+    layout:
+      columns: 2
+      groups:
+        - title: 基础设置
+          fields:
+            - hostname
+            - maxPlayers
+            - serverPassword
+            - rconPassword
+        - title: 游戏设置
+          fields:
+            - gameMode
+            - difficulty
+            - tickRate
+        - title: 其他选项
+          fields:
+            - allTalk
+            - allowSpectators
+            - motdEnabled
+
+  # 自定义操作
+  customOperations:
+    - name: 更换地图
+      command: changelevel
+      description: 更换到指定地图
+      icon: Map
+      type: management
+      paramsSchema:
+        map:
+          type: string
+          required: true
+          label: 地图名称
+          enum:
+            - c1m1_hotel
+            - c2m1_highway
+            - c3m1_plankcountry
+            - c4m1_milltown_a
+            - c5m1_waterfront
+            - c6m1_riverbank
+            - c7m1_docks
+            - c8m1_apartment
+            - c9m1_alleys
+            - c10m1_caves
+            - c11m1_greenhouse
+            - c12m1_hilltop
+            - c13m1_alpinecreek
+
+    - name: 踢出玩家
+      command: kick
+      description: 踢出指定玩家
+      icon: UserX
+      type: management
+      paramsSchema:
+        player:
+          type: string
+          required: true
+          label: 玩家名称或ID
+        reason:
+          type: string
+          label: 原因
+
+    - name: 封禁玩家
+      command: ban
+      description: 封禁指定玩家
+      icon: Ban
+      type: management
+      confirm: true
+      paramsSchema:
+        player:
+          type: string
+          required: true
+          label: 玩家SteamID
+        duration:
+          type: integer
+          default: 60
+          label: 封禁时长(分钟)
+        reason:
+          type: string
+          label: 封禁原因
+
+    - name: 重启回合
+      command: restart
+      description: 重启当前回合
+      icon: RefreshCw
+      type: management
+      confirm: true
+
+    - name: 查看玩家列表
+      command: status
+      description: 查看当前在线玩家
+      icon: Users
+      type: management

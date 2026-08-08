@@ -1,0 +1,217 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: game-platform-manager
+  
+  # 开发环境配置
+  profiles:
+    active: dev
+  
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+  
+  # SQLite数据源配置
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    # 数据库路径：项目目录下的 data 子目录（避免沙箱限制）
+    # 运行目录为 backend/，使用相对路径 ./data/game_platform.db
+    url: jdbc:sqlite:./data/game_platform.db
+    # SQLite连接池配置
+    hikari:
+      minimum-idle: 1
+      maximum-pool-size: 10
+      idle-timeout: 30000
+      pool-name: GamePlatformHikariCP
+      max-lifetime: 1800000
+      connection-timeout: 30000
+  
+  # SQL初始化配置
+  sql:
+    init:
+      mode: never
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+
+# MyBatis-Plus配置
+mybatis-plus:
+  # Mapper XML文件位置
+  mapper-locations: classpath:mapper/**/*.xml
+  # 实体类扫描路径
+  type-aliases-package: com.gameplatform.entity
+  # 配置
+  configuration:
+    # 开启驼峰命名转换
+    map-underscore-to-camel-case: true
+    # 日志输出
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 二级缓存
+    cache-enabled: false
+    # 懒加载
+    lazy-loading-enabled: true
+  # 全局配置
+  global-config:
+    # 数据库配置
+    db-config:
+      # 主键类型 AUTO-自增 INPUT-用户输入 ID_WORKER-全局唯一ID UUID-UUID
+      id-type: AUTO
+      # 逻辑删除字段
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      # 字段策略
+      insert-strategy: not_null
+      update-strategy: not_null
+    # 关闭Banner
+    banner: false
+
+# JWT配置
+jwt:
+  # 密钥(生产环境请使用环境变量或配置中心管理)
+  secret: GamePlatformSecretKey2024MustBeVeryLongForSecurity
+  # 过期时间(毫秒) 7天
+  expiration: 604800000
+  # Token前缀
+  token-prefix: Bearer
+  # Token请求头名称
+  header: Authorization
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.gameplatform: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    com.baomidou.mybatisplus: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: ./logs/game-platform.log
+    max-size: 10MB
+    max-history: 30
+
+# 平台自定义配置
+game-platform:
+  # 插件配置
+  plugin:
+    # 插件目录
+    plugins-dir: ./plugins
+    # 是否启用插件热加载
+    hot-reload: true
+    # 扫描间隔(秒)
+    scan-interval: 30
+  
+  # SSH配置
+  ssh:
+    # 连接超时时间(毫秒)
+    connect-timeout: 10000
+    # 默认端口
+    default-port: 22
+    # 会话超时时间(毫秒)
+    session-timeout: 300000
+  
+  # Docker配置
+  docker:
+    # Docker Host
+    host: unix:///var/run/docker.sock
+    # Docker API版本
+    api-version: 1.43
+    # 连接超时(秒)
+    connect-timeout: 10
+    # 读取超时(秒)
+    read-timeout: 60
+  
+  # 备份配置
+  backup:
+    # 备份目录
+    backup-dir: ./backups
+    # 最大备份数量(每个实例)
+    max-backups: 10
+    # 备份保留天数
+    retention-days: 30
+    # 压缩格式: zip, tar.gz
+    compress-format: tar.gz
+    # 备份超时时间(分钟)
+    timeout-minutes: 60
+    # 是否启用自动清理
+    auto-cleanup: true
+  
+  # 文件存储配置
+  storage:
+    # 文件存储根目录
+    base-dir: ./storage
+    # 临时文件目录
+    temp-dir: ./temp
+
+  # 游戏元数据配置
+  metadata:
+    # 扫描路径 (classpath:games/ 表示扫描resources/games目录)
+    scan-path: classpath:games/
+    # 是否启用热重载
+    hot-reload: false
+    # 扫描间隔(秒)，热重载启用时有效
+    scan-interval: 300
+    # 外部配置目录（可选，用于加载额外的游戏配置）
+    external-dir: ./games
+
+  # 实例状态同步配置
+  instance-sync:
+    # 是否启用同步（启动时 + 5 分钟周期）
+    enabled: true
+    # 启动时同步延迟（毫秒），避免与 PluginAutoLoader / SchemaMigrationRunner 抢资源
+    startup-sync-delay-ms: 10000
+    # 同步日志级别
+    log-level: INFO
+
+  # 任务中心配置（ADR-007 / ADR-017 / ADR-010）
+  task-center:
+    # 崩溃恢复：应用启动时扫描 PENDING/RUNNING 任务标记为 FAILED + 清空内存互斥键
+    crash-recovery:
+      enabled: true
+    # PENDING 超时检查：每分钟扫描 create_time 超过 5 分钟仍为 PENDING 的任务
+    pending-timeout:
+      enabled: true
+      timeout-minutes: 5
+      check-cron: "0 * * * * ?"
+    # 过期任务清理：每天凌晨 3 点物理删除过期终态任务
+    cleanup:
+      enabled: true
+      cron: "0 0 3 * * ?"
+      # COMPLETED/CANCELLED 保留 30 天
+      completed-retention-days: 30
+      # FAILED 保留 90 天
+      failed-retention-days: 90
+
+# SpringDoc OpenAPI配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  info:
+    title: Game Platform Manager API
+    description: 游戏服务器统一管理平台API文档
+    version: 1.0.0

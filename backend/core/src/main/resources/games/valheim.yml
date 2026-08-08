@@ -1,0 +1,249 @@
+game:
+  code: valheim
+  name: 英灵神殿
+  description: Valheim是一款维京题材的多人生存游戏
+  version: "latest"
+  icon: /icons/vh.jpg
+
+  # 支持的部署方式
+  deployTypes:
+    - docker
+    - linuxgsm
+    - linuxgsm-docker
+
+  # 默认端口
+  defaultPorts:
+    game: 2456
+    query: 2457
+    query2: 2458
+
+  # 环境依赖
+  dependencies:
+    memory: "4G"
+    disk: "2G"
+
+  # Docker部署配置
+  docker:
+    image: ghcr.io/lloesche/valheim-server
+    tag: latest
+    env:
+      SERVER_NAME: "Valheim Server"
+      WORLD_NAME: "Dedicated"
+      SERVER_PASS: "secret"
+      SERVER_PUBLIC: "true"
+      UPDATE_INTERVAL: "10800"
+      BACKUPS_INTERVAL: "3600"
+      BACKUPS_DIRECTORY: "/config/backups"
+      BACKUPS_MAX_AGE: "3"
+      BACKUPS_MAX_COUNT: "0"
+      STEAMCMD_ARGS: "-beta public-test"
+      STATUS_HTTP: "false"
+    volumes:
+      - /config
+      - /opt/valheim
+    ports:
+      - "2456-2458:2456-2458/udp"
+    restartPolicy: unless-stopped
+    resources:
+      memory: "5G"
+    healthCheck:
+      enabled: true
+      test: "pgrep valheim_server"
+      interval: 60
+      timeout: 10
+      retries: 3
+      startPeriod: 180
+
+  # LinuxGSM部署配置
+  linuxgsm:
+    script: vhserver
+    gameCode: vh
+    configFile: start_server.sh
+    installDir: /home/vhserver
+    startParams: "-name 'Valheim Server' -port 2456 -world 'Dedicated' -password 'secret' -public 1"
+    ports:
+      - "2456/udp"
+      - "2457/udp"
+      - "2458/udp"
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:vhserver 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 vhserver 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: vhserver
+    imageRepo: gameservermanagers/gameserver
+    imageTag: vh
+    composeTemplate: |
+      services:
+        vhserver:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-vh}
+          container_name: ${CONTAINER_NAME:-vhserver-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-vh-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=vhserver
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "vhserver-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "vh"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "vh-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - vh-lgsm-data
+
+  # 配置Schema
+  configSchema:
+    properties:
+      serverName:
+        type: string
+        default: "Valheim Server"
+        maxLength: 50
+        label: 服务器名称
+        component: input
+      worldName:
+        type: string
+        default: "Dedicated"
+        maxLength: 30
+        label: 世界名称
+        description: 存档名称，修改将创建新世界
+        component: input
+      serverPassword:
+        type: string
+        default: "secret"
+        minLength: 5
+        maxLength: 20
+        label: 服务器密码
+        description: 至少5个字符，留空表示无密码
+        component: password
+      serverPublic:
+        type: boolean
+        default: true
+        label: 公开服务器
+        description: 是否显示在服务器列表中
+        component: switch
+      maxPlayers:
+        type: integer
+        default: 10
+        minimum: 1
+        maximum: 64
+        label: 最大玩家数
+        component: number
+      updateInterval:
+        type: integer
+        default: 10800
+        minimum: 3600
+        label: 更新检查间隔(秒)
+        component: number
+      backupInterval:
+        type: integer
+        default: 3600
+        minimum: 900
+        label: 备份间隔(秒)
+        component: number
+      backupMaxAge:
+        type: integer
+        default: 3
+        minimum: 1
+        maximum: 30
+        label: 备份保留天数
+        component: number
+      crossplay:
+        type: boolean
+        default: true
+        label: 启用跨平台
+        description: 允许Steam和Xbox玩家联机
+        component: switch
+    required:
+      - serverName
+      - worldName
+
+    layout:
+      columns: 2
+      groups:
+        - title: 基础设置
+          fields:
+            - serverName
+            - worldName
+            - serverPassword
+            - serverPublic
+            - maxPlayers
+        - title: 备份与更新
+          fields:
+            - updateInterval
+            - backupInterval
+            - backupMaxAge
+        - title: 其他选项
+          fields:
+            - crossplay
+
+  # 自定义操作
+  customOperations:
+    - name: 备份世界
+      command: backup
+      description: 立即备份当前世界存档
+      icon: Download
+      type: backup
+      confirm: true
+      async: true
+      timeout: 300
+
+    - name: 更新服务器
+      command: update
+      description: 检查并安装游戏更新
+      icon: RefreshCw
+      type: maintenance
+      confirm: true
+      confirmMessage: 更新过程中服务器将重启，确定要继续吗？
+      async: true
+      timeout: 600
+
+    - name: 查看在线玩家
+      command: players
+      description: 查看当前在线玩家列表
+      icon: Users
+      type: management
+
+    - name: 保存世界
+      command: save
+      description: 立即保存世界数据
+      icon: Save
+      type: management
+
+    - name: 重置世界
+      command: reset-world
+      description: 删除当前世界数据（谨慎操作）
+      icon: Trash2
+      type: maintenance
+      confirm: true
+      confirmMessage: 警告：这将删除当前世界所有数据，确定要继续吗？
+      async: true
+      timeout: 60

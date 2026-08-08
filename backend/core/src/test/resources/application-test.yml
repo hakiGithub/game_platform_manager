@@ -1,0 +1,120 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: game-platform-manager-test
+  
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+  
+  # H2内存数据库配置(用于测试)
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+  
+  # H2控制台(测试时可查看数据)
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  
+  # SQL初始化配置
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-h2.sql
+      data-locations: classpath:db/data-h2.sql
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.gameplatform.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    cache-enabled: false
+    lazy-loading-enabled: true
+  global-config:
+    db-config:
+      id-type: AUTO
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      insert-strategy: not_null
+      update-strategy: not_null
+    banner: false
+
+# JWT配置
+jwt:
+  secret: GamePlatformSecretKey2024MustBeVeryLongForSecurity
+  expiration: 604800000
+  token-prefix: Bearer
+  header: Authorization
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.gameplatform: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    com.baomidou.mybatisplus: DEBUG
+
+# 平台自定义配置
+game-platform:
+  plugin:
+    plugins-dir: ${java.io.tmpdir}/game-platform/plugins
+    hot-reload: false
+    scan-interval: 30
+  
+  ssh:
+    connect-timeout: 10000
+    default-port: 22
+    session-timeout: 300000
+  
+  docker:
+    host: unix:///var/run/docker.sock
+    api-version: 1.43
+    connect-timeout: 10
+    read-timeout: 60
+  
+  backup:
+    backup-dir: ${java.io.tempdir}/game-platform/backups
+    max-backups: 10
+    retention-days: 30
+  
+  storage:
+    base-dir: ${java.io.tempdir}/game-platform/storage
+    temp-dir: ${java.io.tempdir}/game-platform/temp
+
+  # 实例状态同步配置（测试环境关闭）
+  instance-sync:
+    enabled: false
+
+# SpringDoc OpenAPI配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html

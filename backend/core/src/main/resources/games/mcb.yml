@@ -1,0 +1,70 @@
+game:
+  code: mcb
+  name: Minecraft Bedrock
+  description: Minecraft Bedrock 游戏服务端（基于 LinuxGSM Docker 部署）
+  version: "latest"
+  icon: /icons/mcb.jpg
+
+  # 支持的部署方式
+  deployTypes:
+    - linuxgsm-docker
+
+  # 默认端口
+  defaultPorts:
+    game: 25565
+    query: 25566
+    rcon: 25575
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:mcb 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 mcbserver 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: mcbserver
+    imageRepo: gameservermanagers/gameserver
+    imageTag: mcb
+    composeTemplate: |
+      services:
+        mcbserver:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-mcb}
+          container_name: ${CONTAINER_NAME:-mcbserver-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-mcb-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=mcbserver
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "mcbserver-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "mcb"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "mcb-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - mcb-lgsm-data

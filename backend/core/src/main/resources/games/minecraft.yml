@@ -1,0 +1,236 @@
+game:
+  code: minecraft
+  name: Minecraft Server
+  description: Minecraft 游戏服务端，支持Java版和基岩版
+  version: "1.20.1"
+  icon: /icons/mc.png
+
+  # 支持的部署方式
+  deployTypes:
+    - docker
+    - linuxgsm
+    - native
+    - linuxgsm-docker
+
+  # 默认端口
+  defaultPorts:
+    game: 25565
+    query: 25566
+    rcon: 25575
+
+  # 环境依赖
+  dependencies:
+    java: ">=17"
+    memory: "2G"
+    disk: "1G"
+
+  # Docker部署配置
+  docker:
+    image: itzg/minecraft-server
+    tag: latest
+    env:
+      EULA: "TRUE"
+      VERSION: "1.20.1"
+      MEMORY: "2G"
+      TYPE: "VANILLA"
+    volumes:
+      - /data
+      - /config
+      - /mods
+      - /plugins
+    ports:
+      - "25565:25565"
+      - "25575:25575"
+    restartPolicy: unless-stopped
+    resources:
+      memory: "3G"
+    healthCheck:
+      enabled: true
+      test: "mc-health"
+      interval: 30
+      timeout: 10
+      retries: 3
+      startPeriod: 60
+
+  # LinuxGSM部署配置
+  linuxgsm:
+    script: mcserver
+    gameCode: mc
+    configFile: server.properties
+    installDir: /home/mcserver
+    startParams: ""
+    ports:
+      - "25565/tcp"
+      - "25575/tcp"
+
+  # LinuxGSM Docker部署配置
+  # 基于 gameservermanagers/gameserver:mcserver 镜像
+  # 参考: https://github.com/GameServerManagers/docker-gameserver
+  # 特点: 容器内置 LinuxGSM 和 mcserver 脚本，以 linuxgsm 用户运行，数据持久化在 /data
+  linuxgsmDocker:
+    shortname: mcserver
+    imageRepo: gameservermanagers/gameserver
+    imageTag: mc
+    # 宿主机使用反向代理时，可启用此项将宿主机 /etc/ssl/certs/ca-certificates.crt 只读挂载到容器，
+    # 使容器信任反向代理的 CA 证书。默认关闭，由部署时在前端选择是否启用。
+    mountHostCerts: false
+    composeTemplate: |
+      services:
+        mcserver:
+          image: ${IMAGE_REPO:-gameservermanagers/gameserver}:${IMAGE_TAG:-mc}
+          container_name: ${CONTAINER_NAME:-mcserver-lgsm}
+          network_mode: host
+          restart: unless-stopped
+          volumes:
+            - ${DATA_VOLUME:-mc-lgsm-data}:/data
+            - /etc/localtime:/etc/localtime:ro
+          environment:
+            - LGSM_GAMESERVERNAME=mcserver
+
+    variables:
+      - name: CONTAINER_NAME
+        label: 容器名称
+        type: string
+        defaultValue: "mcserver-lgsm"
+        required: false
+        description: Docker 容器名称
+        hidden: true
+      - name: IMAGE_REPO
+        label: 镜像仓库
+        type: string
+        defaultValue: "gameservermanagers/gameserver"
+        required: false
+        description: LinuxGSM Docker 镜像仓库
+        hidden: true
+      - name: IMAGE_TAG
+        label: 镜像标签
+        type: string
+        defaultValue: "mc"
+        required: false
+        description: 镜像标签（即 LinuxGSM 游戏服务器简称）
+        hidden: true
+      - name: DATA_VOLUME
+        label: 数据卷名
+        type: string
+        defaultValue: "mc-lgsm-data"
+        required: false
+        description: 数据持久化卷名（挂载到容器 /data）
+        hidden: true
+
+    namedVolumes:
+      - mc-lgsm-data
+
+  # 配置Schema（用于生成可视化表单）
+  configSchema:
+    properties:
+      maxPlayers:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+        label: 最大玩家数
+        description: 服务器允许的最大玩家数量
+        component: number
+      difficulty:
+        type: string
+        enum:
+          - peaceful
+          - easy
+          - normal
+          - hard
+        default: normal
+        label: 游戏难度
+        description: 游戏难度设置
+        component: select
+      pvp:
+        type: boolean
+        default: true
+        label: 启用PVP
+        description: 是否允许玩家之间互相攻击
+        component: switch
+      whitelist:
+        type: boolean
+        default: false
+        label: 启用白名单
+        description: 是否启用白名单模式
+        component: switch
+      motd:
+        type: string
+        default: "A Minecraft Server"
+        maxLength: 59
+        label: 服务器描述
+        description: 服务器列表中显示的描述信息
+        component: input
+        placeholder: 输入服务器描述
+      viewDistance:
+        type: integer
+        default: 10
+        minimum: 3
+        maximum: 32
+        label: 视距
+        description: 服务器发送给客户端的区块渲染距离
+        component: number
+      spawnProtection:
+        type: integer
+        default: 16
+        minimum: 0
+        label: 出生点保护
+        description: 出生点周围的保护半径（区块数）
+        component: number
+    required:
+      - maxPlayers
+      - difficulty
+
+    layout:
+      columns: 2
+      groups:
+        - title: 基础设置
+          description: 服务器基础配置
+          fields:
+            - maxPlayers
+            - difficulty
+            - motd
+        - title: 游戏玩法
+          description: 游戏玩法相关设置
+          fields:
+            - pvp
+            - whitelist
+            - viewDistance
+            - spawnProtection
+
+  # 自定义操作
+  customOperations:
+    - name: 备份存档
+      command: backup
+      description: 备份游戏存档和玩家数据
+      icon: Download
+      type: backup
+      confirm: true
+      confirmMessage: 确定要备份当前存档吗？
+      async: true
+      timeout: 600
+
+    - name: 清理日志
+      command: clean-logs
+      description: 清理7天前的日志文件
+      icon: Delete
+      type: maintenance
+      confirm: true
+      confirmMessage: 确定要清理旧日志文件吗？此操作不可恢复。
+
+    - name: 查看在线玩家
+      command: list-players
+      description: 查看当前在线玩家列表
+      icon: Users
+      type: management
+      async: false
+
+    - name: 重启服务器
+      command: restart
+      description: 安全重启游戏服务器
+      icon: RefreshCw
+      type: management
+      confirm: true
+      confirmMessage: 确定要重启服务器吗？在线玩家将被断开连接。
+      async: true
+      timeout: 120

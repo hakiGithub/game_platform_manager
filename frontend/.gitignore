@@ -1,0 +1,13 @@
+node_modules
+
+# Build
+dist/
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# PID files
+*.pid
