@@ -1,0 +1,157 @@
+@use './variables.scss' as *;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+  
+  &:hover {
+    background: #a8a8a8;
+  }
+}
+
+// 暗色模式滚动条
+.dark {
+  ::-webkit-scrollbar-track {
+    background: #2c2c2c;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #555;
+    
+    &:hover {
+      background: #666;
+    }
+  }
+}
+
+// 通用工具类
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.mt-sm {
+  margin-top: $spacing-sm;
+}
+
+.mt-md {
+  margin-top: $spacing-md;
+}
+
+.mt-lg {
+  margin-top: $spacing-lg;
+}
+
+.mb-sm {
+  margin-bottom: $spacing-sm;
+}
+
+.mb-md {
+  margin-bottom: $spacing-md;
+}
+
+.mb-lg {
+  margin-bottom: $spacing-lg;
+}
+
+// 页面容器
+.page-container {
+  padding: $spacing-md;
+  background-color: $bg-page;
+  min-height: 100%;
+}
+
+// 卡片样式
+.content-card {
+  background-color: $bg-base;
+  border-radius: $border-radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-md;
+  box-shadow: $box-shadow-sm;
+}
+
+// 页面标题
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: $spacing-md;
+}
+
+// 修复 Element Plus 下拉框/弹出层层级问题（通病）
+// 在 Wujie 微前端/overflow:auto 容器中，popper 可能被后续元素遮挡
+// 统一为所有 popper 类弹出层设置最高 z-index 并补齐基础视觉样式
+.el-popper,
+.el-select__popper,
+.el-dropdown__popper,
+.el-tooltip__popper,
+.el-picker__popper,
+.el-cascader__dropdown,
+.el-popper.is-light,
+.el-popper.is-pure,
+.el-popper.el-select__popper {
+  z-index: 99999 !important;
+  background-color: #ffffff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+// 兜底：所有 teleport 到 body 的 popper 容器
+body > .el-popper,
+body > div[class*="el-popper"],
+body > div[class*="__popper"] {
+  z-index: 99999 !important;
+  background-color: #ffffff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+// 修复下拉框项的 hover/选中状态
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover,
+.el-dropdown-menu__item:hover,
+.el-picker-panel__shortcut:hover {
+  background-color: #f5f7fa !important;
+}
+
+.el-select-dropdown__item.selected {
+  color: #409eff !important;
+  font-weight: 700 !important;
+}
+
+

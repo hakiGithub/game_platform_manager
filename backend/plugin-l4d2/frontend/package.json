@@ -1,0 +1,39 @@
+{
+  "name": "plugin-l4d2-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.ts,.tsx --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.6.8",
+    "dayjs": "^1.11.10",
+    "dompurify": "^3.0.0",
+    "echarts": "^5.5.0",
+    "element-plus": "^2.6.1",
+    "marked": "^12.0.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "@vue/test-utils": "^2.4.5",
+    "jsdom": "^24.1.3",
+    "sass": "^1.72.0",
+    "typescript": "^5.4.3",
+    "unplugin-auto-import": "^0.17.5",
+    "unplugin-vue-components": "^0.26.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.6.1",
+    "vue-tsc": "^2.0.7"
+  }
+}

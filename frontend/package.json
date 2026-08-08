@@ -1,0 +1,48 @@
+{
+  "name": "game-platform-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.6.8",
+    "dayjs": "^1.11.10",
+    "element-plus": "^2.6.1",
+    "nprogress": "^0.2.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0",
+    "wujie": "^1.0.22",
+    "wujie-vue3": "^1.0.22",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-search": "^0.13.0",
+    "xterm-addon-web-links": "^0.9.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "@vitest/coverage-v8": "^1.4.0",
+    "@vitest/ui": "^1.4.0",
+    "@vue/eslint-config-prettier": "^9.0.0",
+    "@vue/test-utils": "^2.4.5",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.23.0",
+    "happy-dom": "^14.3.0",
+    "playwright-core": "^1.61.0",
+    "prettier": "^3.2.5",
+    "sass": "^1.72.0",
+    "unplugin-auto-import": "^0.17.5",
+    "unplugin-vue-components": "^0.26.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.4.0"
+  }
+}

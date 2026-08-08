@@ -1,0 +1,49 @@
+platform:
+  linux: "1.11插件平台linux版"
+  windows: "1.11插件平台windows版"
+
+presets:
+  - id: multi-versus
+    name: 多特战役
+    description: 8 人多特战役配置，特感刷新增强
+    gameMode: versus
+    maxPlayers: 8
+    platform: ""
+    plugins:
+      - name: l4d2_ai_damagefix
+      - name: l4d2_vs_new_item_spawn
+      - name: l4d2_multi_slot
+        configs:
+          - name: l4d2_multi_slot.cfg
+            values:
+              l4d2_max_players: "8"
+  - id: fun-versus
+    name: 娱乐多特战役
+    description: 娱乐向多特配置，技能增强
+    gameMode: versus
+    maxPlayers: 8
+    plugins:
+      - name: l4d2_ai_damagefix
+      - name: l4d2_fun_skills
+      - name: l4d2_super_jump
+  - id: pure-coop
+    name: 纯净战役
+    description: 仅基础插件，原版体验
+    gameMode: coop
+    maxPlayers: 4
+    plugins:
+      - name: l4d2_ai_damagefix
+  - id: official-roguelike
+    name: 官图肉鸽模式
+    description: 官方地图肉鸽玩法，难度递增
+    gameMode: coop
+    maxPlayers: 4
+    plugins:
+      - name: l4d2_roguelike_core
+        configs:
+          - name: l4d2_roguelike_core.cfg
+            values:
+              difficulty_curve: "1.2"
+              max_buff_stacks: "5"
+      - name: l4d2_roguelike_buffs
+      - name: l4d2_ai_damagefix

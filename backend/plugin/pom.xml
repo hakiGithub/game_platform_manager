@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gameplatform</groupId>
+        <artifactId>game-platform-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>game-platform-plugin</artifactId>
+    <packaging>jar</packaging>
+    <name>Game Platform Plugin</name>
+    <description>游戏服务器统一管理平台 - 插件扩展点模块</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- Spring Web（仅提供 MultipartFile 接口，运行时由宿主提供） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+</project>

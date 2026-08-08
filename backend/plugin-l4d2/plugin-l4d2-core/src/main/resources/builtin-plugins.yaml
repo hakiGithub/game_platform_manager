@@ -1,0 +1,523 @@
+# L4D2 内置插件清单
+#
+# 来源：l4d2-server-next-master/plugins 目录，共 62 个插件包。
+# 分类对齐源仓库目录前缀：必选 / 可选 / 自选，外加平台插件（SourceMod+Metamod 框架）。
+#
+# 字段说明：
+#   id        - 插件 ID，与 plugins_store/<id> 目录名一致（也是 ZIP 文件名去掉 .zip）
+#   name      - 展示名（前端列表用）
+#   category  - 分类：platform | required | optional | custom
+#   fileName  - builtin-plugins/ 目录下 ZIP 文件名
+#   size      - ZIP 文件大小（字节）
+#   platform  - 适用平台：linux | windows | all
+#   description - 描述
+#
+# 安装策略：
+#   1. 平台插件（platform）：Docker 部署使用 linux 版，Windows Native 使用 windows 版
+#   2. 必选插件（required）：基础功能依赖，建议全部安装
+#   3. 可选插件（optional）：修复类，按需安装
+#   4. 自选插件（custom）：玩法增强，自由选择
+#
+# 安装流程：从 classpath 读取 ZIP → 调用 PluginInstallService.installFromLocalFile
+#          → 解压到 plugins_store/<id>/left4dead2/... → 用户启用或应用预设使其生效
+
+plugins:
+  # ========== 平台插件（SourceMod 1.11 + Metamod 框架） ==========
+  - id: "1.11插件平台linux版"
+    name: "SourceMod 1.11 + Metamod (Linux)"
+    category: platform
+    fileName: "1.11插件平台linux版.zip"
+    size: 66398825
+    platform: linux
+    description: "SourceMod 1.11 + Metamod 平台框架（Linux 版）。Docker 类部署必装，缺失会导致所有 .smx 插件无法加载"
+
+  - id: "1.11插件平台windows版"
+    name: "SourceMod 1.11 + Metamod (Windows)"
+    category: platform
+    fileName: "1.11插件平台windows版.zip"
+    size: 54473863
+    platform: windows
+    description: "SourceMod 1.11 + Metamod 平台框架（Windows 版）。Windows Native 部署必装"
+
+  # ========== 必选插件（基础功能依赖） ==========
+  - id: "必选-修复类(v1.1)(修复部分梯子导致的崩溃)(SilverShot and Peace-Maker)"
+    name: "梯子崩溃修复"
+    category: required
+    fileName: "必选-修复类(v1.1)(修复部分梯子导致的崩溃)(SilverShot and Peace-Maker).zip"
+    size: 8439
+    platform: all
+    description: "修复部分梯子导致的服务器崩溃（v1.1，SilverShot and Peace-Maker）"
+
+  - id: "必选-修复类(v1.4)(修复女巫攻击错误的惊扰者)(Lux)"
+    name: "女巫惊扰者修复"
+    category: required
+    fileName: "必选-修复类(v1.4)(修复女巫攻击错误的惊扰者)(Lux).zip"
+    size: 10697
+    platform: all
+    description: "修复女巫攻击错误的惊扰者（v1.4，Lux）"
+
+  - id: "必选-修复类(v2)(修复SG552开镜换弹鬼畜)(bullet28)"
+    name: "SG552 开镜换弹修复"
+    category: required
+    fileName: "必选-修复类(v2)(修复SG552开镜换弹鬼畜)(bullet28).zip"
+    size: 8607
+    platform: all
+    description: "修复 SG552 开镜换弹鬼畜动作（v2，bullet28）"
+
+  - id: "必选-修复类(v2.0.1)(修复电击器救起存活的幸存者)(Lux)"
+    name: "电击器救人修复"
+    category: required
+    fileName: "必选-修复类(v2.0.1)(修复电击器救起存活的幸存者)(Lux).zip"
+    size: 11365
+    platform: all
+    description: "修复电击器救起存活幸存者的问题（v2.0.1，Lux）"
+
+  - id: "必选-修复类(v2.8b)(解决linux系统CFG不加载)(SilverShot, Peace-Maker)"
+    name: "Linux CFG 加载修复"
+    category: required
+    fileName: "必选-修复类(v2.8b)(解决linux系统CFG不加载)(SilverShot, Peace-Maker).zip"
+    size: 9656
+    platform: linux
+    description: "解决 Linux 系统 CFG 不加载问题（v2.8b，SilverShot, Peace-Maker）。Linux 容器部署必装"
+
+  - id: "必选-功能类扩展(sourcescramble.ext)(v0.7.1.4)"
+    name: "SourceScramble 扩展"
+    category: required
+    fileName: "必选-功能类扩展(sourcescramble.ext)(v0.7.1.4).zip"
+    size: 88786
+    platform: all
+    description: "SourceScramble 扩展（v0.7.1.4），内存补丁框架，多个修复插件的前置依赖"
+
+  - id: "必选-功能类插件(left4dhooks)(v1.155)(SilverShot)"
+    name: "Left4DHooks"
+    category: required
+    fileName: "必选-功能类插件(left4dhooks)(v1.155)(SilverShot).zip"
+    size: 485038
+    platform: all
+    description: "Left4DHooks 函数库（v1.155，SilverShot），大量插件的前置依赖"
+
+  - id: "必选-功能类插件(WeaponHandling)(v1.0.6)(Lux)"
+    name: "WeaponHandling"
+    category: required
+    fileName: "必选-功能类插件(WeaponHandling)(v1.0.6)(Lux).zip"
+    size: 22595
+    platform: all
+    description: "WeaponHandling 武器处理库（v1.0.6，Lux），武器相关插件前置"
+
+  - id: "必选-功能类插件(原生投票函数库)(v0.4)(Powerlord, fdxx)"
+    name: "原生投票函数库"
+    category: required
+    fileName: "必选-功能类插件(原生投票函数库)(v0.4)(Powerlord, fdxx).zip"
+    size: 13851
+    platform: all
+    description: "原生投票函数库（v0.4，Powerlord, fdxx），投票类插件前置"
+
+  - id: "必选-功能类插件(原生键值函数库)(v0.4)(fdxx)"
+    name: "原生键值函数库"
+    category: required
+    fileName: "必选-功能类插件(原生键值函数库)(v0.4)(fdxx).zip"
+    size: 16098
+    platform: all
+    description: "原生键值函数库（v0.4，fdxx），键值操作类插件前置"
+
+  # ========== 可选插件（修复类） ==========
+  - id: "可选-修复类(v1.0)(修复出现多次换弹动作)(HarryPotter)"
+    name: "换弹动作修复"
+    category: optional
+    fileName: "可选-修复类(v1.0)(修复出现多次换弹动作)(HarryPotter).zip"
+    size: 7476
+    platform: all
+    description: "修复出现多次换弹动作（v1.0，HarryPotter）"
+
+  - id: "可选-修复类(v1.1)(修复部分情况下角色对话跟模型不一致)(TBK Duy, Harry)"
+    name: "角色对话模型修复"
+    category: optional
+    fileName: "可选-修复类(v1.1)(修复部分情况下角色对话跟模型不一致)(TBK Duy, Harry).zip"
+    size: 6705
+    platform: all
+    description: "修复部分情况下角色对话跟模型不一致（v1.1，TBK Duy, Harry）"
+
+  - id: "可选-修复类(v1.2.5)(修复生还者过关后装备或属性混乱)(sorallll)"
+    name: "过关装备属性修复"
+    category: optional
+    fileName: "可选-修复类(v1.2.5)(修复生还者过关后装备或属性混乱)(sorallll).zip"
+    size: 15904
+    platform: all
+    description: "修复生还者过关后装备或属性混乱（v1.2.5，sorallll）"
+
+  - id: "可选-修复类(v1.5)修复高tick的服务器口水伤害异常高的问题(Visor, Sir, A1m`)"
+    name: "高 tick 口水伤害修复"
+    category: optional
+    fileName: "可选-修复类(v1.5)修复高tick的服务器口水伤害异常高的问题(Visor, Sir, A1m`).zip"
+    size: 13580
+    platform: all
+    description: "修复高 tick 服务器口水伤害异常高的问题（v1.5，Visor, Sir, A1m）"
+
+  - id: "可选-修复类(v2.0.1)(修复有相同的幸存者角色时牛撞不动的问题)(Lux)"
+    name: "相同角色牛撞修复"
+    category: optional
+    fileName: "可选-修复类(v2.0.1)(修复有相同的幸存者角色时牛撞不动的问题)(Lux).zip"
+    size: 12147
+    platform: all
+    description: "修复有相同幸存者角色时牛撞不动的问题（v2.0.1，Lux）"
+
+  - id: "可选-修复类(修复HUD闪屏)(游戏运行时添加无效)"
+    name: "HUD 闪屏修复"
+    category: optional
+    fileName: "可选-修复类(修复HUD闪屏)(游戏运行时添加无效).zip"
+    size: 1743
+    platform: all
+    description: "修复 HUD 闪屏问题（注意：游戏运行时添加无效，需重启生效）"
+
+  - id: "可选-修复类(修复玩家正在连接时不刷特感)(v1.0.9)(sorallll & Psyk0tik (Crasher_3637))"
+    name: "连接中不刷特感修复"
+    category: optional
+    fileName: "可选-修复类(修复玩家正在连接时不刷特感)(v1.0.9)(sorallll & Psyk0tik (Crasher_3637)).zip"
+    size: 2726
+    platform: all
+    description: "修复玩家正在连接时不刷特感（v1.0.9，sorallll & Psyk0tik）"
+
+  - id: "可选-修复类(修复生还者闲置过关后下一关开始时延迟五秒自动闲置的问题)"
+    name: "闲置过关延迟修复"
+    category: optional
+    fileName: "可选-修复类(修复生还者闲置过关后下一关开始时延迟五秒自动闲置的问题).zip"
+    size: 2031
+    platform: all
+    description: "修复生还者闲置过关后下一关开始时延迟五秒自动闲置的问题"
+
+  # ========== 自选插件（玩法增强） ==========
+  - id: "自选-8角色共存(v1.9.10)(DeatChaos25, Mi123456 & Merudo, Lux, SilverShot)"
+    name: "8 角色共存"
+    category: custom
+    fileName: "自选-8角色共存(v1.9.10)(DeatChaos25, Mi123456 & Merudo, Lux, SilverShot).zip"
+    size: 33048
+    platform: all
+    description: "支持 8 个幸存者角色共存（v1.9.10），多人战役必备"
+
+  - id: "自选-M60正常化(可更换弹夹和拾取弹药)(v1.0.7)+榴弹发射器拾取弹药(v1.0)(Lux)"
+    name: "M60 正常化"
+    category: custom
+    fileName: "自选-M60正常化(可更换弹夹和拾取弹药)(v1.0.7)+榴弹发射器拾取弹药(v1.0)(Lux).zip"
+    size: 16598
+    platform: all
+    description: "M60 可更换弹夹和拾取弹药 + 榴弹发射器拾取弹药（Lux）"
+
+  - id: "自选-Neko多特-NS7(himenekocn)"
+    name: "Neko 多特 NS7"
+    category: custom
+    fileName: "自选-Neko多特-NS7(himenekocn).zip"
+    size: 774198
+    platform: all
+    description: "Neko 多特感模式 NS7 版本（himenekocn）"
+
+  - id: "自选-Neko多特投票(需要原生投票前置)(himenekocn)"
+    name: "Neko 多特投票"
+    category: custom
+    fileName: "自选-Neko多特投票(需要原生投票前置)(himenekocn).zip"
+    size: 22553
+    platform: all
+    description: "Neko 多特感投票切换（需原生投票函数库前置，himenekocn）"
+
+  - id: "自选-Neko多特管理员菜单(himenekocn)"
+    name: "Neko 多特管理员菜单"
+    category: custom
+    fileName: "自选-Neko多特管理员菜单(himenekocn).zip"
+    size: 6411
+    platform: all
+    description: "Neko 多特感管理员菜单（himenekocn）"
+
+  - id: "自选-tick解锁扩展+多人破解扩展(v2.3.4)(lakwsh)(-tickrate 100 +sv_setmax 31)"
+    name: "Tick 解锁 + 多人破解"
+    category: custom
+    fileName: "自选-tick解锁扩展+多人破解扩展(v2.3.4)(lakwsh)(-tickrate 100 +sv_setmax 31).zip"
+    size: 122092
+    platform: all
+    description: "Tick 解锁扩展 + 多人破解扩展（v2.3.4，lakwsh），需启动参数 -tickrate 100 +sv_setmax 31"
+
+  - id: "自选-z键标记(BHaType,fdxx,HarryPotter)"
+    name: "Z 键标记"
+    category: custom
+    fileName: "自选-z键标记(BHaType,fdxx,HarryPotter).zip"
+    size: 60718
+    platform: all
+    description: "按 Z 键标记位置（BHaType, fdxx, HarryPotter）"
+
+  - id: "自选-伤害显示插件(Mineralcr)"
+    name: "伤害显示"
+    category: custom
+    fileName: "自选-伤害显示插件(Mineralcr).zip"
+    size: 27035
+    platform: all
+    description: "实时显示对特感和女巫造成的伤害（Mineralcr）"
+
+  - id: "自选-修改近战对坦克和女巫的比例伤害或固定伤害(v1.0)(Visor)"
+    name: "近战伤害调整"
+    category: custom
+    fileName: "自选-修改近战对坦克和女巫的比例伤害或固定伤害(v1.0)(Visor).zip"
+    size: 8546
+    platform: all
+    description: "修改近战对坦克和女巫的比例伤害或固定伤害（v1.0，Visor）"
+
+  - id: "自选-击杀特感和女巫奖励血量(v1.1.4)(豆瓣酱な)"
+    name: "击杀奖励血量"
+    category: custom
+    fileName: "自选-击杀特感和女巫奖励血量(v1.1.4)(豆瓣酱な).zip"
+    size: 17001
+    platform: all
+    description: "击杀特感和女巫奖励生还者血量（v1.1.4，豆瓣酱な）"
+
+  - id: "自选-动态大厅(v2.0.4)(Downtown1, Anime4000, sorallll, HatsuneImagine)"
+    name: "动态大厅"
+    category: custom
+    fileName: "自选-动态大厅(v2.0.4)(Downtown1, Anime4000, sorallll, HatsuneImagine).zip"
+    size: 8374
+    platform: all
+    description: "根据当前人数动态调整大厅最大人数（v2.0.4）"
+
+  - id: "自选-十字命中反馈插件带声音(需要客户端同时安装vpk)(新版)(v1.1.1)(TsukasaSato)"
+    name: "十字命中反馈"
+    category: custom
+    fileName: "自选-十字命中反馈插件带声音(需要客户端同时安装vpk)(新版)(v1.1.1)(TsukasaSato).zip"
+    size: 32518
+    platform: all
+    description: "十字命中反馈带声音（需客户端同时安装 vpk，v1.1.1，TsukasaSato）"
+
+  - id: "自选-友伤与反伤控制(v1.3)(可投票，需要原生投票库前置)(LaoYutang)"
+    name: "友伤反伤控制"
+    category: custom
+    fileName: "自选-友伤与反伤控制(v1.3)(可投票，需要原生投票库前置)(LaoYutang).zip"
+    size: 11568
+    platform: all
+    description: "友伤与反伤控制，可投票切换（需原生投票库前置，v1.3，LaoYutang）"
+
+  - id: "自选-后备弹药插件(豆瓣酱な)"
+    name: "后备弹药"
+    category: custom
+    fileName: "自选-后备弹药插件(豆瓣酱な).zip"
+    size: 11468
+    platform: all
+    description: "后备弹药增强插件（豆瓣酱な）"
+
+  - id: "自选-坦克免疫火焰伤害或固定火焰伤害(v1.1.4)(豆瓣酱な)"
+    name: "坦克火焰伤害调整"
+    category: custom
+    fileName: "自选-坦克免疫火焰伤害或固定火焰伤害(v1.1.4)(豆瓣酱な).zip"
+    size: 7328
+    platform: all
+    description: "坦克免疫火焰伤害或固定火焰伤害（v1.1.4，豆瓣酱な）"
+
+  - id: "自选-坦克或女巫出现时根据生还者人数增加血量(v1.7.8)(Visor,豆瓣酱な)"
+    name: "坦克女巫动态血量"
+    category: custom
+    fileName: "自选-坦克或女巫出现时根据生还者人数增加血量(v1.7.8)(Visor,豆瓣酱な).zip"
+    size: 14086
+    platform: all
+    description: "坦克或女 witch 出现时根据生还者人数动态增加血量（v1.7.8）"
+
+  - id: "自选-坦克特感女巫血量显示和坦克死亡提示(v1.0.4)(NiCo-op, Edited By Ernecio (Satanael))"
+    name: "血量显示与死亡提示"
+    category: custom
+    fileName: "自选-坦克特感女巫血量显示和坦克死亡提示(v1.0.4)(NiCo-op, Edited By Ernecio (Satanael)).zip"
+    size: 14438
+    platform: all
+    description: "显示坦克/特感/女巫血量，坦克死亡提示（v1.0.4）"
+
+  - id: "自选-多人插件superversus1.8.15.5改(v1.11.8)(DDRKhat, Marcus101RR, Merudo, Lux, Shadowysn, sorallll)"
+    name: "SuperVersus 多人"
+    category: custom
+    fileName: "自选-多人插件superversus1.8.15.5改(v1.11.8)(DDRKhat, Marcus101RR, Merudo, Lux, Shadowysn, sorallll).zip"
+    size: 53475
+    platform: all
+    description: "SuperVersus 多人插件（v1.11.8），支持超过 4 人游戏"
+
+  - id: "自选-多特感插件(v1.3.7)(Tordecybombo, breezy)"
+    name: "多特感插件"
+    category: custom
+    fileName: "自选-多特感插件(v1.3.7)(Tordecybombo, breezy).zip"
+    size: 32669
+    platform: all
+    description: "多特感刷新插件（v1.3.7，Tordecybombo, breezy）"
+
+  - id: "自选-尸体直接消失(无特效)(SilverShot)"
+    name: "尸体直接消失"
+    category: custom
+    fileName: "自选-尸体直接消失(无特效)(SilverShot).zip"
+    size: 6681
+    platform: all
+    description: "感染者尸体直接消失（无特效，SilverShot）"
+
+  - id: "自选-幸存者倒地使用马格南(v1.0.2)(sorallll)"
+    name: "倒地使用马格南"
+    category: custom
+    fileName: "自选-幸存者倒地使用马格南(v1.0.2)(sorallll).zip"
+    size: 5677
+    platform: all
+    description: "幸存者倒地后可使用马格南手枪（v1.0.2，sorallll）"
+
+  - id: "自选-幸存者自动复活(v1.3.3)(sorallll)"
+    name: "幸存者自动复活"
+    category: custom
+    fileName: "自选-幸存者自动复活(v1.3.3)(sorallll).zip"
+    size: 26654
+    platform: all
+    description: "幸存者死亡后自动复活（v1.3.3，sorallll）"
+
+  - id: "自选-幸存者黑白发光(v2.0.2)(Lux)"
+    name: "幸存者黑白发光"
+    category: custom
+    fileName: "自选-幸存者黑白发光(v2.0.2)(Lux).zip"
+    size: 44100
+    platform: all
+    description: "幸存者黑白状态发光提示（v2.0.2，Lux）"
+
+  - id: "自选-换图类(投票换图)(v1.1)(fdxx, sorallll, HatsuneImagine)"
+    name: "投票换图"
+    category: custom
+    fileName: "自选-换图类(投票换图)(v1.1)(fdxx, sorallll, HatsuneImagine).zip"
+    size: 70584
+    platform: all
+    description: "投票换图插件（v1.1，fdxx, sorallll, HatsuneImagine）"
+
+  - id: "自选-换图类(自动换图)(v1.0.5)(Alex Dragokas, fdxx, sorallll)"
+    name: "自动换图"
+    category: custom
+    fileName: "自选-换图类(自动换图)(v1.0.5)(Alex Dragokas, fdxx, sorallll).zip"
+    size: 17321
+    platform: all
+    description: "自动换图插件（v1.0.5，Alex Dragokas, fdxx, sorallll）"
+
+  - id: "自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)"
+    name: "排行榜"
+    category: custom
+    fileName: "自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll).zip"
+    size: 43258
+    platform: all
+    description: "排行榜插件（v2.19.23，豆瓣酱な, sorallll）"
+
+  - id: "自选-显示幸存者开关安全门或次数限制(v1.0.1)(豆瓣酱な)"
+    name: "安全门开关限制"
+    category: custom
+    fileName: "自选-显示幸存者开关安全门或次数限制(v1.0.1)(豆瓣酱な).zip"
+    size: 12872
+    platform: all
+    description: "显示幸存者开关安全门或次数限制（v1.0.1，豆瓣酱な）"
+
+  - id: "自选-服务器中文名(v1.1.2)(指令!host立即刷新服名)(豆瓣酱な)"
+    name: "服务器中文名"
+    category: custom
+    fileName: "自选-服务器中文名(v1.1.2)(指令!host立即刷新服名)(豆瓣酱な).zip"
+    size: 6548
+    platform: all
+    description: "设置服务器中文名（v1.1.2，指令 !host 立即刷新，豆瓣酱な）"
+
+  - id: "自选-根据人数设置医疗物品倍数(v1.0.5)(豆瓣酱な)"
+    name: "医疗物品动态倍数"
+    category: custom
+    fileName: "自选-根据人数设置医疗物品倍数(v1.0.5)(豆瓣酱な).zip"
+    size: 11064
+    platform: all
+    description: "根据人数动态设置医疗物品倍数（v1.0.5，豆瓣酱な）"
+
+  - id: "自选-武器的伤害和弹夹等数据修改(v3.0.1)(Jahze, A1m`, Forgetest)"
+    name: "武器数据修改"
+    category: custom
+    fileName: "自选-武器的伤害和弹夹等数据修改(v3.0.1)(Jahze, A1m`, Forgetest).zip"
+    size: 27139
+    platform: all
+    description: "武器伤害和弹夹等数据修改（v3.0.1，Jahze, A1m, Forgetest）"
+
+  - id: "自选-特感AI增强 AI_HardSI(v1.6-2023.6.4)(fbef0102)"
+    name: "特感 AI 增强"
+    category: custom
+    fileName: "自选-特感AI增强 AI_HardSI(v1.6-2023.6.4)(fbef0102).zip"
+    size: 47499
+    platform: all
+    description: "特感 AI 增强 AI_HardSI（v1.6-2023.6.4，fbef0102）"
+
+  - id: "自选-玩家自杀指令(v1.1.4)(豆瓣酱な)"
+    name: "玩家自杀指令"
+    category: custom
+    fileName: "自选-玩家自杀指令(v1.1.4)(豆瓣酱な).zip"
+    size: 11425
+    platform: all
+    description: "玩家自杀指令（v1.1.4，豆瓣酱な）"
+
+  - id: "自选-生还者对坦克的伤害排名(v1.4.8)(豆瓣酱な)"
+    name: "坦克伤害排名"
+    category: custom
+    fileName: "自选-生还者对坦克的伤害排名(v1.4.8)(豆瓣酱な).zip"
+    size: 13825
+    platform: all
+    description: "生还者对坦克的伤害排名（v1.4.8，豆瓣酱な）"
+
+  - id: "自选-生还者对女巫的伤害排名(v1.2.5)(豆瓣酱な)"
+    name: "女巫伤害排名"
+    category: custom
+    fileName: "自选-生还者对女巫的伤害排名(v1.2.5)(豆瓣酱な).zip"
+    size: 15382
+    platform: all
+    description: "生还者对女巫的伤害排名（v1.2.5，豆瓣酱な）"
+
+  - id: "自选-生还者过关时满血或复活(v1.1.1)(豆瓣酱な)"
+    name: "过关满血复活"
+    category: custom
+    fileName: "自选-生还者过关时满血或复活(v1.1.1)(豆瓣酱な).zip"
+    size: 14961
+    platform: all
+    description: "生还者过关时满血或复活（v1.1.1，豆瓣酱な）"
+
+  - id: "自选-白色的夜视仪更亮"
+    name: "白色夜视仪"
+    category: custom
+    fileName: "自选-白色的夜视仪更亮.zip"
+    size: 7185
+    platform: all
+    description: "白色夜视仪更亮"
+
+  - id: "自选-管理员娱乐菜单(v1.2.3a)(sorallll)"
+    name: "管理员娱乐菜单"
+    category: custom
+    fileName: "自选-管理员娱乐菜单(v1.2.3a)(sorallll).zip"
+    size: 56166
+    platform: all
+    description: "管理员娱乐菜单（v1.2.3a，sorallll）"
+
+  - id: "自选-管理员指令!sset设置人数(v1.2.7)(豆瓣酱な)"
+    name: "管理员设置人数"
+    category: custom
+    fileName: "自选-管理员指令!sset设置人数(v1.2.7)(豆瓣酱な).zip"
+    size: 13649
+    platform: all
+    description: "管理员指令 !sset 设置人数（v1.2.7，豆瓣酱な）"
+
+  - id: "自选-肉鸽buff插件(LaoYutang)"
+    name: "肉鸽 Buff 插件"
+    category: custom
+    fileName: "自选-肉鸽buff插件(LaoYutang).zip"
+    size: 44275
+    platform: all
+    description: "肉鸽模式 Buff 插件（LaoYutang），需配合肉鸽前置随机章节插件"
+
+  - id: "自选-肉鸽前置随机章节插件(Yuzumi, LaoYutang)"
+    name: "肉鸽前置随机章节"
+    category: custom
+    fileName: "自选-肉鸽前置随机章节插件(Yuzumi, LaoYutang).zip"
+    size: 57272
+    platform: all
+    description: "肉鸽模式前置随机章节插件（Yuzumi, LaoYutang）"
+
+  - id: "自选-获取自定义的女巫编号(v1.3.5)(豆瓣酱な)"
+    name: "自定义女巫编号"
+    category: custom
+    fileName: "自选-获取自定义的女巫编号(v1.3.5)(豆瓣酱な).zip"
+    size: 9392
+    platform: all
+    description: "获取自定义的女巫编号（v1.3.5，豆瓣酱な）"
+
+  - id: "自选-阻止游戏自带的部分提示(v1.1.2)(豆瓣酱な)"
+    name: "阻止游戏提示"
+    category: custom
+    fileName: "自选-阻止游戏自带的部分提示(v1.1.2)(豆瓣酱な).zip"
+    size: 7570
+    platform: all
+    description: "阻止游戏自带的部分提示（v1.1.2，豆瓣酱な）"

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.gameplatform.plugin</groupId>
+    <artifactId>plugin-template</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>Plugin Template</name>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <plugin.id>plugin-template</plugin.id>
+        <plugin.class>com.gameplatform.plugin.template.TemplatePlugin</plugin.class>
+        <plugin.version>1.0.0</plugin.version>
+        <plugin.provider>GamePlatform</plugin.provider>
+        <plugin.description>A template plugin</plugin.description>
+
+        <spring-boot.version>3.2.5</spring-boot.version>
+        <pf4j.version>3.10.0</pf4j.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-plugin</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-api</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+            <version>${pf4j.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Plugin-Id>${plugin.id}</Plugin-Id>
+                            <Plugin-Class>${plugin.class}</Plugin-Class>
+                            <Plugin-Version>${plugin.version}</Plugin-Version>
+                            <Plugin-Provider>${plugin.provider}</Plugin-Provider>
+                            <Plugin-Description>${plugin.description}</Plugin-Description>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

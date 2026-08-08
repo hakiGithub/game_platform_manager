@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gameplatform</groupId>
+        <artifactId>game-platform-parent</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>plugin-l4d2-core</artifactId>
+    <packaging>jar</packaging>
+    <name>L4D2 Plugin Core</name>
+    <description>求生之路2 游戏服务器增强插件 - 核心业务代码（PF4J 插件 JAR）</description>
+
+    <properties>
+        <plugin.id>plugin-l4d2</plugin.id>
+        <plugin.class>com.gameplatform.plugin.l4d2.L4D2Plugin</plugin.class>
+        <plugin.version>1.0.0</plugin.version>
+        <plugin.provider>GamePlatform</plugin.provider>
+        <plugin.description>L4D2 游戏服务器增强插件</plugin.description>
+    </properties>
+
+    <dependencies>
+        <!-- 插件扩展点模块 -->
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-plugin</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- API 模块 -->
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- PF4J 插件框架 -->
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Spring Boot -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Jackson -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Hutool 工具类 -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Jsoup HTML 解析（地图中心爬虫） -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
+        <!-- 压缩解压 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.26.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.tukaani</groupId>
+            <artifactId>xz</artifactId>
+            <version>1.9</version>
+        </dependency>
+
+        <!-- GeoIP（运行期由主应用 core 模块通过 parentFirst ClassLoader 提供） -->
+        <dependency>
+            <groupId>org.lionsoul</groupId>
+            <artifactId>ip2region</artifactId>
+            <version>2.7.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 测试依赖 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <!-- build.properties 走资源过滤，注入 project.version / maven.build.timestamp -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>META-INF/build.properties</include>
+                </includes>
+            </resource>
+            <!-- 其他资源保持非过滤复制（plugin.properties / preset.yaml / ui 等） -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>META-INF/build.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+        <plugins>
+            <!-- 显式声明 maven-compiler-plugin，确保用 UTF-8 编码读取源文件
+                 （父 pom pluginManagement 中的配置不会自动继承到子 pom，
+                  Windows 默认 file.encoding=GBK 会导致中文常量被错误编码） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+            <!-- 写入 PF4J Manifest -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Plugin-Id>${plugin.id}</Plugin-Id>
+                            <Plugin-Class>${plugin.class}</Plugin-Class>
+                            <Plugin-Version>${plugin.version}</Plugin-Version>
+                            <Plugin-Provider>${plugin.provider}</Plugin-Provider>
+                            <Plugin-Description>${plugin.description}</Plugin-Description>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
