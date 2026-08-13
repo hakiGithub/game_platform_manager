@@ -20,6 +20,7 @@ import org.mockito.quality.Strictness;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -239,5 +240,31 @@ class InstanceFileServiceImplTest {
 
         assertThrows(UnsupportedOperationException.class, () ->
             service.computeDigest(1L, "cfg/server.cfg", "MD5"));
+    }
+
+    @Test
+    @DisplayName("Docker writeTextFile 大内容走 SFTP 临时文件 + docker cp（回归：Argument list too long）")
+    void writeTextFile_docker_largeContentUsesSftpAndCp() {
+        InstanceVO dockerInstance = new InstanceVO();
+        dockerInstance.setId(3L);
+        dockerInstance.setHostId(10L);
+        dockerInstance.setDeployType("docker");
+        dockerInstance.setConfigInfo(Map.of("containerId", "abc123", "containerWorkDir", "/l4d2"));
+        when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+
+        SshUtil.CommandResult ok = mock(SshUtil.CommandResult.class);
+        when(ok.getExitCode()).thenReturn(0);
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), anyString()))
+            .thenReturn(ok);
+
+        String big = "x".repeat(200_000);
+        service.writeTextFile(3L, "cfg/x.yaml", big);
+
+        // 大内容必须经 SFTP 流式写入宿主临时文件，绝不内联进 docker exec 命令参数
+        verify(fileAccessService).writeTextFile(eq(10L), contains("/tmp/.gp-write-"), eq(big));
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("docker cp "));
     }
 }

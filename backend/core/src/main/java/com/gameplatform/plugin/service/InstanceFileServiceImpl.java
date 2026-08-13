@@ -235,7 +235,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             fileAccessService.writeTextFile(route.hostId, route.resolvedPath, content);
             return;
         }
-        dockerWriteTextFile(route, content, charset);
+        dockerWriteTextFile(route, content);
     }
 
     // ===== 二进制读写 =====
@@ -616,12 +616,30 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     /**
      * 写入容器内文本文件：用 base64 编码内容后解码写入，避免特殊字符问题。
      */
-    private void dockerWriteTextFile(FileRoute route, String content, Charset charset) {
-        String base64 = Base64.getEncoder().encodeToString(content.getBytes(charset));
-        String innerCmd = "echo '" + base64 + "' | base64 -d > " + shellQuote(route.resolvedPath);
-        SshUtil.CommandResult r = execDocker(route, innerCmd);
-        if (r.getExitCode() != 0) {
-            throw new RuntimeException("写入容器文件失败: " + r.getError());
+    private void dockerWriteTextFile(FileRoute route, String content) {
+        // 内容经 SFTP 流式写宿主临时文件，再 docker cp 进容器：
+        // 避免把大内容内联进 docker exec 命令参数（大清单触发 Argument list too long）
+        HostCredentials conn = deployAccess.credentials(route.hostId);
+        String tempHostPath = "/tmp/.gp-write-" + UUID.randomUUID();
+        try {
+            fileAccessService.writeTextFile(route.hostId, tempHostPath, content);
+            String parentDir = route.resolvedPath;
+            int lastSlash = parentDir.lastIndexOf('/');
+            if (lastSlash > 0) {
+                parentDir = parentDir.substring(0, lastSlash);
+                sshUtil.executeCommand(
+                    conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
+                    "docker exec " + route.containerId + " mkdir -p " + shellQuote(parentDir));
+            }
+            SshUtil.CommandResult r = sshUtil.executeCommand(
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
+                "docker cp " + shellQuote(tempHostPath) + " " + route.containerId + ":"
+                        + shellQuote(route.resolvedPath));
+            if (r.getExitCode() != 0) {
+                throw new RuntimeException("docker cp 进容器失败: " + r.getError());
+            }
+        } finally {
+            cleanupRemoteTemp(conn, tempHostPath);
         }
     }
 
