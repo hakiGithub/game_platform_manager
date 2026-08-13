@@ -2,8 +2,7 @@ package com.gameplatform.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -18,21 +17,27 @@ import java.util.List;
  * 数据库Schema迁移执行器
  * 启动时自动执行幂等的ALTER TABLE语句，确保新增列存在
  *
+ * <p>实现 {@link InitializingBean}（而非 ApplicationRunner）：
+ * 在 Bean 初始化阶段完成迁移，早于 @Scheduled 定时任务的首次执行，
+ * 避免「定时任务先于迁移运行」的启动竞态（如 HostMonitorTask 查询未迁移的新列）。</p>
+ *
  * @author GamePlatform
  * @version 1.0.0
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class SchemaMigrationRunner implements ApplicationRunner {
+public class SchemaMigrationRunner implements InitializingBean {
 
     private final JdbcTemplate jdbcTemplate;
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void afterPropertiesSet() {
         ensureColumnExists("game_instance", "runtime_metadata", "TEXT");
         // V1.5: 任务中心模块建表（task_record + task_log）
         ensureSqlFileExecuted("task_record", "db/migration/V1.5__task_center.sql");
+        // V1.6: 主机局域网标识 is_lan_host（ADR-0004，见 db/migration/V1.6__add_host_lan_flag.sql）
+        ensureColumnExists("host_info", "is_lan_host", "BOOLEAN DEFAULT 0");
     }
 
     /**
@@ -89,6 +94,11 @@ public class SchemaMigrationRunner implements ApplicationRunner {
      */
     private void ensureColumnExists(String tableName, String columnName, String columnType) {
         try {
+            // 表尚不存在时（全新数据库，表将由 DatabaseInitializer 按最新 schema.sql 创建）直接跳过
+            if (!isTableExists(tableName)) {
+                log.debug("Schema迁移: 表 {} 尚不存在，跳过列迁移 {}.{}", tableName, tableName, columnName);
+                return;
+            }
             List<String> columns = new ArrayList<>();
             jdbcTemplate.query("PRAGMA table_info(" + tableName + ")", (ResultSet rs) -> {
                 columns.add(rs.getString("name"));
