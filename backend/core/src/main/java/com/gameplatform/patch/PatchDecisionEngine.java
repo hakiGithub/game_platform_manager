@@ -1,6 +1,7 @@
 package com.gameplatform.patch;
 
 import com.gameplatform.plugin.patch.HostCapabilities;
+import org.springframework.stereotype.Component;
 
 /**
  * 补丁安装决策引擎（ADR-0006 决策 5）
@@ -15,6 +16,7 @@ import com.gameplatform.plugin.patch.HostCapabilities;
  * 非压缩包：解压能力不参与判定
  * </pre>
  */
+@Component
 public class PatchDecisionEngine {
 
     /**
