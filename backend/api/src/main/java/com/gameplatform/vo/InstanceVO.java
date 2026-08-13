@@ -86,15 +86,15 @@ public class InstanceVO implements Serializable {
     private Map<String, Object> portConfig;
 
     /**
-     * 运行状态 0-已停止 1-运行中 2-异常
+     * 运行状态数字码（DeployAdapter.InstanceStatus 词汇表，见 ADR-0005）
      */
-    @Schema(description = "运行状态 0-已停止 1-运行中 2-异常")
+    @Schema(description = "运行状态数字码（InstanceStatus 词汇表，见 ADR-0005）")
     private Integer runStatus;
 
     /**
-     * 运行状态描述
+     * 运行状态描述（InstanceStatus.description 派生，中文文本唯一来源）
      */
-    @Schema(description = "运行状态描述")
+    @Schema(description = "运行状态描述（InstanceStatus.description 派生）")
     private String runStatusDesc;
 
     /**
@@ -180,23 +180,5 @@ public class InstanceVO implements Serializable {
      */
     @Schema(description = "运行时长（秒）")
     private Long uptime;
-
-    /**
-     * 获取运行状态描述
-     */
-    public String getRunStatusDesc() {
-        if (runStatus == null) {
-            return "未知";
-        }
-        return switch (runStatus) {
-            case 0 -> "已停止";
-            case 1 -> "运行中";
-            case 2 -> "异常";
-            case 3 -> "停止中";
-            case 5 -> "部署中";
-            case 6 -> "启动中";
-            default -> "未知";
-        };
-    }
 
 }

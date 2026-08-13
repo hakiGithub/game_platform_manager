@@ -52,6 +52,7 @@ const hostForm = reactive({
   authType: "password", // password | key
   tags: "",
   remark: "",
+  isLanHost: false, // 是否局域网主机（平台代劳硬开关，详见 ADR-0004）
 });
 
 // 表单验证规则
@@ -294,6 +295,7 @@ function handleEdit(row) {
     authType: row.sshPassword ? "password" : "key",
     tags: row.tags || "",
     remark: row.remark || "",
+    isLanHost: !!row.isLanHost,
   });
   dialogVisible.value = true;
 }
@@ -311,6 +313,7 @@ function resetForm() {
     authType: "password",
     tags: "",
     remark: "",
+    isLanHost: false,
   });
   if (formRef.value) {
     formRef.value.resetFields();
@@ -360,6 +363,7 @@ async function handleSubmit() {
           sshUsername: hostForm.sshUsername,
           tags: hostForm.tags,
           remark: hostForm.remark,
+          isLanHost: hostForm.isLanHost,
         };
 
         // 根据认证类型设置密码或私钥
@@ -575,6 +579,13 @@ onMounted(() => {
             <div class="host-name-cell">
               <span class="host-name">{{ row.name }}</span>
               <el-tag
+                v-if="row.isLanHost"
+                size="small"
+                type="success"
+                effect="plain"
+                >局域网</el-tag
+              >
+              <el-tag
                 v-if="row.osType"
                 size="small"
                 type="info"
@@ -712,6 +723,18 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="IP地址" prop="ip">
           <el-input v-model="hostForm.ip" placeholder="请输入IP地址" />
+        </el-form-item>
+        <el-form-item label="局域网主机" prop="isLanHost">
+          <el-switch
+            v-model="hostForm.isLanHost"
+            active-text="是（平台可代劳推送补丁）"
+            inactive-text="否"
+          />
+          <div class="form-tip">
+            勾选后，平台可向该主机跨网代劳下载/解压/推送补丁（含容器场景）；
+            不勾选时，目标主机必须能自治（curl/wget
+            +解压工具齐全），否则补丁安装将报错。详见 ADR-0004。
+          </div>
         </el-form-item>
         <el-form-item label="SSH端口" prop="sshPort">
           <el-input-number
@@ -999,6 +1022,13 @@ onMounted(() => {
   .host-name {
     font-weight: var(--platform-font-weight-medium);
   }
+}
+
+.form-tip {
+  font-size: var(--platform-font-size-xs);
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+  margin-top: 4px;
 }
 
 .resources-cell {

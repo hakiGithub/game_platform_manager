@@ -50,11 +50,12 @@ describe("instance store", () => {
 
   describe("计算属性", () => {
     beforeEach(() => {
+      // status 为 InstanceStatus wireKey 字符串（ADR-0005）
       instanceStore.instanceList = [
-        { id: 1, name: "instance1", status: 1 },
-        { id: 2, name: "instance2", status: 0 },
-        { id: 3, name: "instance3", status: 2 },
-        { id: 4, name: "instance4", status: 1 },
+        { id: 1, name: "instance1", status: "running" },
+        { id: 2, name: "instance2", status: "stopped" },
+        { id: 3, name: "instance3", status: "error" },
+        { id: 4, name: "instance4", status: "running" },
       ];
     });
 
@@ -369,28 +370,6 @@ describe("instance store", () => {
         instanceStore.updateInstanceStatusInList(1, { status: 1 });
 
         expect(instanceStore.currentInstance.status).toBe(0);
-      });
-    });
-
-    describe("getStatusText", () => {
-      it("应该返回正确的状态文本", () => {
-        expect(instanceStore.getStatusText(0)).toBe("已停止");
-        expect(instanceStore.getStatusText(1)).toBe("运行中");
-        expect(instanceStore.getStatusText(2)).toBe("异常");
-        expect(instanceStore.getStatusText(3)).toBe("部署中");
-        expect(instanceStore.getStatusText(4)).toBe("卸载中");
-        expect(instanceStore.getStatusText(99)).toBe("未知");
-      });
-    });
-
-    describe("getStatusType", () => {
-      it("应该返回正确的状态标签类型", () => {
-        expect(instanceStore.getStatusType(0)).toBe("info");
-        expect(instanceStore.getStatusType(1)).toBe("success");
-        expect(instanceStore.getStatusType(2)).toBe("danger");
-        expect(instanceStore.getStatusType(3)).toBe("warning");
-        expect(instanceStore.getStatusType(4)).toBe("warning");
-        expect(instanceStore.getStatusType(99)).toBe("info");
       });
     });
   });

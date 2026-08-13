@@ -12,6 +12,7 @@ import {
 } from "@/api/instance";
 import { getHostList } from "@/api/host";
 import DeployProgress from "@/components/DeployProgress.vue";
+import { statusType, statusIcon, statusColor, ACTIVE_STATUSES } from "@/utils/instanceStatus";
 
 const router = useRouter();
 
@@ -55,8 +56,8 @@ const currentLogMode = ref("deploy");
 
 function handleViewLogs(row) {
   currentLogInstanceId.value = row.id;
-  // 部署中/启动中/异常 用 deploy 模式（异常状态需要查看部署失败日志），其他用 runtime 模式
-  currentLogMode.value = ["deploying", "starting", "error"].includes(row.status) ? "deploy" : "runtime";
+  // 安装中/更新中/启动中/异常 用 deploy 模式（异常状态需要查看部署失败日志），其他用 runtime 模式
+  currentLogMode.value = ["installing", "updating", "starting", "error"].includes(row.status) ? "deploy" : "runtime";
   logDialogVisible.value = true;
 }
 
@@ -115,14 +116,14 @@ async function fetchData() {
   }
 }
 
-// 列表自动刷新（存在部署中/启动中/停止中状态时）
+// 列表自动刷新（存在活跃过渡态时）
 let autoRefreshTimer = null;
 
 function startAutoRefresh() {
   stopAutoRefresh();
   autoRefreshTimer = setInterval(() => {
     const hasActive = tableData.value.some((row) =>
-      ["deploying", "starting", "stopping"].includes(row.status)
+      ACTIVE_STATUSES.includes(row.status)
     );
     if (hasActive) {
       fetchData();
@@ -288,58 +289,6 @@ function handleSizeChange(size) {
   fetchData();
 }
 
-// 获取状态标签类型
-function getStatusType(status) {
-  const types = {
-    running: "success",
-    stopped: "info",
-    error: "danger",
-    starting: "warning",
-    stopping: "warning",
-    deploying: "warning",
-  };
-  return types[status] || "info";
-}
-
-// 获取状态文本
-function getStatusText(status) {
-  const texts = {
-    running: "运行中",
-    stopped: "已停止",
-    error: "异常",
-    starting: "启动中",
-    stopping: "停止中",
-    deploying: "部署中",
-  };
-  return texts[status] || status;
-}
-
-// 获取状态图标
-function getStatusIcon(status) {
-  const icons = {
-    running: "CircleCheck",
-    stopped: "CircleClose",
-    error: "Warning",
-    starting: "Loading",
-    stopping: "Loading",
-    deploying: "Loading",
-  };
-  return icons[status] || "InfoFilled";
-}
-
-// 获取状态颜色
-function getStatusColor(status) {
-  const colors = {
-    running: "var(--platform-status-running)",
-    stopped: "var(--platform-status-stopped)",
-    error: "var(--platform-status-error)",
-    starting: "var(--platform-status-deploying)",
-    stopping: "var(--platform-status-deploying)",
-    deploying: "var(--platform-status-deploying)",
-  };
-  return colors[status] || "var(--platform-status-stopped)";
-}
-
 // 表格行样式
 function tableRowClassName({ row }) {
   if (row.status === "error") return "row-error";
@@ -367,7 +316,8 @@ function getAvailableActions(status) {
       { command: "logs", label: "查看日志", icon: "Tickets" },
       { command: "delete", label: "卸载实例", icon: "Delete", danger: true },
     ],
-    deploying: [{ command: "logs", label: "查看进度", icon: "Tickets" }],
+    installing: [{ command: "logs", label: "查看进度", icon: "Tickets" }],
+    updating: [{ command: "logs", label: "查看进度", icon: "Tickets" }],
   };
   return actions[status] || [];
 }
@@ -436,7 +386,8 @@ onBeforeUnmount(() => {
             <el-option label="运行中" value="running" />
             <el-option label="已停止" value="stopped" />
             <el-option label="异常" value="error" />
-            <el-option label="部署中" value="deploying" />
+            <el-option label="安装中" value="installing" />
+            <el-option label="更新中" value="updating" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -479,24 +430,18 @@ onBeforeUnmount(() => {
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <div class="status-cell">
-              <el-icon :color="getStatusColor(row.status)" :size="16">
+              <el-icon :color="statusColor(row.status)" :size="16">
                 <component
-                  :is="getStatusIcon(row.status)"
-                  :class="{
-                    'is-loading': [
-                      'starting',
-                      'stopping',
-                      'deploying',
-                    ].includes(row.status),
-                  }"
+                  :is="statusIcon(row.status)"
+                  :class="{ 'is-loading': ACTIVE_STATUSES.includes(row.status) }"
                 />
               </el-icon>
               <el-tag
-                :type="getStatusType(row.status)"
+                :type="statusType(row.status)"
                 size="small"
                 effect="plain"
               >
-                {{ getStatusText(row.status) }}
+                {{ row.runStatusDesc }}
               </el-tag>
             </div>
           </template>
@@ -557,8 +502,8 @@ onBeforeUnmount(() => {
                 <el-button type="primary" link size="small" @click="handleViewLogs(row)">查看日志</el-button>
                 <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
               </template>
-              <!-- 部署中/启动中/停止中状态 -->
-              <template v-else-if="['deploying', 'starting', 'stopping'].includes(row.status)">
+              <!-- 活跃过渡态（安装中/更新中/启动中/停止中） -->
+              <template v-else-if="ACTIVE_STATUSES.includes(row.status)">
                 <el-button type="primary" link size="small" @click="handleViewLogs(row)">
                   <el-icon class="is-loading"><Loading /></el-icon>
                   查看日志
@@ -566,7 +511,7 @@ onBeforeUnmount(() => {
               </template>
               <!-- 其他状态 -->
               <template v-else>
-                <el-tag type="info" size="small">{{ getStatusText(row.status) }}</el-tag>
+                <el-tag type="info" size="small">{{ row.runStatusDesc }}</el-tag>
               </template>
               <!-- 更多操作下拉 -->
               <el-dropdown v-if="getAvailableActions(row.status).length > 0" trigger="click" @command="(cmd) => handleCommand(cmd, row)">

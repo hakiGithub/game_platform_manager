@@ -8,6 +8,7 @@ import {
   startInstance,
   stopInstance,
 } from "@/api/instance";
+import { statusType } from "@/utils/instanceStatus";
 
 const router = useRouter();
 
@@ -221,31 +222,6 @@ function formatTime(time) {
   });
 }
 
-// 实例运行状态映射
-function getInstanceStatusType(status) {
-  const types = {
-    running: "success",
-    stopped: "info",
-    error: "danger",
-    starting: "warning",
-    stopping: "warning",
-    deploying: "warning",
-  };
-  return types[status] || "info";
-}
-
-function getInstanceStatusText(status) {
-  const texts = {
-    running: "运行中",
-    stopped: "已停止",
-    error: "异常",
-    starting: "启动中",
-    stopping: "停止中",
-    deploying: "部署中",
-  };
-  return texts[status] || status || "未知";
-}
-
 // 获取实例主端口（IP:Port 形式）
 function getInstanceEndpoint(instance) {
   const port = instance.portConfig?.game || instance.portConfig?.default;
@@ -346,11 +322,11 @@ onMounted(() => {
                           <span class="status-dot" :class="`dot-${instance.status}`"></span>
                           <span class="instance-name">{{ instance.instanceName }}</span>
                           <el-tag
-                            :type="getInstanceStatusType(instance.status)"
+                            :type="statusType(instance.status)"
                             size="small"
                             effect="light"
                           >
-                            {{ getInstanceStatusText(instance.status) }}
+                            {{ instance.runStatusDesc }}
                           </el-tag>
                         </div>
                         <div class="instance-actions">
@@ -732,7 +708,8 @@ onMounted(() => {
     border-left: 3px solid var(--el-color-danger);
   }
 
-  &.status-deploying,
+  &.status-installing,
+  &.status-updating,
   &.status-starting,
   &.status-stopping {
     border-left: 3px solid var(--el-color-warning);
@@ -838,7 +815,8 @@ onMounted(() => {
     background-color: var(--el-color-danger);
   }
 
-  &.dot-deploying,
+  &.dot-installing,
+  &.dot-updating,
   &.dot-starting,
   &.dot-stopping {
     background-color: var(--el-color-warning);

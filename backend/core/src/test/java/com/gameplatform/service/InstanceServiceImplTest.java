@@ -3,6 +3,7 @@ package com.gameplatform.service;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.common.exception.BusinessException;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.dto.InstanceCreateDTO;
 import com.gameplatform.dto.InstanceUpdateDTO;
 import com.gameplatform.entity.GameInstance;
@@ -65,11 +66,18 @@ class InstanceServiceImplTest {
     @Mock
     private PluginLifecycleHook pluginLifecycleHook;
 
+    @Mock
+    private DeploymentAccess deployAccess;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
     @BeforeEach
     void setUp() {
+        // classify 真实语义由 DeploymentAccessTest 锁定；测试数据 deployType 均为 "docker"
+        lenient().when(deployAccess.classify(any()))
+                .thenReturn(DeployAdapter.DeployType.DOCKER);
+
         // 设置安全上下文
         Authentication auth = new UsernamePasswordAuthenticationToken("testUser", "password");
         SecurityContextHolder.getContext().setAuthentication(auth);
@@ -141,8 +149,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.start(1L, config)).thenReturn(true);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.start(eq(1L), anyMap())).thenReturn(true);
 
         boolean result = instanceService.startInstance(1L);
 
@@ -170,8 +178,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.stop(1L, config)).thenReturn(true);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.stop(eq(1L), anyMap())).thenReturn(true);
 
         boolean result = instanceService.stopInstance(1L);
 
@@ -199,8 +207,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.restart(1L, config)).thenReturn(true);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.restart(eq(1L), anyMap())).thenReturn(true);
 
         boolean result = instanceService.restartInstance(1L);
 
@@ -215,8 +223,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.getStatus(1L, config)).thenReturn(DeployAdapter.InstanceStatus.RUNNING);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.getStatus(eq(1L), anyMap())).thenReturn(DeployAdapter.InstanceStatus.RUNNING);
         when(hostMapper.selectById(1L)).thenReturn(createHost());
         when(gameMetadataMapper.selectById(1L)).thenReturn(createGame());
 
@@ -233,8 +241,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.getLogs(1L, config, 100)).thenReturn("log content");
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.getLogs(eq(1L), anyMap(), eq(100))).thenReturn("log content");
 
         String result = instanceService.getInstanceLogs(1L, 100);
 
@@ -248,8 +256,8 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.executeCommand(1L, config, "help")).thenReturn("command output");
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.executeCommand(eq(1L), anyMap(), eq("help"))).thenReturn("command output");
 
         String result = instanceService.executeCommand(1L, "help");
 
@@ -261,10 +269,12 @@ class InstanceServiceImplTest {
         GameInstance instance = createInstance(1L, "test-instance", 0);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         instanceService.deleteInstance(1L);
 
-        verify(instanceMapper).deleteById(1L);
+        verify(instanceMapper).physicalDeleteById(1L);
     }
 
     @Test
@@ -274,13 +284,14 @@ class InstanceServiceImplTest {
         instance.setConfigInfo(config);
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
-        when(adapterFactory.getAdapter("docker")).thenReturn(deployAdapter);
-        when(deployAdapter.stop(1L, config)).thenReturn(true);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
+        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         instanceService.deleteInstance(1L);
 
-        verify(deployAdapter).stop(1L, config);
-        verify(instanceMapper).deleteById(1L);
+        verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
+        verify(instanceMapper).physicalDeleteById(1L);
     }
 
     @Test

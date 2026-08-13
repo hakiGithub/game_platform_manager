@@ -1,5 +1,7 @@
 package com.gameplatform.plugin.service;
 
+import com.gameplatform.common.exception.BusinessException;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
@@ -45,7 +47,6 @@ class InstanceFileServiceImplTest {
     @Mock private HostMapper hostMapper;
     @Mock private GameMetadataMapper gameMetadataMapper;
 
-    @InjectMocks
     private InstanceFileServiceImpl service;
 
     private InstanceVO nativeInstance;
@@ -66,6 +67,10 @@ class InstanceFileServiceImplTest {
         // 设为 null 以避免触发 AesUtil.decrypt
         host.setSshPassword(null);
         host.setSshPrivateKey(null);
+
+        // 凭据解析/分类走真实 DeploymentAccess（真实语义由 DeploymentAccessTest 锁定）
+        service = new InstanceFileServiceImpl(instanceQueryService, fileAccessService, sshUtil,
+                new DeploymentAccess(hostMapper), gameMetadataMapper);
     }
 
     // ===== Native 路由测试 =====
@@ -180,7 +185,7 @@ class InstanceFileServiceImplTest {
     }
 
     @Test
-    @DisplayName("不支持的部署类型抛 UnsupportedOperationException")
+    @DisplayName("不支持的部署类型抛 BusinessException（DeploymentAccess.classify 快速失败）")
     void resolveRoute_throwsForUnsupportedDeployType() {
         InstanceVO unsupported = new InstanceVO();
         unsupported.setId(3L);
@@ -188,7 +193,7 @@ class InstanceFileServiceImplTest {
         unsupported.setDeployType("unknown");
         when(instanceQueryService.getInstanceById(3L)).thenReturn(unsupported);
 
-        assertThrows(UnsupportedOperationException.class, () ->
+        assertThrows(BusinessException.class, () ->
             service.readTextFile(3L, "any"));
     }
 

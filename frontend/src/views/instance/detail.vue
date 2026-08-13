@@ -21,6 +21,7 @@ import {
   sendConsoleCommand
 } from '@/api/instance'
 import { createInstanceLogStream, createInstanceConsole } from '@/utils/websocket'
+import { statusType } from '@/utils/instanceStatus'
 import { useBackupStore } from '@/stores/backup'
 import BackupForm from '@/components/BackupForm.vue'
 import RestoreConfirm from '@/components/RestoreConfirm.vue'
@@ -190,32 +191,6 @@ function stopMetricsAutoRefresh() {
     clearInterval(metricsTimer)
     metricsTimer = null
   }
-}
-
-// 获取状态标签类型
-function getStatusType(status) {
-  const types = {
-    running: 'success',
-    stopped: 'info',
-    error: 'danger',
-    starting: 'warning',
-    stopping: 'warning',
-    deploying: 'warning'
-  }
-  return types[status] || 'info'
-}
-
-// 获取状态文本
-function getStatusText(status) {
-  const texts = {
-    running: '运行中',
-    stopped: '已停止',
-    error: '异常',
-    starting: '启动中',
-    stopping: '停止中',
-    deploying: '部署中'
-  }
-  return texts[status] || status
 }
 
 // 获取部署类型中文展示
@@ -1093,8 +1068,8 @@ onBeforeUnmount(() => {
           </el-button>
           <div class="instance-title">
             <h2>{{ instanceInfo.name }}</h2>
-            <el-tag :type="getStatusType(instanceInfo.status)" size="small" effect="dark">
-              {{ getStatusText(instanceInfo.status) }}
+            <el-tag :type="statusType(instanceInfo.status)" size="small" effect="dark">
+              {{ instanceInfo.runStatusDesc }}
             </el-tag>
           </div>
           <div class="instance-meta">
@@ -1141,7 +1116,7 @@ onBeforeUnmount(() => {
             </el-button>
           </template>
           <template v-else>
-            <el-tag type="warning" effect="dark">{{ getStatusText(instanceInfo.status) }}</el-tag>
+            <el-tag type="warning" effect="dark">{{ instanceInfo.runStatusDesc }}</el-tag>
           </template>
         </div>
       </div>
@@ -1184,8 +1159,8 @@ onBeforeUnmount(() => {
                 {{ instanceInfo.ip }}:{{ instanceInfo.port }}
               </el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="getStatusType(instanceInfo.status)" size="small">
-                  {{ getStatusText(instanceInfo.status) }}
+                <el-tag :type="statusType(instanceInfo.status)" size="small">
+                  {{ instanceInfo.runStatusDesc }}
                 </el-tag>
               </el-descriptions-item>
               <el-descriptions-item label="玩家数">

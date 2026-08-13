@@ -1,8 +1,8 @@
 package com.gameplatform.adapter;
 
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ class DockerComposeAdapterTest {
     private GameInstanceMapper instanceMapper;
 
     @Mock
-    private AesUtil aesUtil;
+    private DeploymentAccess deployAccess;
 
     private DockerComposeAdapter dockerComposeAdapter;
 
@@ -47,7 +47,7 @@ class DockerComposeAdapterTest {
         injectField(dockerComposeAdapter, "sshUtil", sshUtil);
         injectField(dockerComposeAdapter, "hostMapper", hostMapper);
         injectField(dockerComposeAdapter, "instanceMapper", instanceMapper);
-        injectField(dockerComposeAdapter, "aesUtil", aesUtil);
+        injectField(dockerComposeAdapter, "deployAccess", deployAccess);
     }
 
     /**

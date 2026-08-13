@@ -73,4 +73,11 @@ public class HostCreateDTO implements Serializable {
     @Schema(description = "备注")
     private String remark;
 
+    /**
+     * 是否局域网主机（平台代劳硬开关，详见 ADR-0004）
+     * 默认 false：新主机默认按公网处理
+     */
+    @Schema(description = "是否局域网主机（true=平台可代劳推送补丁；false=目标需自治，详见 ADR-0004）", example = "false")
+    private Boolean isLanHost;
+
 }

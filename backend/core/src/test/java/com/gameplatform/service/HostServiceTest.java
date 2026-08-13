@@ -2,12 +2,15 @@ package com.gameplatform.service;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.impl.HostServiceImpl;
+import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +49,12 @@ class HostServiceTest {
     @Mock
     private LogService logService;
 
+    @Mock
+    private SshUtil sshUtil;
+
+    @Mock
+    private DeploymentAccess deployAccess;
+
     @InjectMocks
     private HostServiceImpl hostService;
 
@@ -69,6 +78,7 @@ class HostServiceTest {
         testHost.setLastCheckTime(LocalDateTime.now());
         testHost.setCreateTime(LocalDateTime.now());
         testHost.setUpdateTime(LocalDateTime.now());
+        testHost.setIsLanHost(true);
 
         createDTO = new HostCreateDTO();
         createDTO.setName("新服务器");
@@ -77,6 +87,7 @@ class HostServiceTest {
         createDTO.setSshUsername("root");
         createDTO.setSshPrivateKey("ssh-rsa test-key");
         createDTO.setRemark("测试主机");
+        createDTO.setIsLanHost(true);
 
         updateDTO = new HostUpdateDTO();
         updateDTO.setId(1L);
@@ -84,6 +95,11 @@ class HostServiceTest {
         updateDTO.setIp("192.168.1.100");
         updateDTO.setSshPort(2222);
         updateDTO.setSshUsername("admin");
+        updateDTO.setIsLanHost(false);
+
+        // 凭据解析统一走 DeploymentAccess（真实语义由 DeploymentAccessTest 锁定）
+        lenient().when(deployAccess.credentials(any(Host.class)))
+                .thenReturn(new HostCredentials("192.168.1.100", 22, "root", null, null));
     }
 
     @Test
@@ -106,9 +122,36 @@ class HostServiceTest {
         assertEquals(createDTO.getName(), result.getName());
         assertEquals(createDTO.getIp(), result.getIp());
         assertEquals(0, result.getStatus()); // 初始状态为离线
+        assertTrue(result.getIsLanHost(), "isLanHost 应从 createDTO 透传 true");
         verify(hostMapper).selectByIpAddress(createDTO.getIp());
         verify(hostMapper).insert(any(Host.class));
         verify(logService).log(anyString(), eq("CREATE"), eq("HOST"), anyString(), eq("success"), isNull(), isNull());
+    }
+
+    @Test
+    @DisplayName("创建主机-isLanHost 未传时默认 false")
+    void testCreateHostLanDefaultFalse() {
+        // Given
+        HostCreateDTO dto = new HostCreateDTO();
+        dto.setName("新服务器");
+        dto.setIp("192.168.1.200");
+        dto.setSshPort(22);
+        dto.setSshUsername("root");
+        // 不设置 isLanHost（null）
+        when(hostMapper.selectByIpAddress(dto.getIp())).thenReturn(null);
+        when(hostMapper.insert(any(Host.class))).thenAnswer(invocation -> {
+            Host host = invocation.getArgument(0);
+            host.setId(2L);
+            return 1;
+        });
+        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
+
+        // When
+        HostVO result = hostService.createHost(dto);
+
+        // Then: null 应被默认为 false（详见 ADR-0004）
+        assertNotNull(result);
+        assertFalse(result.getIsLanHost(), "isLanHost 未传时应默认 false");
     }
 
     @Test
@@ -143,6 +186,7 @@ class HostServiceTest {
         assertEquals(updateDTO.getName(), result.getName());
         assertEquals(updateDTO.getSshPort(), result.getSshPort());
         assertEquals(updateDTO.getSshUsername(), result.getSshUsername());
+        assertFalse(result.getIsLanHost(), "isLanHost 应从 updateDTO 更新为 false");
         verify(hostMapper).selectById(1L);
         verify(hostMapper).updateById(any(Host.class));
         verify(logService).log(anyString(), eq("UPDATE"), eq("HOST"), anyString(), eq("success"), isNull(), isNull());
@@ -234,6 +278,7 @@ class HostServiceTest {
         assertEquals(testHost.getHostName(), result.getName());
         assertEquals(testHost.getIpAddress(), result.getIp());
         assertEquals("在线", result.getOnlineStatusDesc());
+        assertTrue(result.getIsLanHost(), "isLanHost 应通过 convertToVO 透传");
     }
 
     @Test

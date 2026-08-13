@@ -3,6 +3,8 @@ package com.gameplatform.service;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
@@ -47,6 +49,9 @@ public class DeployService {
 
     @Autowired
     private SshUtil sshUtil;
+
+    @Autowired
+    private DeploymentAccess deployAccess;
 
     // 部署任务状态缓存
     private final Map<Long, DeployTaskStatus> taskStatusMap = new ConcurrentHashMap<>();
@@ -217,31 +222,31 @@ public class DeployService {
 
             // 7. 更新实例状态
             updateTaskStatus(instanceId, "UPDATE_STATUS", 90, "更新实例状态");
-            updateRunStatus(instanceId, 0); // stopped
+            updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.STOPPED);
 
             // 8. 自动启动（如果配置）
             if (context.isAutoStart()) {
                 updateTaskStatus(instanceId, "START", 95, "启动实例");
-                updateRunStatus(instanceId, 6); // starting
+                updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.STARTING);
                 if (adapter.start(instanceId, context.getConfig())) {
                     // 健康检查重试（最多 3 次，间隔 5 秒）
                     Thread.sleep(5000);
                     boolean healthy = retryHealthCheck(adapter, instanceId, context.getConfig(), 3, 5000);
                     if (healthy) {
-                        updateRunStatus(instanceId, 1); // running
+                        updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.RUNNING);
                         notifyProgress(collectingCallback, 98, "START", "实例已启动并健康");
                     } else {
-                        updateRunStatus(instanceId, 2); // error
+                        updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.ERROR);
                         appendLog(instanceId, "ERROR", "健康检查 3 次重试均失败", "HEALTH_CHECK");
                         throw new DeployException("健康检查失败：3 次重试均未通过");
                     }
                 } else {
-                    updateRunStatus(instanceId, 2); // error
+                    updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.ERROR);
                     throw new DeployException("实例启动失败");
                 }
             } else {
                 // 未配置自动启动，保持 stopped
-                updateRunStatus(instanceId, 0); // stopped
+                updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.STOPPED);
             }
 
             success = true;
@@ -264,7 +269,7 @@ public class DeployService {
             }
 
             // 失败时标记为异常状态
-            updateRunStatus(instanceId, 2); // error
+            updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.ERROR);
             appendLog(instanceId, "ERROR", e.getMessage(),
                     taskStatusMap.get(instanceId) != null ? taskStatusMap.get(instanceId).getStage() : "UNKNOWN");
             notifyError(collectingCallback, e.getMessage(),
@@ -291,7 +296,7 @@ public class DeployService {
             }
 
             // 失败时标记为异常状态
-            updateRunStatus(instanceId, 2); // error
+            updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.ERROR);
             appendLog(instanceId, "ERROR", errorMsg,
                     currentStatus != null ? currentStatus.getStage() : "UNKNOWN");
             notifyError(collectingCallback, errorMsg,
@@ -566,21 +571,6 @@ public class DeployService {
             long logId = status.getLogIdCounter() + 1;
             status.setLogIdCounter(logId);
             status.getLogs().add(new LogEntry(logId, level, message, stage, LocalDateTime.now()));
-        }
-    }
-
-    /**
-     * 更新实例的运行状态（持久化到数据库）
-     */
-    private void updateRunStatus(Long instanceId, int runStatus) {
-        try {
-            GameInstance instance = instanceMapper.selectById(instanceId);
-            if (instance != null) {
-                instance.setRunStatus(runStatus);
-                instanceMapper.updateById(instance);
-            }
-        } catch (Exception e) {
-            log.error("更新实例状态失败: instanceId={}, runStatus={}", instanceId, runStatus, e);
         }
     }
 
@@ -902,12 +892,13 @@ public class DeployService {
      * 检查SSH连接
      */
     private boolean checkSshConnection(Host host) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "echo 'SSH connection test'",
                 10000
         );
@@ -918,12 +909,13 @@ public class DeployService {
      * 检查Docker是否已安装
      */
     private boolean checkDockerInstalled(Host host) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "docker --version",
                 10000
         );
@@ -934,12 +926,13 @@ public class DeployService {
      * 检查Docker是否运行
      */
     private boolean checkDockerRunning(Host host) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "docker info",
                 10000
         );
@@ -950,12 +943,13 @@ public class DeployService {
      * 检查Docker Compose是否已安装
      */
     private boolean checkDockerComposeInstalled(Host host) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "docker compose version || docker-compose --version",
                 10000
         );
@@ -967,12 +961,13 @@ public class DeployService {
      * 检查磁盘空间
      */
     private boolean checkDiskSpace(Host host, Map<String, Object> config) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'",
                 10000
         );
@@ -992,12 +987,13 @@ public class DeployService {
      * 检查内存
      */
     private boolean checkMemory(Host host, Map<String, Object> config) {
+        HostCredentials conn = sshCredentials(host);
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                decryptSshPrivateKey(host),
-                decryptSshPassword(host),
+                conn.host(),
+                conn.port(),
+                conn.username(),
+                conn.privateKey(),
+                conn.password(),
                 "free | grep Mem | awk '{print ($3/$2) * 100.0}'",
                 10000
         );
@@ -1022,49 +1018,17 @@ public class DeployService {
     }
 
     /**
-     * AES 加密密钥（与 HostServiceImpl 保持一致）
-     */
-    private static final String ENCRYPT_KEY = "GamePlatform2024";
-
-    /**
-     * 解密 SSH 私钥
-     * 若密码存在则优先使用密码认证，不传私钥（避免 SshUtil 优先使用私钥导致认证失败）
+     * 解析主机 SSH 凭据（统一走 DeploymentAccess）
      *
-     * @param host 主机实体
-     * @return 解密后的私钥，或 null
+     * <p>本服务保留一条本地策略：密码存在时优先密码认证、不下发私钥，
+     * 避免 SshUtil 优先使用私钥导致认证失败。</p>
      */
-    private String decryptSshPrivateKey(Host host) {
-        // 若密码存在，优先使用密码认证，不传私钥
-        if (cn.hutool.core.util.StrUtil.isNotBlank(host.getSshPassword())) {
-            return null;
+    private HostCredentials sshCredentials(Host host) {
+        HostCredentials conn = deployAccess.credentials(host);
+        if (conn.password() != null && !conn.password().isEmpty()) {
+            return new HostCredentials(conn.host(), conn.port(), conn.username(), null, conn.password());
         }
-        if (cn.hutool.core.util.StrUtil.isBlank(host.getSshPrivateKey())) {
-            return null;
-        }
-        try {
-            return cn.hutool.crypto.SecureUtil.aes(ENCRYPT_KEY.getBytes()).decryptStr(host.getSshPrivateKey());
-        } catch (Exception e) {
-            log.warn("解密 SSH 私钥失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 解密 SSH 密码
-     *
-     * @param host 主机实体
-     * @return 解密后的密码，或 null
-     */
-    private String decryptSshPassword(Host host) {
-        if (cn.hutool.core.util.StrUtil.isBlank(host.getSshPassword())) {
-            return null;
-        }
-        try {
-            return cn.hutool.crypto.SecureUtil.aes(ENCRYPT_KEY.getBytes()).decryptStr(host.getSshPassword());
-        } catch (Exception e) {
-            log.warn("解密 SSH 密码失败: {}", e.getMessage());
-            return null;
-        }
+        return conn;
     }
 
     // ========== 回调通知方法 ==========

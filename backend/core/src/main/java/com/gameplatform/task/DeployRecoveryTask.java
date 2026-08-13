@@ -1,6 +1,7 @@
 package com.gameplatform.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.mapper.GameInstanceMapper;
 import lombok.RequiredArgsConstructor;
@@ -13,11 +14,11 @@ import java.util.List;
 
 /**
  * 部署任务恢复定时任务
- * 定期检查 run_status=5（部署中）的实例，如果超过阈值未更新则标记为异常
+ * 定期检查 run_status=INSTALLING（5，安装中）的实例，如果超过阈值未更新则标记为 ERROR（异常）
  *
  * 场景：
  * - 异步部署线程被 JVM 强制中断（kill -9），run_status 未被正确更新
- * - 部署过程中应用崩溃，run_status 停留在 5
+ * - 部署过程中应用崩溃，run_status 停留在 INSTALLING
  *
  * @author GamePlatform
  * @version 1.0.0
@@ -43,7 +44,8 @@ public class DeployRecoveryTask {
         try {
             staleInstances = instanceMapper.selectList(
                     new LambdaQueryWrapper<GameInstance>()
-                            .eq(GameInstance::getRunStatus, 5)
+                            .eq(GameInstance::getRunStatus,
+                                    DeployAdapter.InstanceStatus.INSTALLING.getCode())
                             .lt(GameInstance::getUpdateTime, threshold));
         } catch (Exception e) {
             log.error("查询超时部署中实例失败", e);
@@ -59,7 +61,7 @@ public class DeployRecoveryTask {
 
         for (GameInstance instance : staleInstances) {
             try {
-                instance.setRunStatus(2); // error
+                instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
                 int rows = instanceMapper.updateById(instance);
                 if (rows > 0) {
                     log.warn("实例 {} [{}] 部署超时已标记为异常 (updateTime={})",

@@ -4,12 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.ContainerLogQueryDTO;
 import com.gameplatform.dto.docker.ContainerOperationDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerContainerService;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ContainerDetailVO;
 import com.gameplatform.vo.docker.ContainerHealthVO;
@@ -38,7 +39,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
 
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
-    private final AesUtil aesUtil;
+    private final DeploymentAccess deployAccess;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -277,42 +278,12 @@ public class DockerContainerServiceImpl implements DockerContainerService {
     }
 
     private SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
-        
+        HostCredentials conn = deployAccess.credentials(host);
         return sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort() != null ? host.getSshPort() : 22,
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 command,
                 timeoutMs
         );
-    }
-
-    private String getDecryptedPrivateKey(Host host) {
-        if (host.getSshPrivateKey() == null || host.getSshPrivateKey().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPrivateKey());
-        } catch (Exception e) {
-            log.error("解密私钥失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String getDecryptedPassword(Host host) {
-        if (host.getSshPassword() == null || host.getSshPassword().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPassword());
-        } catch (Exception e) {
-            log.error("解密密码失败: {}", e.getMessage());
-            return null;
-        }
     }
 
     private List<ContainerListVO> parseContainerList(String output) {

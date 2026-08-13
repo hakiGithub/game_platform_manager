@@ -9,6 +9,7 @@ import com.gameplatform.adapter.DeployProgressCallback;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.*;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.entity.Host;
@@ -52,6 +53,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final DeployService deployService;
     private final SshUtil sshUtil;
     private final PluginLifecycleHook pluginLifecycleHook;
+    private final DeploymentAccess deployAccess;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -89,8 +91,8 @@ public class InstanceServiceImpl implements InstanceService {
         // 设置游戏编码（用于插件匹配）
         instance.setGameCode(game.getGameCode());
 
-        // 初始状态为部署中
-        instance.setRunStatus(5);
+        // 初始状态为部署中（安装中）
+        instance.setRunStatus(DeployAdapter.InstanceStatus.INSTALLING.getCode());
         instance.setOnlinePlayers(0);
 
         try {
@@ -116,7 +118,7 @@ public class InstanceServiceImpl implements InstanceService {
             DeployService.DeployContext context = DeployService.DeployContext.builder()
                     .instanceId(instance.getId())
                     .hostId(dto.getHostId())
-                    .deployType(DeployAdapter.DeployType.fromCode(dto.getDeployType()))
+                    .deployType(deployAccess.classify(dto.getDeployType()))
                     .config(buildDeployConfig(instance))
                     .autoRollback(false)
                     .autoStart(true)
@@ -127,7 +129,7 @@ public class InstanceServiceImpl implements InstanceService {
             log.error("触发异步部署失败，实例已创建但部署未启动: instanceId={}", instance.getId(), e);
             // 部署触发失败时标记为异常状态
             try {
-                instance.setRunStatus(2); // error
+                instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
                 instanceMapper.updateById(instance);
             } catch (Exception ex) {
                 log.error("标记实例为异常状态失败: instanceId={}", instance.getId(), ex);
@@ -183,11 +185,8 @@ public class InstanceServiceImpl implements InstanceService {
         // 调用适配器 uninstall 完全清理远程资源（停止 + 删除容器 + 删除工作目录）
         // 忽略卸载失败，继续删除数据库记录，避免残留数据导致无法重新部署
         try {
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             Map<String, Object> config = buildDeployConfig(instance);
             boolean uninstalled = adapter.uninstall(id, config, DeployProgressCallback.NO_OP);
             if (!uninstalled) {
@@ -233,7 +232,8 @@ public class InstanceServiceImpl implements InstanceService {
         metrics.put("runStatus", instance.getRunStatus());
 
         // 仅在实例运行中时拉取动态资源数据
-        if (instance.getRunStatus() == null || instance.getRunStatus() != 1) {
+        if (instance.getRunStatus() == null
+                || instance.getRunStatus() != DeployAdapter.InstanceStatus.RUNNING.getCode()) {
             metrics.put("available", false);
             metrics.put("reason", "实例未运行");
             return metrics;
@@ -241,11 +241,8 @@ public class InstanceServiceImpl implements InstanceService {
 
         metrics.put("available", true);
         try {
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             Map<String, Object> config = buildDeployConfig(instance);
             Map<String, Object> details = adapter.getDetails(id, config);
             if (details != null && !details.isEmpty()) {
@@ -328,20 +325,17 @@ public class InstanceServiceImpl implements InstanceService {
             throw new BusinessException("实例不存在");
         }
         
-        if (instance.getRunStatus() == 1) {
+        if (instance.getRunStatus() == DeployAdapter.InstanceStatus.RUNNING.getCode()) {
             throw new BusinessException("实例已在运行中");
         }
-        
+
         // 更新状态为启动中
-        instanceMapper.updateRunStatus(id, 2);
+        instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.STARTING.getCode());
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -350,14 +344,14 @@ public class InstanceServiceImpl implements InstanceService {
             boolean success = adapter.start(id, config);
             
             if (success) {
-                instanceMapper.updateRunStatus(id, 1);
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.RUNNING.getCode());
                 logService.log(getCurrentUser(), "START", "INSTANCE",
                         "启动实例成功: " + instance.getInstanceName(), "success", null, null);
                 log.info("实例启动成功: {}", instance.getInstanceName());
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStartHooks(id, instance.getGameCode());
             } else {
-                instanceMapper.updateRunStatus(id, 2); // 异常状态
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
                 logService.log(getCurrentUser(), "START", "INSTANCE", 
                         "启动实例失败: " + instance.getInstanceName(), "failure", null, "启动命令执行失败");
                 log.error("实例启动失败: {}", instance.getInstanceName());
@@ -365,7 +359,7 @@ public class InstanceServiceImpl implements InstanceService {
             
             return success;
         } catch (Exception e) {
-            instanceMapper.updateRunStatus(id, 2); // 异常状态
+            instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
             logService.log(getCurrentUser(), "START", "INSTANCE", 
                     "启动实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("启动实例异常: {}", instance.getInstanceName(), e);
@@ -383,20 +377,17 @@ public class InstanceServiceImpl implements InstanceService {
             throw new BusinessException("实例不存在");
         }
         
-        if (instance.getRunStatus() == 0) {
+        if (instance.getRunStatus() == DeployAdapter.InstanceStatus.STOPPED.getCode()) {
             throw new BusinessException("实例已停止");
         }
-        
+
         // 更新状态为停止中
-        instanceMapper.updateRunStatus(id, 3);
+        instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.STOPPING.getCode());
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -405,7 +396,7 @@ public class InstanceServiceImpl implements InstanceService {
             boolean success = adapter.stop(id, config);
             
             if (success) {
-                instanceMapper.updateRunStatus(id, 0);
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.STOPPED.getCode());
                 instanceMapper.updateOnlinePlayers(id, 0);
                 logService.log(getCurrentUser(), "STOP", "INSTANCE",
                         "停止实例成功: " + instance.getInstanceName(), "success", null, null);
@@ -413,7 +404,7 @@ public class InstanceServiceImpl implements InstanceService {
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStopHooks(id, instance.getGameCode());
             } else {
-                instanceMapper.updateRunStatus(id, 2); // 异常状态
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
                 logService.log(getCurrentUser(), "STOP", "INSTANCE", 
                         "停止实例失败: " + instance.getInstanceName(), "failure", null, "停止命令执行失败");
                 log.error("实例停止失败: {}", instance.getInstanceName());
@@ -421,7 +412,7 @@ public class InstanceServiceImpl implements InstanceService {
             
             return success;
         } catch (Exception e) {
-            instanceMapper.updateRunStatus(id, 2); // 异常状态
+            instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
             logService.log(getCurrentUser(), "STOP", "INSTANCE", 
                     "停止实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("停止实例异常: {}", instance.getInstanceName(), e);
@@ -441,11 +432,8 @@ public class InstanceServiceImpl implements InstanceService {
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -454,12 +442,12 @@ public class InstanceServiceImpl implements InstanceService {
             boolean success = adapter.restart(id, config);
             
             if (success) {
-                instanceMapper.updateRunStatus(id, 1);
-                logService.log(getCurrentUser(), "RESTART", "INSTANCE", 
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.RUNNING.getCode());
+                logService.log(getCurrentUser(), "RESTART", "INSTANCE",
                         "重启实例成功: " + instance.getInstanceName(), "success", null, null);
                 log.info("实例重启成功: {}", instance.getInstanceName());
             } else {
-                instanceMapper.updateRunStatus(id, 2); // 异常状态
+                instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
                 logService.log(getCurrentUser(), "RESTART", "INSTANCE", 
                         "重启实例失败: " + instance.getInstanceName(), "failure", null, "重启命令执行失败");
                 log.error("实例重启失败: {}", instance.getInstanceName());
@@ -467,7 +455,7 @@ public class InstanceServiceImpl implements InstanceService {
             
             return success;
         } catch (Exception e) {
-            instanceMapper.updateRunStatus(id, 2); // 异常状态
+            instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
             logService.log(getCurrentUser(), "RESTART", "INSTANCE", 
                     "重启实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("重启实例异常: {}", instance.getInstanceName(), e);
@@ -489,11 +477,8 @@ public class InstanceServiceImpl implements InstanceService {
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -505,7 +490,9 @@ public class InstanceServiceImpl implements InstanceService {
             int dbStatus = instance.getRunStatus();
             int actualStatus = status.getCode();
             
-            if (dbStatus != actualStatus && (actualStatus == 0 || actualStatus == 1)) {
+            if (dbStatus != actualStatus
+                    && (actualStatus == DeployAdapter.InstanceStatus.STOPPED.getCode()
+                    || actualStatus == DeployAdapter.InstanceStatus.RUNNING.getCode())) {
                 instanceMapper.updateRunStatus(id, actualStatus);
                 instance.setRunStatus(actualStatus);
             }
@@ -518,7 +505,7 @@ public class InstanceServiceImpl implements InstanceService {
         } catch (Exception e) {
             log.error("获取实例状态异常: {}", instance.getInstanceName(), e);
             // 标记为异常状态
-            instance.setRunStatus(2);
+            instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
         }
         
         return convertToVO(instance);
@@ -533,11 +520,8 @@ public class InstanceServiceImpl implements InstanceService {
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -566,11 +550,8 @@ public class InstanceServiceImpl implements InstanceService {
         
         try {
             // 获取适配器
-            String deployType = instance.getDeployType();
-            if (deployType == null || deployType.isEmpty()) {
-                deployType = "native";
-            }
-            DeployAdapter adapter = adapterFactory.getAdapter(deployType);
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
             
             // 获取配置（使用完整部署配置，包含 installPath/workDir 等运行时元数据）
             Map<String, Object> config = buildDeployConfig(instance);
@@ -702,12 +683,12 @@ public class InstanceServiceImpl implements InstanceService {
         if (instance == null) {
             throw new BusinessException("实例不存在");
         }
-        if (instance.getRunStatus() != 2) {
+        if (instance.getRunStatus() != DeployAdapter.InstanceStatus.ERROR.getCode()) {
             throw new BusinessException("只有异常状态的实例可以重试部署");
         }
 
-        // 标记为部署中
-        instance.setRunStatus(5);
+        // 标记为部署中（安装中）
+        instance.setRunStatus(DeployAdapter.InstanceStatus.INSTALLING.getCode());
         instanceMapper.updateById(instance);
 
         // 先清理旧容器（忽略失败）
@@ -725,7 +706,7 @@ public class InstanceServiceImpl implements InstanceService {
         DeployService.DeployContext context = DeployService.DeployContext.builder()
                 .instanceId(instance.getId())
                 .hostId(instance.getHostId())
-                .deployType(DeployAdapter.DeployType.fromCode(instance.getDeployType()))
+                .deployType(deployAccess.classify(instance.getDeployType()))
                 .config(buildDeployConfig(instance))
                 .autoRollback(false)
                 .autoStart(true)
@@ -738,7 +719,8 @@ public class InstanceServiceImpl implements InstanceService {
     public int recoverDeployingInstances() {
         List<GameInstance> deploying = instanceMapper.selectList(
                 new LambdaQueryWrapper<GameInstance>()
-                        .eq(GameInstance::getRunStatus, 5));
+                        .eq(GameInstance::getRunStatus,
+                                DeployAdapter.InstanceStatus.INSTALLING.getCode()));
 
         if (deploying.isEmpty()) {
             log.info("手动恢复：未发现 run_status=5 的实例");
@@ -749,7 +731,7 @@ public class InstanceServiceImpl implements InstanceService {
         int count = 0;
         for (GameInstance instance : deploying) {
             try {
-                instance.setRunStatus(2); // error
+                instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
                 int rows = instanceMapper.updateById(instance);
                 if (rows > 0) {
                     count++;
@@ -784,26 +766,14 @@ public class InstanceServiceImpl implements InstanceService {
             vo.setIconUrl(game.getIconUrl());
         }
 
-        // 映射 runStatus 到 status 字符串
-        vo.setStatus(mapRunStatusToString(instance.getRunStatus()));
+        // 状态派生统一出自 InstanceStatus 枚举（ADR-0005）：status=wireKey，runStatusDesc=description
+        DeployAdapter.InstanceStatus status = instance.getRunStatus() == null
+                ? null
+                : DeployAdapter.InstanceStatus.fromCode(instance.getRunStatus());
+        vo.setStatus(status != null ? status.getWireKey() : "unknown");
+        vo.setRunStatusDesc(status != null ? status.getDescription() : "未知");
 
         return vo;
-    }
-
-    /**
-     * 将 runStatus 整型映射为前端使用的 status 字符串
-     */
-    private String mapRunStatusToString(Integer runStatus) {
-        if (runStatus == null) return "unknown";
-        return switch (runStatus) {
-            case 0 -> "stopped";
-            case 1 -> "running";
-            case 2 -> "error";
-            case 3 -> "stopping";
-            case 5 -> "deploying";
-            case 6 -> "starting";
-            default -> "unknown";
-        };
     }
 
     /**

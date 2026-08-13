@@ -25,16 +25,17 @@ export const useInstanceStore = defineStore("instance", () => {
   });
 
   // ========== 计算属性 ==========
+  // status 为 InstanceStatus wireKey 字符串（ADR-0005）
   const runningInstances = computed(() =>
-    instanceList.value.filter((i) => i.status === 1),
+    instanceList.value.filter((i) => i.status === "running"),
   );
 
   const stoppedInstances = computed(() =>
-    instanceList.value.filter((i) => i.status === 0),
+    instanceList.value.filter((i) => i.status === "stopped"),
   );
 
   const errorInstances = computed(() =>
-    instanceList.value.filter((i) => i.status === 2),
+    instanceList.value.filter((i) => i.status === "error"),
   );
 
   const runningCount = computed(() => runningInstances.value.length);
@@ -218,38 +219,6 @@ export const useInstanceStore = defineStore("instance", () => {
     }
   }
 
-  /**
-   * 获取实例状态文本
-   * @param {number} status - 状态码
-   * @returns {string}
-   */
-  function getStatusText(status) {
-    const statusMap = {
-      0: "已停止",
-      1: "运行中",
-      2: "异常",
-      3: "部署中",
-      4: "卸载中",
-    };
-    return statusMap[status] || "未知";
-  }
-
-  /**
-   * 获取实例状态标签类型
-   * @param {number} status - 状态码
-   * @returns {string}
-   */
-  function getStatusType(status) {
-    const typeMap = {
-      0: "info",
-      1: "success",
-      2: "danger",
-      3: "warning",
-      4: "warning",
-    };
-    return typeMap[status] || "info";
-  }
-
   return {
     // 状态
     instanceList,
@@ -280,7 +249,5 @@ export const useInstanceStore = defineStore("instance", () => {
     clearCurrentInstance,
     clearAll,
     updateInstanceStatusInList,
-    getStatusText,
-    getStatusType,
   };
 });

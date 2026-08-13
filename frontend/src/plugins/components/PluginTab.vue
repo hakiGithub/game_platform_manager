@@ -12,6 +12,7 @@ import { ElMessage } from "element-plus";
 import PluginContainer from "./PluginContainer.vue";
 import { usePluginStore } from "../stores/pluginStore";
 import { getInstanceList } from "@/api/instance";
+import { statusType } from "@/utils/instanceStatus";
 import type { PluginMenuItem, ReadyPayload } from "../types/messageTypes";
 
 // Props（由路由 props 注入）
@@ -215,42 +216,6 @@ function handleSelectInstance(instance: any) {
   });
 }
 
-/**
- * 实例状态标签类型
- */
-function getInstanceStatusType(runStatus: number) {
-  switch (runStatus) {
-    case 1:
-      return "success";
-    case 0:
-      return "info";
-    case 2:
-      return "danger";
-    case 5:
-      return "warning";
-    default:
-      return "info";
-  }
-}
-
-/**
- * 实例状态文本
- */
-function getInstanceStatusText(runStatus: number) {
-  switch (runStatus) {
-    case 1:
-      return "运行中";
-    case 0:
-      return "已停止";
-    case 2:
-      return "异常";
-    case 5:
-      return "部署中";
-    default:
-      return "未知";
-  }
-}
-
 // 监听 gameCode 变化，加载 manifest 并检查实例选择
 watch(
   () => props.gameCode,
@@ -364,8 +329,8 @@ watch(
         <el-table-column prop="hostIp" label="主机IP" width="140" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getInstanceStatusType(row.runStatus)" size="small">
-              {{ getInstanceStatusText(row.runStatus) }}
+            <el-tag :type="statusType(row.status)" size="small">
+              {{ row.runStatusDesc }}
             </el-tag>
           </template>
         </el-table-column>

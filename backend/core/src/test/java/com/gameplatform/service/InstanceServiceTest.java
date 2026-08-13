@@ -76,6 +76,9 @@ class InstanceServiceTest {
     @Mock
     private com.gameplatform.service.DeployService deployService;
 
+    @Mock
+    private com.gameplatform.deploy.DeploymentAccess deployAccess;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
@@ -87,6 +90,10 @@ class InstanceServiceTest {
 
     @BeforeEach
     void setUp() {
+        // classify 真实语义由 DeploymentAccessTest 锁定，此处按实例 deployType 原样返回
+        lenient().when(deployAccess.classify(any()))
+                .thenAnswer(inv -> DeployAdapter.DeployType.fromCode(inv.getArgument(0)));
+
         // Given: 初始化测试数据
         testHost = new Host();
         testHost.setId(1L);
@@ -179,7 +186,8 @@ class InstanceServiceTest {
         BusinessException exception = assertThrows(BusinessException.class, () -> {
             instanceService.createInstance(createDTO);
         });
-        assertEquals("该主机下实例名称已存在", exception.getMessage());
+        assertEquals("该主机下实例名称「" + createDTO.getInstanceName() + "」已存在，请更换名称后重试",
+                exception.getMessage());
         verify(instanceMapper).selectByHostIdAndInstanceName(createDTO.getHostId(), createDTO.getInstanceName());
         verify(instanceMapper, never()).insert(any(GameInstance.class));
     }
@@ -269,7 +277,8 @@ class InstanceServiceTest {
         BusinessException exception = assertThrows(BusinessException.class, () -> {
             instanceService.updateInstance(dto);
         });
-        assertEquals("该主机下实例名称已被使用", exception.getMessage());
+        assertEquals("该主机下实例名称「其他实例」已被使用，请更换名称",
+                exception.getMessage());
     }
 
     @Test
@@ -280,7 +289,7 @@ class InstanceServiceTest {
         testInstance.setDeployType("docker");
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
         doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
@@ -303,7 +312,7 @@ class InstanceServiceTest {
         testInstance.setDeployType("docker");
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
         doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
@@ -438,7 +447,7 @@ class InstanceServiceTest {
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(instanceMapper.updateRunStatus(1L, 2)).thenReturn(1);
         when(instanceMapper.updateRunStatus(1L, 1)).thenReturn(1);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.start(eq(1L), anyMap())).thenReturn(true);
         doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
@@ -490,7 +499,7 @@ class InstanceServiceTest {
         when(instanceMapper.updateRunStatus(1L, 3)).thenReturn(1);
         when(instanceMapper.updateRunStatus(1L, 0)).thenReturn(1);
         when(instanceMapper.updateOnlinePlayers(1L, 0)).thenReturn(1);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.stop(eq(1L), anyMap())).thenReturn(true);
         doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
@@ -547,7 +556,7 @@ class InstanceServiceTest {
         
         when(instanceMapper.selectById(1L)).thenReturn(runningInstance);
         when(instanceMapper.updateRunStatus(eq(1L), anyInt())).thenReturn(1);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.restart(eq(1L), anyMap())).thenReturn(true);
         doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
@@ -567,7 +576,7 @@ class InstanceServiceTest {
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
-        when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.getStatus(eq(1L), anyMap())).thenReturn(DeployAdapter.InstanceStatus.RUNNING);
 
         // When
@@ -608,9 +617,22 @@ class InstanceServiceTest {
         result = instanceService.getInstanceById(1L);
         assertEquals("运行中", result.getRunStatusDesc());
 
-        // 测试异常状态
-        testInstance.setRunStatus(2);
+        // 测试异常状态（ADR-0005：ERROR=4）
+        testInstance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
         result = instanceService.getInstanceById(1L);
         assertEquals("异常", result.getRunStatusDesc());
+
+        // 测试启动中状态（ADR-0005：STARTING=2）
+        testInstance.setRunStatus(DeployAdapter.InstanceStatus.STARTING.getCode());
+        result = instanceService.getInstanceById(1L);
+        assertEquals("启动中", result.getRunStatusDesc());
+
+        // 测试安装中/更新中状态（ADR-0005：INSTALLING=5 / UPDATING=6）
+        testInstance.setRunStatus(DeployAdapter.InstanceStatus.INSTALLING.getCode());
+        result = instanceService.getInstanceById(1L);
+        assertEquals("安装中", result.getRunStatusDesc());
+        testInstance.setRunStatus(DeployAdapter.InstanceStatus.UPDATING.getCode());
+        result = instanceService.getInstanceById(1L);
+        assertEquals("更新中", result.getRunStatusDesc());
     }
 }

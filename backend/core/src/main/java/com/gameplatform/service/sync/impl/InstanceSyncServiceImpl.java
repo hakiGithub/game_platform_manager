@@ -1,6 +1,8 @@
 package com.gameplatform.service.sync.impl;
 
+import com.gameplatform.adapter.DeployAdapter.DeployType;
 import com.gameplatform.config.InstanceSyncProperties;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
@@ -42,10 +44,12 @@ public class InstanceSyncServiceImpl implements InstanceSyncService {
     private static final String LOG_PREFIX = "[InstanceSync]";
 
     /**
-     * Docker 类部署类型常量
+     * Docker 类部署类型代码（源自 DeployType 枚举，供 SQL 查询使用；
+     * 运行时分类判定统一走 {@link DeploymentAccess#isDockerDeploy}）
      */
     private static final List<String> DOCKER_DEPLOY_TYPES = List.of(
-            "docker", "docker-compose", "linuxgsm-docker"
+            DeployType.DOCKER.getCode(), DeployType.DOCKER_COMPOSE.getCode(),
+            DeployType.LINUX_GSM_DOCKER.getCode()
     );
 
     private final HostMapper hostMapper;
@@ -53,17 +57,20 @@ public class InstanceSyncServiceImpl implements InstanceSyncService {
     private final DockerInstanceSyncStrategy dockerStrategy;
     private final NativeInstanceSyncStrategy nativeStrategy;
     private final InstanceSyncProperties properties;
+    private final DeploymentAccess deployAccess;
 
     public InstanceSyncServiceImpl(HostMapper hostMapper,
                                     GameInstanceMapper instanceMapper,
                                     DockerInstanceSyncStrategy dockerStrategy,
                                     NativeInstanceSyncStrategy nativeStrategy,
-                                    InstanceSyncProperties properties) {
+                                    InstanceSyncProperties properties,
+                                    DeploymentAccess deployAccess) {
         this.hostMapper = hostMapper;
         this.instanceMapper = instanceMapper;
         this.dockerStrategy = dockerStrategy;
         this.nativeStrategy = nativeStrategy;
         this.properties = properties;
+        this.deployAccess = deployAccess;
     }
 
     @Override
@@ -131,7 +138,7 @@ public class InstanceSyncServiceImpl implements InstanceSyncService {
             List<GameInstance> all = instanceMapper.selectByHostId(host.getId());
             nativeInstances = all == null ? List.of() :
                     all.stream()
-                            .filter(i -> !DOCKER_DEPLOY_TYPES.contains(i.getDeployType()))
+                            .filter(i -> deployAccess.isNativeDeploy(i.getDeployType()))
                             .toList();
         } catch (Exception e) {
             log.warn("{} 主机 {} ({}): 查询 Native 类实例失败: {}",

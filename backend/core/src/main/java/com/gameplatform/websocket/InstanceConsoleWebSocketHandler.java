@@ -1,16 +1,14 @@
 package com.gameplatform.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.channel.ChannelShell;
-import org.apache.sshd.client.session.ClientSession;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -34,17 +32,19 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
 
     private final GameInstanceMapper instanceMapper;
     private final HostMapper hostMapper;
+    private final DeploymentAccess deployAccess;
+    private final ConnectionLifecycle lifecycle;
     private final ObjectMapper objectMapper;
 
     // 存储会话与控制台连接的映射
     private final ConcurrentHashMap<String, ConsoleConnection> consoleConnections = new ConcurrentHashMap<>();
 
-    // 线程池用于处理控制台输入输出
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
-
-    public InstanceConsoleWebSocketHandler(GameInstanceMapper instanceMapper, HostMapper hostMapper) {
+    public InstanceConsoleWebSocketHandler(GameInstanceMapper instanceMapper, HostMapper hostMapper,
+                                           DeploymentAccess deployAccess, ConnectionLifecycle lifecycle) {
         this.instanceMapper = instanceMapper;
         this.hostMapper = hostMapper;
+        this.deployAccess = deployAccess;
+        this.lifecycle = lifecycle;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -81,6 +81,7 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
         try {
             ConsoleConnection connection = createConsoleConnection(instance, host, session);
             consoleConnections.put(session.getId(), connection);
+            lifecycle.register(session.getId(), connection);
 
             // 发送连接成功消息
             sendMessage(session, new WsMessage("connected", "控制台连接成功"));
@@ -148,66 +149,27 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         log.info("实例控制台WebSocket连接关闭: {}, status={}", session.getId(), status);
 
-        ConsoleConnection connection = consoleConnections.remove(session.getId());
-        if (connection != null) {
-            connection.close();
-        }
+        consoleConnections.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.error("实例控制台WebSocket传输错误: {}", session.getId(), exception);
 
-        ConsoleConnection connection = consoleConnections.remove(session.getId());
-        if (connection != null) {
-            connection.close();
-        }
+        consoleConnections.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     /**
-     * 创建控制台连接
+     * 创建控制台连接（建连+认证统一走 DeploymentAccess）
      */
     private ConsoleConnection createConsoleConnection(GameInstance instance, Host host,
                                                       WebSocketSession webSocketSession) throws Exception {
-        SshClient client = SshClient.setUpDefaultClient();
-        client.start();
-
-        int port = host.getSshPort() != null ? host.getSshPort() : 22;
-        ClientSession session = client.connect(host.getSshUser(), host.getIpAddress(), port)
-                .verify(10000, TimeUnit.MILLISECONDS)
-                .getSession();
-
-        // 认证：优先私钥，其次密码
-        String privateKey = null;
-        if (host.getSshPrivateKey() != null && !host.getSshPrivateKey().isEmpty()) {
-            privateKey = AesUtil.decrypt(host.getSshPrivateKey());
-        }
-        if (privateKey != null && !privateKey.isEmpty()) {
-            // 解析私钥并添加为公钥认证凭据
-            try {
-                java.security.KeyPair keyPair = parsePrivateKey(privateKey);
-                if (keyPair != null) {
-                    session.addPublicKeyIdentity(keyPair);
-                }
-            } catch (Exception e) {
-                log.warn("私钥解析失败，回退到密码认证: {}", e.getMessage());
-            }
-        }
-        if (host.getSshPassword() != null && !host.getSshPassword().isEmpty()) {
-            String password = AesUtil.decrypt(host.getSshPassword());
-            if (password != null && !password.isEmpty()) {
-                session.addPasswordIdentity(password);
-            }
-        }
-
-        if (!session.auth().verify(10000, TimeUnit.MILLISECONDS).isSuccess()) {
-            throw new RuntimeException("SSH认证失败：用户名=" + host.getSshUser()
-                    + "，主机=" + host.getIpAddress() + ":" + port
-                    + "，请检查主机配置的密码或私钥");
-        }
+        DeploymentAccess.SshConnection ssh = deployAccess.connect(host);
 
         // 创建Shell通道
-        ChannelShell channel = session.createShellChannel();
+        ChannelShell channel = ssh.session().createShellChannel();
         channel.open().verify(10000, TimeUnit.MILLISECONDS);
 
         // 进入实例安装目录
@@ -218,29 +180,7 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
             stdin.flush();
         }
 
-        return new ConsoleConnection(client, session, channel, webSocketSession, executorService);
-    }
-
-    /**
-     * 解析私钥字符串为 KeyPair
-     * 复用 SshUtil 的解析逻辑（通过 Apache MINA SSHD 的 KeyPairResourceParser）
-     */
-    private java.security.KeyPair parsePrivateKey(String privateKey) throws Exception {
-        if (privateKey == null || privateKey.isEmpty()) {
-            return null;
-        }
-        org.apache.sshd.common.config.keys.loader.KeyPairResourceParser parser =
-                org.apache.sshd.common.config.keys.loader.KeyPairResourceParser.aggregate(
-                        org.apache.sshd.common.config.keys.loader.openssh.OpenSSHKeyPairResourceParser.INSTANCE,
-                        org.apache.sshd.common.config.keys.loader.pem.PEMResourceParserUtils.PROXY
-                );
-        org.apache.sshd.common.NamedResource resourceKey = org.apache.sshd.common.NamedResource.ofName("private-key");
-        java.util.Collection<java.security.KeyPair> keyPairs = parser.loadKeyPairs(
-                null, resourceKey, null, privateKey);
-        if (keyPairs == null || keyPairs.isEmpty()) {
-            return null;
-        }
-        return keyPairs.iterator().next();
+        return new ConsoleConnection(ssh, channel, webSocketSession, lifecycle.executor());
     }
 
     /**
@@ -311,9 +251,8 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
     /**
      * 控制台连接封装类
      */
-    private static class ConsoleConnection {
-        private final SshClient client;
-        private final ClientSession session;
+    private static class ConsoleConnection implements AutoCloseable {
+        private final DeploymentAccess.SshConnection ssh;
         private final ChannelShell channel;
         private final WebSocketSession webSocketSession;
         private final ExecutorService executorService;
@@ -321,10 +260,9 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
 
         private Future<?> stdoutReader;
 
-        public ConsoleConnection(SshClient client, ClientSession session, ChannelShell channel,
+        public ConsoleConnection(DeploymentAccess.SshConnection ssh, ChannelShell channel,
                                 WebSocketSession webSocketSession, ExecutorService executorService) {
-            this.client = client;
-            this.session = session;
+            this.ssh = ssh;
             this.channel = channel;
             this.webSocketSession = webSocketSession;
             this.executorService = executorService;
@@ -423,7 +361,7 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
          * 是否已连接
          */
         public boolean isConnected() {
-            return connected.get() && session.isOpen() && channel.isOpen();
+            return connected.get() && ssh.session().isOpen() && channel.isOpen();
         }
 
         /**
@@ -437,24 +375,15 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
                 stdoutReader.cancel(true);
             }
 
-            // 关闭通道和会话
+            // 关闭通道
             try {
                 channel.close();
             } catch (Exception e) {
                 log.debug("关闭通道失败: {}", e.getMessage());
             }
 
-            try {
-                session.close();
-            } catch (Exception e) {
-                log.debug("关闭会话失败: {}", e.getMessage());
-            }
-
-            try {
-                client.stop();
-            } catch (Exception e) {
-                log.debug("停止客户端失败: {}", e.getMessage());
-            }
+            // 释放会话与客户端
+            ssh.close();
 
             log.info("控制台连接已关闭");
         }

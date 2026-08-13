@@ -1,6 +1,7 @@
 package com.gameplatform.listener;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.mapper.GameInstanceMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +41,8 @@ public class DeployRecoveryListener implements ApplicationRunner {
         try {
             deploying = instanceMapper.selectList(
                     new LambdaQueryWrapper<GameInstance>()
-                            .eq(GameInstance::getRunStatus, 5));
+                            .eq(GameInstance::getRunStatus,
+                                    DeployAdapter.InstanceStatus.INSTALLING.getCode()));
         } catch (Exception e) {
             log.error("DeployRecoveryListener 查询部署中实例失败", e);
             return;
@@ -59,7 +61,7 @@ public class DeployRecoveryListener implements ApplicationRunner {
             try {
                 // 使用 TransactionTemplate 显式控制事务，确保更新提交
                 Boolean result = transactionTemplate.execute(status -> {
-                    instance.setRunStatus(2); // error
+                    instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
                     int rows = instanceMapper.updateById(instance);
                     return rows > 0;
                 });

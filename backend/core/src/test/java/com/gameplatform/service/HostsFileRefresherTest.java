@@ -1,5 +1,6 @@
 package com.gameplatform.service;
 
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.util.AesUtil;
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,10 +38,6 @@ class HostsFileRefresherTest {
     @Mock
     private SshUtil sshUtil;
 
-    @Mock
-    private AesUtil aesUtil;
-
-    @InjectMocks
     private HostsFileRefresher refresher;
 
     private MockedStatic<AesUtil> aesUtilMockedStatic;
@@ -65,6 +61,9 @@ class HostsFileRefresherTest {
         aesUtilMockedStatic.when(() -> AesUtil.decrypt("enc-pwd")).thenReturn("decrypted-pwd");
         aesUtilMockedStatic.when(() -> AesUtil.decrypt("enc-key")).thenReturn("decrypted-key");
         when(hostMapper.selectById(1L)).thenReturn(testHost);
+
+        // 凭据解析走真实 DeploymentAccess（其内部调用被 mock 的静态 AesUtil.decrypt）
+        refresher = new HostsFileRefresher(hostMapper, sshUtil, new DeploymentAccess(hostMapper));
     }
 
     @AfterEach

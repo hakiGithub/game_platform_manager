@@ -10,6 +10,7 @@ import {
   restartInstance,
 } from "@/api/instance";
 import { getOperationLogs } from "@/api/system";
+import { statusType } from "@/utils/instanceStatus";
 
 const router = useRouter();
 
@@ -97,7 +98,7 @@ async function fetchDashboardData() {
           ? "warning"
           : "danger";
 
-    // 处理实例数据 - 后端 status 为字符串：running/stopped/error/starting/stopping/deploying
+    // 处理实例数据 - 后端 status 为 wireKey 字符串：running/stopped/error/starting/stopping/installing/updating
     const instancesList = instances.records || [];
     const runningInstances = instancesList.filter((i) => i.status === "running").length;
     const errorInstances = instancesList.filter((i) => i.status === "error").length;
@@ -181,32 +182,6 @@ function getProgressColor(value) {
   if (value >= 80) return "var(--el-color-danger)";
   if (value >= 60) return "var(--el-color-warning)";
   return "var(--el-color-success)";
-}
-
-// 获取状态标签类型（与实例列表保持一致，使用字符串 status）
-function getStatusType(status) {
-  const types = {
-    running: "success",
-    stopped: "info",
-    error: "danger",
-    starting: "warning",
-    stopping: "warning",
-    deploying: "warning",
-  };
-  return types[status] || "info";
-}
-
-// 获取状态文本
-function getStatusText(status) {
-  const texts = {
-    running: "运行中",
-    stopped: "已停止",
-    error: "异常",
-    starting: "启动中",
-    stopping: "停止中",
-    deploying: "部署中",
-  };
-  return texts[status] || "未知";
 }
 
 // 从 portConfig 中提取主端口用于表格展示
@@ -534,8 +509,8 @@ onBeforeUnmount(() => {
             <el-table-column prop="hostName" label="主机" width="120" />
             <el-table-column label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" size="small">
-                  {{ getStatusText(row.status) }}
+                <el-tag :type="statusType(row.status)" size="small">
+                  {{ row.runStatusDesc }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -590,7 +565,7 @@ onBeforeUnmount(() => {
                 </template>
                 <template v-else>
                   <el-tag type="info" size="small">{{
-                    getStatusText(row.status)
+                    row.runStatusDesc
                   }}</el-tag>
                 </template>
               </template>

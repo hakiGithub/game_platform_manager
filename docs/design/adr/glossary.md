@@ -13,6 +13,18 @@
   - **用途**：前端 `pluginStore.capabilities` 计算属性；未来可用于插件市场过滤、实例列表能力图标。
   - **引入**：ADR-0001
 
+- **连接生命周期（ConnectionLifecycle）**
+  - **定义**：websocket 包内的深模块，统一承载 6 个 WebSocket handler 共享的有界线程池、连接注册表（register/unregister，自动清理 SSH 连接与通道）与心跳。连接建立复用 `DeploymentAccess.connect`。
+  - **引入**：架构评审 2026-08-13（候选 4）
+
+### D
+
+- **DeploymentAccess（部署接入）**
+  - **定义**：core 模块的部署接入深模块（`com.gameplatform.deploy`）。唯一权威负责 deployType 分类归一（null/空/"native" → LINUX_GSM，未知非空值抛 `BusinessException`）与 Host→SSH 凭据解析（解密私钥/密码、端口默认 22、建连认证、私钥优先密码回退）。
+  - **方法**：`classify / isDockerDeploy / isNativeDeploy / credentials(Host|hostId) / connect(Host)`。
+  - **内部接缝**：SshClient 工厂可注入，供测试使用假替身。
+  - **引入**：架构评审 2026-08-13（候选 2）
+
 ### E
 
 - **Extension Point（扩展点）**
@@ -34,6 +46,12 @@
   - **方法**：`getGameCode() / getGameName() / getVersion() / getDescription() / getManifest() / getConfigFields() / onLoad() / onUnload() / onInstanceCreate() / onInstanceStart() / onInstanceStop() / onInstanceDelete() / onLoadError() / getIcon() / getFrontendEntry() / getBasePackage() / getDependencies()`。
   - **演变**：ADR-0001 新增 `getMenus()` default 方法。
   - **引入**：项目初始（v2.0.0 重构）
+
+### L
+
+- **LogTailer**
+  - **定义**：websocket 包内的日志流深模块，把「轮询获取日志 + 增量 diff 推送」循环抽成可测模块；接受 `LogProvider` 适配器接口（现成实现包装 `DeployAdapter.getLogs`）。不改变获取语义，只收敛结构。
+  - **引入**：架构评审 2026-08-13（候选 4）
 
 ### M
 
@@ -57,6 +75,26 @@
   - **约束**：同插件内 `path` 唯一；`requireInstance` 默认 `true`。
   - **引入**：ADR-0001
 
+### H
+
+- **HostCredentials**
+  - **定义**：`DeploymentAccess.credentials` 的返回结构，承载已解密的主机 SSH 凭据（host / port / username / privateKey / password）。
+  - **引入**：架构评审 2026-08-13（候选 2）
+
+### I
+
+- **InstanceStatus**
+  - **定义**：`DeployAdapter.InstanceStatus` 枚举（0-7），`game_instance.run_status` 列的唯一权威词汇表：0=STOPPED、1=RUNNING、2=STARTING、3=STOPPING、4=ERROR、5=INSTALLING、6=UPDATING、7=NOT_INSTALLED。
+  - **派生字段**：`wireKey`（英文键，前端过滤用）与 `description`（中文文本，唯一文本源）均由枚举派生；线上契约三字段 `runStatus`（数字）/`runStatusDesc`（description）/`status`（wireKey）在 `convertToVO` 单点填充。
+  - **引入**：ADR-0005
+
+- **`isLanHost`**
+  - **定义**：`Host` 实体的布尔字段，标记主机是否处于局域网（相对平台而言）。
+  - **语义**：作为"平台代劳下载/解压/推送补丁"的硬开关。`true` 允许平台跨网代劳（含容器场景）；`false` 时目标主机必须能自治（curl/wget + 解压工具齐全），不能自治则报错，平台不跨公网代劳。
+  - **归属**：`Host` 实体属性（非任务参数），通过 `HostQueryService.getHostById()` 返回的 `HostVO` 透传给插件。
+  - **默认值**：`false`（谨慎原则：新主机默认按公网处理）。
+  - **引入**：ADR-0004
+
 ### R
 
 - **`requireInstance`**
@@ -65,6 +103,12 @@
   - **前端消费**：`PluginTab.vue` 的 `currentMenuRequireInstance` 计算属性依据此字段决定是否弹出实例选择对话框。
   - **演变**：ADR-0001 前由 `buildDefaultMenus` 在主应用侧设置；ADR-0001 后改由插件在 `PluginMenuDeclaration` 中显式声明。
   - **引入**：项目初始（字段已存在）；**职责迁移于**：ADR-0001
+
+### W
+
+- **wireKey**
+  - **定义**：`InstanceStatus` 枚举的英文键字段（`stopped / running / starting / stopping / error / installing / updating / not_installed`），序列化为 `InstanceVO.status`，供前端过滤与颜色映射使用。
+  - **引入**：ADR-0005
 
 ## 缩写
 

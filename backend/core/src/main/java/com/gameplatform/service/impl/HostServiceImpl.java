@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
@@ -40,6 +42,7 @@ public class HostServiceImpl implements HostService {
     private final HostMapper hostMapper;
     private final LogService logService;
     private final SshUtil sshUtil;
+    private final DeploymentAccess deployAccess;
 
     /**
      * 加密密钥(生产环境应从配置读取)
@@ -67,6 +70,8 @@ public class HostServiceImpl implements HostService {
         host.setSshUser(dto.getSshUsername());
         host.setTags(dto.getTags());
         host.setRemark(dto.getRemark());
+        // 局域网标识：DTO 未传时默认 false（详见 ADR-0004）
+        host.setIsLanHost(Boolean.TRUE.equals(dto.getIsLanHost()));
 
         // 加密SSH密码
         if (dto.getSshPassword() != null && !dto.getSshPassword().isEmpty()) {
@@ -123,6 +128,9 @@ public class HostServiceImpl implements HostService {
         }
         if (dto.getRemark() != null) {
             host.setRemark(dto.getRemark());
+        }
+        if (dto.getIsLanHost() != null) {
+            host.setIsLanHost(dto.getIsLanHost());
         }
 
         // 加密SSH密码
@@ -206,25 +214,16 @@ public class HostServiceImpl implements HostService {
         log.info("测试SSH连接: {}@{}:{}", host.getSshUser(), host.getIpAddress(), host.getSshPort());
 
         try {
-            // 解密私钥
-            String privateKey = null;
-            if (StrUtil.isNotBlank(host.getSshPrivateKey())) {
-                privateKey = decrypt(host.getSshPrivateKey());
-            }
-
-            // 解密密码
-            String password = null;
-            if (StrUtil.isNotBlank(host.getSshPassword())) {
-                password = decrypt(host.getSshPassword());
-            }
+            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
+            HostCredentials conn = deployAccess.credentials(host);
 
             // 测试SSH连接
             boolean connected = sshUtil.testConnection(
-                    host.getIpAddress(),
-                    host.getSshPort(),
-                    host.getSshUser(),
-                    privateKey,
-                    password,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
+                    conn.password(),
                     SSH_TIMEOUT
             );
 
@@ -252,25 +251,16 @@ public class HostServiceImpl implements HostService {
         log.info("刷新主机状态: {}", host.getHostName());
 
         try {
-            // 解密私钥
-            String privateKey = null;
-            if (StrUtil.isNotBlank(host.getSshPrivateKey())) {
-                privateKey = decrypt(host.getSshPrivateKey());
-            }
-
-            // 解密密码
-            String password = null;
-            if (StrUtil.isNotBlank(host.getSshPassword())) {
-                password = decrypt(host.getSshPassword());
-            }
+            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
+            HostCredentials conn = deployAccess.credentials(host);
 
             // 获取主机资源信息
             SshUtil.ResourceInfo resourceInfo = sshUtil.getResourceInfo(
-                    host.getIpAddress(),
-                    host.getSshPort(),
-                    host.getSshUser(),
-                    privateKey,
-                    password
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
+                    conn.password()
             );
 
             if (resourceInfo.isSuccess()) {
@@ -326,6 +316,7 @@ public class HostServiceImpl implements HostService {
         vo.setDiskUsage(host.getDiskUsage());
         vo.setLastCheckTime(host.getLastCheckTime());
         vo.setRemark(host.getRemark());
+        vo.setIsLanHost(host.getIsLanHost());
         vo.setCreateTime(host.getCreateTime());
         vo.setUpdateTime(host.getUpdateTime());
         // 不返回敏感信息
@@ -337,13 +328,6 @@ public class HostServiceImpl implements HostService {
      */
     private String encrypt(String content) {
         return SecureUtil.aes(ENCRYPT_KEY.getBytes()).encryptBase64(content);
-    }
-
-    /**
-     * 解密
-     */
-    private String decrypt(String encrypted) {
-        return SecureUtil.aes(ENCRYPT_KEY.getBytes()).decryptStr(encrypted);
     }
 
     /**
@@ -391,25 +375,16 @@ public class HostServiceImpl implements HostService {
         log.info("检查主机端口占用: {} - port={}", host.getHostName(), port);
 
         try {
-            // 解密私钥
-            String privateKey = null;
-            if (StrUtil.isNotBlank(host.getSshPrivateKey())) {
-                privateKey = decrypt(host.getSshPrivateKey());
-            }
-
-            // 解密密码
-            String password = null;
-            if (StrUtil.isNotBlank(host.getSshPassword())) {
-                password = decrypt(host.getSshPassword());
-            }
+            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
+            HostCredentials conn = deployAccess.credentials(host);
 
             // 通过SSH检查端口占用
             SshUtil.PortCheckResult result = sshUtil.checkPort(
-                    host.getIpAddress(),
-                    host.getSshPort(),
-                    host.getSshUser(),
-                    privateKey,
-                    password,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
+                    conn.password(),
                     port
             );
 
@@ -437,25 +412,16 @@ public class HostServiceImpl implements HostService {
         log.info("获取主机详细资源信息: {}", host.getHostName());
 
         try {
-            // 解密私钥
-            String privateKey = null;
-            if (StrUtil.isNotBlank(host.getSshPrivateKey())) {
-                privateKey = decrypt(host.getSshPrivateKey());
-            }
-
-            // 解密密码
-            String password = null;
-            if (StrUtil.isNotBlank(host.getSshPassword())) {
-                password = decrypt(host.getSshPassword());
-            }
+            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
+            HostCredentials conn = deployAccess.credentials(host);
 
             // 获取主机详细资源信息
             SshUtil.ResourceInfo resourceInfo = sshUtil.getResourceInfo(
-                    host.getIpAddress(),
-                    host.getSshPort(),
-                    host.getSshUser(),
-                    privateKey,
-                    password
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
+                    conn.password()
             );
 
             if (resourceInfo.isSuccess()) {

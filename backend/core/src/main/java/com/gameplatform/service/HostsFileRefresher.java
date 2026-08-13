@@ -1,9 +1,10 @@
 package com.gameplatform.service;
 
 import cn.hutool.core.util.StrUtil;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostsRefreshPreview;
 import com.gameplatform.vo.HostsRefreshResult;
@@ -40,7 +41,7 @@ public class HostsFileRefresher {
 
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
-    private final AesUtil aesUtil;
+    private final DeploymentAccess deployAccess;
 
     /**
      * 系统别名集合 - 这些域名不会被改为 LAN IP
@@ -67,7 +68,7 @@ public class HostsFileRefresher {
      */
     public HostsRefreshPreview previewRefresh(Long hostId) {
         Host host = loadHost(hostId);
-        SshCredentials creds = decryptCredentials(host);
+        HostCredentials creds = deployAccess.credentials(host);
 
         // 1. 读取 /etc/hosts
         String hostsContent = execCommand(host, creds, "cat /etc/hosts");
@@ -85,7 +86,7 @@ public class HostsFileRefresher {
         // 4. 检测免密 sudo
         SshUtil.CommandResult sudoCheck = sshUtil.executeCommand(
                 host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                creds.privateKey, creds.password,
+                creds.privateKey(), creds.password(),
                 "sudo -n true 2>/dev/null", 5000L);
         boolean sudoAvailable = sudoCheck.isSuccess();
 
@@ -132,7 +133,7 @@ public class HostsFileRefresher {
      */
     public HostsRefreshResult refreshHosts(Long hostId, String sudoPassword, List<String> selectedDomains) {
         Host host = loadHost(hostId);
-        SshCredentials creds = decryptCredentials(host);
+        HostCredentials creds = deployAccess.credentials(host);
         String hostLanIp = host.getIpAddress();
 
         HostsRefreshResult result = new HostsRefreshResult();
@@ -177,7 +178,7 @@ public class HostsFileRefresher {
             if (StrUtil.isBlank(sudoPassword)) {
                 SshUtil.CommandResult sudoCheck = sshUtil.executeCommand(
                         host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        creds.privateKey, creds.password,
+                        creds.privateKey(), creds.password(),
                         "sudo -n true 2>/dev/null", 5000L);
                 if (!sudoCheck.isSuccess()) {
                     result.setSuccess(false);
@@ -200,7 +201,7 @@ public class HostsFileRefresher {
 
             boolean uploaded = sshUtil.uploadFile(
                     host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey, creds.password,
+                    creds.privateKey(), creds.password(),
                     localTmpPath, tmpFilePath);
             if (!uploaded) {
                 result.setSuccess(false);
@@ -219,14 +220,14 @@ public class HostsFileRefresher {
             String backupPath = "/etc/hosts.bak." + timestamp;
             SshUtil.CommandResult backupResult = sshUtil.executeCommand(
                     host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey, creds.password,
+                    creds.privateKey(), creds.password(),
                     sudoPrefix + "cp /etc/hosts " + backupPath, 10000L);
             if (!backupResult.isSuccess()) {
                 result.setSuccess(false);
                 result.setErrorMessage("备份 /etc/hosts 失败，已中止刷新: "
                         + backupResult.getError());
                 sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        creds.privateKey, creds.password,
+                        creds.privateKey(), creds.password(),
                         "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
                 return result;
             }
@@ -234,7 +235,7 @@ public class HostsFileRefresher {
             // 9. 覆盖 /etc/hosts
             SshUtil.CommandResult overwriteResult = sshUtil.executeCommand(
                     host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey, creds.password,
+                    creds.privateKey(), creds.password(),
                     sudoPrefix + "cp " + tmpFilePath + " /etc/hosts", 10000L);
             if (!overwriteResult.isSuccess()) {
                 result.setSuccess(false);
@@ -246,7 +247,7 @@ public class HostsFileRefresher {
 
             // 10. 清理临时文件
             sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey, creds.password,
+                    creds.privateKey(), creds.password(),
                     "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
 
             // 11. 刷新 DNS 缓存（非阻塞，失败只记录日志）
@@ -280,7 +281,7 @@ public class HostsFileRefresher {
      * </ul>
      * <p>所有命令均需要 sudo。失败不阻塞主流程，仅记录日志（DNS 缓存会自然过期）。</p>
      */
-    private void flushDnsCache(Host host, SshCredentials creds, String sudoPrefix) {
+    private void flushDnsCache(Host host, HostCredentials creds, String sudoPrefix) {
         String[] commands = {
                 "resolvectl flush-caches",
                 "systemd-resolve --flush-caches",
@@ -289,8 +290,8 @@ public class HostsFileRefresher {
         for (String cmd : commands) {
             try {
                 SshUtil.CommandResult r = sshUtil.executeCommand(
-                        host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        creds.privateKey, creds.password,
+                        creds.host(), creds.port(), creds.username(),
+                        creds.privateKey(), creds.password(),
                         sudoPrefix + cmd + " 2>/dev/null", 5000L);
                 if (r != null && r.isSuccess()) {
                     log.info("主机 {} DNS 缓存刷新成功: {}", host.getHostName(), cmd);
@@ -500,40 +501,19 @@ public class HostsFileRefresher {
     }
 
     /**
-     * 解密 SSH 凭据
-     */
-    private SshCredentials decryptCredentials(Host host) {
-        String privateKey = null;
-        String password = null;
-        if (StrUtil.isNotBlank(host.getSshPrivateKey())) {
-            privateKey = aesUtil.decrypt(host.getSshPrivateKey());
-        }
-        if (StrUtil.isNotBlank(host.getSshPassword())) {
-            password = aesUtil.decrypt(host.getSshPassword());
-        }
-        return new SshCredentials(privateKey, password);
-    }
-
-    /**
      * 执行 SSH 命令并校验成功
      *
      * <p>使用 7 参数重载（显式传入超时），与 SshUtil.executeCommand(..., long) 一致，
      * 便于单元测试通过 anyLong() 匹配器统一 stub。</p>
      */
-    private String execCommand(Host host, SshCredentials creds, String command) {
+    private String execCommand(Host host, HostCredentials creds, String command) {
         SshUtil.CommandResult result = sshUtil.executeCommand(
-                host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                creds.privateKey, creds.password, command, SSH_DEFAULT_TIMEOUT_MS);
+                creds.host(), creds.port(), creds.username(),
+                creds.privateKey(), creds.password(), command, SSH_DEFAULT_TIMEOUT_MS);
         if (!result.isSuccess()) {
             throw new RuntimeException("SSH 命令执行失败: " + command
                     + "，错误: " + result.getError());
         }
         return result.getOutput() != null ? result.getOutput() : "";
-    }
-
-    /**
-     * SSH 凭据内部载体
-     */
-    private record SshCredentials(String privateKey, String password) {
     }
 }

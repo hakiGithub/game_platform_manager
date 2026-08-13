@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { setActivePinia, createPinia } from "pinia";
+import { statusType } from "@/utils/instanceStatus";
 
 // Mock API
 const mockGetInstanceList = vi.fn();
@@ -63,7 +64,8 @@ const InstanceComponent = {
           <option value="running">运行中</option>
           <option value="stopped">已停止</option>
           <option value="error">异常</option>
-          <option value="deploying">部署中</option>
+          <option value="installing">安装中</option>
+          <option value="updating">更新中</option>
         </select>
         <button @click="handleSearch">搜索</button>
         <button @click="handleReset">重置</button>
@@ -85,7 +87,7 @@ const InstanceComponent = {
             <tr v-for="row in tableData" :key="row.id" :class="getRowClass(row)">
               <td>
                 <span :class="'status-' + row.status">
-                  {{ getStatusText(row.status) }}
+                  {{ row.runStatusDesc }}
                 </span>
               </td>
               <td>
@@ -98,7 +100,7 @@ const InstanceComponent = {
                 <button v-if="row.status === 'running'" @click="handleStop(row)">停止</button>
                 <button v-else-if="row.status === 'stopped'" @click="handleStart(row)">启动</button>
                 <button v-else-if="row.status === 'error'" @click="handleRestart(row)">重启</button>
-                <span v-else-if="row.status === 'deploying'">部署中...</span>
+                <span v-else>{{ row.runStatusDesc }}</span>
                 
                 <select v-if="getAvailableActions(row.status).length > 0" @change="handleAction($event, row)">
                   <option value="">更多</option>
@@ -269,28 +271,6 @@ const InstanceComponent = {
     handleDelete(row) {
       // 打开删除确认弹窗
     },
-    getStatusType(status) {
-      const types = {
-        running: "success",
-        stopped: "info",
-        error: "danger",
-        starting: "warning",
-        stopping: "warning",
-        deploying: "warning",
-      };
-      return types[status] || "info";
-    },
-    getStatusText(status) {
-      const texts = {
-        running: "运行中",
-        stopped: "已停止",
-        error: "异常",
-        starting: "启动中",
-        stopping: "停止中",
-        deploying: "部署中",
-      };
-      return texts[status] || status;
-    },
     getRowClass(row) {
       if (!row) return "";
       if (row.status === "error") return "row-error";
@@ -316,7 +296,8 @@ const InstanceComponent = {
           { command: "logs", label: "查看日志" },
           { command: "delete", label: "卸载实例" },
         ],
-        deploying: [{ command: "logs", label: "查看进度" }],
+        installing: [{ command: "logs", label: "查看进度" }],
+        updating: [{ command: "logs", label: "查看进度" }],
       };
       return actions[status] || [];
     },
@@ -335,6 +316,7 @@ describe("Instance Component", () => {
       ip: "192.168.1.1",
       port: 25565,
       status: "running",
+      runStatusDesc: "运行中",
     },
     {
       id: 2,
@@ -344,6 +326,7 @@ describe("Instance Component", () => {
       ip: "192.168.1.1",
       port: 8211,
       status: "stopped",
+      runStatusDesc: "已停止",
     },
     {
       id: 3,
@@ -353,6 +336,7 @@ describe("Instance Component", () => {
       ip: "192.168.1.2",
       port: 25566,
       status: "error",
+      runStatusDesc: "异常",
     },
     {
       id: 4,
@@ -361,7 +345,8 @@ describe("Instance Component", () => {
       hostName: "主机2",
       ip: "192.168.1.2",
       port: 28015,
-      status: "deploying",
+      status: "installing",
+      runStatusDesc: "安装中",
     },
   ];
 
@@ -405,25 +390,27 @@ describe("Instance Component", () => {
       expect(rows[0].text()).toContain("运行中");
       expect(rows[1].text()).toContain("已停止");
       expect(rows[2].text()).toContain("异常");
-      expect(rows[3].text()).toContain("部署中");
+      expect(rows[3].text()).toContain("安装中");
     });
 
-    it("应该正确获取状态类型", () => {
-      wrapper = mount(InstanceComponent);
-
-      expect(wrapper.vm.getStatusType("running")).toBe("success");
-      expect(wrapper.vm.getStatusType("stopped")).toBe("info");
-      expect(wrapper.vm.getStatusType("error")).toBe("danger");
-      expect(wrapper.vm.getStatusType("deploying")).toBe("warning");
+    it("应该正确获取状态类型（共享工具 instanceStatus）", () => {
+      expect(statusType("running")).toBe("success");
+      expect(statusType("stopped")).toBe("info");
+      expect(statusType("error")).toBe("danger");
+      expect(statusType("starting")).toBe("warning");
+      expect(statusType("installing")).toBe("warning");
+      expect(statusType("updating")).toBe("warning");
+      expect(statusType("not_installed")).toBe("info");
+      expect(statusType("unknown")).toBe("info");
     });
 
-    it("应该正确获取状态文本", () => {
+    it("状态文本来自后端 runStatusDesc（前端不再维护文本映射）", () => {
       wrapper = mount(InstanceComponent);
-
-      expect(wrapper.vm.getStatusText("running")).toBe("运行中");
-      expect(wrapper.vm.getStatusText("stopped")).toBe("已停止");
-      expect(wrapper.vm.getStatusText("error")).toBe("异常");
-      expect(wrapper.vm.getStatusText("deploying")).toBe("部署中");
+      return flushPromises().then(() => {
+        const rows = wrapper.findAll("tbody tr");
+        expect(rows[0].text()).toContain("运行中");
+        expect(rows[3].text()).toContain("安装中");
+      });
     });
 
     it("异常和停止状态应该有特殊行样式", () => {
@@ -466,13 +453,13 @@ describe("Instance Component", () => {
       expect(restartBtn.text()).toBe("重启");
     });
 
-    it("部署中实例应该显示部署中文字", async () => {
+    it("安装中实例应该显示后端下发的状态文本", async () => {
       wrapper = mount(InstanceComponent);
       await flushPromises();
 
-      const deployingRow = wrapper.findAll("tbody tr")[3];
+      const installingRow = wrapper.findAll("tbody tr")[3];
 
-      expect(deployingRow.text()).toContain("部署中...");
+      expect(installingRow.text()).toContain("安装中");
     });
   });
 
@@ -560,13 +547,16 @@ describe("Instance Component", () => {
       expect(actions.map((a) => a.command)).toContain("delete");
     });
 
-    it("部署中实例应该有查看进度选项", () => {
+    it("安装中/更新中实例应该有查看进度选项", () => {
       wrapper = mount(InstanceComponent);
 
-      const actions = wrapper.vm.getAvailableActions("deploying");
-
+      const actions = wrapper.vm.getAvailableActions("installing");
       expect(actions).toHaveLength(1);
       expect(actions[0].command).toBe("logs");
+
+      const updatingActions = wrapper.vm.getAvailableActions("updating");
+      expect(updatingActions).toHaveLength(1);
+      expect(updatingActions[0].command).toBe("logs");
     });
   });
 

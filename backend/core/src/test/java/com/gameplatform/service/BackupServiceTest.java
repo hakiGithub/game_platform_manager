@@ -9,6 +9,7 @@ import com.gameplatform.mapper.BackupRecordMapper;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.impl.BackupServiceImpl;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,6 +60,9 @@ class BackupServiceTest {
 
     @Mock
     private AesUtil aesUtil;
+
+    @Mock
+    private DeploymentAccess deployAccess;
 
     @Mock
     private GamePlatformConfig gamePlatformConfig;

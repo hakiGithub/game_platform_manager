@@ -1,9 +1,10 @@
 package com.gameplatform.service.sync;
 
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
-import com.gameplatform.util.AesUtil;
+import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,8 +22,8 @@ import static org.mockito.Mockito.*;
  * NativeInstanceSyncStrategy 单元测试
  * 覆盖 pgrep 进程检测、状态对账、异常隔离
  *
- * <p>注意：AesUtil 的方法都是 static，无法 Mockito mock。测试中 Host 不设密码/私钥，
- * getDecryptedPassword/getDecryptedPrivateKey 会返回 null，跳过解密逻辑。
+ * <p>凭据解析统一走 DeploymentAccess（测试中 Host 不设密码/私钥，
+ * credentials 返回空凭据，跳过解密逻辑）。
  *
  * @author GamePlatform
  * @version 1.0.0
@@ -36,6 +37,7 @@ class NativeInstanceSyncStrategyTest {
     @Mock
     private GameInstanceMapper instanceMapper;
 
+    private DeploymentAccess deployAccess;
     private NativeInstanceSyncStrategy strategy;
 
     private Host host;
@@ -43,8 +45,8 @@ class NativeInstanceSyncStrategyTest {
 
     @BeforeEach
     void setUp() {
-        // 手动构造 strategy，使用真实 AesUtil（static 方法无法 mock）
-        strategy = new NativeInstanceSyncStrategy(sshUtil, new AesUtil(), instanceMapper);
+        deployAccess = new DeploymentAccess(mock(HostMapper.class));
+        strategy = new NativeInstanceSyncStrategy(sshUtil, deployAccess, instanceMapper);
 
         host = new Host();
         host.setId(1L);

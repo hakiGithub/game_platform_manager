@@ -1,6 +1,7 @@
 package com.gameplatform.service.sync.impl;
 
 import com.gameplatform.config.InstanceSyncProperties;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
@@ -43,6 +44,9 @@ class InstanceSyncServiceImplTest {
     @Mock
     private NativeInstanceSyncStrategy nativeStrategy;
 
+    @Mock
+    private DeploymentAccess deployAccess;
+
     private InstanceSyncProperties properties;
     private InstanceSyncServiceImpl service;
 
@@ -54,7 +58,13 @@ class InstanceSyncServiceImplTest {
         properties = new InstanceSyncProperties();
         properties.setEnabled(true);
         service = new InstanceSyncServiceImpl(hostMapper, instanceMapper,
-                dockerStrategy, nativeStrategy, properties);
+                dockerStrategy, nativeStrategy, properties, deployAccess);
+
+        // classify 语义由 DeploymentAccessTest 锁定；此处按真实语义模拟 isNativeDeploy
+        lenient().when(deployAccess.isNativeDeploy(any())).thenAnswer(inv -> {
+            String t = inv.getArgument(0);
+            return t == null || !List.of("docker", "docker-compose", "linuxgsm-docker").contains(t);
+        });
 
         host1 = new Host();
         host1.setId(1L);

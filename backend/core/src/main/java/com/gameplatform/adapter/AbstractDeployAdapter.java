@@ -1,10 +1,11 @@
 package com.gameplatform.adapter;
 
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +37,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
     protected GameInstanceMapper instanceMapper;
 
     @Autowired
-    protected AesUtil aesUtil;
+    protected DeploymentAccess deployAccess;
 
     /**
      * 获取主机信息
@@ -77,39 +78,10 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
     }
 
     /**
-     * 获取解密的私钥
-     *
-     * @param host 主机信息
-     * @return 解密后的私钥
+     * 解析主机 SSH 凭据（统一走 DeploymentAccess，替代各处内联解密副本）
      */
-    protected String getDecryptedPrivateKey(Host host) {
-        if (host.getSshPrivateKey() == null || host.getSshPrivateKey().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPrivateKey());
-        } catch (Exception e) {
-            log.error("解密私钥失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 获取解密的密码
-     *
-     * @param host 主机信息
-     * @return 解密后的密码
-     */
-    protected String getDecryptedPassword(Host host) {
-        if (host.getSshPassword() == null || host.getSshPassword().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPassword());
-        } catch (Exception e) {
-            log.error("解密密码失败: {}", e.getMessage());
-            return null;
-        }
+    protected HostCredentials credentials(Host host) {
+        return deployAccess.credentials(host);
     }
 
     /**
@@ -120,14 +92,9 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 命令执行结果
      */
     protected SshUtil.CommandResult executeCommand(Host host, String command) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
+        HostCredentials conn = credentials(host);
         return sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 command
         );
     }
@@ -141,14 +108,9 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 命令执行结果
      */
     protected SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
+        HostCredentials conn = credentials(host);
         return sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 command,
                 timeoutMs
         );
@@ -163,14 +125,9 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否成功
      */
     protected boolean uploadFile(Host host, String localPath, String remotePath) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
+        HostCredentials conn = credentials(host);
         return sshUtil.uploadFile(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 localPath,
                 remotePath
         );
@@ -185,14 +142,9 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否成功
      */
     protected boolean downloadFile(Host host, String remotePath, String localPath) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
+        HostCredentials conn = credentials(host);
         return sshUtil.downloadFile(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 remotePath,
                 localPath
         );

@@ -357,8 +357,9 @@ public class InstanceController {
         logResult.setInstanceId(id);
         logResult.setLines(lines);
 
-        // 部署中：返回 DeployService 内存中的部署日志
-        if (instance.getRunStatus() != null && instance.getRunStatus() == 5) {
+        // 安装中（INSTALLING）：返回 DeployService 内存中的部署日志
+        if (instance.getRunStatus() != null
+                && instance.getRunStatus() == DeployAdapter.InstanceStatus.INSTALLING.getCode()) {
             DeployService.DeployTaskStatus taskStatus = deployService.getTaskStatus(id);
             if (taskStatus != null) {
                 StringBuilder sb = new StringBuilder();
@@ -446,7 +447,7 @@ public class InstanceController {
 
     /**
      * 手动恢复中断的部署任务
-     * 将所有 run_status=5（部署中）的实例标记为 run_status=2（异常）
+     * 将所有 run_status=INSTALLING（5，安装中）的实例标记为 ERROR（4，异常）
      */
     @Operation(summary = "恢复中断的部署任务", description = "将所有部署中状态的实例标记为异常，用于清理因应用崩溃遗留的部署状态")
     @PostMapping("/recover-deploying")

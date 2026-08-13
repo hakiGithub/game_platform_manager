@@ -128,6 +128,14 @@ public class HostVO implements Serializable {
     private String remark;
 
     /**
+     * 是否局域网主机（平台代劳硬开关，详见 ADR-0004）
+     * true  - 平台可代劳下载/解压/推送补丁到该主机（含容器场景）
+     * false - 目标主机必须能自治，不能自治则报错，平台不跨公网代劳
+     */
+    @Schema(description = "是否局域网主机")
+    private Boolean isLanHost;
+
+    /**
      * 创建时间
      */
     @Schema(description = "创建时间")

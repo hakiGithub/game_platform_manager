@@ -9,6 +9,7 @@ import {
   reloadPlugin,
 } from "@/api/plugin";
 import { getInstanceList } from "@/api/instance";
+import { statusType } from "@/utils/instanceStatus";
 
 const router = useRouter();
 
@@ -200,42 +201,6 @@ function getStateType(state) {
   }
 }
 
-/**
- * 获取实例运行状态标签类型
- */
-function getInstanceStatusType(runStatus) {
-  switch (runStatus) {
-    case 1:
-      return "success";
-    case 0:
-      return "info";
-    case 2:
-      return "danger";
-    case 5:
-      return "warning";
-    default:
-      return "info";
-  }
-}
-
-/**
- * 获取实例运行状态文本
- */
-function getInstanceStatusText(runStatus) {
-  switch (runStatus) {
-    case 1:
-      return "运行中";
-    case 0:
-      return "已停止";
-    case 2:
-      return "异常";
-    case 5:
-      return "部署中";
-    default:
-      return "未知";
-  }
-}
-
 onMounted(() => {
   fetchPluginList();
 });
@@ -368,8 +333,8 @@ onMounted(() => {
         <el-table-column prop="hostIp" label="主机IP" width="140" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getInstanceStatusType(row.runStatus)" size="small">
-              {{ getInstanceStatusText(row.runStatus) }}
+            <el-tag :type="statusType(row.status)" size="small">
+              {{ row.runStatusDesc }}
             </el-tag>
           </template>
         </el-table-column>

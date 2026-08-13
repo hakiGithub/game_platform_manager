@@ -1,8 +1,8 @@
 package com.gameplatform.adapter;
 
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ class LinuxGsmAdapterTest {
     private GameInstanceMapper instanceMapper;
 
     @Mock
-    private AesUtil aesUtil;
+    private DeploymentAccess deployAccess;
 
     private LinuxGsmAdapter linuxGsmAdapter;
 
@@ -47,7 +47,7 @@ class LinuxGsmAdapterTest {
         injectField(linuxGsmAdapter, "sshUtil", sshUtil);
         injectField(linuxGsmAdapter, "hostMapper", hostMapper);
         injectField(linuxGsmAdapter, "instanceMapper", instanceMapper);
-        injectField(linuxGsmAdapter, "aesUtil", aesUtil);
+        injectField(linuxGsmAdapter, "deployAccess", deployAccess);
     }
 
     /**
@@ -109,9 +109,9 @@ class LinuxGsmAdapterTest {
         DeployAdapter.InstanceStatus status = DeployAdapter.InstanceStatus.fromCode(1);
         assertEquals(DeployAdapter.InstanceStatus.RUNNING, status);
 
-        // 测试无效的代码
+        // 测试无效的代码（ADR-0005：fromCode 未知码返回 null，由调用方决定回退语义）
         DeployAdapter.InstanceStatus invalidStatus = DeployAdapter.InstanceStatus.fromCode(999);
-        assertEquals(DeployAdapter.InstanceStatus.ERROR, invalidStatus);
+        assertNull(invalidStatus);
     }
 
     @Test

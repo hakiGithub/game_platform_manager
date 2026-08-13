@@ -3,6 +3,8 @@ package com.gameplatform.service;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
@@ -51,6 +53,9 @@ class DeployServiceTest {
     @Mock
     private DeployAdapter deployAdapter;
 
+    @Mock
+    private DeploymentAccess deployAccess;
+
     @InjectMocks
     private DeployService deployService;
 
@@ -77,6 +82,8 @@ class DeployServiceTest {
         // 默认 mock 行为
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
+        when(deployAccess.credentials(any(Host.class)))
+                .thenReturn(new HostCredentials("192.168.1.100", 22, "root", null, null));
     }
 
     @Test
@@ -261,25 +268,14 @@ class DeployServiceTest {
         // Given
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         
-        // Mock SSH 命令执行结果
+        // Mock SSH 命令执行结果（全部检查返回成功）
         SshUtil.CommandResult successResult = new SshUtil.CommandResult();
         successResult.setSuccess(true);
         successResult.setOutput("Docker version 24.0.0");
         successResult.setExitCode(0);
-        
-        // Mock 磁盘和内存检查结果
-        SshUtil.CommandResult diskResult = new SshUtil.CommandResult();
-        diskResult.setSuccess(true);
-        diskResult.setOutput("50");
-        diskResult.setExitCode(0);
-        
-        SshUtil.CommandResult memResult = new SshUtil.CommandResult();
-        memResult.setSuccess(true);
-        memResult.setOutput("60.5");
-        memResult.setExitCode(0);
-        
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), anyString(), isNull(), anyString(), anyLong()))
-                .thenReturn(successResult, diskResult, memResult);
+
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(), anyString(), anyLong()))
+                .thenReturn(successResult);
 
         Map<String, Object> config = new HashMap<>();
 

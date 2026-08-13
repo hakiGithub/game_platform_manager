@@ -1,14 +1,14 @@
 package com.gameplatform.service;
 
 import com.gameplatform.common.exception.BusinessException;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.sftp.client.SftpClient;
 import org.apache.sshd.sftp.client.SftpClientFactory;
@@ -16,13 +16,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * 文件管理服务
@@ -38,6 +40,7 @@ public class FileService {
 
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
+    private final DeploymentAccess deployAccess;
 
     /**
      * 文件信息DTO
@@ -90,13 +93,10 @@ public class FileService {
     public List<FileInfo> listFiles(Long hostId, String remotePath) {
         log.info("获取文件列表: hostId={}, path={}", hostId, remotePath);
 
-        HostConnection conn = getHostConnection(hostId);
         List<FileInfo> files = new ArrayList<>();
 
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     Iterable<SftpClient.DirEntry> entries = sftp.readDir(remotePath);
@@ -121,7 +121,6 @@ public class FileService {
                         files.add(info);
                     }
                 }
-            }
         } catch (Exception e) {
             log.error("获取文件列表失败: {}", remotePath, e);
             throw new BusinessException("获取文件列表失败: " + e.getMessage());
@@ -140,12 +139,8 @@ public class FileService {
     public void uploadFile(Long hostId, String remotePath, MultipartFile file) {
         log.info("上传文件: hostId={}, path={}, file={}", hostId, remotePath, file.getOriginalFilename());
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     // 确保远程目录存在
@@ -166,7 +161,6 @@ public class FileService {
 
                     log.info("文件上传成功: {}", remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("上传文件失败: {}", remotePath, e);
             throw new BusinessException("上传文件失败: " + e.getMessage());
@@ -183,12 +177,8 @@ public class FileService {
     public void uploadLocalFile(Long hostId, String remotePath, String localPath) {
         log.info("上传本地文件: hostId={}, remote={}, local={}", hostId, remotePath, localPath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     // 确保远程目录存在
@@ -210,7 +200,6 @@ public class FileService {
 
                     log.info("文件上传成功: {} -> {}", localPath, remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("上传文件失败: {}", remotePath, e);
             throw new BusinessException("上传文件失败: " + e.getMessage());
@@ -227,12 +216,8 @@ public class FileService {
     public void downloadFile(Long hostId, String remotePath, String localPath) {
         log.info("下载文件: hostId={}, remote={}, local={}", hostId, remotePath, localPath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     // 确保本地目录存在
@@ -249,7 +234,6 @@ public class FileService {
 
                     log.info("文件下载成功: {} -> {}", remotePath, localPath);
                 }
-            }
         } catch (Exception e) {
             log.error("下载文件失败: {}", remotePath, e);
             throw new BusinessException("下载文件失败: " + e.getMessage());
@@ -266,12 +250,8 @@ public class FileService {
     public byte[] downloadFileToMemory(Long hostId, String remotePath) {
         log.info("下载文件到内存: hostId={}, path={}", hostId, remotePath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     try (InputStream is = sftp.read(remotePath);
@@ -280,7 +260,6 @@ public class FileService {
                         return baos.toByteArray();
                     }
                 }
-            }
         } catch (Exception e) {
             log.error("下载文件失败: {}", remotePath, e);
             throw new BusinessException("下载文件失败: " + e.getMessage());
@@ -296,18 +275,13 @@ public class FileService {
     public void deleteFile(Long hostId, String remotePath) {
         log.info("删除文件: hostId={}, path={}", hostId, remotePath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     sftp.remove(remotePath);
                     log.info("文件删除成功: {}", remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("删除文件失败: {}", remotePath, e);
             throw new BusinessException("删除文件失败: " + e.getMessage());
@@ -323,18 +297,13 @@ public class FileService {
     public void createDirectory(Long hostId, String remotePath) {
         log.info("创建目录: hostId={}, path={}", hostId, remotePath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     sftp.mkdir(remotePath);
                     log.info("目录创建成功: {}", remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("创建目录失败: {}", remotePath, e);
             throw new BusinessException("创建目录失败: " + e.getMessage());
@@ -351,12 +320,8 @@ public class FileService {
     public void deleteDirectory(Long hostId, String remotePath, boolean recursive) {
         log.info("删除目录: hostId={}, path={}, recursive={}", hostId, remotePath, recursive);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     if (recursive) {
@@ -367,7 +332,6 @@ public class FileService {
                     }
                     log.info("目录删除成功: {}", remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("删除目录失败: {}", remotePath, e);
             throw new BusinessException("删除目录失败: " + e.getMessage());
@@ -384,18 +348,13 @@ public class FileService {
     public void moveFile(Long hostId, String oldPath, String newPath) {
         log.info("移动文件: hostId={}, old={}, new={}", hostId, oldPath, newPath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     sftp.rename(oldPath, newPath);
                     log.info("文件移动成功: {} -> {}", oldPath, newPath);
                 }
-            }
         } catch (Exception e) {
             log.error("移动文件失败: {} -> {}", oldPath, newPath, e);
             throw new BusinessException("移动文件失败: " + e.getMessage());
@@ -426,12 +385,8 @@ public class FileService {
     public void writeTextFile(Long hostId, String remotePath, String content) {
         log.info("写入文本文件: hostId={}, path={}", hostId, remotePath);
 
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     // 确保远程目录存在
@@ -451,7 +406,6 @@ public class FileService {
 
                     log.info("文本文件写入成功: {}", remotePath);
                 }
-            }
         } catch (Exception e) {
             log.error("写入文本文件失败: {}", remotePath, e);
             throw new BusinessException("写入文本文件失败: " + e.getMessage());
@@ -466,18 +420,13 @@ public class FileService {
      * @return 是否存在
      */
     public boolean exists(Long hostId, String remotePath) {
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     SftpClient.Attributes attrs = sftp.stat(remotePath);
                     return attrs != null;
                 }
-            }
         } catch (Exception e) {
             return false;
         }
@@ -491,12 +440,8 @@ public class FileService {
      * @return 文件信息
      */
     public FileInfo getFileInfo(Long hostId, String remotePath) {
-        HostConnection conn = getHostConnection(hostId);
-
-        try (SshClient client = SshClient.setUpDefaultClient()) {
-            client.start();
-
-            try (ClientSession session = connect(client, conn)) {
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
                 SftpClientFactory factory = SftpClientFactory.instance();
                 try (SftpClient sftp = factory.createSftpClient(session)) {
                     SftpClient.Attributes attrs = sftp.stat(remotePath);
@@ -511,94 +456,118 @@ public class FileService {
 
                     return info;
                 }
-            }
         } catch (Exception e) {
             log.error("获取文件信息失败: {}", remotePath, e);
             throw new BusinessException("获取文件信息失败: " + e.getMessage());
         }
     }
 
+    // ==================== 字节范围读取 / Tail / 命令执行 ====================
+
+    /**
+     * 读取远程文件字节范围（FileAccessService SPI 的唯一实现，行为只此一份）
+     *
+     * @param offset 起始偏移（负数为从文件末尾倒数）
+     * @param length 读取长度（&lt;=0 表示读到文件末尾）
+     */
+    public byte[] getFileBytes(Long hostId, String remotePath, long offset, long length) {
+        log.info("读取文件字节范围: hostId={}, path={}, offset={}, length={}", hostId, remotePath, offset, length);
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
+            SftpClientFactory factory = SftpClientFactory.instance();
+            try (SftpClient sftp = factory.createSftpClient(session)) {
+                SftpClient.Attributes attrs = sftp.stat(remotePath);
+                long fileSize = attrs.getSize();
+                long start = offset < 0 ? Math.max(0, fileSize + offset) : offset;
+                long toRead = length <= 0 ? (fileSize - start) : Math.min(length, fileSize - start);
+                if (toRead <= 0) {
+                    return new byte[0];
+                }
+                try (InputStream is = sftp.read(remotePath)) {
+                    is.skip(start);
+                    byte[] buf = new byte[(int) toRead];
+                    int read = 0;
+                    while (read < buf.length) {
+                        int n = is.read(buf, read, buf.length - read);
+                        if (n < 0) {
+                            break;
+                        }
+                        read += n;
+                    }
+                    return read == buf.length ? buf : Arrays.copyOf(buf, read);
+                }
+            }
+        } catch (Exception e) {
+            log.error("读取文件字节范围失败: {}", remotePath, e);
+            throw new BusinessException("读取文件字节范围失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Tail 远程文件（从 offset 起按行消费新增内容，返回新的偏移）
+     */
+    public long tailFile(Long hostId, String remotePath, long offset, Charset charset,
+                         Consumer<String> lineConsumer) {
+        log.info("Tail 文件: hostId={}, path={}, offset={}", hostId, remotePath, offset);
+        try (DeploymentAccess.SshConnection conn = connectSftp(hostId);
+             ClientSession session = conn.session()) {
+            SftpClientFactory factory = SftpClientFactory.instance();
+            try (SftpClient sftp = factory.createSftpClient(session)) {
+                SftpClient.Attributes attrs = sftp.stat(remotePath);
+                long fileSize = attrs.getSize();
+                if (fileSize <= offset) {
+                    return offset;
+                }
+                try (InputStream is = sftp.read(remotePath)) {
+                    is.skip(offset);
+                    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                    byte[] tmp = new byte[8192];
+                    int n;
+                    while ((n = is.read(tmp)) > 0) {
+                        buf.write(tmp, 0, n);
+                    }
+                    byte[] all = buf.toByteArray();
+                    String text = new String(all, charset);
+                    for (String line : text.split("\n", -1)) {
+                        if (!line.isEmpty()) {
+                            lineConsumer.accept(line);
+                        }
+                    }
+                    return offset + all.length;
+                }
+            }
+        } catch (Exception e) {
+            log.error("Tail 文件失败: {}", remotePath, e);
+            throw new BusinessException("Tail 文件失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 在指定主机上执行命令（凭据解析统一走 DeploymentAccess，SSH 传输委托 SshUtil）
+     */
+    public SshUtil.CommandResult executeCommand(Long hostId, String command, long timeoutMs) {
+        HostCredentials conn = deployAccess.credentials(hostId);
+        return sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
+                conn.privateKey(), conn.password(), command, timeoutMs);
+    }
+
     // ==================== 私有方法 ====================
 
     /**
-     * 获取主机连接信息
+     * 建立 SSH 连接（统一走 DeploymentAccess：主机查询、凭据解密、建连认证）
      */
-    private HostConnection getHostConnection(Long hostId) {
+    private DeploymentAccess.SshConnection connectSftp(Long hostId) {
         Host host = hostMapper.selectById(hostId);
         if (host == null) {
             throw new BusinessException("主机不存在");
         }
-
-        HostConnection conn = new HostConnection();
-        conn.setHost(host.getIpAddress());
-        conn.setPort(host.getSshPort() != null ? host.getSshPort() : 22);
-        conn.setUsername(host.getSshUser());
-
-        // 解密私钥
-        if (host.getSshPrivateKey() != null && !host.getSshPrivateKey().isEmpty()) {
-            conn.setPrivateKey(AesUtil.decrypt(host.getSshPrivateKey()));
+        try {
+            return deployAccess.connect(host);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException("SSH连接失败: " + e.getMessage());
         }
-
-        // 解密密码
-        if (host.getSshPassword() != null && !host.getSshPassword().isEmpty()) {
-            conn.setPassword(AesUtil.decrypt(host.getSshPassword()));
-        }
-
-        return conn;
-    }
-
-    /**
-     * 建立SSH连接
-     */
-    private ClientSession connect(SshClient client, HostConnection conn) throws Exception {
-        ClientSession session = client.connect(conn.getUsername(), conn.getHost(), conn.getPort())
-                .verify(10000, TimeUnit.MILLISECONDS)
-                .getSession();
-
-        // 认证：优先私钥，其次密码
-        if (conn.getPrivateKey() != null && !conn.getPrivateKey().isEmpty()) {
-            try {
-                java.security.KeyPair keyPair = parsePrivateKey(conn.getPrivateKey());
-                if (keyPair != null) {
-                    session.addPublicKeyIdentity(keyPair);
-                }
-            } catch (Exception e) {
-                log.warn("私钥解析失败，回退到密码认证: {}", e.getMessage());
-            }
-        }
-        if (conn.getPassword() != null && !conn.getPassword().isEmpty()) {
-            session.addPasswordIdentity(conn.getPassword());
-        }
-
-        if (!session.auth().verify(10000, TimeUnit.MILLISECONDS).isSuccess()) {
-            throw new RuntimeException("SSH认证失败：用户名=" + conn.getUsername()
-                    + "，主机=" + conn.getHost() + ":" + conn.getPort()
-                    + "，请检查主机配置的密码或私钥");
-        }
-
-        return session;
-    }
-
-    /**
-     * 解析私钥字符串为 KeyPair
-     * 复用 SshUtil 的解析逻辑（通过 Apache MINA SSHD 的 KeyPairResourceParser）
-     */
-    private java.security.KeyPair parsePrivateKey(String privateKey) throws Exception {
-        if (privateKey == null || privateKey.isEmpty()) {
-            return null;
-        }
-        org.apache.sshd.common.config.keys.loader.KeyPairResourceParser parser =
-                org.apache.sshd.common.config.keys.loader.KeyPairResourceParser.aggregate(
-                        org.apache.sshd.common.config.keys.loader.openssh.OpenSSHKeyPairResourceParser.INSTANCE,
-                        org.apache.sshd.common.config.keys.loader.pem.PEMResourceParserUtils.PROXY
-                );
-        org.apache.sshd.common.NamedResource resourceKey = org.apache.sshd.common.NamedResource.ofName("private-key");
-        java.util.Collection<java.security.KeyPair> keyPairs = parser.loadKeyPairs(
-                null, resourceKey, null, privateKey);
-        if (keyPairs == null || keyPairs.isEmpty()) {
-            return null;
-        }
-        return keyPairs.iterator().next();
     }
 
     /**
@@ -639,15 +608,4 @@ public class FileService {
         return sb.toString();
     }
 
-    /**
-     * 主机连接信息
-     */
-    @Data
-    private static class HostConnection {
-        private String host;
-        private int port;
-        private String username;
-        private String privateKey;
-        private String password;
-    }
 }

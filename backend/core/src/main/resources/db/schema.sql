@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS host_info (
     memory_usage     DECIMAL(5,2),
     disk_usage       DECIMAL(5,2),
     last_check_time  DATETIME,
+    is_lan_host      BOOLEAN DEFAULT 0,              -- 是否局域网主机 0-否 1-是（平台代劳硬开关，详见 ADR-0004）
     create_time      DATETIME DEFAULT (datetime('now', 'localtime')),
     update_time      DATETIME DEFAULT (datetime('now', 'localtime')),
     is_deleted       INTEGER DEFAULT 0

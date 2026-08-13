@@ -2,6 +2,8 @@ package com.gameplatform.service.impl;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.config.GamePlatformConfig;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.BackupRecord;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
@@ -64,6 +66,9 @@ public class BackupServiceImpl implements BackupService {
 
     @Autowired
     private AesUtil aesUtil;
+
+    @Autowired
+    private DeploymentAccess deployAccess;
 
     @Autowired
     private GamePlatformConfig gamePlatformConfig;
@@ -389,11 +394,8 @@ public class BackupServiceImpl implements BackupService {
         try {
             updateProgress(backupId, 20);
 
-            // 解密私钥
-            String privateKey = null;
-            if (host.getSshPrivateKey() != null && !host.getSshPrivateKey().isEmpty()) {
-                privateKey = aesUtil.decrypt(host.getSshPrivateKey());
-            }
+            // 凭据解析统一走 DeploymentAccess
+            HostCredentials conn = deployAccess.credentials(host);
 
             updateProgress(backupId, 30);
 
@@ -402,10 +404,10 @@ public class BackupServiceImpl implements BackupService {
             String tarCommand = String.format("tar -czf %s -C %s .", remoteTarPath, sourcePath);
 
             SshUtil.CommandResult result = sshUtil.executeCommand(
-                    host.getIpAddress(),
-                    host.getSshPort() != null ? host.getSshPort() : 22,
-                    host.getSshUser(),
-                    privateKey,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
                     null,
                     tarCommand
             );
@@ -419,8 +421,8 @@ public class BackupServiceImpl implements BackupService {
             // 检查是否取消
             if (cancelled != null && cancelled.get()) {
                 // 清理远程临时文件
-                sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        privateKey, null, "rm -f " + remoteTarPath);
+                sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
+                        conn.privateKey(), null, "rm -f " + remoteTarPath);
                 throw new InterruptedException("备份已取消");
             }
 
@@ -428,10 +430,10 @@ public class BackupServiceImpl implements BackupService {
 
             // 下载打包文件
             boolean downloadSuccess = sshUtil.downloadFile(
-                    host.getIpAddress(),
-                    host.getSshPort() != null ? host.getSshPort() : 22,
-                    host.getSshUser(),
-                    privateKey,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
                     null,
                     remoteTarPath,
                     tarFilePath.toString()
@@ -444,8 +446,8 @@ public class BackupServiceImpl implements BackupService {
             updateProgress(backupId, 80);
 
             // 清理远程临时文件
-            sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    privateKey, null, "rm -f " + remoteTarPath);
+            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
+                    conn.privateKey(), null, "rm -f " + remoteTarPath);
 
             updateProgress(backupId, 90);
 
@@ -673,11 +675,8 @@ public class BackupServiceImpl implements BackupService {
             restorePath = instance.getInstallPath();
         }
 
-        // 解密私钥
-        String privateKey = null;
-        if (host.getSshPrivateKey() != null && !host.getSshPrivateKey().isEmpty()) {
-            privateKey = aesUtil.decrypt(host.getSshPrivateKey());
-        }
+        // 凭据解析统一走 DeploymentAccess
+        HostCredentials conn = deployAccess.credentials(host);
 
         // 停止实例
         instanceService.stopInstance(instance.getId());
@@ -686,10 +685,10 @@ public class BackupServiceImpl implements BackupService {
             // 上传备份文件到远程主机
             String remoteBackupPath = "/tmp/restore_" + backupId + ".tar.gz";
             boolean uploadSuccess = sshUtil.uploadFile(
-                    host.getIpAddress(),
-                    host.getSshPort() != null ? host.getSshPort() : 22,
-                    host.getSshUser(),
-                    privateKey,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
                     null,
                     backupFilePath,
                     remoteBackupPath
@@ -704,10 +703,10 @@ public class BackupServiceImpl implements BackupService {
                     restorePath, remoteBackupPath);
 
             SshUtil.CommandResult result = sshUtil.executeCommand(
-                    host.getIpAddress(),
-                    host.getSshPort() != null ? host.getSshPort() : 22,
-                    host.getSshUser(),
-                    privateKey,
+                    conn.host(),
+                    conn.port(),
+                    conn.username(),
+                    conn.privateKey(),
                     null,
                     restoreCommand
             );
@@ -717,8 +716,8 @@ public class BackupServiceImpl implements BackupService {
             }
 
             // 清理远程临时文件
-            sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    privateKey, null, "rm -f " + remoteBackupPath);
+            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
+                    conn.privateKey(), null, "rm -f " + remoteBackupPath);
 
             log.info("文件还原成功: backupId={}", backupId);
 

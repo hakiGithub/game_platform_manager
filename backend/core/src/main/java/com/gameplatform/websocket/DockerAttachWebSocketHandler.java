@@ -1,14 +1,12 @@
 package com.gameplatform.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.AesUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.channel.ChannelExec;
-import org.apache.sshd.client.session.ClientSession;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -30,13 +28,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
 
     private final HostMapper hostMapper;
+    private final DeploymentAccess deployAccess;
+    private final ConnectionLifecycle lifecycle;
     private final ObjectMapper objectMapper;
 
     private final ConcurrentHashMap<String, DockerAttachSession> sessions = new ConcurrentHashMap<>();
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
-    public DockerAttachWebSocketHandler(HostMapper hostMapper) {
+    public DockerAttachWebSocketHandler(HostMapper hostMapper, DeploymentAccess deployAccess,
+                                        ConnectionLifecycle lifecycle) {
         this.hostMapper = hostMapper;
+        this.deployAccess = deployAccess;
+        this.lifecycle = lifecycle;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -62,6 +64,7 @@ public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
         try {
             DockerAttachSession attachSession = createAttachSession(host, params.containerId, session);
             sessions.put(session.getId(), attachSession);
+            lifecycle.register(session.getId(), attachSession);
 
             sendMessage(session, new WsMessage("connected", "Docker Attach 连接成功"));
             log.info("Docker Attach 连接建立成功: sessionId={}, container={}", session.getId(), params.containerId);
@@ -116,104 +119,28 @@ public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         log.info("Docker Attach WebSocket连接关闭: {}, status={}", session.getId(), status);
 
-        DockerAttachSession attachSession = sessions.remove(session.getId());
-        if (attachSession != null) {
-            attachSession.close();
-        }
+        sessions.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.error("Docker Attach WebSocket传输错误: {}", session.getId(), exception);
 
-        DockerAttachSession attachSession = sessions.remove(session.getId());
-        if (attachSession != null) {
-            attachSession.close();
-        }
+        sessions.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     private DockerAttachSession createAttachSession(Host host, String containerId, WebSocketSession webSocketSession) throws Exception {
-        SshClient client = SshClient.setUpDefaultClient();
-        client.start();
-
-        int port = host.getSshPort() != null ? host.getSshPort() : 22;
-        ClientSession sshSession = client.connect(host.getSshUser(), host.getIpAddress(), port)
-                .verify(10000, TimeUnit.MILLISECONDS)
-                .getSession();
-
-        authenticate(sshSession, host);
+        DeploymentAccess.SshConnection ssh = deployAccess.connect(host);
 
         // docker attach 命令
         String attachCommand = String.format("docker attach %s", containerId);
-        
-        ChannelExec channel = sshSession.createExecChannel(attachCommand);
+
+        ChannelExec channel = ssh.session().createExecChannel(attachCommand);
         channel.open().verify(10000, TimeUnit.MILLISECONDS);
 
-        return new DockerAttachSession(client, sshSession, channel, webSocketSession, executorService);
-    }
-
-    private void authenticate(ClientSession session, Host host) throws Exception {
-        boolean authenticated = false;
-
-        if (host.getSshPrivateKey() != null && !host.getSshPrivateKey().isEmpty()) {
-            try {
-                String privateKey = AesUtil.decrypt(host.getSshPrivateKey());
-                if (privateKey != null && !privateKey.isEmpty()) {
-                    java.security.KeyPair keyPair = loadPrivateKey(privateKey);
-                    if (keyPair != null) {
-                        session.addPublicKeyIdentity(keyPair);
-                        if (session.auth().verify(10000, TimeUnit.MILLISECONDS).isSuccess()) {
-                            authenticated = true;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("私钥认证失败: {}", e.getMessage());
-            }
-        }
-
-        if (!authenticated && host.getSshPassword() != null && !host.getSshPassword().isEmpty()) {
-            String password = AesUtil.decrypt(host.getSshPassword());
-            if (password != null) {
-                session.addPasswordIdentity(password);
-                if (session.auth().verify(10000, TimeUnit.MILLISECONDS).isSuccess()) {
-                    authenticated = true;
-                }
-            }
-        }
-
-        if (!authenticated) {
-            throw new RuntimeException("SSH认证失败");
-        }
-    }
-
-    private java.security.KeyPair loadPrivateKey(String privateKeyContent) {
-        try {
-            org.apache.sshd.common.config.keys.FilePasswordProvider passwordProvider =
-                    org.apache.sshd.common.config.keys.FilePasswordProvider.EMPTY;
-            java.io.InputStream keyStream = new java.io.ByteArrayInputStream(
-                    privateKeyContent.getBytes(StandardCharsets.UTF_8));
-
-            java.lang.reflect.Method method = org.apache.sshd.common.util.security.SecurityUtils.class
-                    .getMethod("loadKeyPairIdentities",
-                            org.apache.sshd.common.session.SessionContext.class,
-                            org.apache.sshd.common.NamedResource.class,
-                            java.io.InputStream.class,
-                            org.apache.sshd.common.config.keys.FilePasswordProvider.class);
-
-            @SuppressWarnings("unchecked")
-            Iterable<java.security.KeyPair> keyPairs = (Iterable<java.security.KeyPair>) method.invoke(
-                    null, null, null, keyStream, passwordProvider);
-
-            if (keyPairs != null) {
-                for (java.security.KeyPair keyPair : keyPairs) {
-                    return keyPair;
-                }
-            }
-        } catch (Exception e) {
-            log.error("加载私钥失败: {}", e.getMessage());
-        }
-        return null;
+        return new DockerAttachSession(ssh, channel, webSocketSession, lifecycle.executor());
     }
 
     private PathParams extractPathParams(String path) {
@@ -275,19 +202,17 @@ public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
         String containerId;
     }
 
-    private static class DockerAttachSession {
-        private final SshClient client;
-        private final ClientSession sshSession;
+    private static class DockerAttachSession implements AutoCloseable {
+        private final DeploymentAccess.SshConnection ssh;
         private final ChannelExec channel;
         private final WebSocketSession webSocketSession;
         private final ExecutorService executorService;
         private final AtomicBoolean connected = new AtomicBoolean(true);
         private Future<?> outputReader;
 
-        public DockerAttachSession(SshClient client, ClientSession sshSession, ChannelExec channel,
+        public DockerAttachSession(DeploymentAccess.SshConnection ssh, ChannelExec channel,
                                   WebSocketSession webSocketSession, ExecutorService executorService) {
-            this.client = client;
-            this.sshSession = sshSession;
+            this.ssh = ssh;
             this.channel = channel;
             this.webSocketSession = webSocketSession;
             this.executorService = executorService;
@@ -351,7 +276,7 @@ public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
         }
 
         public boolean isConnected() {
-            return connected.get() && sshSession.isOpen() && channel.isOpen();
+            return connected.get() && ssh.session().isOpen() && channel.isOpen();
         }
 
         public void close() {
@@ -362,8 +287,9 @@ public class DockerAttachWebSocketHandler extends TextWebSocketHandler {
             }
 
             try { channel.close(); } catch (Exception e) { log.debug("关闭通道失败: {}", e.getMessage()); }
-            try { sshSession.close(); } catch (Exception e) { log.debug("关闭会话失败: {}", e.getMessage()); }
-            try { client.stop(); } catch (Exception e) { log.debug("停止客户端失败: {}", e.getMessage()); }
+
+            // 释放会话与客户端
+            ssh.close();
 
             log.info("Docker Attach 会话已关闭");
         }

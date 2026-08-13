@@ -51,27 +51,36 @@ public interface DeployAdapter {
 
     /**
      * 实例状态枚举
+     *
+     * <p>game_instance.run_status 列的唯一权威词汇表（ADR-0005）：
+     * code 为持久化数字，wireKey 为线上英文键（InstanceVO.status），description 为中文文本唯一来源。
      */
     enum InstanceStatus {
-        STOPPED(0, "已停止"),
-        RUNNING(1, "运行中"),
-        STARTING(2, "启动中"),
-        STOPPING(3, "停止中"),
-        ERROR(4, "异常"),
-        INSTALLING(5, "安装中"),
-        UPDATING(6, "更新中"),
-        NOT_INSTALLED(7, "未安装");
+        STOPPED(0, "stopped", "已停止"),
+        RUNNING(1, "running", "运行中"),
+        STARTING(2, "starting", "启动中"),
+        STOPPING(3, "stopping", "停止中"),
+        ERROR(4, "error", "异常"),
+        INSTALLING(5, "installing", "安装中"),
+        UPDATING(6, "updating", "更新中"),
+        NOT_INSTALLED(7, "not_installed", "未安装");
 
         private final int code;
+        private final String wireKey;
         private final String description;
 
-        InstanceStatus(int code, String description) {
+        InstanceStatus(int code, String wireKey, String description) {
             this.code = code;
+            this.wireKey = wireKey;
             this.description = description;
         }
 
         public int getCode() {
             return code;
+        }
+
+        public String getWireKey() {
+            return wireKey;
         }
 
         public String getDescription() {
@@ -84,7 +93,7 @@ public interface DeployAdapter {
                     return status;
                 }
             }
-            return ERROR;
+            return null;
         }
     }
 

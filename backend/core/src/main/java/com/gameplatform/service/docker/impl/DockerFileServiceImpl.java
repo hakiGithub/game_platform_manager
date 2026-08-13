@@ -2,12 +2,13 @@ package com.gameplatform.service.docker.impl;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.FileContentUpdateDTO;
 import com.gameplatform.dto.docker.FileCopyDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerFileService;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ContainerFileInfoVO;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,7 +42,7 @@ public class DockerFileServiceImpl implements DockerFileService {
 
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
-    private final AesUtil aesUtil;
+    private final DeploymentAccess deployAccess;
     
     private static final long MAX_PREVIEW_SIZE = 10 * 1024 * 1024; // 10MB
     private static final long MAX_EDIT_SIZE = 1 * 1024 * 1024; // 1MB
@@ -323,12 +324,9 @@ public class DockerFileServiceImpl implements DockerFileService {
 
     private SshUtil.CommandResult executeCommand(Host host, String command, int timeout) {
         try {
+            HostCredentials conn = deployAccess.credentials(host);
             return sshUtil.executeCommand(
-                    host.getIpAddress(),
-                    host.getSshPort() != null ? host.getSshPort() : 22,
-                    host.getSshUser(),
-                    null,
-                    getDecryptedPassword(host),
+                    conn.host(), conn.port(), conn.username(), null, conn.password(),
                     command,
                     timeout
             );
@@ -340,18 +338,6 @@ public class DockerFileServiceImpl implements DockerFileService {
             errorResult.setError(e.getMessage());
             errorResult.setSuccess(false);
             return errorResult;
-        }
-    }
-
-    private String getDecryptedPassword(Host host) {
-        if (host.getSshPassword() == null || host.getSshPassword().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPassword());
-        } catch (Exception e) {
-            log.error("解密密码失败: {}", e.getMessage());
-            return host.getSshPassword();
         }
     }
 

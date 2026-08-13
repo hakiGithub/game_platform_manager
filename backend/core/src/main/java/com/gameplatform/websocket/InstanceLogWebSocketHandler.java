@@ -1,17 +1,12 @@
 package com.gameplatform.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.gameplatform.adapter.DeployAdapter;
-import com.gameplatform.adapter.DeployAdapterFactory;
-import com.gameplatform.entity.GameInstance;
-import com.gameplatform.mapper.GameInstanceMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.util.Map;
 import java.util.concurrent.*;
 
 /**
@@ -25,19 +20,16 @@ import java.util.concurrent.*;
 @Component
 public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
 
-    private final GameInstanceMapper instanceMapper;
-    private final DeployAdapterFactory adapterFactory;
+    private final ConnectionLifecycle lifecycle;
+    private final DeployAdapterLogProvider logProvider;
     private final ObjectMapper objectMapper;
 
     // 存储会话与日志读取任务的映射
     private final ConcurrentHashMap<String, LogReaderTask> logReaders = new ConcurrentHashMap<>();
 
-    // 线程池用于处理日志读取
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
-
-    public InstanceLogWebSocketHandler(GameInstanceMapper instanceMapper, DeployAdapterFactory adapterFactory) {
-        this.instanceMapper = instanceMapper;
-        this.adapterFactory = adapterFactory;
+    public InstanceLogWebSocketHandler(ConnectionLifecycle lifecycle, DeployAdapterLogProvider logProvider) {
+        this.lifecycle = lifecycle;
+        this.logProvider = logProvider;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -54,20 +46,14 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 获取实例信息
-        GameInstance instance = instanceMapper.selectById(instanceId);
-        if (instance == null) {
-            sendErrorMessage(session, "实例不存在");
-            session.close();
-            return;
-        }
+        // 启动日志读取任务（实例不存在时由 LogProvider 快速失败并终止推送）
 
-        // 启动日志读取任务
         try {
-            LogReaderTask readerTask = new LogReaderTask(instanceId, session, adapterFactory, instanceMapper);
-            Future<?> future = executorService.submit(readerTask);
-            readerTask.setFuture(future);
+            LogReaderTask readerTask = new LogReaderTask(instanceId, session, logProvider);
             logReaders.put(session.getId(), readerTask);
+            lifecycle.register(session.getId(), readerTask);
+            Future<?> future = lifecycle.executor().submit(readerTask);
+            readerTask.setFuture(future);
 
             // 发送连接成功消息
             sendMessage(session, new WsMessage("connected", "日志连接成功"));
@@ -125,20 +111,16 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         log.info("实例日志WebSocket连接关闭: {}, status={}", session.getId(), status);
 
-        LogReaderTask readerTask = logReaders.remove(session.getId());
-        if (readerTask != null) {
-            readerTask.stop();
-        }
+        logReaders.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.error("实例日志WebSocket传输错误: {}", session.getId(), exception);
 
-        LogReaderTask readerTask = logReaders.remove(session.getId());
-        if (readerTask != null) {
-            readerTask.stop();
-        }
+        logReaders.remove(session.getId());
+        lifecycle.unregister(session.getId());
     }
 
     /**
@@ -209,26 +191,19 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
     /**
      * 日志读取任务
      */
-    private class LogReaderTask implements Runnable {
+    private class LogReaderTask implements Runnable, AutoCloseable {
         private final Long instanceId;
         private final WebSocketSession session;
-        private final DeployAdapterFactory adapterFactory;
-        private final GameInstanceMapper instanceMapper;
+        private final LogTailer tailer;
 
-        private volatile int lines = 100;
         private volatile boolean paused = false;
         private volatile boolean running = true;
         private Future<?> future;
 
-        // 上次读取的日志内容（用于检测变化）
-        private String lastLogContent = "";
-
-        public LogReaderTask(Long instanceId, WebSocketSession session,
-                            DeployAdapterFactory adapterFactory, GameInstanceMapper instanceMapper) {
+        public LogReaderTask(Long instanceId, WebSocketSession session, LogProvider provider) {
             this.instanceId = instanceId;
             this.session = session;
-            this.adapterFactory = adapterFactory;
-            this.instanceMapper = instanceMapper;
+            this.tailer = new LogTailer(provider, instanceId, 100);
         }
 
         public void setFuture(Future<?> future) {
@@ -236,7 +211,7 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
         }
 
         public void setLines(int lines) {
-            this.lines = lines;
+            tailer.setLines(lines);
         }
 
         public void setPaused(boolean paused) {
@@ -251,13 +226,22 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
         }
 
         @Override
+        public void close() {
+            stop();
+        }
+
+        @Override
         public void run() {
             log.info("开始读取实例日志: instanceId={}", instanceId);
 
             while (running && session.isOpen()) {
                 try {
                     if (!paused) {
-                        readAndSendLogs();
+                        // 轮询 + 增量 diff 语义由 LogTailer 承载，此处只负责调度与发送
+                        String newContent = tailer.pollOnce();
+                        if (newContent != null && !newContent.isEmpty()) {
+                            sendLog(newContent);
+                        }
                     }
                     // 每秒读取一次
                     Thread.sleep(1000);
@@ -272,63 +256,6 @@ public class InstanceLogWebSocketHandler extends TextWebSocketHandler {
             }
 
             log.info("实例日志读取结束: instanceId={}", instanceId);
-        }
-
-        private void readAndSendLogs() {
-            try {
-                GameInstance instance = instanceMapper.selectById(instanceId);
-                if (instance == null) {
-                    sendError("实例不存在");
-                    stop();
-                    return;
-                }
-
-                String deployType = instance.getDeployType();
-                if (deployType == null || deployType.isEmpty()) {
-                    deployType = "native";
-                }
-                DeployAdapter adapter = adapterFactory.getAdapter(deployType);
-                Map<String, Object> config = instance.getConfigInfo();
-
-                // 获取日志
-                String logContent = adapter.getLogs(instanceId, config, lines);
-
-                // 如果日志内容变化，发送给客户端
-                if (logContent != null && !logContent.equals(lastLogContent)) {
-                    // 只发送新增的部分
-                    String newContent = extractNewContent(lastLogContent, logContent);
-                    if (!newContent.isEmpty()) {
-                        sendLog(newContent);
-                    }
-                    lastLogContent = logContent;
-                }
-
-            } catch (Exception e) {
-                log.error("获取日志失败: {}", e.getMessage());
-            }
-        }
-
-        /**
-         * 提取新增内容
-         */
-        private String extractNewContent(String oldContent, String newContent) {
-            if (oldContent.isEmpty()) {
-                return newContent;
-            }
-
-            // 如果新内容包含旧内容，返回差异部分
-            if (newContent.endsWith(oldContent)) {
-                return newContent.substring(0, newContent.length() - oldContent.length());
-            }
-
-            // 如果旧内容包含在新内容中，返回新内容
-            if (newContent.contains(oldContent)) {
-                int index = newContent.indexOf(oldContent);
-                return newContent.substring(0, index);
-            }
-
-            // 无法确定差异，返回全部新内容
-            return newContent;
         }
 
         private void sendLog(String logContent) {

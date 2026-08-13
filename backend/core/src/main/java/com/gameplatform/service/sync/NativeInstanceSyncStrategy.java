@@ -1,10 +1,11 @@
 package com.gameplatform.service.sync;
 
 import com.gameplatform.adapter.DeployAdapter.InstanceStatus;
+import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,12 +39,13 @@ public class NativeInstanceSyncStrategy {
     private static final Pattern JAR_PARAM_PATTERN = Pattern.compile("-jar\\s+(\\S+)");
 
     private final SshUtil sshUtil;
-    private final AesUtil aesUtil;
+    private final DeploymentAccess deployAccess;
     private final GameInstanceMapper instanceMapper;
 
-    public NativeInstanceSyncStrategy(SshUtil sshUtil, AesUtil aesUtil, GameInstanceMapper instanceMapper) {
+    public NativeInstanceSyncStrategy(SshUtil sshUtil, DeploymentAccess deployAccess,
+                                      GameInstanceMapper instanceMapper) {
         this.sshUtil = sshUtil;
-        this.aesUtil = aesUtil;
+        this.deployAccess = deployAccess;
         this.instanceMapper = instanceMapper;
     }
 
@@ -157,45 +159,15 @@ public class NativeInstanceSyncStrategy {
     }
 
     /**
-     * 通过 Host 实体执行 SSH 命令
-     * 复用 AbstractDeployAdapter 中的模式：先解密 privateKey/password，再调用 SshUtil
+     * 通过 Host 实体执行 SSH 命令（凭据统一走 DeploymentAccess）
      */
     private SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        String privateKey = getDecryptedPrivateKey(host);
-        String password = getDecryptedPassword(host);
+        HostCredentials conn = deployAccess.credentials(host);
         return sshUtil.executeCommand(
-                host.getIpAddress(),
-                host.getSshPort(),
-                host.getSshUser(),
-                privateKey,
-                password,
+                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
                 command,
                 timeoutMs
         );
-    }
-
-    private String getDecryptedPrivateKey(Host host) {
-        if (host.getSshPrivateKey() == null || host.getSshPrivateKey().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPrivateKey());
-        } catch (Exception e) {
-            log.error("解密私钥失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String getDecryptedPassword(Host host) {
-        if (host.getSshPassword() == null || host.getSshPassword().isEmpty()) {
-            return null;
-        }
-        try {
-            return aesUtil.decrypt(host.getSshPassword());
-        } catch (Exception e) {
-            log.error("解密密码失败: {}", e.getMessage());
-            return null;
-        }
     }
 
     private boolean shouldUpdate(int currentStatus, InstanceStatus target) {
