@@ -109,7 +109,7 @@ class DownloadServiceTest {
         lenient().when(patchInstallService.install(any(PatchInstallRequest.class)))
                 .thenReturn("patch-task-1");
         lenient().when(taskService.getTask(anyString())).thenReturn(null);
-        lenient().doNothing().when(taskService).cancelMyOwn(anyString());
+        lenient().when(taskService.cancelMyOwn(anyString())).thenReturn(true);
 
         // 默认实例
         instance = new InstanceVO();

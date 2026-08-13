@@ -654,21 +654,42 @@ public class PluginInstallService {
         String storePath = pathResolver.getPluginsStorePath();
         List<FileInfo> entries = listFilesSafe(instanceId, storePath);
 
+        // 启用状态加载与元数据加载互不依赖，与目录列表后并行执行
+        java.util.concurrent.CompletableFuture<List<EnabledPlugin>> enabledFuture =
+                java.util.concurrent.CompletableFuture.supplyAsync(
+                        () -> enabledPluginsService.list(instanceId), copyExecutor);
+
         java.util.Map<String, EnabledPlugin> enabledMap = new java.util.HashMap<>();
-        for (EnabledPlugin ep : enabledPluginsService.list(instanceId)) {
-            if (ep.getName() != null) {
-                enabledMap.put(ep.getName(), ep);
-            }
-        }
 
         List<PluginListVO> result = new ArrayList<>();
         if (entries == null) return result;
-        for (FileInfo entry : entries) {
-            if (!entry.isDirectory()) continue;
-            String name = entry.getName();
-            if (name == null || name.isBlank()) continue;
 
-            PluginMeta meta = pluginMetaService.load(instanceId, name);
+        // 收集目录名并并行加载元数据（每次远程读 ~0.4s，串行 N 次 → 并行 1 轮）
+        List<String> names = new ArrayList<>();
+        for (FileInfo entry : entries) {
+            if (entry.isDirectory() && entry.getName() != null && !entry.getName().isBlank()) {
+                names.add(entry.getName());
+            }
+        }
+        java.util.Map<String, PluginMeta> metaMap = new java.util.concurrent.ConcurrentHashMap<>();
+        List<java.util.concurrent.CompletableFuture<Void>> futures = new ArrayList<>();
+        for (String name : names) {
+            futures.add(java.util.concurrent.CompletableFuture.runAsync(
+                    () -> metaMap.put(name, pluginMetaService.load(instanceId, name)), copyExecutor));
+        }
+        try {
+            java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+            for (EnabledPlugin ep : enabledFuture.join()) {
+                if (ep.getName() != null) {
+                    enabledMap.put(ep.getName(), ep);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("并行加载插件元数据异常: {}", e.getMessage());
+        }
+
+        for (String name : names) {
+            PluginMeta meta = metaMap.get(name);
             EnabledPlugin enabled = enabledMap.get(name);
             String status = enabled != null ? "enabled" : "disabled";
             String source = meta != null && meta.getSource() != null ? meta.getSource()

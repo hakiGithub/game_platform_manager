@@ -41,10 +41,9 @@ public class PluginMetaService {
     /** 读取插件元数据；不存在返回 null */
     public PluginMeta load(Long instanceId, String pluginName) {
         String path = pathResolver.getPluginYamlPath(pluginName);
-        if (!existsSafe(instanceId, path)) {
-            return null;
-        }
         try {
+            // 直接读取：文件不存在时 readTextFile 抛异常即视为无元数据，
+            // 省去一次 exists 远程往返（list 接口性能：每插件 2 次往返 → 1 次）
             String content = instanceFileService.readTextFile(instanceId, path, StandardCharsets.UTF_8);
             if (content == null || content.isBlank()) {
                 return null;
@@ -102,14 +101,6 @@ public class PluginMetaService {
             instanceFileService.deleteFile(instanceId, path);
         } catch (Exception e) {
             log.debug("删除 plugin.yaml 失败 plugin={}, err={}", pluginName, e.getMessage());
-        }
-    }
-
-    private boolean existsSafe(Long instanceId, String path) {
-        try {
-            return instanceFileService.exists(instanceId, path);
-        } catch (Exception e) {
-            return false;
         }
     }
 

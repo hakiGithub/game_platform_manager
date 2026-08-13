@@ -189,13 +189,18 @@ public class DeploymentAccess {
         private final SshClient client;
         private final ClientSession session;
 
-        SshConnection(SshClient client, ClientSession session) {
+        public SshConnection(SshClient client, ClientSession session) {
             this.client = client;
             this.session = session;
         }
 
         public ClientSession session() {
             return session;
+        }
+
+        /** 会话是否存活（供连接池复用判断） */
+        public boolean isOpen() {
+            return session.isOpen();
         }
 
         @Override
