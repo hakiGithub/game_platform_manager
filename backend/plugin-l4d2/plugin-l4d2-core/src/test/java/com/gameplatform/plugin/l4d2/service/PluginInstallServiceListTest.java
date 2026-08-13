@@ -39,7 +39,7 @@ class PluginInstallServiceListTest {
         service = new PluginInstallService(
                 instanceQueryService,
                 instanceFileService,
-                mock(RconService.class),
+
                 mock(FileRefsService.class),
                 new L4D2PathResolver(),
                 pluginMetaService,

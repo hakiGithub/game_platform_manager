@@ -42,9 +42,6 @@ class PluginInstallServiceTest {
     private InstanceFileService instanceFileService;
 
     @Mock
-    private RconService rconService;
-
-    @Mock
     private FileRefsService fileRefsService;
 
     @Mock
@@ -63,7 +60,7 @@ class PluginInstallServiceTest {
     void setUp() {
         // 使用真实路径解析器，便于验证拼接结果
         pluginInstallService = new PluginInstallService(
-                instanceQueryService, instanceFileService, rconService,
+                instanceQueryService, instanceFileService,
                 fileRefsService, pathResolver,
                 pluginMetaService, enabledPluginsService);
         instance = new InstanceVO();
@@ -99,23 +96,13 @@ class PluginInstallServiceTest {
         when(enabledPluginsService.isEnabled(1L, "pluginA")).thenReturn(true);
         when(enabledPluginsService.isEnabled(1L, "pluginB")).thenReturn(true);
 
-        // listPluginSmxIds 扫描库目录（每个插件 1 个 smx）
-        when(instanceFileService.listFiles(1L,
-                "left4dead2/addons/sourcemod/plugins_store/pluginA/left4dead2/addons/sourcemod/plugins"))
-                .thenReturn(Collections.singletonList(file("pluginA.smx", false)));
-        when(instanceFileService.listFiles(1L,
-                "left4dead2/addons/sourcemod/plugins_store/pluginB/left4dead2/addons/sourcemod/plugins"))
-                .thenReturn(Collections.singletonList(file("pluginB.smx", false)));
-
         // removeRefs 返回空（无归零文件）
         when(fileRefsService.removeRefs(1L, "pluginA")).thenReturn(List.of());
         when(fileRefsService.removeRefs(1L, "pluginB")).thenReturn(List.of());
 
         pluginInstallService.disableAllPlugins(1L);
 
-        // 验证对每个已启用插件调用了 RCON unload 和 enabledPluginsService.remove
-        verify(rconService).executeCommand(eq(1L), eq("sm plugins unload pluginA"));
-        verify(rconService).executeCommand(eq(1L), eq("sm plugins unload pluginB"));
+        // 无 RCON：批量禁用逐插件 removeRefs + enabledPluginsService.remove
         verify(enabledPluginsService).remove(1L, "pluginA");
         verify(enabledPluginsService).remove(1L, "pluginB");
     }

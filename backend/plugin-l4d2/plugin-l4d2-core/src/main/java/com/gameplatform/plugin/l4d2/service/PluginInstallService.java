@@ -4,7 +4,6 @@ import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.ArchiveExtractUtil;
 import com.gameplatform.plugin.l4d2.util.GbkCodecUtil;
-import com.gameplatform.plugin.l4d2.util.RconFailureDetector;
 import com.gameplatform.plugin.l4d2.util.ZipSlipGuard;
 import com.gameplatform.plugin.l4d2.vo.EnabledPlugin;
 import com.gameplatform.plugin.l4d2.vo.PluginListVO;
@@ -54,7 +53,6 @@ public class PluginInstallService {
 
     private final InstanceQueryService instanceQueryService;
     private final InstanceFileService instanceFileService;
-    private final RconService rconService;
     private final FileRefsService fileRefsService;
     private final L4D2PathResolver pathResolver;
     private final Charset gbk = GbkCodecUtil.gbk();
@@ -68,14 +66,12 @@ public class PluginInstallService {
 
     public PluginInstallService(InstanceQueryService instanceQueryService,
                                 InstanceFileService instanceFileService,
-                                RconService rconService,
                                 FileRefsService fileRefsService,
                                 L4D2PathResolver pathResolver,
                                 PluginMetaService pluginMetaService,
                                 EnabledPluginsService enabledPluginsService) {
         this.instanceQueryService = instanceQueryService;
         this.instanceFileService = instanceFileService;
-        this.rconService = rconService;
         this.fileRefsService = fileRefsService;
         this.pathResolver = pathResolver;
         this.pluginMetaService = pluginMetaService;
@@ -295,87 +291,53 @@ public class PluginInstallService {
     }
 
     /**
-     * 启用并 RCON 加载（带失败回滚）：
+     * 批量启用插件（无 RCON）：
      * <ol>
-     *   <li>listPluginSmxIds：扫描库中所有 smx（字母序）</li>
-     *   <li>copyPluginFilesConcurrently：并发复制库文件到游戏目录（Semaphore=3）</li>
-     *   <li>逐个 sm plugins load（字母序）</li>
-     *   <li>任一加载失败：rollbackLoadedSmxPlugins(unload 已加载) + rollbackCopiedFiles(删除已复制) +
-     *       enabledPluginsService.remove</li>
-     *   <li>全部成功：enabledPluginsService.add + fileRefsService.addRefs</li>
+     *   <li>复制库文件到游戏目录（每插件一次 cp -r）</li>
+     *   <li>登记已启用 + 引用计数</li>
+     *   <li>插件在游戏服务器重启后生效（不再通过 RCON 运行时加载）</li>
      * </ol>
      *
-     * <p>对齐 l4d2-server-next EnableAndLoadPlugin。
+     * <p>单个插件只传一个元素即可；单插件失败不影响其余（错误收集在返回值中）。</p>
+     *
+     * @param instanceId  实例 ID
+     * @param pluginNames 插件名列表
+     * @return 失败项列表（"插件名: 原因"），空表示全部成功
      */
-    public void enableAndLoad(Long instanceId, String pluginName) {
-        validatePluginName(pluginName);
+    public List<String> enableAndLoadBatch(Long instanceId, List<String> pluginNames) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
         }
-
-        // 1. 列出 smx ID（字母序）
-        List<String> smxIds = listPluginSmxIds(instanceId, pluginName);
-        if (smxIds.isEmpty()) {
-            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
-                    "插件不包含 .smx 文件: " + pluginName);
-        }
-
-        // 2. 复制库文件到游戏目录（一次性 cp -r）
-        List<String> copiedFiles = copyPluginFilesConcurrently(instanceId, pluginName);
-
-        // 3. 平台插件（SourceMod + Metamod）特殊处理：
-        //    复制到游戏目录后必须重启游戏服务器才能生效，不能通过 RCON load。
-        if (isPlatformPlugin(pluginName)) {
-            EnabledPlugin enabled = new EnabledPlugin();
-            enabled.setName(pluginName);
-            enabled.setSource(resolveSourceForEnable(instanceId, pluginName));
-            enabled.setEnabledAt(System.currentTimeMillis());
-            enabled.setFiles(copiedFiles);
-            enabledPluginsService.add(instanceId, enabled);
-            fileRefsService.addRefs(instanceId, pluginName, copiedFiles);
-            log.info("平台插件已复制，等待服务器重启生效: instanceId={}, plugin={}",
-                    instanceId, pluginName);
-            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
-                    "平台插件已安装，请重启游戏服务器使 SourceMod 生效");
-        }
-
-        // 4. 检查 SourceMod 是否已加载（普通插件依赖 SourceMod）
-        if (!isSourceModReady(instanceId)) {
-            // 源平台未就绪时回滚本次复制，避免游戏目录出现孤立文件
-            rollbackCopiedFiles(instanceId, copiedFiles);
-            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
-                    "SourceMod 尚未加载，请先启用平台插件并重启游戏服务器");
-        }
-
-        // 5. 逐个 RCON load（字母序）
-        List<String> loadedSmxIds = new ArrayList<>();
-        for (String smxId : smxIds) {
+        List<String> errors = new ArrayList<>();
+        for (String pluginName : pluginNames) {
             try {
-                String output = rconService.executeCommand(instanceId, "sm plugins load " + smxId);
-                if (RconFailureDetector.isFailed(output)) {
-                    // 6. 回滚：unload 已加载 + 删除已复制
-                    rollbackLoadedSmxPlugins(instanceId, loadedSmxIds);
-                    rollbackCopiedFiles(instanceId, copiedFiles);
-                    throw new L4D2PluginException(L4D2PluginException.RCON,
-                            "RCON 加载插件失败: " + smxId + ", 输出: " + output);
-                }
-                loadedSmxIds.add(smxId);
-                log.info("插件 smx 已加载: instanceId={}, pluginName={}, smxId={}",
-                        instanceId, pluginName, smxId);
-            } catch (L4D2PluginException e) {
-                throw e;
+                enableOne(instanceId, pluginName);
             } catch (Exception e) {
-                log.warn("RCON 加载异常，回滚 instanceId={}, pluginName={}, smxId={}",
-                        instanceId, pluginName, smxId, e);
-                rollbackLoadedSmxPlugins(instanceId, loadedSmxIds);
-                rollbackCopiedFiles(instanceId, copiedFiles);
-                throw new L4D2PluginException(L4D2PluginException.RCON,
-                        "RCON 加载异常: " + e.getMessage(), e);
+                log.warn("批量启用插件失败: plugin={}, err={}", pluginName, e.getMessage());
+                errors.add(pluginName + ": " + e.getMessage());
             }
         }
+        return errors;
+    }
 
-        // 7. 全部成功：登记已启用 + 引用计数
+    /**
+     * 启用单个插件（兼容旧签名；无 RCON，重启服务器后生效）。
+     */
+    public void enableAndLoad(Long instanceId, String pluginName) {
+        List<String> errors = enableAndLoadBatch(instanceId, List.of(pluginName));
+        if (!errors.isEmpty()) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS, errors.get(0));
+        }
+    }
+
+    private void enableOne(Long instanceId, String pluginName) {
+        validatePluginName(pluginName);
+
+        // 1. 复制库文件到游戏目录（一次性 cp -r）
+        List<String> copiedFiles = copyPluginFilesConcurrently(instanceId, pluginName);
+
+        // 2. 登记已启用 + 引用计数（重启服务器后生效）
         EnabledPlugin enabled = new EnabledPlugin();
         enabled.setName(pluginName);
         enabled.setSource(resolveSourceForEnable(instanceId, pluginName));
@@ -384,7 +346,7 @@ public class PluginInstallService {
         enabledPluginsService.add(instanceId, enabled);
         fileRefsService.addRefs(instanceId, pluginName, copiedFiles);
 
-        log.info("插件已启用: instanceId={}, pluginName={}, files={}",
+        log.info("插件已启用（重启服务器后生效）: instanceId={}, pluginName={}, files={}",
                 instanceId, pluginName, copiedFiles.size());
     }
 
@@ -487,36 +449,6 @@ public class PluginInstallService {
         return meta;
     }
 
-    /**
-     * 回滚已复制的文件（删除游戏目录中的副本）。
-     */
-    private void rollbackCopiedFiles(Long instanceId, List<String> copiedFiles) {
-        String gameLeft4Dead2 = pathResolver.getGamePath();
-        for (String relPath : copiedFiles) {
-            try {
-                instanceFileService.deleteFile(instanceId, gameLeft4Dead2 + "/" + relPath);
-            } catch (Exception e) {
-                log.warn("回滚复制文件失败 instanceId={}, path={}, err={}",
-                        instanceId, relPath, e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * 回滚已加载的 smx（unload）。
-     */
-    private void rollbackLoadedSmxPlugins(Long instanceId, List<String> loadedSmxIds) {
-        for (int i = loadedSmxIds.size() - 1; i >= 0; i--) {
-            String smxId = loadedSmxIds.get(i);
-            try {
-                rconService.executeCommand(instanceId, "sm plugins unload " + smxId);
-            } catch (Exception e) {
-                log.warn("回滚 unload 失败 instanceId={}, smxId={}, err={}",
-                        instanceId, smxId, e.getMessage());
-            }
-        }
-    }
-
     private String resolveSourceForEnable(Long instanceId, String pluginName) {
         PluginMeta meta = pluginMetaService.load(instanceId, pluginName);
         if (meta != null && meta.getSource() != null) {
@@ -526,91 +458,57 @@ public class PluginInstallService {
     }
 
     /**
-     * 判断是否为平台插件（SourceMod + Metamod）。
-     *
-     * <p>平台插件包含 SourceMod 核心，必须在游戏服务器启动时加载，
-     * 不能通过 RCON 在游戏运行中动态 load/unload。
-     */
-    private boolean isPlatformPlugin(String pluginName) {
-        if (pluginName == null) return false;
-        String lower = pluginName.toLowerCase();
-        return lower.contains("平台") || lower.contains("platform")
-                || lower.contains("sourcemod") || lower.contains("metamod");
-    }
-
-    /**
-     * 检查 SourceMod 是否已可通过 RCON 调用。
-     *
-     * <p>通过执行 {@code sm plugins list} 判断，返回包含"Unknown command"则未就绪。
-     */
-    private boolean isSourceModReady(Long instanceId) {
-        try {
-            String output = rconService.executeCommand(instanceId, "sm plugins list");
-            if (output == null || output.toLowerCase().contains("unknown command")) {
-                return false;
-            }
-            return true;
-        } catch (Exception e) {
-            log.warn("检查 SourceMod 状态失败 instanceId={}, err={}", instanceId, e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * RCON 卸载并禁用：
+     * 批量禁用插件（无 RCON）：
      * <ol>
-     *   <li>校验插件已启用（未启用直接报错）</li>
-     *   <li>listPluginSmxIds 获取 smx 列表（字母序）</li>
-     *   <li>倒序 sm plugins unload</li>
-     *   <li>任一卸载失败：rollbackUnloadedSmxPlugins（reload 已卸载的）</li>
-     *   <li>全部成功：fileRefsService.removeRefs 获取归零文件 → 删除游戏目录文件 →
+     *   <li>校验插件已启用</li>
+     *   <li>fileRefsService.removeRefs 获取归零文件 → 删除游戏目录文件 →
      *       enabledPluginsService.remove</li>
+     *   <li>插件在游戏服务器重启后完成卸载（不再通过 RCON 运行时卸载）</li>
      * </ol>
      *
-     * <p>对齐 l4d2-server-next DisableAndUnloadPlugin。
+     * <p>单个插件只传一个元素即可；单插件失败不影响其余（错误收集在返回值中）。</p>
+     *
+     * @return 失败项列表（"插件名: 原因"），空表示全部成功
      */
-    public void disableAndUnload(Long instanceId, String pluginName) {
-        validatePluginName(pluginName);
+    public List<String> disableAndUnloadBatch(Long instanceId, List<String> pluginNames) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
         }
+        List<String> errors = new ArrayList<>();
+        for (String pluginName : pluginNames) {
+            try {
+                disableOne(instanceId, pluginName);
+            } catch (Exception e) {
+                log.warn("批量禁用插件失败: plugin={}, err={}", pluginName, e.getMessage());
+                errors.add(pluginName + ": " + e.getMessage());
+            }
+        }
+        return errors;
+    }
+
+    /**
+     * 禁用单个插件（兼容旧签名；无 RCON，重启服务器后完成卸载）。
+     */
+    public void disableAndUnload(Long instanceId, String pluginName) {
+        List<String> errors = disableAndUnloadBatch(instanceId, List.of(pluginName));
+        if (!errors.isEmpty()) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS, errors.get(0));
+        }
+    }
+
+    private void disableOne(Long instanceId, String pluginName) {
+        validatePluginName(pluginName);
 
         if (!enabledPluginsService.isEnabled(instanceId, pluginName)) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
                     "插件未启用，无需禁用: " + pluginName);
         }
 
-        // 1. 获取 smx 列表（字母序）
-        List<String> smxIds = listPluginSmxIds(instanceId, pluginName);
-
-        // 2. 倒序 unload
-        List<String> unloadedSmxIds = new ArrayList<>();
-        for (int i = smxIds.size() - 1; i >= 0; i--) {
-            String smxId = smxIds.get(i);
-            try {
-                String output = rconService.executeCommand(instanceId, "sm plugins unload " + smxId);
-                if (RconFailureDetector.isFailed(output)) {
-                    rollbackUnloadedSmxPlugins(instanceId, unloadedSmxIds);
-                    throw new L4D2PluginException(L4D2PluginException.RCON,
-                            "RCON 卸载插件失败: " + smxId + ", 输出: " + output);
-                }
-                unloadedSmxIds.add(smxId);
-            } catch (L4D2PluginException e) {
-                throw e;
-            } catch (Exception e) {
-                log.warn("RCON 卸载异常，回滚 instanceId={}, pluginName={}, smxId={}",
-                        instanceId, pluginName, smxId, e);
-                rollbackUnloadedSmxPlugins(instanceId, unloadedSmxIds);
-                throw new L4D2PluginException(L4D2PluginException.RCON,
-                        "RCON 卸载异常: " + e.getMessage(), e);
-            }
-        }
-
-        // 3. 移除文件引用，获取归零的共享文件列表
+        // 1. 移除文件引用，获取归零的共享文件列表
         List<String> zeroedFiles = fileRefsService.removeRefs(instanceId, pluginName);
 
-        // 4. 删除归零的共享文件
+        // 2. 删除归零的共享文件
         String gameLeft4Dead2 = pathResolver.getGamePath();
         for (String relPath : zeroedFiles) {
             try {
@@ -621,26 +519,11 @@ public class PluginInstallService {
             }
         }
 
-        // 5. 从 enabled_plugins 移除
+        // 3. 从 enabled_plugins 移除
         enabledPluginsService.remove(instanceId, pluginName);
 
-        log.info("插件已禁用: instanceId={}, pluginName={}, removedFiles={}",
+        log.info("插件已禁用（重启服务器后完成卸载）: instanceId={}, pluginName={}, removedFiles={}",
                 instanceId, pluginName, zeroedFiles.size());
-    }
-
-    /**
-     * 回滚已卸载的 smx（reload）。
-     */
-    private void rollbackUnloadedSmxPlugins(Long instanceId, List<String> unloadedSmxIds) {
-        for (int i = unloadedSmxIds.size() - 1; i >= 0; i--) {
-            String smxId = unloadedSmxIds.get(i);
-            try {
-                rconService.executeCommand(instanceId, "sm plugins load " + smxId);
-            } catch (Exception e) {
-                log.warn("回滚 reload 失败 instanceId={}, smxId={}, err={}",
-                        instanceId, smxId, e.getMessage());
-            }
-        }
     }
 
     /**
@@ -674,8 +557,13 @@ public class PluginInstallService {
         java.util.Map<String, PluginMeta> metaMap = new java.util.concurrent.ConcurrentHashMap<>();
         List<java.util.concurrent.CompletableFuture<Void>> futures = new ArrayList<>();
         for (String name : names) {
-            futures.add(java.util.concurrent.CompletableFuture.runAsync(
-                    () -> metaMap.put(name, pluginMetaService.load(instanceId, name)), copyExecutor));
+            futures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
+                // ConcurrentHashMap 不允许 null 值：无元数据时跳过
+                PluginMeta meta = pluginMetaService.load(instanceId, name);
+                if (meta != null) {
+                    metaMap.put(name, meta);
+                }
+            }, copyExecutor));
         }
         try {
             java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
@@ -740,29 +628,7 @@ public class PluginInstallService {
     }
 
     /**
-     * 列出插件库中所有 .smx 文件 ID（去掉 .smx 后缀，按字母序排序）。
-     *
-     * <p>扫描路径：plugins_store/<pluginName>/left4dead2/addons/sourcemod/plugins/
-     * 跳过 disabled/ 子目录（与 l4d2-server-next listPluginSMXIDs 一致）。
-     *
-     * @return smx ID 列表（已排序）；目录不存在或为空返回空列表
-     */
-    public List<String> listPluginSmxIds(Long instanceId, String pluginName) {
-        String smxDir = pathResolver.getPluginLeft4Dead2Path(pluginName)
-                + "/addons/sourcemod/plugins";
-        List<FileInfo> files = listFilesSafe(instanceId, smxDir);
-        if (files == null) return List.of();
-        return files.stream()
-                .filter(f -> !f.isDirectory())
-                .map(FileInfo::getName)
-                .filter(n -> n != null && n.toLowerCase().endsWith(SMX_SUFFIX))
-                .map(n -> n.substring(0, n.length() - SMX_SUFFIX.length()))
-                .sorted()
-                .toList();
-    }
-
-    /**
-     * 禁用所有插件（供 PresetService 调用）：遍历 enabled_plugins.yaml，逐个 disableAndUnload。
+     * 禁用所有插件（供 PresetService 调用）：一次性批量禁用 enabled_plugins 中的全部插件。
      *
      * <p>对齐 l4d2-server-next ApplyPreset 中的 DisablePlugins(toDisable)。
      */
@@ -772,15 +638,12 @@ public class PluginInstallService {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
         }
         List<EnabledPlugin> enabled = enabledPluginsService.list(instanceId);
-        for (EnabledPlugin ep : enabled) {
-            try {
-                disableAndUnload(instanceId, ep.getName());
-            } catch (Exception e) {
-                log.warn("禁用插件失败 instanceId={}, plugin={}, err={}",
-                        instanceId, ep.getName(), e.getMessage());
-            }
+        List<String> names = enabled.stream().map(EnabledPlugin::getName).toList();
+        List<String> errors = disableAndUnloadBatch(instanceId, names);
+        if (!errors.isEmpty()) {
+            log.warn("禁用所有插件部分失败: {}", String.join("; ", errors));
         }
-        log.info("已禁用所有插件: instanceId={}, count={}", instanceId, enabled.size());
+        log.info("已禁用所有插件: instanceId={}, count={}", instanceId, names.size());
     }
 
     /**

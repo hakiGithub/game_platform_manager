@@ -208,9 +208,9 @@ public class PluginManageController {
     }
 
     /**
-     * 启用并 RCON 加载插件。
+     * 启用插件（复制文件 + 登记，重启服务器后生效；无 RCON）。
      */
-    @Operation(summary = "启用并加载插件", description = "移动 .smx 到 plugins 目录并通过 RCON 加载")
+    @Operation(summary = "启用插件", description = "复制插件文件到游戏目录，重启服务器后生效")
     @PostMapping("/enable-load")
     public Result<Void> enableLoad(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
@@ -221,9 +221,9 @@ public class PluginManageController {
     }
 
     /**
-     * RCON 卸载并禁用插件。
+     * 禁用插件（移除引用与文件，重启服务器后完成卸载；无 RCON）。
      */
-    @Operation(summary = "卸载并禁用插件", description = "通过 RCON 卸载并移动 .smx 到 disabled 目录")
+    @Operation(summary = "禁用插件", description = "移除插件文件引用与游戏目录文件，重启服务器后完成卸载")
     @PostMapping("/disable-unload")
     public Result<Void> disableUnload(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
@@ -236,19 +236,12 @@ public class PluginManageController {
     /**
      * 批量启用插件。
      */
-    @Operation(summary = "批量启用插件", description = "批量启用并加载多个插件")
+    @Operation(summary = "批量启用插件", description = "批量启用多个插件（重启服务器后生效）")
     @PostMapping("/batch-enable")
     public Result<Void> batchEnable(@Valid @RequestBody BatchPluginOperationDTO dto) {
         log.info("批量启用插件, instanceId: {}, count: {}", dto.getInstanceId(), dto.getPluginNames().size());
-        List<String> errors = new ArrayList<>();
-        for (String name : dto.getPluginNames()) {
-            try {
-                pluginInstallService.enableAndLoad(dto.getInstanceId(), name);
-            } catch (Exception e) {
-                log.warn("批量启用插件失败: plugin={}, err={}", name, e.getMessage());
-                errors.add(name + ": " + e.getMessage());
-            }
-        }
+        List<String> errors = pluginInstallService.enableAndLoadBatch(
+                dto.getInstanceId(), dto.getPluginNames());
         if (!errors.isEmpty()) {
             return Result.fail("部分插件启用失败: " + String.join("; ", errors));
         }
@@ -258,19 +251,12 @@ public class PluginManageController {
     /**
      * 批量禁用插件。
      */
-    @Operation(summary = "批量禁用插件", description = "批量卸载并禁用多个插件")
+    @Operation(summary = "批量禁用插件", description = "批量禁用多个插件（重启服务器后完成卸载）")
     @PostMapping("/batch-disable")
     public Result<Void> batchDisable(@Valid @RequestBody BatchPluginOperationDTO dto) {
         log.info("批量禁用插件, instanceId: {}, count: {}", dto.getInstanceId(), dto.getPluginNames().size());
-        List<String> errors = new ArrayList<>();
-        for (String name : dto.getPluginNames()) {
-            try {
-                pluginInstallService.disableAndUnload(dto.getInstanceId(), name);
-            } catch (Exception e) {
-                log.warn("批量禁用插件失败: plugin={}, err={}", name, e.getMessage());
-                errors.add(name + ": " + e.getMessage());
-            }
-        }
+        List<String> errors = pluginInstallService.disableAndUnloadBatch(
+                dto.getInstanceId(), dto.getPluginNames());
         if (!errors.isEmpty()) {
             return Result.fail("部分插件禁用失败: " + String.join("; ", errors));
         }
