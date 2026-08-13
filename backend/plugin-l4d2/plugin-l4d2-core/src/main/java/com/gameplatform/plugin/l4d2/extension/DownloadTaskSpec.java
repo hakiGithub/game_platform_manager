@@ -91,6 +91,9 @@ public class DownloadTaskSpec implements Serializable {
     /** 是否删除 */
     private Boolean isDeleted;
 
+    /** 主应用补丁安装任务 ID（PatchInstallService 接入后 URL 任务执行委托任务中心，ADR-0006） */
+    private String patchTaskId;
+
     /** 备注 */
     private String remark;
 }

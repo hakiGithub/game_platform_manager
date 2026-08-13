@@ -10,8 +10,11 @@ import com.gameplatform.plugin.l4d2.extension.DownloadTaskResource;
 import com.gameplatform.plugin.l4d2.extension.DownloadTaskSpec;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.DownloadTaskVO;
+import com.gameplatform.plugin.patch.PatchInstallRequest;
+import com.gameplatform.plugin.patch.PatchInstallService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,6 +83,12 @@ class DownloadServiceTest {
     @Mock
     private ExtensionClient extensionClient;
 
+    @Mock
+    private PatchInstallService patchInstallService;
+
+    @Mock
+    private TaskService taskService;
+
     private L4D2Config config;
 
     private final L4D2PathResolver pathResolver = new L4D2PathResolver();
@@ -94,7 +103,13 @@ class DownloadServiceTest {
     void setUp() {
         config = new L4D2Config();
         service = new DownloadService(httpClient, instanceFileService, instanceQueryService,
-                extensionClient, config, pathResolver, objectMapper);
+                extensionClient, config, pathResolver, objectMapper, patchInstallService, taskService);
+
+        // URL 任务委托主应用 PatchInstallService：返回固定的任务中心 ID
+        lenient().when(patchInstallService.install(any(PatchInstallRequest.class)))
+                .thenReturn("patch-task-1");
+        lenient().when(taskService.getTask(anyString())).thenReturn(null);
+        lenient().doNothing().when(taskService).cancelMyOwn(anyString());
 
         // 默认实例
         instance = new InstanceVO();
@@ -144,6 +159,13 @@ class DownloadServiceTest {
         assertEquals("URL", created.getSpec().getTaskType());
         assertEquals("https://example.com/test.vpk", created.getSpec().getTaskUrl());
         assertEquals(1L, created.getSpec().getInstanceId());
+        // 执行委托主应用：记录关联任务中心 taskId，请求目标路径 = targetPath + filename
+        assertEquals("patch-task-1", created.getSpec().getPatchTaskId());
+        ArgumentCaptor<PatchInstallRequest> requestCaptor = ArgumentCaptor.forClass(PatchInstallRequest.class);
+        verify(patchInstallService).install(requestCaptor.capture());
+        assertEquals(1L, requestCaptor.getValue().getInstanceId());
+        assertEquals("https://example.com/test.vpk", requestCaptor.getValue().getUrl());
+        assertEquals("addons/test.vpk", requestCaptor.getValue().getTargetPath());
     }
 
     // ============================================================
@@ -163,8 +185,9 @@ class DownloadServiceTest {
         assertEquals(2, taskIds.size());
         assertNotEquals(taskIds.get(0), taskIds.get(1));
 
-        // 验证 create 被调用 2 次
+        // 验证 create 被调用 2 次，主应用 install 也被调用 2 次
         verify(extensionClient, times(2)).create(any(DownloadTaskResource.class));
+        verify(patchInstallService, times(2)).install(any(PatchInstallRequest.class));
     }
 
     // ============================================================

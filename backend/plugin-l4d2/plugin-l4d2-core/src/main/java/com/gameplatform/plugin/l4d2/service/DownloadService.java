@@ -14,8 +14,12 @@ import com.gameplatform.plugin.l4d2.extension.DownloadTaskSpec;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.FilenameSanitizeUtil;
 import com.gameplatform.plugin.l4d2.vo.DownloadTaskVO;
+import com.gameplatform.plugin.patch.PatchInstallRequest;
+import com.gameplatform.plugin.patch.PatchInstallService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.task.TaskService;
+import com.gameplatform.plugin.task.TaskVO;
 import com.gameplatform.vo.InstanceVO;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -104,6 +108,8 @@ public class DownloadService {
     private final L4D2Config config;
     private final L4D2PathResolver pathResolver;
     private final ObjectMapper objectMapper;
+    private final PatchInstallService patchInstallService;
+    private final TaskService taskService;
 
     /** 内存任务表：taskId → runtime */
     private final Map<String, DownloadTaskRuntime> tasks = new ConcurrentHashMap<>();
@@ -152,17 +158,33 @@ public class DownloadService {
         List<String> taskIds = new ArrayList<>();
         for (String url : urls) {
             String taskId = IdUtil.getSnowflakeNextIdStr();
+
+            // URL 搬运委托主应用 PatchInstallService（ADR-0006 接入）：
+            // 探测/决策树/平台代劳/备份回滚/并发由主应用承担，插件只保留记录与状态同步
+            String resolvedFilename = resolveFilename(url, filename);
+            if (resolvedFilename == null || resolvedFilename.isBlank()) {
+                throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                        "无法解析目标文件名: " + url);
+            }
+            String resolvedTarget = joinTarget(targetPath, resolvedFilename);
+            String patchTaskId = patchInstallService.install(PatchInstallRequest.builder()
+                    .instanceId(dto.getInstanceId())
+                    .url(url)
+                    .targetPath(resolvedTarget)
+                    .build());
+
             DownloadTaskResource resource = buildUrlResource(taskId, dto, url, filename, targetPath);
+            resource.getSpec().setPatchTaskId(patchTaskId);
             extensionClient.create(resource);
 
             DownloadTaskVO vo = toVO(resource);
             DownloadTaskRuntime runtime = new DownloadTaskRuntime(vo, resource);
             tasks.put(taskId, runtime);
 
-            runtime.future = CompletableFuture.runAsync(() -> runDownload(runtime));
+            runtime.future = CompletableFuture.runAsync(() -> pollPatchTask(runtime));
             taskIds.add(taskId);
-            log.info("创建 URL 下载任务（maxConcurrent={}）: taskId={}, url={}, instanceId={}",
-                    config.getWorkshop().getMaxConcurrent(), taskId, url, dto.getInstanceId());
+            log.info("创建 URL 下载任务（委托 PatchInstallService）: taskId={}, patchTaskId={}, url={}, instanceId={}",
+                    taskId, patchTaskId, url, dto.getInstanceId());
         }
         return taskIds;
     }
@@ -315,6 +337,17 @@ public class DownloadService {
             if (runtime.future != null) {
                 runtime.future.cancel(true);
             }
+            // 委托主应用的任务一并取消（cancelMyOwn 当前实现不校验 source，MAIN 任务可取消）
+            String patchTaskId = runtime.resource.getSpec().getPatchTaskId();
+            if (patchTaskId != null && !patchTaskId.isBlank()) {
+                try {
+                    taskService.cancelMyOwn(patchTaskId);
+                    log.info("取消主应用补丁任务: taskId={}, patchTaskId={}", taskId, patchTaskId);
+                } catch (Exception e) {
+                    log.warn("取消主应用补丁任务失败 taskId={}, patchTaskId={}, err={}",
+                            taskId, patchTaskId, e.getMessage());
+                }
+            }
             log.info("取消下载任务（内存标志已设置）: taskId={}", taskId);
         }
         // 更新 DB 状态为 CANCELLED
@@ -360,6 +393,96 @@ public class DownloadService {
     }
 
     // ===== 异步下载流程 =====
+
+    /**
+     * 轮询主应用任务中心，同步状态到插件记录（ADR-0006 接入）。
+     *
+     * <p>状态映射：任务中心 PENDING/RUNNING → 插件 DOWNLOADING；
+     * COMPLETED → COMPLETED；FAILED → FAILED（透传 errorMessage）；CANCELLED → CANCELLED。</p>
+     */
+    private void pollPatchTask(DownloadTaskRuntime runtime) {
+        DownloadTaskVO vo = runtime.vo;
+        String patchTaskId = runtime.resource.getSpec().getPatchTaskId();
+        if (patchTaskId == null || patchTaskId.isBlank()) {
+            markFailed(runtime, "缺少主应用任务 ID");
+            return;
+        }
+        try {
+            while (!runtime.cancelled) {
+                TaskVO task = taskService.getTask(patchTaskId);
+                if (task == null) {
+                    Thread.sleep(2000);
+                    continue;
+                }
+                String status = task.getStatus();
+                if ("PENDING".equals(status) || "RUNNING".equals(status)) {
+                    vo.setStatus(STATUS_DOWNLOADING);
+                    if (task.getProgress() != null) {
+                        vo.setProgress(task.getProgress().doubleValue());
+                    }
+                    updateDb(runtime);
+                } else if ("COMPLETED".equals(status)) {
+                    vo.setStatus(STATUS_COMPLETED);
+                    vo.setProgress(100.0);
+                    vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
+                    updateDb(runtime);
+                    return;
+                } else if ("FAILED".equals(status)) {
+                    markFailed(runtime, task.getErrorMessage() != null
+                            ? task.getErrorMessage() : "安装失败");
+                    return;
+                } else if ("CANCELLED".equals(status)) {
+                    vo.setStatus(STATUS_CANCELLED);
+                    vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
+                    updateDb(runtime);
+                    return;
+                }
+                Thread.sleep(2000);
+            }
+            // 被取消：同步终态
+            vo.setStatus(STATUS_CANCELLED);
+            vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
+            updateDb(runtime);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("轮询主应用任务异常 taskId={}, patchTaskId={}, err={}",
+                    runtime.vo.getTaskId(), patchTaskId, e.getMessage());
+            markFailed(runtime, e.getMessage());
+        }
+    }
+
+    private void markFailed(DownloadTaskRuntime runtime, String message) {
+        runtime.vo.setStatus(STATUS_FAILED);
+        runtime.vo.setErrorMessage(message);
+        runtime.vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
+        updateDb(runtime);
+    }
+
+    /**
+     * 解析目标文件名：显式指定优先，否则取 URL 末段（去查询串）。
+     */
+    private String resolveFilename(String url, String filename) {
+        if (filename != null && !filename.isBlank()) {
+            return FilenameSanitizeUtil.sanitize(filename);
+        }
+        String path = url;
+        int query = path.indexOf('?');
+        if (query > 0) {
+            path = path.substring(0, query);
+        }
+        int slash = path.lastIndexOf('/');
+        String name = slash >= 0 ? path.substring(slash + 1) : path;
+        return FilenameSanitizeUtil.sanitize(name);
+    }
+
+    private String joinTarget(String targetPath, String filename) {
+        String base = targetPath == null || targetPath.isBlank() ? "" : targetPath.trim();
+        if (base.endsWith("/")) {
+            return base + filename;
+        }
+        return base.isEmpty() ? filename : base + "/" + filename;
+    }
 
     /**
      * 异步执行下载（对齐源项目 download.go:188-344）。
@@ -574,6 +697,16 @@ public class DownloadService {
                 if (spec == null) continue;
                 String status = spec.getTaskStatus();
                 if (STATUS_PENDING.equals(status) || STATUS_DOWNLOADING.equals(status)) {
+                    // 委托主应用的任务：插件重启不中断安装，恢复轮询
+                    if (spec.getPatchTaskId() != null && !spec.getPatchTaskId().isBlank()) {
+                        DownloadTaskVO vo = toVO(resource);
+                        DownloadTaskRuntime runtime = new DownloadTaskRuntime(vo, resource);
+                        tasks.put(spec.getTaskId(), runtime);
+                        runtime.future = CompletableFuture.runAsync(() -> pollPatchTask(runtime));
+                        log.info("启动恢复：重新轮询主应用任务 taskId={}, patchTaskId={}",
+                                spec.getTaskId(), spec.getPatchTaskId());
+                        continue;
+                    }
                     spec.setTaskStatus(STATUS_FAILED);
                     spec.setErrorMessage("服务重启中断");
                     spec.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
