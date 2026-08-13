@@ -55,6 +55,10 @@
 
 ### M
 
+- **平台代劳（platform proxy）**
+  - **定义**：平台代替目标主机执行下载/解压/推送补丁的操作。仅当 `isLanHost=true` 时允许（ADR-0004 硬开关）；公网主机（isLanHost=false）不能自治时直接报错，平台不跨公网代劳。
+  - **引入**：ADR-0004；补丁安装决策树落地于 ADR-0006
+
 - **manifest**
   - **定义**：插件清单，描述插件元数据、前端入口、菜单、API 等信息。序列化为 `PluginManifestVO` 返回给前端。
   - **构建路径**：ADR-0001 后仅从扩展点 `getManifest() + getMenus()` 动态构建；`loadManifestFromFile()` 静态文件路径已删除。
@@ -62,6 +66,16 @@
   - **引入**：项目初始
 
 ### P
+
+- **PatchInstallService（补丁安装服务）**
+  - **定义**：插件 SDK 接口（backend/plugin）+ core 实现，把资源 URL 推送到目标实例指定位置：压缩包解压后推送，非压缩包直接推送。异步执行——`install(PatchInstallRequest)` 提交任务中心任务（source=MAIN、taskType=PATCH_INSTALL）返回 taskId；`probeHost(hostId)` 暴露宿主机能力预检。
+  - **请求字段**：`instanceId / url / targetPath（safeRel 相对路径）/ format（可选，扩展名推断）/ sha256（可选）`。
+  - **决策树**：宿主机按探测（curl/wget、tar/unzip/bsdtar）与 isLanHost 门控四分支执行（ADR-0006 决策 5）；容器目标统一由宿主机代劳（挂载目录经 docker inspect Mounts 判定后写宿主源目录，否则 docker cp）。
+  - **引入**：ADR-0006
+
+- **HostCapabilities（主机能力探测结果）**
+  - **定义**：`probeHost` 在宿主机执行探测脚本（SFTP 推送执行，不区分局域网）返回的 JSON 契约：`osType/hostname/arch/currentUser/tools{curl,wget,tar,gzip,bzip2,xz,unzip,bsdtar,sha256sum,shasum,rsync}/tmpFreeKb`。探测只在宿主机执行，容器内不探测。
+  - **引入**：ADR-0006
 
 - **`PluginFrameworkServiceImpl`**
   - **定义**：主应用 core 模块中实现 `PluginFrameworkService` 接口的服务类，负责插件生命周期、manifest 拼装、资源读取。

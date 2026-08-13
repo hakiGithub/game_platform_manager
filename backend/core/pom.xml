@@ -93,6 +93,13 @@
             <artifactId>commons-compress</artifactId>
             <version>1.26.1</version>
         </dependency>
+        <!-- 显式升级 commons-io：commons-compress 1.26.1 需要 2.15+ 的 IOUtils.skip(InputStream, long, Supplier)，
+             传递依赖仅 2.13.0，运行时报 NoSuchMethodError（补丁安装平台侧解压触发） -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.16.1</version>
+        </dependency>
         <!-- 显式声明 httpcore5-h2：httpclient5 的 TlsConfig 静态初始化引用 HttpVersionPolicy，
              但 docker-java 传递依赖中未包含此模块，导致 RestClient 调用 GitHub API 时
              抛 NoClassDefFoundError: org/apache/hc/core5/http2/HttpVersionPolicy -->

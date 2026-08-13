@@ -21,8 +21,11 @@ public abstract class AbstractInstanceFileService implements InstanceFileService
 
     /**
      * 路由解析：获取实例 → 校验路径 → 委托子类构造 FileRoute。
+     *
+     * <p>public：供主应用内部复用同一路由语义（如补丁安装 PatchInstallExecutor，
+     * ADR-0006 决策 4「复用 buildRoute 路由」），避免第二套路径解析实现。</p>
      */
-    protected FileRoute resolveRoute(long instanceId, String relativePath) {
+    public FileRoute resolveRoute(long instanceId, String relativePath) {
         InstanceVO instance = getInstanceQueryService().getInstanceById(instanceId);
         if (instance == null) {
             throw new IllegalArgumentException("实例不存在: " + instanceId);
@@ -65,7 +68,7 @@ public abstract class AbstractInstanceFileService implements InstanceFileService
     /**
      * 路由上下文值对象。
      */
-    protected static class FileRoute {
+    public static class FileRoute {
         public final long instanceId;
         public final long hostId;
         public final String deployType;
