@@ -86,3 +86,6 @@ tests/e2e/screenshots/
 
 # SKILL 打包产物（zip 是 skills 的分发压缩包，不纳入版本管理）
 gameplatform-plugin-dev.zip
+
+# BackupService 测试产物（文件名含本地临时路径）
+backend/core/C*backup*.sql
