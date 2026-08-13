@@ -784,6 +784,29 @@ public class PluginInstallService {
     }
 
     /**
+     * 列出已安装到 plugins_store 的插件目录名（一次远程目录列表）。
+     *
+     * <p>供内置清单/预设等「批量判定 installed」的场景使用，
+     * 避免对每个插件逐个远程检查（60+ 条目 × 每次 ~0.2-0.7s 的慢接口根因）。</p>
+     *
+     * @param instanceId 实例 ID
+     * @return 已安装插件名集合（目录名）
+     */
+    public java.util.Set<String> listInstalledPluginNames(Long instanceId) {
+        List<FileInfo> entries = listFilesSafe(instanceId, pathResolver.getPluginsStorePath());
+        if (entries == null) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (FileInfo entry : entries) {
+            if (entry.isDirectory() && entry.getName() != null && !entry.getName().isBlank()) {
+                names.add(entry.getName());
+            }
+        }
+        return names;
+    }
+
+    /**
      * 检查插件是否存在于 plugins_store 中。
      *
      * @param instanceId 实例 ID

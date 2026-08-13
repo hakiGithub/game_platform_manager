@@ -87,6 +87,8 @@ public class BuiltinPluginInstaller {
         if (instanceId == null) {
             return manifest;
         }
+        // 一次远程目录列表 + 本地集合匹配：避免逐插件远程 exists（60+ 条目慢接口根因）
+        java.util.Set<String> installedNames = pluginInstallService.listInstalledPluginNames(instanceId);
         return manifest.stream().map(vo -> {
             BuiltinPluginVO copy = new BuiltinPluginVO();
             copy.setId(vo.getId());
@@ -96,7 +98,7 @@ public class BuiltinPluginInstaller {
             copy.setSize(vo.getSize());
             copy.setPlatform(vo.getPlatform());
             copy.setDescription(vo.getDescription());
-            copy.setInstalled(pluginInstallService.pluginExists(instanceId, vo.getId()));
+            copy.setInstalled(installedNames.contains(vo.getId()));
             return copy;
         }).toList();
     }
