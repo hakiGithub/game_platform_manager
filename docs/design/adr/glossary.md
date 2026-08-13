@@ -68,7 +68,7 @@
 ### P
 
 - **PatchInstallService（补丁安装服务）**
-  - **定义**：插件 SDK 接口（backend/plugin）+ core 实现，把资源 URL 推送到目标实例指定位置的通用资源/内容安装机制——覆盖补丁、游戏插件、地图、mod（L4D2 插件/地图、饥荒 mod、七日杀 mod 等）。压缩包解压后推送；**非压缩包不需要解压，直接安装到指定目录**（targetPath 目录不存在时自动创建，重复安装即覆盖更新，受备份/回滚保护）。异步执行——`install(PatchInstallRequest)` 提交任务中心任务（source=MAIN、taskType=PATCH_INSTALL）返回 taskId；`probeHost(hostId)` 暴露宿主机能力预检。
+  - **定义**：插件 SDK 接口（backend/plugin）+ core 实现，把**单一 URL 资源**推送到目标实例指定位置的通用资源/内容安装机制——覆盖补丁、游戏插件、地图、mod（L4D2 插件/地图、饥荒 mod、七日杀 mod 等）。压缩包解压后推送；**非压缩包不需要解压，直接安装到指定目录**（targetPath 目录不存在时自动创建，重复安装即覆盖更新，受备份/回滚保护）。异步执行——`install(PatchInstallRequest)` 提交任务中心任务（source=MAIN、taskType=PATCH_INSTALL）返回 taskId；`probeHost(hostId)` 暴露宿主机能力预检。多文件目录列表类下载（如 L4D2 商店逐文件下载、WORKSHOP 订阅）不属于本服务范围，保持插件自管。
   - **请求字段**：`instanceId / url / targetPath（safeRel 相对路径）/ format（可选，扩展名推断）/ sha256（可选）`。
   - **决策树**：宿主机按探测（curl/wget、tar/unzip/bsdtar）与 isLanHost 门控四分支执行（ADR-0006 决策 5）；容器目标统一由宿主机代劳（挂载目录经 docker inspect Mounts 判定后写宿主源目录，否则 docker cp）。
   - **引入**：ADR-0006
