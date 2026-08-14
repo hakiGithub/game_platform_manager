@@ -69,6 +69,45 @@ class DockerComposeAdapterTest {
     }
 
     @Test
+    void deploy_upCommandSetsComposeHttpTimeout() {
+        // 回归：docker-compose 对 daemon 的内部 60s HTTP 读超时
+        // 在慢 create（大镜像/冷缓存）时会中断 up -d，须注入 COMPOSE_HTTP_TIMEOUT
+        com.gameplatform.entity.GameInstance instance = new com.gameplatform.entity.GameInstance();
+        instance.setId(1L);
+        instance.setHostId(1L);
+        instance.setDeployType("docker-compose");
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+
+        com.gameplatform.entity.Host host = new com.gameplatform.entity.Host();
+        host.setId(1L);
+        host.setIpAddress("192.168.1.10");
+        host.setSshPort(22);
+        host.setSshUser("u");
+        when(hostMapper.selectById(1L)).thenReturn(host);
+
+        when(deployAccess.credentials(host)).thenReturn(
+                new com.gameplatform.deploy.HostCredentials("192.168.1.10", 22, "u", null, null));
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("composeTemplate", "services:\n  l4d2:\n    image: example/l4d2:latest\n");
+        config.put("workDir", "/home/u/games/l4d2");
+
+        SshUtil.CommandResult ok = new SshUtil.CommandResult();
+        ok.setSuccess(true);
+        ok.setOutput("0e42358fc43b");
+        ok.setExitCode(0);
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), anyString(), anyLong())).thenReturn(ok);
+        lenient().when(sshUtil.uploadFile(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), anyString(), anyString())).thenReturn(true);
+
+        dockerComposeAdapter.deploy(1L, config, DeployProgressCallback.NO_OP);
+
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("COMPOSE_HTTP_TIMEOUT=300"), anyLong());
+    }
+
+    @Test
     void testValidateEnvironmentWithInvalidHost() {
         // Mock: 主机不存在
         when(hostMapper.selectById(-1L)).thenReturn(null);
