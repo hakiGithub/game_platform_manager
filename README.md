@@ -38,6 +38,14 @@
 
 支持参数：`-SkipBackendCompile` / `-SkipPlugins` / `-SkipFrontend`
 
+bash 版（Git Bash）：
+
+```bash
+bash scripts/start-all.sh
+```
+
+支持参数：`--backend-only` / `--frontend-only` / `--skip-compile` / `--skip-plugins` / `--port` / `--db`
+
 ### 分别启动
 
 **后端**（默认 8080 端口）

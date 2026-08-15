@@ -227,6 +227,20 @@ npm run lint
 .\scripts\rebuild-restart-all.ps1 -SkipBackendCompile -SkipPlugins
 ```
 
+bash 版（Git Bash 下等价，后端 java -cp + 前端 Vite 均后台启动，PID 记录于 `logs/*.pid`）：
+```bash
+# 编译 + 插件打包 + 启动前后端
+bash scripts/start-all.sh
+
+# 仅后端 / 仅前端
+bash scripts/start-all.sh --backend-only
+bash scripts/start-all.sh --frontend-only
+
+# 跳过编译 / 跳过插件打包 / 自定义前端端口与数据库路径
+bash scripts/start-all.sh --skip-compile --skip-plugins
+bash scripts/start-all.sh --port 3001 --db /path/db.sqlite
+```
+
 ---
 
 ## 关键工程约定
