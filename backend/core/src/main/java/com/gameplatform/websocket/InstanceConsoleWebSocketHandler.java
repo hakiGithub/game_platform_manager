@@ -8,6 +8,7 @@ import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.sshd.client.channel.ChannelSession;
 import org.apache.sshd.client.channel.ChannelShell;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -34,17 +35,23 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
     private final HostMapper hostMapper;
     private final DeploymentAccess deployAccess;
     private final ConnectionLifecycle lifecycle;
+    private final com.gameplatform.plugin.service.ContainerIdResolver containerIdResolver;
+    private final DockerExecConnector dockerExecConnector;
     private final ObjectMapper objectMapper;
 
     // 存储会话与控制台连接的映射
     private final ConcurrentHashMap<String, ConsoleConnection> consoleConnections = new ConcurrentHashMap<>();
 
     public InstanceConsoleWebSocketHandler(GameInstanceMapper instanceMapper, HostMapper hostMapper,
-                                           DeploymentAccess deployAccess, ConnectionLifecycle lifecycle) {
+                                           DeploymentAccess deployAccess, ConnectionLifecycle lifecycle,
+                                           com.gameplatform.plugin.service.ContainerIdResolver containerIdResolver,
+                                           DockerExecConnector dockerExecConnector) {
         this.instanceMapper = instanceMapper;
         this.hostMapper = hostMapper;
         this.deployAccess = deployAccess;
         this.lifecycle = lifecycle;
+        this.containerIdResolver = containerIdResolver;
+        this.dockerExecConnector = dockerExecConnector;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -162,17 +169,33 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 创建控制台连接（建连+认证统一走 DeploymentAccess）
+     * 创建控制台连接（建连+认证统一走 DeploymentAccess）。
+     *
+     * <p>按部署方式分流：docker 类部署 → docker exec 进容器交互终端（pty）；
+     * native → 宿主机 shell 并进入安装目录。</p>
      */
     private ConsoleConnection createConsoleConnection(GameInstance instance, Host host,
                                                       WebSocketSession webSocketSession) throws Exception {
         DeploymentAccess.SshConnection ssh = deployAccess.connect(host);
+        String deployType = instance.getDeployType();
 
-        // 创建Shell通道
+        if (deployAccess.isDockerDeploy(deployType)) {
+            // docker 类：解析容器标识，经共享 DockerExecConnector 打开交互终端
+            // （TERM + pty + ${SHELL:-/bin/sh} 回退，与 DockerExecWebSocketHandler 同一套逻辑）
+            Map<String, Object> metadata = instance.getConfigInfo();
+            if (metadata == null) {
+                metadata = Map.of();
+            }
+            String containerId = containerIdResolver.resolve(toInstanceVO(instance), metadata);
+            DockerExecConnector.OpenedExec opened = dockerExecConnector.openInteractive(host, containerId);
+            return new ConsoleConnection(opened.ssh(), opened.channel(),
+                    webSocketSession, lifecycle.executor());
+        }
+
+        // native：宿主机 shell 并进入安装目录
         ChannelShell channel = ssh.session().createShellChannel();
         channel.open().verify(10000, TimeUnit.MILLISECONDS);
 
-        // 进入实例安装目录
         String installPath = instance.getInstallPath();
         if (installPath != null && !installPath.isEmpty()) {
             OutputStream stdin = channel.getInvertedIn();
@@ -181,6 +204,17 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
         }
 
         return new ConsoleConnection(ssh, channel, webSocketSession, lifecycle.executor());
+    }
+
+    private com.gameplatform.vo.InstanceVO toInstanceVO(GameInstance instance) {
+        com.gameplatform.vo.InstanceVO vo = new com.gameplatform.vo.InstanceVO();
+        vo.setId(instance.getId());
+        vo.setHostId(instance.getHostId());
+        vo.setDeployType(instance.getDeployType());
+        vo.setConfigInfo(instance.getConfigInfo());
+        vo.setInstallPath(instance.getInstallPath());
+        vo.setGameCode(instance.getGameCode());
+        return vo;
     }
 
     /**
@@ -253,14 +287,14 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
      */
     private static class ConsoleConnection implements AutoCloseable {
         private final DeploymentAccess.SshConnection ssh;
-        private final ChannelShell channel;
+        private final ChannelSession channel;
         private final WebSocketSession webSocketSession;
         private final ExecutorService executorService;
         private final AtomicBoolean connected = new AtomicBoolean(true);
 
         private Future<?> stdoutReader;
 
-        public ConsoleConnection(DeploymentAccess.SshConnection ssh, ChannelShell channel,
+        public ConsoleConnection(DeploymentAccess.SshConnection ssh, ChannelSession channel,
                                 WebSocketSession webSocketSession, ExecutorService executorService) {
             this.ssh = ssh;
             this.channel = channel;

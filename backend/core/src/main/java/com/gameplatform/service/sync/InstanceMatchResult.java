@@ -15,19 +15,28 @@ public record InstanceMatchResult(
         /** 目标状态（matched=true 时为运行中；matched=false 时为 STOPPED） */
         InstanceStatus targetStatus,
         /** 备注（容器已退出/容器不存在/进程未运行） */
-        String remark
+        String remark,
+        /** 匹配到的容器 ID（matched=true 时有效，供 runtime_metadata 回写） */
+        String containerId
 ) {
     /**
      * 匹配成功工厂方法（默认目标状态为 RUNNING）
      */
     public static InstanceMatchResult matched(InstanceStatus status) {
-        return new InstanceMatchResult(true, status, null);
+        return new InstanceMatchResult(true, status, null, null);
+    }
+
+    /**
+     * 匹配成功工厂方法（携带容器 ID）
+     */
+    public static InstanceMatchResult matched(InstanceStatus status, String containerId) {
+        return new InstanceMatchResult(true, status, null, containerId);
     }
 
     /**
      * 未匹配工厂方法（目标状态为 STOPPED）
      */
     public static InstanceMatchResult notFound(String remark) {
-        return new InstanceMatchResult(false, InstanceStatus.STOPPED, remark);
+        return new InstanceMatchResult(false, InstanceStatus.STOPPED, remark, null);
     }
 }

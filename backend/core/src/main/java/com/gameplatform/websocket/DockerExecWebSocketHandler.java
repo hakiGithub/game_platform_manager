@@ -28,16 +28,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DockerExecWebSocketHandler extends TextWebSocketHandler {
 
     private final HostMapper hostMapper;
-    private final DeploymentAccess deployAccess;
+    private final DockerExecConnector dockerExecConnector;
     private final ConnectionLifecycle lifecycle;
     private final ObjectMapper objectMapper;
 
     private final ConcurrentHashMap<String, DockerExecSession> sessions = new ConcurrentHashMap<>();
 
-    public DockerExecWebSocketHandler(HostMapper hostMapper, DeploymentAccess deployAccess,
+    public DockerExecWebSocketHandler(HostMapper hostMapper, DockerExecConnector dockerExecConnector,
                                       ConnectionLifecycle lifecycle) {
         this.hostMapper = hostMapper;
-        this.deployAccess = deployAccess;
+        this.dockerExecConnector = dockerExecConnector;
         this.lifecycle = lifecycle;
         this.objectMapper = new ObjectMapper();
     }
@@ -145,16 +145,8 @@ public class DockerExecWebSocketHandler extends TextWebSocketHandler {
      * 创建Docker Exec会话（建连+认证统一走 DeploymentAccess）
      */
     private DockerExecSession createExecSession(Host host, String containerId, WebSocketSession webSocketSession) throws Exception {
-        DeploymentAccess.SshConnection ssh = deployAccess.connect(host);
-
-        // 创建docker exec命令
-        // 使用 -it 参数获得交互式终端
-        String execCommand = String.format("docker exec -it %s sh -c 'TERM=xterm-256color; exec ${SHELL:-/bin/sh}'", containerId);
-
-        ChannelExec channel = ssh.session().createExecChannel(execCommand);
-        channel.open().verify(10000, TimeUnit.MILLISECONDS);
-
-        return new DockerExecSession(ssh, channel, webSocketSession, lifecycle.executor());
+        DockerExecConnector.OpenedExec opened = dockerExecConnector.openInteractive(host, containerId);
+        return new DockerExecSession(opened.ssh(), opened.channel(), webSocketSession, lifecycle.executor());
     }
 
     /**

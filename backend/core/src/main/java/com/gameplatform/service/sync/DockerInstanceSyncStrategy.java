@@ -86,6 +86,7 @@ public class DockerInstanceSyncStrategy {
 
         // 匹配到容器，查询容器实际状态
         String containerStatus = queryContainerStatus(host, instance, containers);
+        writeBackContainerId(host, instance, matchResult);
         InstanceStatus targetStatus = mapContainerStatus(containerStatus);
 
         if (shouldUpdate(instance.getRunStatus(), targetStatus)) {
@@ -96,6 +97,40 @@ public class DockerInstanceSyncStrategy {
             log.debug("{} 实例 #{} ({}): 状态未变化 ({}→{})，跳过更新",
                     LOG_PREFIX, instance.getId(), instance.getInstanceName(),
                     instance.getRunStatus(), targetStatus.getCode());
+        }
+    }
+
+    /**
+     * 将匹配到的容器 ID 写回 runtime_metadata（部署中断/容器重建后自动修复，
+     * 供删除清理、控制台、文件路由直接使用）。
+     */
+    private void writeBackContainerId(Host host, GameInstance instance, InstanceMatchResult matchResult) {
+        if (matchResult == null || matchResult.containerId() == null) {
+            return;
+        }
+        try {
+            Map<String, Object> runtime = instance.getRuntimeMetadata();
+            boolean dirty = false;
+            if (runtime == null) {
+                runtime = new java.util.LinkedHashMap<>();
+                instance.setRuntimeMetadata(runtime);
+                dirty = true;
+            }
+            Object existing = runtime.get("containerId");
+            String matched = matchResult.containerId();
+            if (!(existing instanceof String s) || s.isBlank() || !s.equals(matched)) {
+                runtime.put("containerId", matched);
+                dirty = true;
+            }
+            if (dirty) {
+                instanceMapper.updateById(instance);
+                log.info("{} 实例 #{} ({}) 容器 ID 已回写 runtime_metadata: {}",
+                        LOG_PREFIX, instance.getId(), instance.getInstanceName(),
+                        matched.length() > 12 ? matched.substring(0, 12) : matched);
+            }
+        } catch (Exception e) {
+            log.warn("{} 实例 #{} 容器 ID 回写失败: {}",
+                    LOG_PREFIX, instance.getId(), e.getMessage());
         }
     }
 
@@ -113,7 +148,7 @@ public class DockerInstanceSyncStrategy {
         if (expectedContainerId != null && !expectedContainerId.isBlank()) {
             for (ContainerInfo c : containers) {
                 if (containerIdMatches(expectedContainerId, c.containerId())) {
-                    return InstanceMatchResult.matched(InstanceStatus.RUNNING);
+                    return InstanceMatchResult.matched(InstanceStatus.RUNNING, c.containerId());
                 }
             }
         }
@@ -123,7 +158,7 @@ public class DockerInstanceSyncStrategy {
         if (expectedContainerName != null && !expectedContainerName.isBlank()) {
             for (ContainerInfo c : containers) {
                 if (expectedContainerName.equals(c.containerName())) {
-                    return InstanceMatchResult.matched(InstanceStatus.RUNNING);
+                    return InstanceMatchResult.matched(InstanceStatus.RUNNING, c.containerId());
                 }
             }
         }
@@ -131,7 +166,7 @@ public class DockerInstanceSyncStrategy {
         // 第 3 级：多字段严格匹配
         for (ContainerInfo c : containers) {
             if (matchByMultipleFields(instance, c)) {
-                return InstanceMatchResult.matched(InstanceStatus.RUNNING);
+                return InstanceMatchResult.matched(InstanceStatus.RUNNING, c.containerId());
             }
         }
 

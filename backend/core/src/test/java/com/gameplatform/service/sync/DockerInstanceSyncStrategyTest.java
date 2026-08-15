@@ -98,7 +98,9 @@ class DockerInstanceSyncStrategyTest {
         strategy.syncHost(host, List.of(instance));
 
         assertThat(instance.getRunStatus()).isEqualTo(1);
-        verify(instanceMapper).updateById(any());
+        // 状态更新 + 容器 ID 回写 runtime_metadata 各一次
+        verify(instanceMapper, times(2)).updateById(any());
+        assertThat(instance.getRuntimeMetadata()).containsEntry("containerId", "abcdef123456");
     }
 
     // ===== 容器名精确匹配 =====

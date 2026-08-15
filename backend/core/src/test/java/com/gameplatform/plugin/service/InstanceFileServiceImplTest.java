@@ -71,7 +71,8 @@ class InstanceFileServiceImplTest {
 
         // 凭据解析/分类走真实 DeploymentAccess（真实语义由 DeploymentAccessTest 锁定）
         service = new InstanceFileServiceImpl(instanceQueryService, fileAccessService, sshUtil,
-                new DeploymentAccess(hostMapper), gameMetadataMapper);
+                new DeploymentAccess(hostMapper), new ContainerIdResolver(new DeploymentAccess(hostMapper), sshUtil),
+                gameMetadataMapper);
     }
 
     // ===== Native 路由测试 =====
