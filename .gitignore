@@ -93,3 +93,7 @@ backend/core/C*backup*.sql
 # L4D2 插件内置资源包（构建产物/大体积功能数据，见 scripts/download-plugin-assets.sh）
 backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/ui/
 backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/builtin-plugins/
+
+# Vite 自动生成
+frontend/src/auto-imports.d.ts
+frontend/src/components.d.ts
