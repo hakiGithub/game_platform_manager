@@ -89,3 +89,8 @@ gameplatform-plugin-dev.zip
 
 # BackupService 测试产物（文件名含本地临时路径）
 backend/core/C*backup*.sql
+
+# L4D2 插件内置资源包（构建产物/大体积功能数据，见 scripts/download-plugin-assets.sh）
+backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/ui/
+backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/builtin-plugins/
+backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/platform-plugins/
