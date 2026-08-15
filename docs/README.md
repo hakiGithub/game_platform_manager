@@ -56,4 +56,4 @@ docs/
 - 新增功能时同步更新 `api/` 和 `testing/` 对应文档
 - 架构变更须新建 ADR 记录（参见 `design/adr/README.md` 写作约定）
 - Bug 修复在 `testing/ui-testing/07-e2e-checklist.md` 中补充回归用例
-- 实施计划完成后移入 `archive/plans/`，不在主文档树保留
+- 实施计划完成后直接归档删除，不在主文档树保留（避免文档膨胀）
