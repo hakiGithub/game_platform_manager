@@ -184,7 +184,11 @@ public class DockerExecWebSocketHandler extends TextWebSocketHandler {
     private void sendMessage(WebSocketSession session, WsMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);
-            session.sendMessage(new TextMessage(json));
+            synchronized (session) {
+                if (session.isOpen()) {
+                    session.sendMessage(new TextMessage(json));
+                }
+            }
         } catch (Exception e) {
             log.error("发送消息失败: {}", e.getMessage());
         }
@@ -287,7 +291,11 @@ public class DockerExecWebSocketHandler extends TextWebSocketHandler {
             try {
                 WsMessage message = new WsMessage("output", output);
                 String json = new ObjectMapper().writeValueAsString(message);
-                webSocketSession.sendMessage(new TextMessage(json));
+                synchronized (webSocketSession) {
+                    if (webSocketSession.isOpen()) {
+                        webSocketSession.sendMessage(new TextMessage(json));
+                    }
+                }
             } catch (Exception e) {
                 log.error("发送输出失败: {}", e.getMessage());
             }

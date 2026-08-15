@@ -250,8 +250,12 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
     private void sendMessage(WebSocketSession session, WsMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);
-            if (session.isOpen()) {
-                session.sendMessage(new TextMessage(json));
+            // 同会话发送串行化：输出线程与消息处理线程并发写会触发
+            // TEXT_PARTIAL_WRITING（Tomcat 不允许并发 sendMessage）
+            synchronized (session) {
+                if (session.isOpen()) {
+                    session.sendMessage(new TextMessage(json));
+                }
             }
         } catch (Exception e) {
             log.error("发送消息失败: {}", e.getMessage());
@@ -368,8 +372,10 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
             try {
                 WsMessage message = new WsMessage("output", output);
                 String json = new ObjectMapper().writeValueAsString(message);
-                if (webSocketSession.isOpen()) {
-                    webSocketSession.sendMessage(new TextMessage(json));
+                synchronized (webSocketSession) {
+                    if (webSocketSession.isOpen()) {
+                        webSocketSession.sendMessage(new TextMessage(json));
+                    }
                 }
             } catch (Exception e) {
                 log.error("发送输出失败: {}", e.getMessage());
@@ -383,8 +389,10 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
             try {
                 WsMessage message = new WsMessage("error", error);
                 String json = new ObjectMapper().writeValueAsString(message);
-                if (webSocketSession.isOpen()) {
-                    webSocketSession.sendMessage(new TextMessage(json));
+                synchronized (webSocketSession) {
+                    if (webSocketSession.isOpen()) {
+                        webSocketSession.sendMessage(new TextMessage(json));
+                    }
                 }
             } catch (Exception e) {
                 log.error("发送错误失败: {}", e.getMessage());
