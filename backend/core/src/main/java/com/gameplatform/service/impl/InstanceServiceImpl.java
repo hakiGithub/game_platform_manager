@@ -88,6 +88,13 @@ public class InstanceServiceImpl implements InstanceService {
         GameInstance instance = new GameInstance();
         BeanUtil.copyProperties(dto, instance);
 
+        // 展开波浪号安装路径：~/games/l4d2 → /home/<sshUser>/games/l4d2
+        // （字面 ~ 路径会导致文件管理 SFTP NO_SUCH_FILE）
+        if (instance.getInstallPath() != null && instance.getInstallPath().startsWith("~/")) {
+            instance.setInstallPath("/home/" + host.getSshUser()
+                    + instance.getInstallPath().substring(1));
+        }
+
         // 设置游戏编码（用于插件匹配）
         instance.setGameCode(game.getGameCode());
 

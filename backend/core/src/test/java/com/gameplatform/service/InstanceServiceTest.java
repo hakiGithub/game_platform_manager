@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -173,6 +174,31 @@ class InstanceServiceTest {
         verify(gameMetadataMapper, atLeast(1)).selectById(1L);
         verify(instanceMapper).insert(any(GameInstance.class));
         verify(logService).log(anyString(), eq("CREATE"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
+    }
+
+    @Test
+    @DisplayName("创建实例-波浪号 installPath 展开为绝对路径")
+    void testCreateInstanceExpandsTildeInInstallPath() {
+        // Given: 主机 sshUser=haki，用户输入 ~/games/l4d2
+        testHost.setSshUser("haki");
+        when(instanceMapper.selectByHostIdAndInstanceName(any(), any())).thenReturn(null);
+        when(hostMapper.selectById(1L)).thenReturn(testHost);
+        when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
+        when(instanceMapper.insert(any(GameInstance.class))).thenAnswer(inv -> {
+            GameInstance g = inv.getArgument(0);
+            g.setId(2L);
+            return 1;
+        });
+        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
+        createDTO.setInstallPath("~/games/l4d2");
+
+        // When
+        instanceService.createInstance(createDTO);
+
+        // Then: ~ 被展开为 /home/haki/...（否则文件管理 SFTP 报 NO_SUCH_FILE）
+        ArgumentCaptor<GameInstance> captor = ArgumentCaptor.forClass(GameInstance.class);
+        verify(instanceMapper).insert(captor.capture());
+        assertEquals("/home/haki/games/l4d2", captor.getValue().getInstallPath());
     }
 
     @Test

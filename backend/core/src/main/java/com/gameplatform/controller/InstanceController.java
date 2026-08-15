@@ -51,6 +51,7 @@ public class InstanceController {
     private final GamePlatformConfig gamePlatformConfig;
     private final FileService fileService;
     private final DeployService deployService;
+    private final com.gameplatform.mapper.HostMapper hostMapper;
 
     /**
      * 获取实例列表(分页)
@@ -504,8 +505,8 @@ public class InstanceController {
             return Result.fail("实例不存在");
         }
 
-        // 构建完整路径：安装路径 + 相对路径
-        String installPath = instance.getInstallPath();
+        // 构建完整路径：安装路径 + 相对路径（兼容历史 ~ 未展开的安装路径）
+        String installPath = resolveInstallPath(instance);
         String fullPath;
         if (path == null || path.isEmpty() || "/".equals(path)) {
             fullPath = installPath;
@@ -550,7 +551,7 @@ public class InstanceController {
         }
 
         // 构建完整路径
-        String installPath = instance.getInstallPath();
+        String installPath = resolveInstallPath(instance);
         String fullPath;
         if (path == null || path.isEmpty() || "/".equals(path)) {
             fullPath = installPath;
@@ -586,7 +587,7 @@ public class InstanceController {
         }
 
         // 构建完整路径
-        String installPath = instance.getInstallPath();
+        String installPath = resolveInstallPath(instance);
         String fullPath;
         if (path == null || path.isEmpty() || "/".equals(path)) {
             // 如果只指定了根路径，则文件名使用上传文件的原始文件名
@@ -625,7 +626,7 @@ public class InstanceController {
         }
 
         // 构建完整路径
-        String installPath = instance.getInstallPath();
+        String installPath = resolveInstallPath(instance);
         String fullPath;
         if (path == null || path.isEmpty() || "/".equals(path)) {
             return Result.fail("文件路径不能为空");
@@ -815,4 +816,19 @@ public class InstanceController {
         private String path;
     }
 
+    /**
+     * 解析实例安装路径：兼容历史数据中未展开的 ~ 路径
+     * （字面 ~ 会致文件管理 SFTP NO_SUCH_FILE）。
+     */
+    private String resolveInstallPath(InstanceVO instance) {
+        String installPath = instance.getInstallPath();
+        if (installPath == null || !installPath.startsWith("~/")) {
+            return installPath;
+        }
+        com.gameplatform.entity.Host host = hostMapper.selectById(instance.getHostId());
+        if (host != null && host.getSshUser() != null && !host.getSshUser().isBlank()) {
+            return "/home/" + host.getSshUser() + installPath.substring(1);
+        }
+        return installPath;
+    }
 }
