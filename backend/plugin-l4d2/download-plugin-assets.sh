@@ -21,7 +21,7 @@ set -e
 
 REPO="${GITHUB_REPOSITORY:-hakiGithub/game_platform_manager}"
 TAG="${ASSET_RELEASE_TAG:-assets-v1}"
-TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/backend/plugin-l4d2/plugin-l4d2-core/src/main/resources"
+TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/plugin-l4d2-core/src/main/resources"
 ASSET_NAME="l4d2-plugin-assets.tar.gz"
 
 if [ -n "${ASSET_URL}" ]; then
