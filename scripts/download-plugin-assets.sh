@@ -2,14 +2,14 @@
 #
 # L4D2 插件内置资源包下载脚本
 #
-# 背景：builtin-plugins / platform-plugins 目录下的插件包（约 180MB）
+# 背景：builtin-plugins 目录下的插件包（约 118MB）
 # 已移出 git 跟踪（见 .gitignore），改为从 GitHub Release 资产下载。
 # 构建 plugin-l4d2 前需先执行本脚本。
 #
 # 用法：
 #   1. 准备资产包：在 GitHub 仓库 Releases 创建一个 release（tag 如 assets-v1），
-#      上传打包后的 assets.tar.gz（内容为 plugin-l4d2-core/src/main/resources/
-#      下的 builtin-plugins/、platform-plugins/ 两个目录）
+#      上传打包后的 l4d2-plugin-assets.tar.gz（内容为 plugin-l4d2-core/
+#      src/main/resources/builtin-plugins/ 目录）
 #   2. ./scripts/download-plugin-assets.sh
 #
 # 环境变量：
@@ -46,4 +46,4 @@ else
 fi
 
 tar -xzf "${WORK}/${ASSET_NAME}" -C "${TARGET_DIR}"
-echo "完成: builtin-plugins/ 与 platform-plugins/ 已就位"
+echo "完成: builtin-plugins/ 已就位"

@@ -8,7 +8,6 @@
     - Destination: backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/builtin-plugins
     - ZIP internal structure: <pluginName>/left4dead2/... (with base directory)
     - Existing ZIPs are skipped unless -Force is specified
-    - Also copies existing platform-plugins/*.zip to builtin-plugins/ if found
 
 .PARAMETER Force
     Overwrite existing ZIP files
@@ -27,7 +26,6 @@ $ErrorActionPreference = 'Stop'
 # Use ASCII-only paths to avoid PowerShell 5.1 GBK encoding issues with Chinese chars
 $sourceBase = 'd:\program\open_source\l4d2-server-next-master\plugins'
 $destBase = Join-Path $PSScriptRoot 'plugin-l4d2-core\src\main\resources\builtin-plugins'
-$oldPlatformDir = Join-Path $PSScriptRoot 'plugin-l4d2-core\src\main\resources\platform-plugins'
 
 if (-not (Test-Path $sourceBase)) {
     Write-Error "Source directory not found: $sourceBase"
@@ -41,20 +39,7 @@ if (-not (Test-Path $destBase)) {
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-# 1. Copy existing platform plugin ZIPs from platform-plugins/ to builtin-plugins/
-if (Test-Path $oldPlatformDir) {
-    Get-ChildItem -Path $oldPlatformDir -Filter '*.zip' | ForEach-Object {
-        $destZip = Join-Path $destBase $_.Name
-        if (-not (Test-Path $destZip) -or $Force) {
-            Copy-Item -Path $_.FullName -Destination $destZip -Force
-            Write-Host "Copied from platform-plugins/: $($_.Name)"
-        } else {
-            Write-Host "Already exists in builtin-plugins/, skip: $($_.Name)"
-        }
-    }
-}
-
-# 2. Pack each plugin directory into a ZIP
+# 1. Pack each plugin directory into a ZIP
 $plugins = Get-ChildItem -Path $sourceBase -Directory
 $count = 0
 $skipped = 0
