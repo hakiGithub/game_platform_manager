@@ -165,14 +165,14 @@
                   <el-icon><Download /></el-icon>
                   <span class="label">接收:</span>
                   <span class="value">{{
-                    formatFileSize(containerStats.networkRx * 1024 * 1024)
+                    formatFileSize(containerStats.networkRx)
                   }}</span>
                 </div>
                 <div class="network-item">
                   <el-icon><Upload /></el-icon>
                   <span class="label">发送:</span>
                   <span class="value">{{
-                    formatFileSize(containerStats.networkTx * 1024 * 1024)
+                    formatFileSize(containerStats.networkTx)
                   }}</span>
                 </div>
               </div>
@@ -509,14 +509,14 @@ async function fetchContainerStats() {
 
   try {
     const data = await getContainerStats(hostId.value, containerId.value);
+    // 后端结构: {cpu:{usagePercent}, memory:{usagePercent,used,limit}, network:{rxBytes,txBytes}}
     containerStats.value = {
-      cpuUsage: Math.round(data.cpuUsage || 0),
-      memoryUsed: data.memoryUsed || 0,
-      memoryLimit: data.memoryLimit || 0,
-      memoryPercentage:
-        Math.round((data.memoryUsed / data.memoryLimit) * 100) || 0,
-      networkRx: data.networkRx || 0,
-      networkTx: data.networkTx || 0,
+      cpuUsage: Math.round(data.cpu?.usagePercent || 0),
+      memoryUsed: data.memory?.used || 0,
+      memoryLimit: data.memory?.limit || 0,
+      memoryPercentage: Math.round(data.memory?.usagePercent || 0),
+      networkRx: data.network?.rxBytes || 0,
+      networkTx: data.network?.txBytes || 0,
     };
   } catch (error) {
     console.error("Failed to fetch container stats:", error);

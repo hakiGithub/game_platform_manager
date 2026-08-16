@@ -95,16 +95,46 @@ public class DockerContainerServiceImpl implements DockerContainerService {
     @Override
     public ContainerDetailVO getContainerDetail(Long hostId, String containerId) {
         Host host = getHost(hostId);
-        
+
         // 获取容器详细信息
         String command = String.format("docker inspect %s", containerId);
         SshUtil.CommandResult result = executeCommand(host, command, 10000);
-        
+
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.NOT_FOUND, "容器不存在: " + containerId);
         }
-        
-        return parseContainerDetail(result.getOutput());
+
+        ContainerDetailVO detail = parseContainerDetail(result.getOutput());
+        // 关联平台实例（与列表同一套识别语义）
+        enrichInstanceLinkForDetail(host, detail);
+        return detail;
+    }
+
+    /**
+     * 详情级实例关联填充（识别语义与 {@link #enrichInstanceLink} 一致）。
+     */
+    private void enrichInstanceLinkForDetail(Host host, ContainerDetailVO detail) {
+        if (detail == null || detail.getContainerId() == null) {
+            return;
+        }
+        List<GameInstance> instances = instanceMapper.selectByHostId(host.getId());
+        if (instances == null || instances.isEmpty()) {
+            return;
+        }
+        String cid = detail.getContainerId().toLowerCase();
+        String cname = detail.getContainerName() == null ? "" : detail.getContainerName();
+        for (GameInstance inst : instances) {
+            if (matchInstance(inst, cid, cname)) {
+                detail.setIsLinked(true);
+                ContainerDetailVO.LinkInfo linkInfo = new ContainerDetailVO.LinkInfo();
+                linkInfo.setInstanceId(inst.getId());
+                linkInfo.setInstanceName(inst.getInstanceName());
+                linkInfo.setLinkType("instance");
+                linkInfo.setAutoLinked(true);
+                detail.setLinkInfo(linkInfo);
+                return;
+            }
+        }
     }
 
     @Override

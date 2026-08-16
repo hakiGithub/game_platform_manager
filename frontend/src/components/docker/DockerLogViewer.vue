@@ -278,7 +278,11 @@ function parseLogs(rawLogs) {
   if (!Array.isArray(rawLogs)) return [];
 
   return rawLogs.map((line) => {
-    const lineStr = String(line ?? "");
+    // 兼容后端两种行格式：字符串行 或 {time, content} 对象行
+    const lineStr =
+      typeof line === "object" && line !== null
+        ? String(line.content ?? line.message ?? "")
+        : String(line ?? "");
     // 尝试解析日志格式
     const timestampMatch = lineStr.match(
       /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s*/,
@@ -413,7 +417,8 @@ function startStreaming() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "log") {
-          const parsedLogs = parseLogs([data.message]);
+          // 后端 WS 消息格式 {type:"log", data:"行内容"}
+          const parsedLogs = parseLogs([data.data ?? data.message]);
           logs.value.push(...parsedLogs);
 
           // 自动滚动
