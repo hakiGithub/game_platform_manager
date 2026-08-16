@@ -559,6 +559,13 @@ function formatFileSize(bytes) {
   return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
+function formatFileTime(timestamp) {
+  if (!timestamp) return '-'
+  const d = new Date(timestamp)
+  if (isNaN(d.getTime())) return '-'
+  return d.toLocaleString()
+}
+
 // ========== 日志查看 ==========
 const logs = ref([])
 const logsLoading = ref(false)
@@ -597,7 +604,17 @@ function connectLogWebSocket() {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'log') {
-          logs.value.push(data.log)
+          // 兼容两种后端格式: {log: {time,level,message}} 或 {data: 原始文本行}
+          const entry = data.log
+          if (entry && typeof entry === 'object') {
+            logs.value.push(entry)
+          } else {
+            logs.value.push({
+              time: data.time || '',
+              level: 'info',
+              message: data.data || entry || ''
+            })
+          }
           if (logs.value.length > 1000) {
             logs.value = logs.value.slice(-1000)
           }
@@ -1421,7 +1438,11 @@ onBeforeUnmount(() => {
                   {{ row.isDirectory ? '-' : formatFileSize(row.size) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="modified" label="修改时间" width="180" />
+              <el-table-column label="修改时间" width="180">
+                <template #default="{ row }">
+                  {{ formatFileTime(row.lastModified) }}
+                </template>
+              </el-table-column>
               <el-table-column label="操作" width="200">
                 <template #default="{ row }">
                   <el-button v-if="!row.isDirectory" type="primary" link size="small" @click.stop="handleFileDownload(row)">
@@ -2115,6 +2136,7 @@ onBeforeUnmount(() => {
   
   .log-message {
     word-break: break-all;
+    white-space: pre-wrap; /* 保留原始换行（多行日志条目） */
     flex: 1;
   }
   
@@ -2157,6 +2179,11 @@ onBeforeUnmount(() => {
   .console-time {
     color: #6e7681;
     margin-right: 8px;
+  }
+
+  .console-content {
+    white-space: pre-wrap; /* 保留 \r\n 换行（ps 等多行输出按行展示） */
+    word-break: break-all;
   }
   
   &.input {

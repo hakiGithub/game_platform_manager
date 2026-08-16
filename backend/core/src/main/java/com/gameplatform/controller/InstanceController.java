@@ -381,8 +381,76 @@ public class InstanceController {
         // 运行中/已停止/异常：通过适配器获取容器/进程日志
         String logContent = instanceService.getInstanceLogs(id, lines);
         logResult.setContent(logContent);
+        // 前端契约: logs 为对象数组 [{time, level, message}]（逐行解析）
+        logResult.setLogs(parseLogLines(logContent));
 
         return Result.success(logResult);
+    }
+
+    /**
+     * 将日志内容逐行解析为结构化条目。
+     *
+     * <p>支持两种行前缀：
+     * <ul>
+     *   <li>部署日志：{@code [HH:mm:ss] [LEVEL] message}</li>
+     *   <li>docker logs --timestamps：{@code 2026-08-16T13:08:09.123Z message}</li>
+     * </ul>
+     * 无前缀的原始行整体作为 message（level 按关键词推断）。
+     */
+    private List<LogEntryVO> parseLogLines(String content) {
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "^\\[([^\\]]+)\\](?:\\s*\\[([^\\]]+)\\])?\\s*(.*)$");
+        List<LogEntryVO> entries = new java.util.ArrayList<>();
+        int seq = 0;
+        for (String line : content.split("\n", -1)) {
+            if (line.isBlank()) {
+                continue;
+            }
+            LogEntryVO entry = new LogEntryVO();
+            entry.setId((long) seq++);
+            java.util.regex.Matcher m = pattern.matcher(line);
+            if (m.matches()) {
+                entry.setTime(m.group(1));
+                String level = m.group(2);
+                entry.setMessage(m.group(3));
+                entry.setLevel(level != null ? level.toLowerCase() : inferLevel(m.group(3)));
+            } else {
+                // docker --timestamps 前缀: 2026-08-16T13:08:09.123Z ...
+                String trimmed = line.trim();
+                if (trimmed.length() > 20 && trimmed.charAt(4) == '-' && trimmed.charAt(7) == '-') {
+                    int spaceIdx = trimmed.indexOf(' ');
+                    if (spaceIdx > 0) {
+                        entry.setTime(trimmed.substring(0, spaceIdx));
+                        entry.setMessage(trimmed.substring(spaceIdx + 1));
+                    } else {
+                        entry.setMessage(trimmed);
+                    }
+                } else {
+                    entry.setMessage(trimmed);
+                }
+                entry.setLevel(inferLevel(entry.getMessage()));
+            }
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    /** 从消息内容推断日志级别（ERROR/WARN 前缀），默认 info */
+    private String inferLevel(String message) {
+        if (message == null) {
+            return "info";
+        }
+        String upper = message.toUpperCase();
+        if (upper.startsWith("ERROR") || upper.startsWith("[ERROR]")) {
+            return "error";
+        }
+        if (upper.startsWith("WARN") || upper.startsWith("WARNING")) {
+            return "warning";
+        }
+        return "info";
     }
 
     /**
@@ -504,8 +572,8 @@ public class InstanceController {
      */
     @Operation(summary = "获取文件列表", description = "获取实例目录下的文件列表")
     @GetMapping("/{id}/files")
-    public Result<List<FileInfoVO>> listFiles(@Parameter(description = "实例ID") @PathVariable Long id,
-                                               @Parameter(description = "目录路径") @RequestParam(defaultValue = "/") String path) {
+    public Result<Map<String, Object>> listFiles(@Parameter(description = "实例ID") @PathVariable Long id,
+                                                  @Parameter(description = "目录路径") @RequestParam(defaultValue = "/") String path) {
         InstanceVO instance = instanceService.getInstanceById(id);
         if (instance == null) {
             return Result.fail("实例不存在");
@@ -529,7 +597,8 @@ public class InstanceController {
                 return vo;
             }).toList();
 
-            return Result.success(voList);
+            // 前端契约: { currentPath, files }（文件列表在 data.files）
+            return Result.success(Map.of("currentPath", path, "files", voList));
         } catch (IllegalArgumentException e) {
             return Result.fail(e.getMessage());
         }
@@ -608,15 +677,21 @@ public class InstanceController {
 
     /**
      * 删除文件（按部署方式路由：docker 经 docker exec rm）
+     * 兼容 query 参数（?path=...）与 JSON body（{path}）两种传参
      */
     @Operation(summary = "删除文件", description = "删除实例文件")
     @DeleteMapping("/{id}/files")
     @OperationLog(type = "DELETE", target = "INSTANCE", description = "删除文件")
     public Result<Void> deleteFile(@Parameter(description = "实例ID") @PathVariable Long id,
-                                    @Parameter(description = "文件路径") @RequestParam String path) {
+                                    @Parameter(description = "文件路径") @RequestParam(required = false) String path,
+                                    @RequestBody(required = false) Map<String, Object> body) {
         InstanceVO instance = instanceService.getInstanceById(id);
         if (instance == null) {
             return Result.fail("实例不存在");
+        }
+        if (path == null || path.isEmpty()) {
+            Object bodyPath = body != null ? body.get("path") : null;
+            path = bodyPath != null ? String.valueOf(bodyPath) : null;
         }
         if (path == null || path.isEmpty() || "/".equals(path)) {
             return Result.fail("文件路径不能为空");
@@ -624,6 +699,78 @@ public class InstanceController {
 
         try {
             instanceFileService.deleteFile(id, path);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 读取文件内容（按部署方式路由）
+     */
+    @Operation(summary = "读取文件内容", description = "读取实例文件文本内容")
+    @GetMapping("/{id}/files/content")
+    public Result<Map<String, Object>> readFileContent(@Parameter(description = "实例ID") @PathVariable Long id,
+                                                        @Parameter(description = "文件路径") @RequestParam String path) {
+        InstanceVO instance = instanceService.getInstanceById(id);
+        if (instance == null) {
+            return Result.fail("实例不存在");
+        }
+
+        try {
+            String content = instanceFileService.readTextFile(id, path);
+            String name = getFileName(path);
+            return Result.success(Map.of("name", name, "path", path, "content", content, "encoding", "UTF-8"));
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 保存文件内容（按部署方式路由）
+     */
+    @Operation(summary = "保存文件内容", description = "写入实例文件文本内容")
+    @PutMapping("/{id}/files/content")
+    @OperationLog(type = "UPDATE", target = "INSTANCE", description = "保存文件")
+    public Result<Void> saveFileContent(@Parameter(description = "实例ID") @PathVariable Long id,
+                                         @RequestBody Map<String, Object> body) {
+        InstanceVO instance = instanceService.getInstanceById(id);
+        if (instance == null) {
+            return Result.fail("实例不存在");
+        }
+        String path = body.get("path") != null ? String.valueOf(body.get("path")) : null;
+        String content = body.get("content") != null ? String.valueOf(body.get("content")) : "";
+        if (path == null || path.isEmpty() || "/".equals(path)) {
+            return Result.fail("文件路径不能为空");
+        }
+
+        try {
+            instanceFileService.writeTextFile(id, path, content);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 创建目录（按部署方式路由）
+     */
+    @Operation(summary = "创建目录", description = "在实例目录下创建新目录")
+    @PostMapping("/{id}/files/directory")
+    @OperationLog(type = "CREATE", target = "INSTANCE", description = "创建目录")
+    public Result<Void> createDirectory(@Parameter(description = "实例ID") @PathVariable Long id,
+                                         @RequestBody Map<String, Object> body) {
+        InstanceVO instance = instanceService.getInstanceById(id);
+        if (instance == null) {
+            return Result.fail("实例不存在");
+        }
+        String path = body.get("path") != null ? String.valueOf(body.get("path")) : null;
+        if (path == null || path.isEmpty() || "/".equals(path)) {
+            return Result.fail("目录路径不能为空");
+        }
+
+        try {
+            instanceFileService.createDirectory(id, path);
             return Result.success();
         } catch (IllegalArgumentException e) {
             return Result.fail(e.getMessage());
@@ -698,9 +845,14 @@ public class InstanceController {
         private Integer lines;
 
         /**
-         * 日志内容
+         * 日志内容（原始文本，兼容历史调用方）
          */
         private String content;
+
+        /**
+         * 结构化日志条目（前端契约: [{time, level, message}]）
+         */
+        private List<LogEntryVO> logs;
     }
 
     /**
