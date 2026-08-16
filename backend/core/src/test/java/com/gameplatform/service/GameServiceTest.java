@@ -7,7 +7,10 @@ import com.gameplatform.dto.GameUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.mapper.GameMetadataMapper;
+import com.gameplatform.plugin.extension.DeployConfigDeclaration;
+import com.gameplatform.plugin.extension.GameEnhancementExtension;
 import com.gameplatform.service.impl.GameServiceImpl;
+import com.gameplatform.vo.DeployConfigVO;
 import com.gameplatform.vo.GameVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,6 +50,8 @@ class GameServiceTest {
     @Mock
     private com.gameplatform.mapper.GameInstanceMapper gameInstanceMapper;
 
+    @Mock
+    private com.gameplatform.plugin.service.PluginFrameworkService pluginFrameworkService;
 
     @InjectMocks
     private GameServiceImpl gameService;
@@ -335,6 +340,52 @@ class GameServiceTest {
         assertEquals(2, result.size());
         assertEquals("Minecraft", result.get(0).getGameName());
         assertEquals("Valheim", result.get(1).getGameName());
+    }
+
+    @Test
+    @DisplayName("插件声明的部署方式合并进部署选项（插件优先，未知 code 忽略）")
+    void testGetAllGames_mergesPluginDeployConfigs() {
+        // Given：插件声明 linuxgsm-docker（主应用支持）与 unknown-type（不支持）
+        GameEnhancementExtension ext = mock(GameEnhancementExtension.class);
+        when(ext.getDeployConfigs()).thenReturn(List.of(
+                new DeployConfigDeclaration("linuxgsm-docker", Map.of("imageRepo", "gameservermanagers/gameserver")),
+                new DeployConfigDeclaration("unknown-type", Map.of("x", "y"))));
+        when(pluginFrameworkService.getExtensionByGameCode("minecraft")).thenReturn(ext);
+        testGame.setSupportedDeployTypes(Arrays.asList("docker"));
+        when(gameMetadataMapper.selectAllGames()).thenReturn(Collections.singletonList(testGame));
+
+        // When
+        List<GameVO> result = gameService.getAllGames();
+
+        // Then：插件类型追加、原类型保留、未知类型忽略
+        assertEquals(Arrays.asList("docker", "linuxgsm-docker"), result.get(0).getSupportedDeployTypes());
+    }
+
+    @Test
+    @DisplayName("getDeployConfig 插件声明的配置节整节替换（插件优先）")
+    void testGetDeployConfig_pluginDeclarationReplacesSection() {
+        // Given：主应用 yml 有 linuxgsm-docker 节（旧镜像），插件声明同类型新配置
+        GameMetadata game = new GameMetadata();
+        game.setId(1L);
+        game.setGameCode("minecraft");
+        game.setDeployConfig(Map.of(
+                "linuxgsm-docker", Map.of("imageRepo", "old/repo", "imageTag", "old"),
+                "docker", Map.of("image", "docker-image")));
+        when(gameMetadataMapper.selectById(1L)).thenReturn(game);
+
+        GameEnhancementExtension ext = mock(GameEnhancementExtension.class);
+        when(ext.getDeployConfigs()).thenReturn(List.of(
+                new DeployConfigDeclaration("linuxgsm-docker",
+                        Map.of("imageRepo", "gameservermanagers/gameserver", "imageTag", "l4d2"))));
+        when(pluginFrameworkService.getExtensionByGameCode("minecraft")).thenReturn(ext);
+
+        // When
+        DeployConfigVO vo = gameService.getDeployConfig(1L, "linuxgsm-docker");
+
+        // Then：整节替换为插件配置
+        assertEquals("gameservermanagers/gameserver", vo.getConfig().get("imageRepo"));
+        assertEquals("l4d2", vo.getConfig().get("imageTag"));
+        assertFalse(vo.getConfig().containsKey("old"));
     }
 
     @Test

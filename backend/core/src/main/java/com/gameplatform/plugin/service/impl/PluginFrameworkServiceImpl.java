@@ -302,6 +302,18 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
         }
     }
 
+    @Override
+    public GameEnhancementExtension getExtensionByGameCode(String gameCode) {
+        if (gameCode == null || gameCode.isBlank()) {
+            return null;
+        }
+        String pluginId = PluginUtils.findPluginIdByGameCode(gameCode, pluginManager);
+        if (pluginId == null) {
+            return null;
+        }
+        return getExtensionByPluginId(pluginId);
+    }
+
     private PluginStatusVO buildPluginStatusVO(PluginWrapper plugin) {
         PluginState state = plugin.getPluginState();
         // MANIFEST.MF 由 maven-jar-plugin 用 UTF-8 写入，但 Java Manifest 类按 ISO-8859-1 读取，

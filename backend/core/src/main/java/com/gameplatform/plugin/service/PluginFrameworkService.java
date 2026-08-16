@@ -1,5 +1,6 @@
 package com.gameplatform.plugin.service;
 
+import com.gameplatform.plugin.extension.GameEnhancementExtension;
 import com.gameplatform.plugin.vo.PluginManifestVO;
 import com.gameplatform.plugin.vo.PluginStatusVO;
 import org.pf4j.PluginWrapper;
@@ -143,5 +144,13 @@ public interface PluginFrameworkService {
      * @return 插件ID
      */
     Optional<String> getPluginIdByGameCode(String gameCode);
+
+    /**
+     * 根据游戏编码获取游戏增强扩展点实例（用于读取插件声明的部署方式等）。
+     *
+     * @param gameCode 游戏编码
+     * @return 扩展点实例；插件不存在或未加载时返回 null
+     */
+    GameEnhancementExtension getExtensionByGameCode(String gameCode);
 
 }

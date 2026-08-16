@@ -107,3 +107,22 @@ plugin-{gameCode}/frontend/
 - `popper-options` 改 `strategy: 'fixed'` → 弹层无法打开（沙箱内 update 抛异常）
 - `popper-options` 禁用 flip/preventOverflow → placement 正确但坐标仍错位
 - `:teleported="false"` → 被 el-card overflow 裁剪 + 点击事件经 shadow 重定向后开关失灵
+
+## 10. 复制 mygame 示例时的缺失文件（v3.6.0，源自 plugin-dst）
+
+`examples/plugin-mygame/frontend/` 作为底版复制时**不带**以下文件，需自建：
+
+1. **`tsconfig.json`**：示例不含，`npm run build`（vue-tsc）无法运行。最小可用配置：`target/module ES2020/ESNext`、`moduleResolution: "bundler"`、`noEmit: true`、`strict: true`、`paths: {"@/*": ["src/*"]}`、`types: ["node"]`。
+2. **`src/env.d.ts`**（Wujie window 类型声明）：示例不含，否则 `window.__POWERED_BY_WUJIE__` / `$wujie` / `__WUJIE_MOUNT` 全部报 TS2339：
+
+```ts
+declare interface Window {
+  __POWERED_BY_WUJIE__?: boolean
+  __WUJIE_MOUNT?: () => void
+  __WUJIE_UNMOUNT?: () => void
+  $wujie?: { props?: Record<string, any>; bus?: Record<string, any> }
+}
+```
+
+3. **vite `build.outDir` 按项目布局调整**：示例假设 frontend 与后端模块同仓库相邻（`'../src/main/resources/ui'`）；独立仓库布局（根目录即后端模块）时同样适用，若采用聚合模块布局需改为指向实际 core 模块的 `src/main/resources/ui`。
+4. **Element Plus 表格插槽类型**：`el-table` 插槽的 `row` 是 `DefaultRow`（非具体类型），`vue-tsc` strict 下把处理函数参数写 `any` 或对 `:data` 断言，避免 TS2322/TS2345。

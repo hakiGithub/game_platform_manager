@@ -12,6 +12,9 @@ import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.GameMetadataMapper;
+import com.gameplatform.plugin.extension.DeployConfigDeclaration;
+import com.gameplatform.plugin.extension.GameEnhancementExtension;
+import com.gameplatform.plugin.service.PluginFrameworkService;
 import com.gameplatform.service.GameService;
 import com.gameplatform.vo.DeployConfigVO;
 import com.gameplatform.vo.GameVO;
@@ -20,9 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +43,11 @@ public class GameServiceImpl implements GameService {
 
     private final GameMetadataMapper gameMetadataMapper;
     private final GameInstanceMapper gameInstanceMapper;
+    private final PluginFrameworkService pluginFrameworkService;
+
+    /** 主应用支持的部署类型 code（与 DeployAdapter.DeployType 一致） */
+    private static final Set<String> SUPPORTED_DEPLOY_TYPES =
+            Set.of("linuxgsm", "docker", "docker-compose", "linuxgsm-docker");
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -182,6 +192,14 @@ public class GameServiceImpl implements GameService {
         @SuppressWarnings("unchecked")
         Map<String, Object> config = (Map<String, Object>) typeConfig;
 
+        // 插件声明的部署配置整节替换（插件优先，读取时合并）
+        for (DeployConfigDeclaration decl : getPluginDeployConfigs(game)) {
+            if (deployType.equals(decl.deployType()) && decl.config() != null) {
+                config = decl.config();
+                break;
+            }
+        }
+
         DeployConfigVO vo = new DeployConfigVO();
         vo.setDeployType(deployType);
         vo.setConfig(config);
@@ -214,7 +232,43 @@ public class GameServiceImpl implements GameService {
     private GameVO convertToVO(GameMetadata game) {
         GameVO vo = new GameVO();
         BeanUtil.copyProperties(game, vo);
+        // 合并插件声明的部署方式选项（v3.6.0）：插件声明即选项，
+        // 仅合并主应用支持的部署类型 code，未知 code 忽略并告警
+        List<DeployConfigDeclaration> decls = getPluginDeployConfigs(game);
+        if (!decls.isEmpty()) {
+            List<String> merged = new ArrayList<>();
+            if (vo.getSupportedDeployTypes() != null) {
+                merged.addAll(vo.getSupportedDeployTypes());
+            }
+            for (DeployConfigDeclaration decl : decls) {
+                String type = decl.deployType();
+                if (SUPPORTED_DEPLOY_TYPES.contains(type)) {
+                    if (!merged.contains(type)) {
+                        merged.add(type);
+                    }
+                } else {
+                    log.warn("插件 [{}] 声明了主应用不支持的部署类型: {}（已忽略，执行体系仅支持 {}）",
+                            game.getGameCode(), type, SUPPORTED_DEPLOY_TYPES);
+                }
+            }
+            vo.setSupportedDeployTypes(merged);
+        }
         return vo;
+    }
+
+    /**
+     * 获取插件声明的部署方式配置（读取时合并，插件热部署后立即生效）。
+     */
+    private List<DeployConfigDeclaration> getPluginDeployConfigs(GameMetadata game) {
+        if (game == null || game.getGameCode() == null || game.getGameCode().isBlank()) {
+            return List.of();
+        }
+        GameEnhancementExtension ext = pluginFrameworkService.getExtensionByGameCode(game.getGameCode());
+        if (ext == null) {
+            return List.of();
+        }
+        List<DeployConfigDeclaration> decls = ext.getDeployConfigs();
+        return decls == null ? List.of() : decls;
     }
 
     /**

@@ -1,6 +1,6 @@
 # 插件开发陷阱与要点
 
-> 对齐版本：v3.1.0（ADR-0001 菜单归属权迁移）
+> 对齐版本：v3.6.0（ADR-0001 菜单归属权迁移；v3.6.0 增补独立构建/子容器陷阱）
 
 ## 1. 菜单机制（ADR-0001，v3.1.0 起变更）
 
@@ -122,3 +122,37 @@ ExtensionStoreException (扩展资源存储基类)
 - 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。
 - minor 变更只更 changelog。
 - 接口签名以 `backend/plugin/` 源码为权威，新增即补登记到对应 `references/` 文件。
+
+## 15. 独立仓库构建插件（v3.6.0，源自 plugin-dst 实战）
+
+插件可以不放在平台仓库 `backend/` 下，用 `examples/plugin-mygame/pom.xml` 那样的**独立 pom**（无 parent）构建。这条路有四个坑：
+
+1. **provided 依赖需先安装**：`game-platform-plugin` / `game-platform-api` 不在中央仓库，先在平台仓库 `backend/` 下执行 `mvn -pl api,plugin install -DskipTests`（注意 settings.xml 可能配置了非默认 localRepository，如 `D:\dev\maven_repo`）。
+2. **必须显式开 `-parameters`**（`<parameters>true</parameters>`）。根因：插件子容器注入宿主服务（如 `InstanceQueryService`）时存在两个候选 bean——子容器注册的 `instanceQueryService` 单例与主容器的 `instanceQueryServiceImpl`——Spring 依赖**构造参数名与 bean 名匹配**（`instanceQueryService`）消歧；Spring 6.1（Boot 3.2）移除了字节码 LVT 参数名回退，只有 `-parameters` 编译出的 `MethodParameters` 可用。平台仓库内的插件经 `spring-boot-starter-parent` 默认开启，独立 pom 无 parent 必须自带。缺失症状：子容器创建抛 `UnsatisfiedDependencyException: expected single matching bean but found 2`。
+3. **lombok 需自带**：平台父 pom 全局 `provided` lombok，独立 pom 要自己声明。
+4. **改 pom/编译配置后必须 `clean package`**：maven-compiler-plugin 按源文件时间戳增量编译，只改 pom 不会重编译，旧 class 直接打进 jar（症状：明明加了 `-parameters` 仍报二义性，`javap -v` 查 class 无 `MethodParameters` 属性）。
+
+## 16. 子容器创建失败会"静默继续"（v3.6.0）
+
+宿主 `PluginSpringContextFactory` 在插件任一 **bean 创建失败**时仅记 ERROR 日志"插件 [x] Spring 上下文创建失败，继续加载"，**不阻断加载**。此时：
+
+- 插件状态仍显示 **STARTED**，`GET /api/pf4j/plugin/{gameCode}/manifest` 正常（扩展点是 PF4J 的，不依赖子容器）；
+- 但**所有控制器未注册** → 插件 API 全部 500，全局异常日志是 `NoResourceFoundException: No static resource plugin/{gameCode}/...`（请求落到静态资源处理器）。
+
+**排查**：看到"No static resource plugin/..."先 grep 后端日志 `Spring 上下文创建失败` 拿真实堆栈，不要被插件 STARTED 迷惑。v3.5.0 的"热加载后没有 GameEnhancementExtension"是另一条路径（扩展点未发现），症状相同、根因不同。
+
+## 17. 子容器 `@Scheduled` 疑似不生效（v3.6.0，待运行时确认）
+
+`PluginSpringContextFactory` 创建子容器（`AnnotationConfigApplicationContext` + `scan` + `refresh`）时**未 `@EnableScheduling`、未注册 `ScheduledAnnotationBeanPostProcessor`**；`@EnableScheduling` 只在主容器（`GamePlatformApplication`）。Spring 的 BPP 不跨容器生效（`onApplicationEvent` 校验 `applicationContext` 同一性），按标准语义**插件子容器里的 `@Scheduled` 不会被调度**——但 plugin-l4d2 大量使用 `@Scheduled`（MonitorCollectorService 每秒采集、MapCrawlerScheduler 周一爬取等），仓库内无验证记录，**疑似这些周期任务从未触发**（或由其他机制意外生效）。
+
+- 新插件需要定时能力：**自管 `ScheduledExecutorService`**（`@PostConstruct` 起、`@PreDestroy` 停，守护线程），不要依赖子容器 `@Scheduled`。
+- 加载插件后实测 l4d2 的 `@Scheduled` 是否触发，把结论回填本节。
+
+## 18. 无 RCON 游戏的控制台通道（v3.6.0，源自 plugin-dst）
+
+DST 等游戏**没有 RCON**，游戏内命令唯一注入通道是进程 stdin。linuxgsm-docker 形态下 LGSM 控制台跑在容器内 tmux 会话（会话名 = `LGSM_GAMESERVERNAME`，如 `dstserver`）：
+
+- **fire-and-forget 命令**（广播/关服）：`FileAccessService.executeCommand(hostId, "docker exec <容器> tmux send-keys -t <会话> '<lua>' Enter", timeoutMs)`，成功即返回。
+- **需要输出的命令**（玩家列表等）：注入带唯一标记的 `print` 包裹命令，轮询 `tail` 分片日志，截取两个标记之间的行作为输出；封装为 TaskHandler（超时/取消/互斥白拿），同实例互斥避免输出交叉。
+- **长命令不走适配器**：`InstanceQueryService.executeCommand` 经适配器内嵌 **60s 超时**，LGSM `update`（steamcmd，1~5 分钟）会超时；自拼 `timeout N docker exec --user linuxgsm -w /app <容器> ./<shortname> <命令>` 走 `FileAccessService` 带长超时。
+- 容器名解析对齐 `LinuxGsmDockerAdapter.getContainerName`：`configInfo.containerName` → `runtimeMetadata.containerName`。

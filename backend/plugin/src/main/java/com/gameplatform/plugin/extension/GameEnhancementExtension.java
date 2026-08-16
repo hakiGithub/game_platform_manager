@@ -222,4 +222,24 @@ public interface GameEnhancementExtension extends ExtensionPoint {
     default List<String> getDependencies() {
         return Collections.emptyList();
     }
+
+    // ==================== 部署方式扩展 ====================
+
+    /**
+     * 声明本游戏插件的部署方式配置模板（v3.6.0）。
+     *
+     * <p>主应用读取游戏部署配置时合并插件声明：
+     * <ul>
+     *   <li>部署选项：声明的部署类型自动加入该游戏部署向导的选项
+     *       （仅限主应用已支持的部署类型 code，未知 code 忽略并告警）</li>
+     *   <li>配置覆盖：同一部署类型下，插件声明整节替换主应用游戏元数据
+     *       （games/*.yml）的同名配置节，插件优先</li>
+     * </ul>
+     * 执行仍走主应用部署适配器（DeployAdapter 体系），插件仅提供配置。
+     *
+     * @return 部署方式声明列表；未声明返回空列表
+     */
+    default List<DeployConfigDeclaration> getDeployConfigs() {
+        return Collections.emptyList();
+    }
 }

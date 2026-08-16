@@ -220,3 +220,31 @@ public class PluginManifestVO {
 ### 8.5 ui/manifest.json（可选覆盖）
 
 当存在 `ui/manifest.json` 时，框架优先使用文件清单而非从 Extension 构建（字段结构同 `PluginManifestVO`）。一般无需手写，依赖 Extension 自动构建即可。**注意**：`ui/manifest.json` 覆盖会绕过 `getMenus()` 校验，仅用于离线/调试场景。
+
+---
+
+## 9. 部署方式配置扩展（getDeployConfigs）★ ADR-0008
+
+插件通过 `GameEnhancementExtension.getDeployConfigs()` 声明游戏部署配置模板（v3.6.0，ADR-0008）：
+
+```java
+@Override
+public List<DeployConfigDeclaration> getDeployConfigs() {
+    Map<String, Object> composeConfig = new HashMap<>();
+    composeConfig.put("composeTemplate", "...");
+    composeConfig.put("variables", List.of(...));
+    composeConfig.put("imageRepo", "gameservermanagers/gameserver");
+    composeConfig.put("imageTag", "l4d2");
+    composeConfig.put("shortname", "l4d2server");
+    composeConfig.put("workingDir", "/app");
+    return List.of(new DeployConfigDeclaration("linuxgsm-docker", composeConfig));
+}
+```
+
+**合并语义（主应用读取时合并，不落库）**：
+- **选项**：声明的部署类型自动加入该游戏部署向导选项（仅限主应用支持的 code：`linuxgsm` / `docker` / `docker-compose` / `linuxgsm-docker`；未知 code 忽略并告警）
+- **覆盖**：同一部署类型下，插件声明**整节替换**主应用 `games/*.yml` 同名配置节（插件优先，不做字段级深合并）
+- **执行**：仍走主应用 DeployAdapter 体系，插件仅提供配置；全新部署类型（超出 4 种）不在本次范围（见 ADR-0008）
+
+> `config` 结构与主应用 yml `deployConfig` 的同名节完全同构，合并零转换。
+> 插件热部署后立即生效（读取时合并，无需重扫游戏元数据）。

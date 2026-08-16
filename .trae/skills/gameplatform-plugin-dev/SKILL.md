@@ -1,14 +1,16 @@
 ---
 name: gameplatform-plugin-dev
-description: GamePlatform 游戏服务器管理平台的插件开发与排查技能。在为本平台（backend/plugin + PF4J + Wujie 微前端）开发新游戏插件、排查插件加载/菜单/持久化/任务问题、或更新插件开发文档时使用。涵盖扩展点（GameEnhancementExtension.getMenus/TaskHandlerExtension）、ExtensionClient 持久化、宿主服务面（HostQueryService/InstanceQueryService/InstanceFileService/FileAccessService）、菜单声明机制（ADR-0001：PluginMenuDeclaration + buildMenusFromDeclarations）、前端三运行模式、standalone 模式、异常体系。权威来源为 backend/plugin/ 与本 SKILL 目录（references/ 下分主题文档）。
+description: GamePlatform 游戏服务器管理平台的插件开发与排查技能（用户级副本，跨项目可用）。在为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）开发新游戏插件、排查插件加载/菜单/持久化/任务/前端主题问题、或更新插件开发文档时使用，当前项目无需是平台仓库本身。涵盖扩展点（GameEnhancementExtension.getMenus/TaskHandlerExtension）、ExtensionClient 持久化、宿主服务面（HostQueryService/InstanceQueryService/InstanceFileService/FileAccessService）、菜单声明机制（ADR-0001：PluginMenuDeclaration + buildMenusFromDeclarations）、前端三运行模式、standalone 模式、异常体系。权威来源为 backend/plugin/ 与本 SKILL 目录（references/ 下分主题文档）。
 agent_created: true
 ---
 
 # GamePlatform 插件开发
 
+> **用户级副本说明**：本 SKILL 复制自平台仓库 `D:\program\ai\game_platform_manger\.trae\skills\gameplatform-plugin-dev\`（v3.6.0）。文档内的相对路径链接（如 `backend/plugin/`、`docs/design/adr/...`、`scripts/deploy-plugin.sh`）均以**平台仓库根目录**为基准解析，在其它项目中使用时请对照该仓库。平台仓库更新后应重新同步本副本（含 `references/` 与 `examples/`）。
+
 ## 概述
 
-本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此；当前版本 v3.5.0，见 `references/changelog.md`）。
+本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此；当前版本 v3.6.0，见 `references/changelog.md`）。
 
 ## 文档导航（references/ 索引）
 
@@ -24,7 +26,7 @@ agent_created: true
 | `references/walkthrough_l4d2.md` | plugin-l4d2 完整双端参考实现剖析（后端入口/扩展资源/控制器/任务/前端） | 对照参考实现开发新插件 |
 | `references/checklist.md` | 路径常量速查、安全配置约定、发布检查清单、验收标准 | 发布前自检、路径常量查阅 |
 | `references/sdk_reference.md` | 扩展点（含 getMenus/PluginMenuDeclaration）、ExtensionClient、宿主服务面、PluginManifestVO、PluginConstants 接口签名速查 | 编码时查阅方法签名 |
-| `references/gotchas.md` | 菜单机制陷阱（ADR-0001）、范围隔离规约（ADR-0002）、路径对齐、异常层级、文件路径安全、任务约束 | 排查非显而易见的问题 |
+| `references/gotchas.md` | 菜单机制陷阱（ADR-0001）、范围隔离规约（ADR-0002）、路径对齐、异常层级、文件路径安全、任务约束、**独立仓库构建陷阱（v3.6.0）**、子容器静默失败/`@Scheduled` 疑点、无 RCON 控制台通道 | 排查非显而易见的问题 |
 | `references/changelog.md` | 版本与维护约定、历史快照、Changelog | 查阅版本演进、维护文档 |
 
 ## 何时使用
@@ -52,7 +54,7 @@ agent_created: true
    - 例外：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入）。
    - 详见 [ADR-0002](../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
 8. **废弃 standalone 模式（ADR-0003，v3.3.0）**：`plugin-l4d2-standalone` 已物理删除，新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。详见 [ADR-0003](../../../docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
-9. **部署策略（v3.5.0）**：只改插件代码用 `bash scripts/deploy-plugin.sh` 热部署（构建插件 → PF4J API 卸载释放 Windows jar 文件锁 → 覆盖 `plugins/` 下的 jar → `POST /api/pf4j/plugins/load?jarName=...` 加载启动，**后端不重启**，卸载传 `purgeTasks=false` 保留任务中心历史）；改主应用代码（core/api/plugin 模块）才用 `start-all.sh` 重启。宿主 `loadPlugin` 为"先 start 再发现扩展点"（PF4J per-plugin 扩展查找仅对 STARTED 状态生效，v3.5.0 修复的隐藏 bug）。
+9. **部署策略（v3.5.0）**：只改插件代码用 `bash scripts/deploy-plugin.sh` 热部署（构建插件 → PF4J API 卸载释放 Windows jar 文件锁 → 覆盖 `plugins/` 下的 jar → `POST /api/pf4j/plugins/load?jarName=...` 加载启动，**后端不重启**，卸载传 `purgeTasks=false` 保留任务中心历史）；改主应用代码（core/api/plugin 模块）才用 `start-all.sh` 重启。宿主 `loadPlugin` 为"先 start 再发现扩展点"（PF4J per-plugin 扩展查找仅对 STARTED 状态生效，v3.5.0 修复的隐藏 bug）。部署**独立仓库**构建的 jar：`PLUGIN_ID={id} JAR_NAME={jar} bash scripts/deploy-plugin.sh --skip-build --jar /path/to.jar`（见 `references/getting_started.md` §6.1）。
 10. **插件前端 Night Operations token 隔离（ADR-0007，v3.5.0）**：Wujie shadow DOM 不继承宿主 CSS 变量，插件前端须**复制**主应用 `frontend/src/styles/variables.scss` 的 `--platform-*` token 副本自管（暗色单主题，无明暗切换）；小工具类（如 `terminalTheme.js`）同样复制。注意两个 sass/Wujie 陷阱见 `references/frontend.md` §8-9。详见 [ADR-0007](../../../docs/design/adr/0007-plugin-frontend-nightops-token-isolation.md)。
 
 ## 可用类速查（接入规范）
