@@ -173,6 +173,20 @@ public interface DeployAdapter {
     boolean healthCheck(Long instanceId, Map<String, Object> config);
 
     /**
+     * 停止服务器（游戏进程级，容器保持运行）。
+     *
+     * <p>与 {@link #stop}（停止容器）区分：linuxgsm-docker 部署下
+     * LinuxGSM 管理的游戏进程可独立于容器启停。默认不支持。
+     *
+     * @param instanceId 实例ID
+     * @param config     部署配置
+     * @return 是否停止成功
+     */
+    default boolean stopServer(Long instanceId, Map<String, Object> config) {
+        throw new UnsupportedOperationException("该部署方式不支持独立停止服务器");
+    }
+
+    /**
      * 更新实例
      *
      * @param instanceId 实例ID

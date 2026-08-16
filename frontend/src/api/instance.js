@@ -159,6 +159,30 @@ export function restartInstance(id) {
 }
 
 /**
+ * 停止服务器（游戏进程级，仅 linuxgsm-docker 部署支持；容器保持运行）
+ * @param {number} id - 实例ID
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export function stopServer(id) {
+  return request({
+    url: `/instances/${id}/stop-server`,
+    method: "post",
+  });
+}
+
+/**
+ * 更新游戏服务器（仅 linuxgsm-docker 部署支持，可能耗时数分钟）
+ * @param {number} id - 实例ID
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export function updateGame(id) {
+  return request({
+    url: `/instances/${id}/update`,
+    method: "post",
+  });
+}
+
+/**
  * 获取实例状态
  * @param {number} id - 实例ID
  * @returns {Promise<{status: number, processId: number, uptime: number}>}

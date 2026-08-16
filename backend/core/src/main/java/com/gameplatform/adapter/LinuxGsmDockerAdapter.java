@@ -357,6 +357,30 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
     @Override
     public boolean stop(Long instanceId, Map<String, Object> config) {
+        // 停止容器（与 docker/docker-compose 类部署语义一致）；
+        // 游戏进程级停止请用 stopServer（LinuxGSM stop，容器保持运行）
+        InstanceHostInfo info = getInstanceHostInfo(instanceId);
+        if (info == null) {
+            return false;
+        }
+
+        Host host = info.host();
+        String projectName = getProjectName(instanceId, config);
+        String workDir = getConfigString(config, "workDir", "");
+        if (workDir.isEmpty()) {
+            workDir = getConfigString(config, "installPath", "");
+        }
+        String composeCmd = getComposeCommand(host);
+
+        SshUtil.CommandResult result = executeCommand(host,
+                String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s stop", workDir, composeCmd, projectName), 120000);
+
+        return result.isSuccess();
+    }
+
+    @Override
+    public boolean stopServer(Long instanceId, Map<String, Object> config) {
+        // 游戏进程级停止：docker exec 执行 LinuxGSM stop（容器保持运行）
         InstanceHostInfo info = getInstanceHostInfo(instanceId);
         if (info == null) {
             return false;
@@ -368,7 +392,6 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String projectName = getProjectName(instanceId, config);
         String containerName = getContainerName(host, config, projectName, serviceName);
 
-        // 通过 LinuxGSM 停止游戏服务器
         // 与 start 类似，stop 命令在服务器未运行时也可能返回非零 exit code，
         // 但输出包含 "not running"，这属于成功情况。
         SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "stop", 60000);

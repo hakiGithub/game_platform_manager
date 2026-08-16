@@ -413,15 +413,62 @@ public class InstanceServiceImpl implements InstanceService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public boolean restartInstance(Long id) {
-        log.info("开始重启实例: {}", id);
-        
+    public boolean stopServer(Long id) {
+        log.info("开始停止服务器（游戏进程）: {}", id);
+
         GameInstance instance = instanceMapper.selectById(id);
         if (instance == null) {
             throw new BusinessException("实例不存在");
         }
-        
+        if (!"linuxgsm-docker".equals(instance.getDeployType())) {
+            throw new BusinessException("仅 linuxgsm-docker 部署支持独立停止服务器");
+        }
+
+        try {
+            DeployAdapter adapter = adapterFactory.getAdapter(
+                    deployAccess.classify(instance.getDeployType()));
+            boolean success = adapter.stopServer(id, buildDeployConfig(instance));
+            if (!success) {
+                throw new BusinessException("停止服务器失败");
+            }
+            return true;
+        } catch (UnsupportedOperationException e) {
+            throw new BusinessException(e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean updateGame(Long id) {
+        log.info("开始更新游戏服务器: {}", id);
+
+        GameInstance instance = instanceMapper.selectById(id);
+        if (instance == null) {
+            throw new BusinessException("实例不存在");
+        }
+        if (!"linuxgsm-docker".equals(instance.getDeployType())) {
+            throw new BusinessException("仅 linuxgsm-docker 部署支持更新游戏服务器");
+        }
+
+        // 同步执行（LinuxGSM update 可能耗时数分钟），进度走 NO_OP
+        boolean success = deployService.update(id,
+                deployAccess.classify(instance.getDeployType()),
+                DeployProgressCallback.NO_OP);
+        if (!success) {
+            throw new BusinessException("更新服务器失败");
+        }
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean restartInstance(Long id) {
+        log.info("开始重启实例: {}", id);
+
+        GameInstance instance = instanceMapper.selectById(id);
+        if (instance == null) {
+            throw new BusinessException("实例不存在");
+        }
+
         try {
             // 获取适配器
             DeployAdapter adapter = adapterFactory.getAdapter(

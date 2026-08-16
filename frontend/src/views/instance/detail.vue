@@ -8,6 +8,8 @@ import {
   startInstance,
   stopInstance,
   restartInstance,
+  stopServer,
+  updateGame,
   getInstanceLogs,
   getInstanceConfig,
   updateInstanceConfig,
@@ -54,6 +56,7 @@ const instanceInfo = ref({
   game: '',
   gameId: '',
   gameCode: '',
+  deployType: '',
   hostId: '',
   hostName: '',
   ip: '',
@@ -272,6 +275,45 @@ async function handleRestart() {
     if (error !== 'cancel') {
       console.error('Failed to restart instance:', error)
       ElMessage.error('重启失败: ' + (error.message || '未知错误'))
+    }
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// linuxgsm-docker 部署：游戏进程级操作按钮可见性
+const isLinuxGsmDocker = computed(() => instanceInfo.value.deployType === 'linuxgsm-docker')
+
+// linuxgsm-docker：停止游戏服务器进程（容器保持运行）
+async function handleStopServer() {
+  try {
+    await ElMessageBox.confirm('确定要停止游戏服务器进程吗？（容器保持运行）', '确认操作', { type: 'warning' })
+    actionLoading.value = true
+    await stopServer(instanceId.value)
+    ElMessage.success('服务器已停止')
+    fetchInstanceDetail()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('Failed to stop server:', error)
+      ElMessage.error('停止服务器失败: ' + (error.message || '未知错误'))
+    }
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// linuxgsm-docker：更新游戏服务器（可能耗时数分钟）
+async function handleUpdateGame() {
+  try {
+    await ElMessageBox.confirm('确定要更新游戏服务器吗？更新过程可能需要数分钟。', '确认操作', { type: 'warning' })
+    actionLoading.value = true
+    await updateGame(instanceId.value)
+    ElMessage.success('服务器更新成功')
+    fetchInstanceDetail()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('Failed to update game:', error)
+      ElMessage.error('更新服务器失败: ' + (error.message || '未知错误'))
     }
   } finally {
     actionLoading.value = false
@@ -1162,6 +1204,17 @@ onBeforeUnmount(() => {
                 <el-icon><RefreshRight /></el-icon>
                 重启
               </el-button>
+              <!-- linuxgsm-docker：游戏进程级操作（容器级停止见上方"停止"） -->
+              <template v-if="isLinuxGsmDocker">
+                <el-button type="warning" plain :loading="actionLoading" @click="handleStopServer">
+                  <el-icon><VideoPause /></el-icon>
+                  停止服务器
+                </el-button>
+                <el-button type="primary" plain :loading="actionLoading" @click="handleUpdateGame">
+                  <el-icon><Download /></el-icon>
+                  更新服务器
+                </el-button>
+              </template>
             </template>
             <template v-else-if="instanceInfo.status === 'stopped'">
               <el-button type="success" :loading="actionLoading" @click="handleStart">

@@ -331,6 +331,32 @@ public class InstanceController {
     }
 
     /**
+     * 停止服务器（游戏进程级，仅 linuxgsm-docker 部署支持；容器保持运行）
+     */
+    @Operation(summary = "停止服务器", description = "停止游戏服务器进程（linuxgsm-docker，容器保持运行）")
+    @PostMapping("/{id}/stop-server")
+    public Result<OperationResultVO> stopServer(@Parameter(description = "实例ID") @PathVariable Long id) {
+        boolean success = instanceService.stopServer(id);
+        OperationResultVO result = new OperationResultVO();
+        result.setSuccess(success);
+        result.setMessage(success ? "服务器已停止" : "停止服务器失败");
+        return Result.success(result);
+    }
+
+    /**
+     * 更新游戏服务器（仅 linuxgsm-docker 部署支持，可能耗时数分钟）
+     */
+    @Operation(summary = "更新服务器", description = "更新游戏服务器（linuxgsm-docker）")
+    @PostMapping("/{id}/update")
+    public Result<OperationResultVO> updateGame(@Parameter(description = "实例ID") @PathVariable Long id) {
+        boolean success = instanceService.updateGame(id);
+        OperationResultVO result = new OperationResultVO();
+        result.setSuccess(success);
+        result.setMessage(success ? "服务器更新成功" : "更新服务器失败");
+        return Result.success(result);
+    }
+
+    /**
      * 获取实例状态
      */
     @Operation(summary = "获取实例状态", description = "获取游戏实例运行状态")

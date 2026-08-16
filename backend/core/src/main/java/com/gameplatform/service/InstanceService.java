@@ -114,6 +114,22 @@ public interface InstanceService {
     boolean restartInstance(Long id);
 
     /**
+     * 停止服务器（游戏进程级，仅 linuxgsm-docker 部署支持；容器保持运行）
+     *
+     * @param id 实例ID
+     * @return 是否成功
+     */
+    boolean stopServer(Long id);
+
+    /**
+     * 更新游戏服务器（仅 linuxgsm-docker 部署支持）
+     *
+     * @param id 实例ID
+     * @return 是否成功
+     */
+    boolean updateGame(Long id);
+
+    /**
      * 获取实例状态
      *
      * @param id 实例ID
