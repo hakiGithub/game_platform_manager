@@ -1,40 +1,310 @@
-// 样式变量
-$primary-color: #409eff;
-$success-color: #67c23a;
-$warning-color: #e6a23c;
-$danger-color: #f56c6c;
-$info-color: #909399;
+// plugin-l4d2 frontend - Night Operations design tokens
+// 复制自 frontend/src/styles/variables.scss（ADR-0007：Wujie shadow DOM 隔离导致
+// 宿主 CSS 变量不穿透，插件自带 token 副本，两份文件需人工保持同步）。
+// 旧变量名（$primary-color 等）保留并映射到 Night Ops 值，便于页面渐进迁移。
 
-// 文本颜色
-$text-primary: #303133;
-$text-regular: #606266;
-$text-secondary: #909399;
-$text-placeholder: #c0c4cc;
+// ========== Semantic colors ==========
+$color-primary: #27b5f3;
+$color-primary-light-3: #68cafa;
+$color-primary-light-5: #8ed7fb;
+$color-primary-light-7: #b4e5fc;
+$color-primary-light-8: #d0effd;
+$color-primary-light-9: #e7f7fe;
+$color-primary-dark-2: #1384b8;
 
-// 边框颜色
-$border-base: #dcdfe6;
-$border-light: #e4e7ed;
-$border-lighter: #ebeef5;
-$border-extra-light: #f2f6fc;
+$color-success: #52cf82;
+$color-success-light-3: #7edc9d;
+$color-success-light-5: #9fe5b7;
+$color-success-light-7: #c1efd0;
+$color-success-light-8: #d8f5e2;
+$color-success-light-9: #eafaf0;
+$color-success-dark-2: #2e9b5b;
 
-// 背景颜色
-$bg-base: #ffffff;
-$bg-page: #f2f3f5;
-$bg-dark: #141414;
+$color-warning: #f2b84b;
+$color-warning-light-3: #f5ca77;
+$color-warning-light-5: #f8d696;
+$color-warning-light-7: #fbe3b5;
+$color-warning-light-8: #fcebd0;
+$color-warning-light-9: #fff5e4;
+$color-warning-dark-2: #bb811d;
 
-// 间距
-$spacing-xs: 4px;
-$spacing-sm: 8px;
-$spacing-md: 16px;
-$spacing-lg: 24px;
-$spacing-xl: 32px;
+$color-danger: #f0646a;
+$color-danger-light-3: #f4878b;
+$color-danger-light-5: #f7a4a8;
+$color-danger-light-7: #fac2c5;
+$color-danger-light-8: #fbd9db;
+$color-danger-light-9: #fdebed;
+$color-danger-dark-2: #c43c43;
 
-// 圆角
-$border-radius-sm: 4px;
-$border-radius-md: 8px;
-$border-radius-lg: 12px;
+$color-info: #8997a8;
+$color-info-light-3: #a5b0bd;
+$color-info-light-5: #bac3ce;
+$color-info-light-7: #d0d7de;
+$color-info-light-8: #e0e5ea;
+$color-info-light-9: #edf0f3;
+$color-info-dark-2: #657487;
 
-// 阴影
-$box-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.12);
-$box-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-$box-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+// ========== Dark neutral system ==========
+$color-text-primary: #e7eef5;
+$color-text-regular: #c1ceda;
+$color-text-secondary: #8d9cac;
+$color-text-placeholder: #68788a;
+$color-text-disabled: #465666;
+$border-color: #2a3b4b;
+$border-color-light: #314656;
+$border-color-lighter: #223342;
+$border-color-extra-light: #1b2a37;
+$border-color-dark: #3e5264;
+$fill-color: #1a2a38;
+$fill-color-light: #1d3040;
+$fill-color-lighter: #203545;
+$fill-color-extra-light: #152532;
+$fill-color-dark: #10202d;
+$fill-color-blank: #132432;
+$bg-color: #10202d;
+$bg-color-page: #09151f;
+$bg-color-overlay: #162936;
+
+// ========== Platform semantics ==========
+$platform-status-running: #52cf82;
+$platform-status-stopped: #8997a8;
+$platform-status-error: #f0646a;
+$platform-status-deploying: #f2b84b;
+$platform-bg-error-row: rgba(240, 100, 106, 0.09);
+$platform-bg-hover: rgba(39, 181, 243, 0.08);
+
+// ========== Spacing ==========
+$platform-spacing-unit: 8px;
+$platform-spacing-xs: 4px;
+$platform-spacing-sm: 8px;
+$platform-spacing-md: 16px;
+$platform-spacing-lg: 24px;
+$platform-spacing-xl: 32px;
+$platform-card-padding: 20px;
+$platform-table-cell-padding: 11px 14px;
+$platform-form-item-gap: 20px;
+$platform-button-gap: 10px;
+
+// ========== Typography ==========
+$font-family: 'Inter', 'SF Pro Display', 'PingFang SC', 'Microsoft YaHei',
+  -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+$font-family-mono: 'SF Mono', 'JetBrains Mono', Monaco, Consolas,
+  'Liberation Mono', monospace;
+$platform-font-size-xs: 12px;
+$platform-font-size-sm: 13px;
+$platform-font-size-base: 14px;
+$platform-font-size-md: 16px;
+$platform-font-size-lg: 18px;
+$platform-font-size-xl: 22px;
+$platform-font-weight-normal: 400;
+$platform-font-weight-medium: 500;
+$platform-font-weight-bold: 600;
+$platform-line-height-tight: 1.25;
+$platform-line-height-base: 1.5;
+$platform-line-height-loose: 1.75;
+
+// ========== Shape and elevation ==========
+$border-radius-base: 5px;
+$border-radius-small: 3px;
+$border-radius-round: 20px;
+$border-radius-circle: 100%;
+$platform-card-radius: 6px;
+$platform-modal-radius: 8px;
+$platform-tag-radius: 4px;
+$box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+$box-shadow-light: 0 4px 14px rgba(0, 0, 0, 0.16);
+$box-shadow-lighter: 0 2px 8px rgba(0, 0, 0, 0.12);
+$box-shadow-dark: 0 16px 36px rgba(0, 0, 0, 0.3);
+$platform-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+$platform-card-shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.22);
+$platform-dropdown-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+
+// ========== Layout ==========
+$platform-sidebar-width: 204px;
+$platform-sidebar-collapsed-width: 64px;
+$platform-header-height: 64px;
+$platform-footer-height: 32px;
+$platform-content-padding: 18px;
+$platform-z-index-sidebar: 100;
+$platform-z-index-header: 99;
+$platform-z-index-dropdown: 200;
+$platform-z-index-modal: 300;
+$platform-z-index-message: 400;
+$platform-z-index-notification: 500;
+$transition-duration: 0.24s;
+$transition-duration-fast: 0.16s;
+$transition-duration-slow: 0.4s;
+$transition-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+$transition-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+$transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+
+// ========== Legacy aliases (plugin pages 旧变量名 → Night Ops 值) ==========
+$primary-color: $color-primary;
+$success-color: $color-success;
+$warning-color: $color-warning;
+$danger-color: $color-danger;
+$info-color: $color-info;
+
+$text-primary: $color-text-primary;
+$text-regular: $color-text-regular;
+$text-secondary: $color-text-secondary;
+$text-placeholder: $color-text-placeholder;
+
+$border-base: $border-color;
+$border-light: $border-color-light;
+$border-lighter: $border-color-lighter;
+$border-extra-light: $border-color-extra-light;
+
+$bg-base: $bg-color;
+$bg-page: $bg-color-page;
+$bg-dark: $bg-color-page;
+
+$spacing-xs: $platform-spacing-xs;
+$spacing-sm: $platform-spacing-sm;
+$spacing-md: $platform-spacing-md;
+$spacing-lg: $platform-spacing-lg;
+$spacing-xl: $platform-spacing-xl;
+
+$border-radius-sm: $border-radius-small;
+$border-radius-md: $platform-card-radius;
+$border-radius-lg: $platform-modal-radius;
+
+$box-shadow-sm: $box-shadow-lighter;
+$box-shadow-md: $box-shadow-light;
+$box-shadow-lg: $box-shadow-dark;
+
+:root {
+  --el-color-primary: #{$color-primary};
+  --el-color-primary-light-3: #{$color-primary-light-3};
+  --el-color-primary-light-5: #{$color-primary-light-5};
+  --el-color-primary-light-7: #{$color-primary-light-7};
+  --el-color-primary-light-8: #{$color-primary-light-8};
+  --el-color-primary-light-9: #{$color-primary-light-9};
+  --el-color-primary-dark-2: #{$color-primary-dark-2};
+  --el-color-success: #{$color-success};
+  --el-color-success-light-3: #{$color-success-light-3};
+  --el-color-success-light-5: #{$color-success-light-5};
+  --el-color-success-light-7: #{$color-success-light-7};
+  --el-color-success-light-8: #{$color-success-light-8};
+  --el-color-success-light-9: #{$color-success-light-9};
+  --el-color-success-dark-2: #{$color-success-dark-2};
+  --el-color-warning: #{$color-warning};
+  --el-color-warning-light-3: #{$color-warning-light-3};
+  --el-color-warning-light-5: #{$color-warning-light-5};
+  --el-color-warning-light-7: #{$color-warning-light-7};
+  --el-color-warning-light-8: #{$color-warning-light-8};
+  --el-color-warning-light-9: #{$color-warning-light-9};
+  --el-color-warning-dark-2: #{$color-warning-dark-2};
+  --el-color-danger: #{$color-danger};
+  --el-color-danger-light-3: #{$color-danger-light-3};
+  --el-color-danger-light-5: #{$color-danger-light-5};
+  --el-color-danger-light-7: #{$color-danger-light-7};
+  --el-color-danger-light-8: #{$color-danger-light-8};
+  --el-color-danger-light-9: #{$color-danger-light-9};
+  --el-color-danger-dark-2: #{$color-danger-dark-2};
+  --el-color-info: #{$color-info};
+  --el-color-info-light-3: #{$color-info-light-3};
+  --el-color-info-light-5: #{$color-info-light-5};
+  --el-color-info-light-7: #{$color-info-light-7};
+  --el-color-info-light-8: #{$color-info-light-8};
+  --el-color-info-light-9: #{$color-info-light-9};
+  --el-color-info-dark-2: #{$color-info-dark-2};
+
+  --el-text-color-primary: #{$color-text-primary};
+  --el-text-color-regular: #{$color-text-regular};
+  --el-text-color-secondary: #{$color-text-secondary};
+  --el-text-color-placeholder: #{$color-text-placeholder};
+  --el-text-color-disabled: #{$color-text-disabled};
+  --el-border-color: #{$border-color};
+  --el-border-color-light: #{$border-color-light};
+  --el-border-color-lighter: #{$border-color-lighter};
+  --el-border-color-extra-light: #{$border-color-extra-light};
+  --el-border-color-dark: #{$border-color-dark};
+  --el-fill-color: #{$fill-color};
+  --el-fill-color-light: #{$fill-color-light};
+  --el-fill-color-lighter: #{$fill-color-lighter};
+  --el-fill-color-extra-light: #{$fill-color-extra-light};
+  --el-fill-color-dark: #{$fill-color-dark};
+  --el-fill-color-blank: #{$fill-color-blank};
+  --el-bg-color: #{$bg-color};
+  --el-bg-color-page: #{$bg-color-page};
+  --el-bg-color-overlay: #{$bg-color-overlay};
+  --el-font-family: #{$font-family};
+  --el-font-family-mono: #{$font-family-mono};
+  --el-border-radius-base: #{$border-radius-base};
+  --el-border-radius-small: #{$border-radius-small};
+  --el-border-radius-round: #{$border-radius-round};
+  --el-border-radius-circle: #{$border-radius-circle};
+  --el-box-shadow: #{$box-shadow};
+  --el-box-shadow-light: #{$box-shadow-light};
+  --el-box-shadow-lighter: #{$box-shadow-lighter};
+  --el-box-shadow-dark: #{$box-shadow-dark};
+  --el-transition-duration: #{$transition-duration};
+  --el-transition-duration-fast: #{$transition-duration-fast};
+  --el-transition-duration-slow: #{$transition-duration-slow};
+  --el-transition-ease: #{$transition-ease};
+  --el-transition-ease-in: #{$transition-ease-in};
+  --el-transition-ease-out: #{$transition-ease-out};
+
+  --platform-surface-0: #0b1722;
+  --platform-surface-1: #10202d;
+  --platform-surface-2: #142735;
+  --platform-surface-3: #1a3040;
+  --platform-topbar: #0a1620;
+  --platform-sidebar: #0b1a27;
+  --platform-sidebar-active: #152f41;
+  --platform-line: #263847;
+  --platform-cyan: #27b5f3;
+  --platform-amber: #f2b84b;
+  --platform-red: #f0646a;
+  --platform-green: #52cf82;
+  --platform-text-primary: #e7eef5;
+  --platform-text-regular: #c1ceda;
+  --platform-text-secondary: #8d9cac;
+  --platform-text-muted: #68788a;
+  --platform-status-running: #{$platform-status-running};
+  --platform-status-stopped: #{$platform-status-stopped};
+  --platform-status-error: #{$platform-status-error};
+  --platform-status-deploying: #{$platform-status-deploying};
+  --platform-bg-error-row: #{$platform-bg-error-row};
+  --platform-bg-hover: #{$platform-bg-hover};
+  --platform-spacing-unit: #{$platform-spacing-unit};
+  --platform-spacing-xs: #{$platform-spacing-xs};
+  --platform-spacing-sm: #{$platform-spacing-sm};
+  --platform-spacing-md: #{$platform-spacing-md};
+  --platform-spacing-lg: #{$platform-spacing-lg};
+  --platform-spacing-xl: #{$platform-spacing-xl};
+  --platform-card-padding: #{$platform-card-padding};
+  --platform-table-cell-padding: #{$platform-table-cell-padding};
+  --platform-form-item-gap: #{$platform-form-item-gap};
+  --platform-button-gap: #{$platform-button-gap};
+  --platform-font-size-xs: #{$platform-font-size-xs};
+  --platform-font-size-sm: #{$platform-font-size-sm};
+  --platform-font-size-base: #{$platform-font-size-base};
+  --platform-font-size-md: #{$platform-font-size-md};
+  --platform-font-size-lg: #{$platform-font-size-lg};
+  --platform-font-size-xl: #{$platform-font-size-xl};
+  --platform-font-weight-normal: #{$platform-font-weight-normal};
+  --platform-font-weight-medium: #{$platform-font-weight-medium};
+  --platform-font-weight-bold: #{$platform-font-weight-bold};
+  --platform-line-height-tight: #{$platform-line-height-tight};
+  --platform-line-height-base: #{$platform-line-height-base};
+  --platform-line-height-loose: #{$platform-line-height-loose};
+  --platform-card-radius: #{$platform-card-radius};
+  --platform-modal-radius: #{$platform-modal-radius};
+  --platform-tag-radius: #{$platform-tag-radius};
+  --platform-card-shadow: #{$platform-card-shadow};
+  --platform-card-shadow-hover: #{$platform-card-shadow-hover};
+  --platform-dropdown-shadow: #{$platform-dropdown-shadow};
+  --platform-sidebar-width: #{$platform-sidebar-width};
+  --platform-sidebar-collapsed-width: #{$platform-sidebar-collapsed-width};
+  --platform-header-height: #{$platform-header-height};
+  --platform-footer-height: #{$platform-footer-height};
+  --platform-content-padding: #{$platform-content-padding};
+  --platform-z-index-sidebar: #{$platform-z-index-sidebar};
+  --platform-z-index-header: #{$platform-z-index-header};
+  --platform-z-index-dropdown: #{$platform-z-index-dropdown};
+  --platform-z-index-modal: #{$platform-z-index-modal};
+  --platform-z-index-message: #{$platform-z-index-message};
+  --platform-z-index-notification: #{$platform-z-index-notification};
+}

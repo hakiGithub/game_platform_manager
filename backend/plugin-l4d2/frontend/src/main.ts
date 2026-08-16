@@ -11,6 +11,9 @@ import { usePluginStore } from './stores/plugin'
 import { detectMode } from './utils/runtime'
 import './styles/index.scss'
 
+// Night Operations 暗色单主题（ADR-0007）：与宿主主应用保持一致，无明暗切换
+document.documentElement.classList.add('dark')
+
 // Vue 应用实例
 let app: VueApp<Element> | null = null
 // 插件 store 实例，用于 Wujie 卸载时清理

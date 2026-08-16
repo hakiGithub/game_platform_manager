@@ -7,22 +7,22 @@ export const DIFFICULTIES = {
   easy: {
     value: 'easy',
     label: '简单',
-    color: '#67c23a'
+    color: '#52cf82'
   },
   normal: {
     value: 'normal',
     label: '普通',
-    color: '#409eff'
+    color: '#27b5f3'
   },
   hard: {
     value: 'hard',
     label: '困难',
-    color: '#e6a23c'
+    color: '#f2b84b'
   },
   impossible: {
     value: 'impossible',
     label: '专家',
-    color: '#f56c6c'
+    color: '#f0646a'
   }
 } as const
 
@@ -143,11 +143,11 @@ export const COMMON_RCON_COMMANDS = [
 
 // 服务器状态
 export const SERVER_STATUS = {
-  running: { value: 'running', label: '运行中', color: '#67c23a', type: 'success' },
-  stopped: { value: 'stopped', label: '已停止', color: '#909399', type: 'info' },
-  starting: { value: 'starting', label: '启动中', color: '#e6a23c', type: 'warning' },
-  stopping: { value: 'stopping', label: '停止中', color: '#e6a23c', type: 'warning' },
-  error: { value: 'error', label: '错误', color: '#f56c6c', type: 'danger' }
+  running: { value: 'running', label: '运行中', color: '#52cf82', type: 'success' },
+  stopped: { value: 'stopped', label: '已停止', color: '#8997a8', type: 'info' },
+  starting: { value: 'starting', label: '启动中', color: '#f2b84b', type: 'warning' },
+  stopping: { value: 'stopping', label: '停止中', color: '#f2b84b', type: 'warning' },
+  error: { value: 'error', label: '错误', color: '#f0646a', type: 'danger' }
 } as const
 
 export type Difficulty = keyof typeof DIFFICULTIES

@@ -1,5 +1,5 @@
 <template>
-  <div class="l4d2-plugin-app" :class="{ 'dark-mode': isDark }">
+  <div class="l4d2-plugin-app">
     <el-config-provider :locale="zhCn">
       <MainLayout>
         <router-view />
@@ -9,36 +9,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { usePluginStore } from '@/stores/plugin'
 
 const pluginStore = usePluginStore()
-const isDark = ref(false)
-
-/**
- * 应用主题到 Element Plus 与本地样式
- */
-const applyTheme = (themeInfo: any): void => {
-  const dark = typeof themeInfo === 'boolean'
-    ? themeInfo
-    : themeInfo?.isDark === true || themeInfo?.theme === 'dark'
-  isDark.value = dark
-  document.documentElement.classList.toggle('dark', dark)
-}
-
-// 监听 store 中的主题变化（Wujie 通过 bus 推送 THEME_CHANGE 时更新）
-watch(
-  () => pluginStore.themeInfo,
-  (themeInfo) => {
-    if (themeInfo) {
-      applyTheme(themeInfo)
-    }
-  },
-  { immediate: true, deep: true }
-)
 
 // 监听实例信息变化，确保 store 与 Wujie props 保持一致
 watch(
@@ -52,17 +29,12 @@ watch(
 )
 
 onMounted(() => {
-  // Wujie 模式下优先从宿主 props 同步实例/认证/主题信息
+  // Wujie 模式下优先从宿主 props 同步实例/认证信息
   // 主应用通过 props.instance 传递实例信息，pluginSDK 默认读取 props.instanceInfo 会遗漏
   pluginStore.syncFromWujieProps()
 
   // 初始化插件 SDK（独立运行或 Wujie 首次挂载时都会执行）
   pluginStore.initSDK()
-
-  // 如果初始化时已有主题数据，立即应用
-  if (pluginStore.themeInfo) {
-    applyTheme(pluginStore.themeInfo)
-  }
 
   // 通知主应用子应用已就绪
   pluginStore.ready()
@@ -77,11 +49,7 @@ onUnmounted(() => {
 .l4d2-plugin-app {
   width: 100%;
   height: 100%;
-  background-color: var(--el-bg-color);
+  background-color: var(--el-bg-color-page);
   color: var(--el-text-color-primary);
-
-  &.dark-mode {
-    background-color: #141414;
-  }
 }
 </style>

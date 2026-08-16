@@ -15,6 +15,7 @@
 | [0004](0004-host-lan-identification.md) | 主机局域网标识（isLanHost）引入 | Accepted | 2026-08-09 |
 | [0005](0005-run-status-vocabulary-unification.md) | run_status 状态词汇表统一（InstanceStatus 唯一权威） | Accepted | 2026-08-13 |
 | [0006](0006-patch-install-decision-tree.md) | 补丁安装（PatchInstallService）决策树与执行模型 | Accepted | 2026-08-13 |
+| [0007](0007-plugin-frontend-nightops-token-isolation.md) | 插件前端 Night Operations token 隔离（复制而非共享） | Accepted | 2026-08-16 |
 
 ## 术语表
 

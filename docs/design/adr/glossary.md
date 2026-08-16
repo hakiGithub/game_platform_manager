@@ -109,6 +109,24 @@
   - **默认值**：`false`（谨慎原则：新主机默认按公网处理）。
   - **引入**：ADR-0004
 
+### N
+
+- **Night Operations（夜间运维设计语言）**
+  - **定义**：主应用前端的暗色设计语言：海军蓝 surface 0-3 表面色阶、青色 `#27b5f3` 主色、mono kicker 微标签、6px 圆角卡片、8px 间距体系。token 定义在 `--platform-*` 命名空间。
+  - **引入**：commit ea9278f；插件前端对齐决策见 ADR-0007
+
+### P
+
+- **platform token（平台 token）**
+  - **定义**：Night Operations 的 CSS 变量集合（`--platform-surface-*`、`--platform-status-*`、`--platform-cyan/-amber/-red/-green` 等）。插件因 Wujie shadow DOM 隔离不继承宿主变量，须自带同步副本。
+  - **_Avoid_**: 主题变量、皮肤变量
+  - **引入**：ADR-0007
+
+- **插件前端（plugin frontend）**
+  - **定义**：随插件 JAR 分发的 Vue 子应用（如 `plugin-l4d2/frontend`），经 Wujie 嵌入宿主 `/plugin/{gameCode}/ui/` 运行；本地开发用 Vite dev 模式。样式与 token 由插件自管（ADR-0002/0007）。
+  - **_Avoid_**: standalone 前端（已废弃，ADR-0003）
+  - **引入**：ADR-0007
+
 ### R
 
 - **`requireInstance`**
