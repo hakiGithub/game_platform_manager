@@ -1,235 +1,194 @@
 <template>
   <div class="dashboard-page">
-    <div class="page-header">
-      <h1 class="page-title">仪表盘</h1>
+    <!-- Hero 头部 -->
+    <div class="plugin-page-header dashboard-hero">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SERVER STATUS</span>
+        <h2>仪表盘</h2>
+        <p>实例运行状态、玩家概况与快捷运维入口</p>
+      </div>
       <div class="header-actions">
-        <el-button type="primary" plain @click="refreshStatus" :loading="loading">
+        <span class="hero-state">
+          <span class="status-dot" :class="heroDotClass"></span>
+          {{ statusText }}
+        </span>
+        <el-button type="primary" @click="refreshStatus" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新状态
         </el-button>
       </div>
     </div>
 
-      <!-- 服务器状态卡片 -->
-      <el-row :gutter="20" class="status-cards">
-        <el-col :span="6">
-          <el-card shadow="hover" class="status-card">
-            <div class="status-icon" :class="statusClass">
-              <el-icon :size="32">
-                <component :is="statusIcon" />
-              </el-icon>
-            </div>
-            <div class="status-info">
-              <div class="status-label">实例状态</div>
-              <div class="status-value" :class="statusClass">
-                {{ statusText }}
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :span="6">
-          <el-card shadow="hover" class="status-card">
-            <div class="status-icon players">
-              <el-icon :size="32"><User /></el-icon>
-            </div>
-            <div class="status-info">
-              <div class="status-label">在线玩家</div>
-              <div class="status-value">
-                {{ serverStatus?.players || 0 }} / {{ serverStatus?.maxPlayers || 8 }}
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :span="6">
-          <el-card shadow="hover" class="status-card">
-            <div class="status-icon map">
-              <el-icon :size="32"><Map /></el-icon>
-            </div>
-            <div class="status-info">
-              <div class="status-label">当前地图</div>
-              <div class="status-value">
-                {{ currentMapName }}
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :span="6">
-          <el-card shadow="hover" class="status-card">
-            <div class="status-icon fps">
-              <el-icon :size="32"><TrendCharts /></el-icon>
-            </div>
-            <div class="status-info">
-              <div class="status-label">RCON 连接</div>
-              <div class="status-value" :class="rconStatusClass">
-                {{ rconStatusText }}
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 快速操作 -->
-      <el-card class="quick-actions" shadow="hover">
-        <template #header>
-          <div class="card-header">
-            <span>快速操作</span>
-          </div>
-        </template>
-        
-        <div class="action-grid">
-          <el-button
-            type="success"
-            size="large"
-            plain
-            class="action-btn"
-            @click="startServer"
-            :disabled="isRunning"
-            :loading="actionLoading.start"
-          >
-            <el-icon :size="18"><VideoPlay /></el-icon>
-            <span>启动服务器</span>
-          </el-button>
-          <el-button
-            type="danger"
-            size="large"
-            plain
-            class="action-btn"
-            @click="stopServer"
-            :disabled="!isRunning"
-            :loading="actionLoading.stop"
-          >
-            <el-icon :size="18"><VideoPause /></el-icon>
-            <span>停止服务器</span>
-          </el-button>
-          <el-button
-            type="warning"
-            size="large"
-            plain
-            class="action-btn"
-            @click="restartServer"
-            :disabled="!isRunning"
-            :loading="actionLoading.restart"
-          >
-            <el-icon :size="18"><RefreshRight /></el-icon>
-            <span>重启服务器</span>
-          </el-button>
-          <el-button
-            type="primary"
-            size="large"
-            plain
-            class="action-btn"
-            @click="updateServer"
-            :loading="actionLoading.update"
-          >
-            <el-icon :size="18"><Download /></el-icon>
-            <span>更新服务器</span>
-          </el-button>
+    <!-- 指标卡片 -->
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="section-kicker">INSTANCE STATE</span>
+          <el-icon :size="18" class="metric-icon" :class="statusClass">
+            <component :is="statusIcon" />
+          </el-icon>
         </div>
-      </el-card>
+        <div class="metric-value" :class="statusClass">{{ statusText }}</div>
+        <div class="metric-state">
+          <span class="status-dot" :class="heroDotClass"></span>
+          <span>实例 {{ instanceStatus?.runStatus === 1 ? '在线' : '离线' }}</span>
+          <span class="metric-link" @click="$router.push('/server-info')">详情</span>
+        </div>
+      </div>
 
-      <!-- 服务器详情 -->
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-card shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <span>游戏设置</span>
-              </div>
-            </template>
-            
-            <div class="info-list">
-              <div class="info-item">
-                <span class="info-label">难度</span>
-                <el-tag :color="difficultyColor" effect="dark" size="small">
-                  {{ difficultyText }}
-                </el-tag>
-              </div>
-              <div class="info-item">
-                <span class="info-label">游戏模式</span>
-                <el-tag type="info" size="small">{{ gameModeText }}</el-tag>
-              </div>
-              <div class="info-item">
-                <span class="info-label">运行时间</span>
-                <span class="info-value">{{ formatUptime(serverStatus?.uptime || 0) }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">服务器版本</span>
-                <span class="info-value">{{ serverStatus?.version || '-' }}</span>
-              </div>
-              <div class="info-item" v-if="serverStatus?.osType">
-                <span class="info-label">操作系统</span>
-                <span class="info-value">{{ serverStatus.osType }}</span>
-              </div>
-              <div class="info-item" v-if="serverStatus?.serverType">
-                <span class="info-label">服务器类型</span>
-                <span class="info-value">{{ serverStatus.serverType }}</span>
-              </div>
-              <div class="info-item" v-if="!serverStatus?.online && serverStatus?.reason">
-                <span class="info-label">离线原因</span>
-                <span class="info-value" style="color: #f56c6c;">{{ serverStatus.reason }}</span>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="section-kicker">PLAYERS ONLINE</span>
+          <el-icon :size="18" class="metric-icon players"><User /></el-icon>
+        </div>
+        <div class="metric-value">{{ serverStatus?.players || 0 }}<span class="metric-sub"> / {{ serverStatus?.maxPlayers || 8 }}</span></div>
+        <div class="metric-state">
+          <span class="status-dot" :class="(serverStatus?.players ?? 0) > 0 ? 'running' : 'stopped'"></span>
+          <span>{{ (serverStatus?.players ?? 0) > 0 ? '有玩家在线' : '空闲' }}</span>
+        </div>
+      </div>
 
-        <el-col :span="12">
-          <el-card shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <span>快捷功能</span>
-              </div>
-            </template>
-            
-            <div class="quick-links">
-              <div class="quick-link" @click="$router.push('/maps')">
-                <div class="quick-link-icon map">
-                  <el-icon :size="22"><Map /></el-icon>
-                </div>
-                <span class="quick-link-label">地图管理</span>
-              </div>
-              <div class="quick-link" @click="$router.push('/plugins')">
-                <div class="quick-link-icon plugin">
-                  <el-icon :size="22"><Box /></el-icon>
-                </div>
-                <span class="quick-link-label">插件管理</span>
-              </div>
-              <div class="quick-link" @click="$router.push('/rcon')">
-                <div class="quick-link-icon rcon">
-                  <el-icon :size="22"><Monitor /></el-icon>
-                </div>
-                <span class="quick-link-label">控制台</span>
-              </div>
-              <div class="quick-link" @click="$router.push('/monitor')">
-                <div class="quick-link-icon monitor">
-                  <el-icon :size="22"><TrendCharts /></el-icon>
-                </div>
-                <span class="quick-link-label">性能监控</span>
-              </div>
-              <div class="quick-link" @click="$router.push('/admins')">
-                <div class="quick-link-icon admin">
-                  <el-icon :size="22"><User /></el-icon>
-                </div>
-                <span class="quick-link-label">管理员</span>
-              </div>
-              <div class="quick-link" @click="$router.push('/server-config')">
-                <div class="quick-link-icon config">
-                  <el-icon :size="22"><Setting /></el-icon>
-                </div>
-                <span class="quick-link-label">服务器配置</span>
-              </div>
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="section-kicker">CURRENT MAP</span>
+          <el-icon :size="18" class="metric-icon map"><Map /></el-icon>
+        </div>
+        <div class="metric-value metric-value-text">{{ currentMapName }}</div>
+        <div class="metric-state">
+          <span class="status-dot" :class="serverStatus?.map ? 'running' : 'stopped'"></span>
+          <span>{{ serverStatus?.map ? '运行中地图' : '未获取' }}</span>
+          <span class="metric-link" @click="$router.push('/maps')">地图管理</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-header">
+          <span class="section-kicker">RCON LINK</span>
+          <el-icon :size="18" class="metric-icon" :class="rconStatusClass === 'online' ? 'online' : 'offline'">
+            <Connection />
+          </el-icon>
+        </div>
+        <div class="metric-value" :class="rconStatusClass === 'online' ? 'online' : 'offline'">{{ rconStatusText }}</div>
+        <div class="metric-state">
+          <span class="status-dot" :class="rconStatusClass === 'online' ? 'running' : 'stopped'"></span>
+          <span>{{ rconStatusClass === 'online' ? '控制通道可用' : '控制通道不可用' }}</span>
+          <span class="metric-link" @click="$router.push('/rcon')">控制台</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快速操作 -->
+    <div class="page-card">
+      <div class="page-card-header">
+        <span class="title">快速操作</span>
+        <span class="section-kicker">LIFECYCLE</span>
+      </div>
+      <div class="action-grid">
+        <el-button type="success" size="large" class="action-btn" @click="startServer"
+          :disabled="isRunning" :loading="actionLoading.start">
+          <el-icon :size="18"><VideoPlay /></el-icon>
+          <span>启动服务器</span>
+        </el-button>
+        <el-button type="danger" size="large" class="action-btn" @click="stopServer"
+          :disabled="!isRunning" :loading="actionLoading.stop">
+          <el-icon :size="18"><VideoPause /></el-icon>
+          <span>停止服务器</span>
+        </el-button>
+        <el-button type="warning" size="large" class="action-btn" @click="restartServer"
+          :disabled="!isRunning" :loading="actionLoading.restart">
+          <el-icon :size="18"><RefreshRight /></el-icon>
+          <span>重启服务器</span>
+        </el-button>
+        <el-button size="large" class="action-btn" @click="updateServer" :loading="actionLoading.update">
+          <el-icon :size="18"><Download /></el-icon>
+          <span>更新服务器</span>
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 服务器详情 -->
+    <el-row :gutter="16">
+      <el-col :span="12">
+        <div class="page-card">
+          <div class="page-card-header">
+            <span class="title">游戏设置</span>
+            <span class="section-kicker">GAME SETTINGS</span>
+          </div>
+          <div class="info-list">
+            <div class="info-item">
+              <span class="info-label">难度</span>
+              <el-tag :color="difficultyColor" effect="dark" size="small" class="difficulty-tag">
+                {{ difficultyText }}
+              </el-tag>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
+            <div class="info-item">
+              <span class="info-label">游戏模式</span>
+              <el-tag type="info" size="small">{{ gameModeText }}</el-tag>
+            </div>
+            <div class="info-item">
+              <span class="info-label">运行时间</span>
+              <span class="info-value">{{ formatUptime(serverStatus?.uptime || 0) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">服务器版本</span>
+              <span class="info-value">{{ serverStatus?.version || '-' }}</span>
+            </div>
+            <div class="info-item" v-if="serverStatus?.osType">
+              <span class="info-label">操作系统</span>
+              <span class="info-value">{{ serverStatus.osType }}</span>
+            </div>
+            <div class="info-item" v-if="serverStatus?.serverType">
+              <span class="info-label">服务器类型</span>
+              <span class="info-value">{{ serverStatus.serverType }}</span>
+            </div>
+            <div class="info-item" v-if="!serverStatus?.online && serverStatus?.reason">
+              <span class="info-label">离线原因</span>
+              <span class="info-value error-text">{{ serverStatus.reason }}</span>
+            </div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :span="12">
+        <div class="page-card">
+          <div class="page-card-header">
+            <span class="title">快捷功能</span>
+            <span class="section-kicker">SHORTCUTS</span>
+          </div>
+          <div class="quick-links">
+            <div class="quick-link" @click="$router.push('/maps')">
+              <div class="quick-link-icon map"><el-icon :size="20"><Map /></el-icon></div>
+              <span class="quick-link-label">地图管理</span>
+            </div>
+            <div class="quick-link" @click="$router.push('/plugins')">
+              <div class="quick-link-icon plugin"><el-icon :size="20"><Box /></el-icon></div>
+              <span class="quick-link-label">插件管理</span>
+            </div>
+            <div class="quick-link" @click="$router.push('/rcon')">
+              <div class="quick-link-icon rcon"><el-icon :size="20"><Monitor /></el-icon></div>
+              <span class="quick-link-label">控制台</span>
+            </div>
+            <div class="quick-link" @click="$router.push('/monitor')">
+              <div class="quick-link-icon monitor"><el-icon :size="20"><TrendCharts /></el-icon></div>
+              <span class="quick-link-label">性能监控</span>
+            </div>
+            <div class="quick-link" @click="$router.push('/admins')">
+              <div class="quick-link-icon admin"><el-icon :size="20"><User /></el-icon></div>
+              <span class="quick-link-label">管理员</span>
+            </div>
+            <div class="quick-link" @click="$router.push('/server-config')">
+              <div class="quick-link-icon config"><el-icon :size="20"><Setting /></el-icon></div>
+              <span class="quick-link-label">服务器配置</span>
+            </div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { serverApi, instanceApi } from '@/api'
 import type { InstanceStatusVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
@@ -238,7 +197,6 @@ import { formatUptime, parseMapName } from '@/utils/statusParser'
 import type { ServerStatus } from '@/types'
 
 const pluginStore = usePluginStore()
-const router = useRouter()
 const loading = ref(false)
 const serverStatus = ref<ServerStatus | null>(null)
 /** 实例运行状态（来自核心 InstanceSyncService 同步），用于显示服务器运行状态 */
@@ -273,6 +231,15 @@ const statusText = computed(() => {
   return instanceStatus.value.runStatusDesc || '未知'
 })
 
+/** hero 状态点：running=运行，deploying=启停中，stopped=停止，error=异常 */
+const heroDotClass = computed(() => {
+  const rs = instanceStatus.value?.runStatus
+  if (rs === 1) return 'running'
+  if (rs === 2) return 'error'
+  if (rs === 5 || rs === 6 || rs === 7) return 'deploying'
+  return 'stopped'
+})
+
 /** 实例是否运行中，用于控制按钮启用状态 */
 const isRunning = computed(() => instanceStatus.value?.runStatus === 1)
 
@@ -300,7 +267,7 @@ const difficultyText = computed(() => {
 
 const difficultyColor = computed(() => {
   const difficulty = serverStatus.value?.difficulty || 'normal'
-  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.color || '#409eff'
+  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.color || 'var(--platform-cyan)'
 })
 
 const gameModeText = computed(() => {
@@ -451,191 +418,150 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .dashboard-page {
   height: 100%;
-  padding: 16px;
+  padding: 18px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-
-  .page-title {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--el-text-color-primary);
-    line-height: 1.2;
-  }
-
+.dashboard-hero {
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
-  }
-}
-
-.status-cards {
-  flex-shrink: 0;
-  margin-bottom: 0;
-}
-
-.status-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 108px;
-
-  :deep(.el-card__body) {
-    width: 100%;
-    display: flex;
-    align-items: center;
     gap: 16px;
-    padding: 16px;
   }
 
-  .status-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 12px;
+  .hero-state {
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--platform-text-secondary);
+  }
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  transition: border-color 0.16s, background-color 0.16s;
+
+  &:hover {
+    border-color: rgba(39, 181, 243, 0.45);
+  }
+
+  .metric-card-header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    color: white;
-    flex-shrink: 0;
-
-    &.online {
-      background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
-    }
-
-    &.offline {
-      background: linear-gradient(135deg, #909399 0%, #b4b4b4 100%);
-    }
-
-    &.abnormal {
-      background: linear-gradient(135deg, #e6a23c 0%, #f0c787 100%);
-    }
-
-    &.players {
-      background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
-    }
-
-    &.map {
-      background: linear-gradient(135deg, #e6a23c 0%, #ebb563 100%);
-    }
-
-    &.fps {
-      background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
-    }
+    justify-content: space-between;
   }
 
-  .status-info {
-    flex: 1;
-    min-width: 0;
-
-    .status-label {
-      font-size: 13px;
-      color: var(--el-text-color-secondary);
-      margin-bottom: 6px;
-    }
-
-    .status-value {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--el-text-color-primary);
-      line-height: 1.3;
-      word-break: break-all;
-
-      &.online {
-        color: #67c23a;
-      }
-
-      &.offline {
-        color: #909399;
-      }
-
-      &.abnormal {
-        color: #e6a23c;
-      }
-
-      &.empty {
-        color: var(--el-text-color-placeholder);
-      }
-    }
-  }
-}
-
-.quick-actions {
-  flex-shrink: 0;
-
-  :deep(.el-card__header) {
-    padding: 14px 16px;
+  .metric-icon {
+    &.online { color: var(--platform-status-running); }
+    &.offline { color: var(--platform-status-stopped); }
+    &.abnormal { color: var(--platform-status-deploying); }
+    &.players { color: var(--platform-cyan); }
+    &.map { color: var(--platform-amber); }
   }
 
-  :deep(.el-card__body) {
-    padding: 16px;
-  }
-
-  .card-header {
-    font-size: 16px;
+  .metric-value {
+    font-size: 24px;
     font-weight: 600;
+    color: var(--platform-text-primary);
+    line-height: 1.25;
+    word-break: break-all;
+
+    &.online { color: var(--platform-status-running); }
+    &.offline { color: var(--platform-status-stopped); }
+    &.abnormal { color: var(--platform-status-deploying); }
+
+    .metric-sub {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--platform-text-muted);
+    }
+
+    &.metric-value-text {
+      font-size: 18px;
+    }
   }
 
-  .action-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-  }
+  .metric-state {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--platform-line);
+    font-size: 12px;
+    color: var(--platform-text-secondary);
 
-  .action-btn {
-    width: 100%;
-    height: 52px;
-    font-size: 15px;
-    border-radius: 8px;
+    .metric-link {
+      margin-left: auto;
+      color: var(--platform-cyan);
+      cursor: pointer;
 
-    .el-icon {
-      margin-right: 6px;
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 16px;
-  font-weight: 600;
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.action-btn {
+  width: 100%;
+  height: 46px;
+  font-size: 14px;
+
+  .el-icon {
+    margin-right: 6px;
+  }
 }
 
 .info-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
 
   .info-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--el-border-color-lighter);
+    padding: 11px 0;
+    border-bottom: 1px solid var(--platform-line);
 
     &:last-child {
       border-bottom: none;
     }
 
     .info-label {
-      font-size: 14px;
-      color: var(--el-text-color-secondary);
+      font-size: 13px;
+      color: var(--platform-text-secondary);
     }
 
     .info-value {
-      font-size: 14px;
-      color: var(--el-text-color-primary);
+      font-size: 13px;
+      color: var(--platform-text-primary);
       font-weight: 500;
+
+      &.error-text {
+        color: var(--platform-status-error);
+      }
     }
   }
 }
@@ -644,8 +570,6 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  justify-items: stretch;
-  align-items: stretch;
 
   .quick-link {
     display: flex;
@@ -653,62 +577,59 @@ onUnmounted(() => {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    width: 100%;
-    min-height: 110px;
-    padding: 16px 8px;
-    border-radius: 8px;
-    border: 1px solid var(--el-border-color-lighter);
-    background-color: var(--el-bg-color);
-    box-sizing: border-box;
+    min-height: 104px;
+    padding: 14px 8px;
+    border: 1px solid var(--platform-line);
+    border-radius: 6px;
+    background: var(--platform-surface-2);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color 0.16s, transform 0.16s;
 
     &:hover {
-      border-color: var(--el-color-primary-light-5);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border-color: rgba(39, 181, 243, 0.45);
       transform: translateY(-2px);
     }
 
     .quick-link-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
+      background: var(--platform-surface-3);
 
-      &.map { background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%); }
-      &.plugin { background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%); }
-      &.rcon { background: linear-gradient(135deg, #e6a23c 0%, #ebb563 100%); }
-      &.monitor { background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%); }
-      &.admin { background: linear-gradient(135deg, #909399 0%, #b4b4b4 100%); }
-      &.config { background: linear-gradient(135deg, #9c27b0 0%, #ba68c8 100%); }
+      &.map { color: var(--platform-cyan); }
+      &.plugin { color: var(--platform-green); }
+      &.rcon { color: var(--platform-amber); }
+      &.monitor { color: var(--platform-red); }
+      &.admin { color: var(--platform-text-secondary); }
+      &.config { color: #c397f5; }
     }
 
     .quick-link-label {
       font-size: 13px;
-      color: var(--el-text-color-primary);
+      color: var(--platform-text-regular);
       font-weight: 500;
-      text-align: center;
     }
   }
 }
 
 @media (max-width: 1200px) {
-  .quick-actions .action-grid {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .action-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .quick-actions .action-grid,
+  .metric-grid,
+  .action-grid,
   .quick-links {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .status-card {
-    margin-bottom: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

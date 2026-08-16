@@ -1,7 +1,11 @@
 <template>
   <div class="map-center-page">
-    <div class="page-header">
-      <h1 class="page-title">地图中心</h1>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / MAP CENTER</span>
+        <h2>地图中心</h2>
+        <p>浏览与检索可用的社区地图资源</p>
+      </div>
       <div class="header-actions">
         <el-button @click="loadList" :loading="loading">
           <el-icon><Refresh /></el-icon>
@@ -11,7 +15,7 @@
     </div>
 
     <!-- 爬取状态条 -->
-    <el-card class="crawl-status-card" shadow="hover">
+    <el-card class="crawl-status-card page-card" shadow="never">
       <div class="crawl-status">
         <div class="crawl-info">
           <el-icon :size="18" class="crawl-icon"><DataAnalysis /></el-icon>
@@ -40,7 +44,7 @@
     </el-card>
 
     <!-- 筛选 -->
-    <el-card class="filter-card" shadow="hover">
+    <el-card class="filter-card page-card" shadow="never">
       <div class="filter-row">
         <el-input
           v-model="query.keyword"
@@ -90,7 +94,7 @@
     </el-card>
 
     <!-- 地图列表 -->
-    <el-card class="list-card" shadow="hover">
+    <el-card class="list-card page-card" shadow="never">
       <el-table
         v-loading="loading"
         :data="mapList"
@@ -246,7 +250,7 @@
               disabled
               :max="5"
               show-score
-              text-color="#ff9900"
+              text-color="var(--platform-amber)"
             />
           </template>
         </el-table-column>
@@ -259,7 +263,7 @@
 
         <el-table-column label="更新日期" width="120">
           <template #default="{ row }">
-            {{ row.mapDate || row.sourceUpdateDate || '-' }}
+            {{ row.sourceUpdateDate || row.mapDate || '-' }}
           </template>
         </el-table-column>
 
@@ -570,14 +574,6 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-shrink: 0;
 
-  .page-title {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--el-text-color-primary);
-    line-height: 1.2;
-  }
-
   .header-actions {
     display: flex;
     align-items: center;
@@ -608,7 +604,7 @@ onBeforeUnmount(() => {
   }
 
   .crawl-icon {
-    color: var(--el-color-primary);
+    color: var(--platform-cyan);
     flex-shrink: 0;
   }
 
@@ -622,12 +618,12 @@ onBeforeUnmount(() => {
 
   .crawl-label {
     font-size: 14px;
-    color: var(--el-text-color-secondary);
+    color: var(--platform-text-secondary);
   }
 
   .crawl-detail {
     font-size: 13px;
-    color: var(--el-text-color-regular);
+    color: var(--platform-text-regular);
   }
 
   .crawl-progress {
@@ -681,11 +677,12 @@ onBeforeUnmount(() => {
     width: 64px;
     height: 40px;
     border-radius: 4px;
-    background: var(--el-fill-color-light);
+    background: var(--platform-surface-2);
+    border: 1px solid var(--platform-line);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--el-text-color-placeholder);
+    color: var(--platform-text-muted);
   }
 
   .title-cell {
@@ -696,14 +693,14 @@ onBeforeUnmount(() => {
     .title-cn {
       font-size: 14px;
       font-weight: 600;
-      color: var(--el-text-color-primary);
+      color: var(--platform-text-primary);
       line-height: 1.3;
       word-break: break-word;
     }
 
     .title-en {
       font-size: 12px;
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-secondary);
       line-height: 1.2;
       word-break: break-word;
     }
@@ -715,7 +712,7 @@ onBeforeUnmount(() => {
   }
 
   .muted {
-    color: var(--el-text-color-placeholder);
+    color: var(--platform-text-muted);
   }
 
   .pagination-wrapper {

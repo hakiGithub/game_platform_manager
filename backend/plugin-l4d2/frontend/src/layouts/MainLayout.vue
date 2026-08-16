@@ -60,14 +60,13 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { routes } from '@/router'
 import { usePluginStore } from '@/stores/plugin'
 import { instanceApi } from '@/api'
 import type { InstanceStatusVO } from '@/api'
 
 const route = useRoute()
-const router = useRouter()
 const pluginStore = usePluginStore()
 
 // Wujie 模式下不渲染侧边栏（菜单由主应用提供）
@@ -156,10 +155,10 @@ onUnmounted(() => {
 }
 
 .sidebar {
-  width: 220px;
+  width: 204px;
   height: 100%;
-  background-color: var(--el-bg-color);
-  border-right: 1px solid var(--el-border-color-light);
+  background: var(--platform-sidebar);
+  border-right: 1px solid var(--platform-line);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -170,29 +169,30 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--platform-line);
 
   .logo {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, #409eff 0%, #67c23a 100%);
-    border-radius: 12px;
+    width: 40px;
+    height: 40px;
+    background: rgba(39, 181, 243, 0.12);
+    border: 1px solid var(--platform-cyan);
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--platform-cyan);
   }
 
   .title {
     h2 {
       margin: 0;
-      font-size: 18px;
-      color: var(--el-text-color-primary);
+      font-size: 16px;
+      color: var(--platform-text-primary);
     }
 
     span {
       font-size: 12px;
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-secondary);
     }
   }
 }
@@ -201,13 +201,23 @@ onUnmounted(() => {
   flex: 1;
   border-right: none;
   overflow-y: auto;
+  background: transparent;
 
   :deep(.el-menu-item) {
-    height: 48px;
-    line-height: 48px;
+    height: 40px;
+    line-height: 40px;
+    margin: 2px 8px;
+    border-radius: 6px;
+    color: var(--platform-text-regular);
+
+    &:hover {
+      background: var(--platform-bg-hover);
+    }
 
     &.is-active {
-      background-color: var(--el-color-primary-light-9);
+      color: var(--platform-cyan);
+      background: var(--platform-sidebar-active);
+      box-shadow: inset 2px 0 0 var(--platform-cyan);
     }
   }
 }
@@ -227,21 +237,21 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 10px 16px;
   margin-bottom: 16px;
-  background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
   flex-shrink: 0;
 
   .instance-info {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--el-text-color-primary);
+    color: var(--platform-text-primary);
     font-size: 14px;
     min-width: 0;
 
     .instance-label {
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-secondary);
     }
 
     .instance-name {
