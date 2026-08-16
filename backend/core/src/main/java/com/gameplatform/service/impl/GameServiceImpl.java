@@ -9,6 +9,8 @@ import com.gameplatform.dto.GameCreateDTO;
 import com.gameplatform.dto.GameUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.GameMetadata;
+import com.gameplatform.entity.GameInstance;
+import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.service.GameService;
 import com.gameplatform.service.LogService;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +38,7 @@ import java.util.stream.Collectors;
 public class GameServiceImpl implements GameService {
 
     private final GameMetadataMapper gameMetadataMapper;
+    private final GameInstanceMapper gameInstanceMapper;
     private final LogService logService;
 
     @Override
@@ -109,25 +113,43 @@ public class GameServiceImpl implements GameService {
     @Override
     public PageResult<GameVO> pageGames(PageQueryDTO queryDTO) {
         LambdaQueryWrapper<GameMetadata> wrapper = new LambdaQueryWrapper<>();
-        
+
         // 关键词搜索
         if (queryDTO.getKeyword() != null && !queryDTO.getKeyword().isEmpty()) {
             wrapper.like(GameMetadata::getGameName, queryDTO.getKeyword())
                     .or()
                     .like(GameMetadata::getGameCode, queryDTO.getKeyword());
         }
-        
-        // 排序
-        wrapper.orderByDesc(GameMetadata::getCreateTime);
-        
-        Page<GameMetadata> page = new Page<>(queryDTO.getCurrent(), queryDTO.getSize());
-        Page<GameMetadata> result = gameMetadataMapper.selectPage(page, wrapper);
-        
-        List<GameVO> voList = result.getRecords().stream()
+
+        // 游戏元数据量小，全量查询后在内存中排序：
+        // 有运行中实例的游戏优先（run_status=1），组内再按创建时间倒序
+        List<GameMetadata> games = gameMetadataMapper.selectList(wrapper);
+
+        java.util.Set<String> runningGameCodes = gameInstanceMapper.selectRunningInstances()
+                .stream()
+                .map(GameInstance::getGameCode)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        games.sort(java.util.Comparator
+                .comparing((GameMetadata g) -> runningGameCodes.contains(g.getGameCode()) ? 0 : 1)
+                .thenComparing(GameMetadata::getCreateTime,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+
+        int total = games.size();
+        int pageNum = (queryDTO.getCurrent() == null || queryDTO.getCurrent() < 1) ? 1 : queryDTO.getCurrent();
+        int pageSize = (queryDTO.getSize() == null || queryDTO.getSize() < 1) ? 10 : queryDTO.getSize();
+        int from = (pageNum - 1) * pageSize;
+        int to = Math.min(from + pageSize, total);
+        List<GameMetadata> pageRecords = (from >= total)
+                ? new java.util.ArrayList<>()
+                : new java.util.ArrayList<>(games.subList(from, to));
+
+        List<GameVO> voList = pageRecords.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
-        
-        return new PageResult<>(voList, result.getTotal(), queryDTO.getCurrent(), queryDTO.getSize());
+
+        return new PageResult<>(voList, (long) total, pageNum, pageSize);
     }
 
     @Override

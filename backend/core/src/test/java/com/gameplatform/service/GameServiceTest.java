@@ -45,6 +45,9 @@ class GameServiceTest {
     private GameMetadataMapper gameMetadataMapper;
 
     @Mock
+    private com.gameplatform.mapper.GameInstanceMapper gameInstanceMapper;
+
+    @Mock
     private LogService logService;
 
     @InjectMocks
@@ -66,6 +69,9 @@ class GameServiceTest {
         testGame.setDefaultPort(25565);
         testGame.setCreateTime(LocalDateTime.now());
         testGame.setUpdateTime(LocalDateTime.now());
+
+        // 默认无运行中实例（pageGames 排序用）
+        when(gameInstanceMapper.selectRunningInstances()).thenReturn(Collections.emptyList());
 
         Map<String, Object> envDeps = new HashMap<>();
         envDeps.put("java", "17");
@@ -281,6 +287,8 @@ class GameServiceTest {
         pageResult.setRecords(gameList);
 
         when(gameMetadataMapper.selectPage(any(), any())).thenReturn(pageResult);
+        // pageGames 现为全量查询 + 内存排序分页（selectList 是数据源）
+        when(gameMetadataMapper.selectList(any())).thenReturn(gameList);
 
         // When
         PageResult<GameVO> result = gameService.pageGames(queryDTO);
@@ -307,6 +315,8 @@ class GameServiceTest {
         pageResult.setRecords(gameList);
 
         when(gameMetadataMapper.selectPage(any(), any())).thenReturn(pageResult);
+        // pageGames 现为全量查询 + 内存排序分页（selectList 是数据源）
+        when(gameMetadataMapper.selectList(any())).thenReturn(gameList);
 
         // When
         PageResult<GameVO> result = gameService.pageGames(queryDTO);
