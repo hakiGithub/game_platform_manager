@@ -290,7 +290,12 @@ public class InstanceServiceImpl implements InstanceService {
         if (queryDTO.getKeyword() != null && !queryDTO.getKeyword().isEmpty()) {
             wrapper.like(GameInstance::getInstanceName, queryDTO.getKeyword());
         }
-        
+
+        // 游戏代码精确过滤
+        if (queryDTO.getGameCode() != null && !queryDTO.getGameCode().isEmpty()) {
+            wrapper.eq(GameInstance::getGameCode, queryDTO.getGameCode());
+        }
+
         // 排序
         wrapper.orderByDesc(GameInstance::getCreateTime);
         

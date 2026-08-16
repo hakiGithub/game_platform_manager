@@ -47,4 +47,10 @@ public class PageQueryDTO implements Serializable {
     @Schema(description = "关键词搜索")
     private String keyword;
 
+    /**
+     * 游戏代码过滤（如 l4d2）
+     */
+    @Schema(description = "游戏代码过滤")
+    private String gameCode;
+
 }

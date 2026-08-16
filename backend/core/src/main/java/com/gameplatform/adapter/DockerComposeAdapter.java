@@ -250,9 +250,12 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         try {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "DEPLOY", "启动服务");
-            // 启动所有服务（若镜像未在 pull 阶段完成拉取，up -d 会自动拉取，超时同样设为 20 分钟）
+            // 启动所有服务（若镜像未在 pull 阶段完成拉取，up -d 会自动拉取，超时同样设为 20 分钟）。
+            // timeout 1200 兜底：SshUtil 的 timeoutMs 仅作用于建连，命令执行无超时
+            // （executeRemoteCommand 阻塞直到命令结束），拉取卡死会无限阻塞部署线程
             SshUtil.CommandResult upResult = executeCommand(host,
-                    String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s up -d", workDir, composeCmd, projectName), 1200000);
+                    String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 timeout 1200 %s -p %s up -d",
+                            workDir, composeCmd, projectName), 1200000);
 
             if (!upResult.isSuccess()) {
                 notifyError(callback, "启动服务失败: " + upResult.getError(), "DEPLOY", false);
