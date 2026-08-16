@@ -1,70 +1,107 @@
 <template>
   <div class="server-info-page">
-    <div class="plugin-page-header">
+    <!-- 页头：kicker + 标题 + 描述 + 刷新 -->
+    <section class="plugin-page-header">
       <div class="header-meta">
         <span class="section-kicker">L4D2 COMMAND / SERVER INFO</span>
         <h2>服务器信息</h2>
         <p>hostname、MOTD 与主机信息的在线编辑</p>
       </div>
-      <div class="header-actions"></div>
-    </div>
+      <div class="header-actions">
+        <el-button size="small" :loading="loading" @click="loadAll">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </section>
 
-    <el-row :gutter="20">
-      <el-col :span="8">
-        <el-card v-loading="loading" shadow="never" class="page-card info-card">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">服务器名称</span>
-              <span class="card-subtitle">hostname</span>
-              <el-button type="primary" link size="small" @click="saveHostname" :loading="hostnameSaving">保存</el-button>
+    <section class="server-grid" v-loading="loading">
+      <!-- 服务器名称（全宽） -->
+      <el-card class="workspace-card identity-card" shadow="never">
+        <template #header>
+          <div class="workspace-header">
+            <div class="header-copy">
+              <span class="section-kicker">SERVER IDENTITY</span>
+              <h3>服务器名称</h3>
+              <small>hostname · 浏览器服务器列表显示的名称</small>
             </div>
-          </template>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="hostnameSaving"
+              @click="saveHostname"
+            >
+              保存
+            </el-button>
+          </div>
+        </template>
+        <div class="identity-body">
           <el-input
             v-model="hostname"
             maxlength="64"
             show-word-limit
             clearable
-            placeholder="服务器在浏览器列表显示的名称"
+            placeholder="输入服务器名称，如：L4D2 中国区 1 号服"
           />
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card v-loading="loading" shadow="never" class="page-card info-card">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">MOTD</span>
-              <span class="card-subtitle">motd.txt</span>
-              <el-button type="primary" link size="small" @click="saveMotd" :loading="motdSaving">保存</el-button>
+          <p class="field-hint">玩家加入服务器时在浏览器列表与游戏内可见的名称。</p>
+        </div>
+      </el-card>
+
+      <!-- MOTD 与 Host 并排 -->
+      <el-card class="workspace-card message-card" shadow="never">
+        <template #header>
+          <div class="workspace-header">
+            <div class="header-copy">
+              <span class="section-kicker">MOTD</span>
+              <h3>进服公告</h3>
+              <small>motd.txt · 玩家加入服务器时显示的公告</small>
             </div>
-          </template>
-          <el-input
-            v-model="motd"
-            type="textarea"
-            :rows="2"
-            resize="none"
-            placeholder="玩家加入服务器时显示的公告"
-          />
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card v-loading="loading" shadow="never" class="page-card info-card">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">Host</span>
-              <span class="card-subtitle">host.txt</span>
-              <el-button type="primary" link size="small" @click="saveHost" :loading="hostSaving">保存</el-button>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="motdSaving"
+              @click="saveMotd"
+            >
+              保存
+            </el-button>
+          </div>
+        </template>
+        <el-input
+          v-model="motd"
+          type="textarea"
+          :rows="6"
+          resize="none"
+          placeholder="输入进服公告内容"
+        />
+      </el-card>
+
+      <el-card class="workspace-card message-card" shadow="never">
+        <template #header>
+          <div class="workspace-header">
+            <div class="header-copy">
+              <span class="section-kicker">HOST INFO</span>
+              <h3>主机信息</h3>
+              <small>host.txt · 服务器主机信息（如官网 / 联系）</small>
             </div>
-          </template>
-          <el-input
-            v-model="host"
-            type="textarea"
-            :rows="2"
-            resize="none"
-            placeholder="服务器主机信息（如官网/联系）"
-          />
-        </el-card>
-      </el-col>
-    </el-row>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="hostSaving"
+              @click="saveHost"
+            >
+              保存
+            </el-button>
+          </div>
+        </template>
+        <el-input
+          v-model="host"
+          type="textarea"
+          :rows="6"
+          resize="none"
+          placeholder="输入主机信息内容"
+        />
+      </el-card>
+    </section>
   </div>
 </template>
 
@@ -146,12 +183,24 @@ async function saveHost() {
 onMounted(loadAll)
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .server-info-page {
   padding: 16px;
 }
 
-.info-card {
+// 编辑区网格：服务器名称全宽，MOTD / Host 并排
+.server-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+
+  .identity-card {
+    grid-column: 1 / -1;
+  }
+}
+
+// 主应用 workspace 卡片风格（Night Operations 统一视觉）
+.workspace-card {
   background: var(--platform-surface-1);
   border: 1px solid var(--platform-line);
   border-radius: 6px;
@@ -167,34 +216,62 @@ onMounted(loadAll)
   }
 }
 
-.card-header {
+.workspace-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 24px;
+  justify-content: space-between;
+  gap: 12px;
+
+  .header-copy {
+    .section-kicker {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    h3 {
+      color: var(--platform-text-primary);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    small {
+      display: block;
+      margin-top: 3px;
+      color: var(--platform-text-secondary);
+      font-size: 12px;
+    }
+  }
 }
 
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--platform-text-primary);
-}
-
-.card-subtitle {
-  font-size: 12px;
-  color: var(--platform-text-secondary);
-  font-weight: 400;
-  flex: 1;
+.identity-body {
+  .field-hint {
+    margin-top: 8px;
+    color: var(--platform-text-muted);
+    font-size: 12px;
+  }
 }
 
 :deep(.el-input__wrapper),
 :deep(.el-textarea__inner) {
   border-radius: 6px;
+  background: var(--platform-bg-input, var(--el-bg-color));
 }
 
 :deep(.el-input__inner::placeholder),
 :deep(.el-textarea__inner::placeholder) {
   color: var(--platform-text-muted);
   opacity: 0.7;
+}
+
+// 响应式：窄屏时 MOTD / Host 改为单列
+@media (max-width: 1100px) {
+  .server-grid {
+    grid-template-columns: 1fr;
+
+    .identity-card {
+      grid-column: auto;
+    }
+  }
 }
 </style>
