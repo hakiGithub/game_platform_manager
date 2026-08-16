@@ -214,8 +214,10 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             String composeCmd = getComposeCommand(host);
 
             notifyProgress(callback, 30, "DEPLOY", "启动容器");
+            // timeout 1200 兜底：compose up -d 可能长时间拉取镜像，SshUtil 的
+            // timeoutMs 仅作用于建连，命令执行无超时会无限阻塞部署线程
             SshUtil.CommandResult upResult = executeCommand(host,
-                    String.format("cd %s && %s -p %s up -d", workDir, composeCmd, projectName), 1200000);
+                    String.format("cd %s && timeout 1200 %s -p %s up -d", workDir, composeCmd, projectName), 1200000);
             if (!upResult.isSuccess()) {
                 notifyError(callback, "启动容器失败: " + upResult.getError(), "DEPLOY", false);
                 return false;
@@ -909,9 +911,14 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         // 使用 `docker exec -w /app` 设置工作目录，避免 bash -lc 嵌套单引号被 SSH 远程 shell 解析问题
         // （SSH exec 通道会把命令交给远程 shell 解析，bash -lc '...' 的单引号会被外层 shell 误处理，
         // 导致 exit code 127 "command not found"）
+        //
+        // 注意：SshUtil 的 timeoutMs 仅作用于 SSH 建连/认证，命令读取是阻塞的
+        // （executeRemoteCommand 直到命令结束才返回）。首次启动镜像 auto-install 时
+        // details 等命令可能长时间挂起，导致部署线程无限阻塞（"验证 LinuxGSM 安装"卡住）。
+        // 用 GNU timeout(1) 包一层 shell 级超时，超时后杀掉 docker exec（exit 124）。
         String fullCommand = String.format(
-                "docker exec --user linuxgsm -w /app %s ./%s %s",
-                containerName, shortname, command);
+                "timeout %d docker exec --user linuxgsm -w /app %s ./%s %s",
+                Math.max(1, timeoutMs / 1000), containerName, shortname, command);
         log.info("执行 LinuxGSM 命令: {} (容器: {}, 超时: {}ms)", command, containerName, timeoutMs);
         return executeCommand(host, fullCommand, timeoutMs);
     }
