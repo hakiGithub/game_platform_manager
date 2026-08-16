@@ -316,14 +316,19 @@ onMounted(loadPluginMenus);
   min-height: 0;
   height: auto;
   padding: 14px 8px 0;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 :deep(.sidebar-menu-wrapper .el-scrollbar__wrap) {
   height: 100%;
+  overflow-x: hidden !important;
+  overscroll-behavior-x: none;
 }
 
 :deep(.sidebar-menu-wrapper .el-scrollbar__view) {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 .sidebar-menu {
