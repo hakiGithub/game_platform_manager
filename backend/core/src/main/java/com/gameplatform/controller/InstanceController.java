@@ -580,17 +580,17 @@ public class InstanceController {
         }
 
         try {
-            // 路由基准目录（native: installPath+rel；docker: 容器工作目录+rel），用于 VO 相对化
-            AbstractInstanceFileService.FileRoute route = instanceFileService.resolveRoute(id, path);
             List<FileAccessService.FileInfo> fileInfos = instanceFileService.listFiles(id, path);
 
-            // 转换为VO：返回相对路径，去掉路由基准目录前缀
-            String base = route.resolvedPath;
+            // 转换为VO：path 为实例根相对路径（currentPath + 条目名），
+            // 前端点击目录时直接以此作为下次请求的 path，必须是完整相对路径
             List<FileInfoVO> voList = fileInfos.stream().map(info -> {
                 FileInfoVO vo = new FileInfoVO();
                 vo.setName(info.getName());
-                String relativePath = info.getPath().substring(base.length());
-                vo.setPath(relativePath.isEmpty() ? "/" : relativePath);
+                String relPath = ("/".equals(path) || path == null || path.isEmpty())
+                        ? "/" + info.getName()
+                        : path + "/" + info.getName();
+                vo.setPath(relPath);
                 vo.setIsDirectory(info.isDirectory());
                 vo.setSize(info.getSize());
                 vo.setLastModified(info.getLastModified());

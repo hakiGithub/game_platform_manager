@@ -499,6 +499,15 @@ function goBackPath() {
   fetchFiles(newPath || '/')
 }
 
+/** 面包屑跳转：跳到第 index 级目录（index 基于 currentPath 分段） */
+function navigateToPath(index) {
+  const parts = currentPath.value.split('/').filter(Boolean)
+  const target = '/' + parts.slice(0, index + 1).join('/')
+  if (target !== currentPath.value) {
+    fetchFiles(target)
+  }
+}
+
 async function handleCreateDirectory() {
   if (!newDirName.value.trim()) {
     ElMessage.warning('请输入目录名称')
@@ -1402,7 +1411,7 @@ onBeforeUnmount(() => {
                   </el-button>
                 </el-breadcrumb-item>
                 <el-breadcrumb-item v-for="(part, index) in currentPath.split('/').filter(Boolean)" :key="index">
-                  {{ part }}
+                  <el-button link @click="navigateToPath(index)">{{ part }}</el-button>
                 </el-breadcrumb-item>
               </el-breadcrumb>
               <div class="file-actions">
