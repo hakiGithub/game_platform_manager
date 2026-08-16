@@ -50,6 +50,17 @@ const selectedHost = ref(null);
 
 // 游戏列表
 const gameList = ref([]);
+// 游戏搜索关键词（过滤 gameName / gameCode）
+const gameKeyword = ref("");
+const filteredGameList = computed(() => {
+  const kw = gameKeyword.value.trim().toLowerCase();
+  if (!kw) return gameList.value;
+  return gameList.value.filter(
+    (g) =>
+      (g.gameName || "").toLowerCase().includes(kw) ||
+      (g.gameCode || "").toLowerCase().includes(kw),
+  );
+});
 const selectedGame = ref(null);
 const selectedDeployMethod = ref("docker");
 
@@ -139,7 +150,7 @@ const deployMethodOptions = [
   {
     value: "linuxgsm",
     label: "LinuxGSM",
-    icon: "Linux",
+    icon: "Platform",
     description: "使用LinuxGSM脚本部署，适合游戏服务器",
   },
   {
@@ -933,10 +944,20 @@ onMounted(() => {
               <div class="step-title">
                 <el-icon><Grid /></el-icon>
                 选择游戏
+                <span class="step-title-count">{{ filteredGameList.length }} / {{ gameList.length }}</span>
               </div>
+              <el-input
+                v-model="gameKeyword"
+                placeholder="搜索游戏名称或编码"
+                clearable
+                size="small"
+                class="game-search"
+              >
+                <template #prefix><el-icon><Search /></el-icon></template>
+              </el-input>
               <div class="game-list">
                 <div
-                  v-for="game in gameList"
+                  v-for="game in filteredGameList"
                   :key="game.id"
                   class="game-item"
                   :class="{ 'is-selected': selectedGame?.id === game.id }"
@@ -1835,8 +1856,12 @@ onMounted(() => {
 }
 
 // 游戏列表
+.game-search {
+  margin-bottom: 12px;
+}
+
 .game-list {
-  max-height: 500px;
+  max-height: 460px;
   overflow-y: auto;
 
   .game-item {

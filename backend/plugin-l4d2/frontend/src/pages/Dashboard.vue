@@ -51,7 +51,7 @@
       <div class="metric-card">
         <div class="metric-card-header">
           <span class="section-kicker">CURRENT MAP</span>
-          <el-icon :size="18" class="metric-icon map"><Map /></el-icon>
+          <el-icon :size="18" class="metric-icon map"><Position /></el-icon>
         </div>
         <div class="metric-value metric-value-text">{{ currentMapName }}</div>
         <div class="metric-state">
@@ -170,7 +170,7 @@
           </template>
           <div class="quick-links">
             <div class="quick-link" @click="$router.push('/maps')">
-              <div class="quick-link-icon map"><el-icon :size="20"><Map /></el-icon></div>
+              <div class="quick-link-icon map"><el-icon :size="20"><Position /></el-icon></div>
               <span class="quick-link-label">地图管理</span>
             </div>
             <div class="quick-link" @click="$router.push('/plugins')">

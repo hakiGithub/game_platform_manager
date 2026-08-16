@@ -114,7 +114,7 @@ public class L4D2Extension implements GameEnhancementExtension {
                         .title("重启管理").path("/restart").icon("RefreshRight").order(9).build(),
                 // === 游戏内容 ===
                 PluginMenuDeclaration.builder()
-                        .title("地图管理").path("/maps").icon("Map").order(10).build(),
+                        .title("地图管理").path("/maps").icon("Position").order(10).build(),
                 PluginMenuDeclaration.builder()
                         .title("地图中心").path("/map-center").icon("MapLocation").order(11)
                         .requireInstance(Boolean.FALSE).build(),
