@@ -49,10 +49,9 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '玩家统计', icon: 'User' }
   },
   {
+    // 菜单已并入 玩家统计（Tab），保留路由兼容遗留链接
     path: '/playtime',
-    name: 'Playtime',
-    component: () => import('@/pages/Playtime.vue'),
-    meta: { title: '游玩时长', icon: 'Clock' }
+    redirect: '/player-stats',
   },
   {
     path: '/admins',
@@ -79,10 +78,9 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '重启管理', icon: 'RefreshRight' }
   },
   {
+    // 菜单已并入 服务器信息（折叠面板），保留路由兼容遗留链接
     path: '/version',
-    name: 'Version',
-    component: () => import('@/pages/VersionInfo.vue'),
-    meta: { title: '版本信息', icon: 'InfoFilled' }
+    redirect: '/server-info',
   },
   {
     path: '/logs',

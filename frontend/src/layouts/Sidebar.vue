@@ -94,8 +94,16 @@ const menuSections = computed(() => [
 
 const activeMenu = computed(() => {
   if (route.path.startsWith("/extensions/app/")) {
-    const [, , gameCode] = route.path.split("/");
-    return `/extensions/app/${gameCode}`;
+    // 返回叶子完整路径（如 /extensions/app/l4d2/server-config），
+    // 菜单树按叶子 index 精确高亮；空 menuPath 时归一为 dashboard
+    const parts = route.path.split("/").filter(Boolean);
+    if (parts.length >= 3 && parts[2] === "app") {
+      const gameCode = parts[3];
+      return parts.length >= 5
+        ? route.path
+        : `/extensions/app/${gameCode}/dashboard`;
+    }
+    return route.path;
   }
   return route.meta?.navPath || route.path;
 });
@@ -105,6 +113,15 @@ const defaultOpeneds = computed(() => {
     .map((item) => item.path)
     .filter((path) => path && path !== route.path);
   if (route.path.startsWith("/extensions/app/")) {
+    const parts = route.path.split("/").filter(Boolean);
+    if (parts.length >= 3 && parts[2] === "app") {
+      const gameCode = parts[3];
+      // 游戏级 + 组级 sub-menu 展开（Element Plus 只对 sub-menu index 生效）
+      matchedPaths.push(`/extensions/app/${gameCode}`);
+      if (parts.length >= 5) {
+        matchedPaths.push(`/extensions/app/${gameCode}/${parts[4]}`);
+      }
+    }
     matchedPaths.push(activeMenu.value);
   }
   return [...new Set(matchedPaths)];
@@ -113,6 +130,45 @@ const defaultOpeneds = computed(() => {
 function extractGameCode(pluginId) {
   if (!pluginId || !pluginId.startsWith("plugin-")) return "";
   return pluginId.substring("plugin-".length);
+}
+
+/**
+ * 插件菜单建树：扁平声明（含 parent 引用）→ 二级嵌套（组 → 叶子）。
+ * 组节点（有 children）渲染为 el-sub-menu，叶子渲染为 el-menu-item。
+ * 每层按 order 升序排序；parent 指向不存在的 path 时防御性落到根并告警。
+ */
+function buildMenuTree(backendMenus, gameCode) {
+  const menuMap = new Map();
+  for (const menu of backendMenus || []) {
+    menuMap.set(menu.path, {
+      index: `/extensions/app/${gameCode}${menu.path}`,
+      title: menu.title,
+      icon: menu.icon,
+      order: menu.order || 0,
+      parent: menu.parent,
+      children: [],
+    });
+  }
+
+  const roots = [];
+  for (const node of menuMap.values()) {
+    if (node.parent && menuMap.has(node.parent)) {
+      menuMap.get(node.parent).children.push(node);
+    } else {
+      if (node.parent) {
+        console.warn(`[Sidebar] 插件菜单 parent 指向不存在的路径: ${node.parent} -> ${node.index}`);
+      }
+      roots.push(node);
+    }
+  }
+
+  const sortByOrder = (nodes) =>
+    nodes.sort((a, b) => (a.order || 0) - (b.order || 0));
+  sortByOrder(roots);
+  for (const node of menuMap.values()) {
+    if (node.children.length) sortByOrder(node.children);
+  }
+  return roots;
 }
 
 async function loadPluginMenus() {
@@ -128,14 +184,8 @@ async function loadPluginMenus() {
       try {
         const manifest = await getPluginManifest(gameCode);
         const backendMenus = manifest?.frontend?.menus || [];
-        const children = [...backendMenus]
-          .sort((a, b) => (a.order || 0) - (b.order || 0))
-          .map((menu) => ({
-            index: `/extensions/app/${gameCode}${menu.path}`,
-            title: menu.title,
-            // 透传后端 PluginMenuDeclaration 声明的 icon（如地图管理 Map）
-            icon: menu.icon,
-          }));
+        // 按 parent 建树（插件菜单声明支持二级分组，parent 指向分组父节点 path）
+        const children = buildMenuTree(backendMenus, gameCode);
 
         menus.push({
           index: `/extensions/app/${gameCode}`,
@@ -198,10 +248,23 @@ onMounted(loadPluginMenus);
                 <el-icon><component :is="item.icon" /></el-icon>
                 <span>{{ item.title }}</span>
               </template>
-              <el-menu-item v-for="child in item.children" :key="child.index" :index="child.index">
-                <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
-                <template #title>{{ child.title }}</template>
-              </el-menu-item>
+              <!-- 二级嵌套：插件分组（组 → 叶子） -->
+              <template v-for="child in item.children" :key="child.index">
+                <el-sub-menu v-if="child.children && child.children.length" :index="child.index">
+                  <template #title>
+                    <el-icon><component :is="child.icon" /></el-icon>
+                    <span>{{ child.title }}</span>
+                  </template>
+                  <el-menu-item v-for="leaf in child.children" :key="leaf.index" :index="leaf.index">
+                    <el-icon v-if="leaf.icon"><component :is="leaf.icon" /></el-icon>
+                    <template #title>{{ leaf.title }}</template>
+                  </el-menu-item>
+                </el-sub-menu>
+                <el-menu-item v-else :index="child.index">
+                  <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+                  <template #title>{{ child.title }}</template>
+                </el-menu-item>
+              </template>
             </el-sub-menu>
 
             <el-menu-item v-else :index="item.index">

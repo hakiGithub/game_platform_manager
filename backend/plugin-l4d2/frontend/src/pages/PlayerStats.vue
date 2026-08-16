@@ -186,6 +186,53 @@
             style="margin-top: 12px; justify-content: flex-end"
           />
         </el-tab-pane>
+
+        <!-- 游玩时长（原独立页 Playtime 合并，Steam Web API 查询） -->
+        <el-tab-pane label="游玩时长" name="playtime">
+          <el-form :inline="true" class="playtime-form" @submit.prevent="queryPlaytime">
+            <el-form-item label="SteamID" required>
+              <el-input
+                v-model="playtimeSteamId"
+                placeholder="格式：STEAM_1:0:12345"
+                clearable
+                style="width: 320px"
+                @keyup.enter="queryPlaytime"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="playtimeLoading" @click="queryPlaytime">
+                查询
+              </el-button>
+              <el-button @click="resetPlaytime">清空</el-button>
+            </el-form-item>
+          </el-form>
+
+          <el-alert
+            v-if="playtimeError"
+            :title="playtimeError"
+            type="error"
+            show-icon
+            :closable="false"
+            style="margin-top: 12px"
+          />
+
+          <el-descriptions v-if="playtimeResult" :column="2" border style="margin-top: 16px">
+            <el-descriptions-item label="原始 SteamID">
+              <code class="steam-id">{{ playtimeResult.steamId || '-' }}</code>
+            </el-descriptions-item>
+            <el-descriptions-item label="SteamID64">
+              <code class="steam-id">{{ playtimeResult.steamId64 || '-' }}</code>
+            </el-descriptions-item>
+            <el-descriptions-item label="总时长">
+              <span class="duration-text">{{ playtimeResult.totalPlaytimeHours.toFixed(2) }} 小时</span>
+              <span class="duration-sub">（约 {{ formatPlaytimeHours(playtimeResult.totalPlaytimeHours) }}）</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="实战时长">
+              <span class="duration-text">{{ playtimeResult.realPlaytimeHours.toFixed(2) }} 小时</span>
+              <span class="duration-sub">（约 {{ formatPlaytimeHours(playtimeResult.realPlaytimeHours) }}）</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -262,6 +309,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { playtimeApi, type PlaytimeVO } from '@/api'
 import * as echarts from 'echarts'
 import {
   playerStatsApi,
@@ -319,7 +367,7 @@ async function handleSwitchChange(val: boolean | string | number) {
 }
 
 // ===== Tab 切换 =====
-const activeTab = ref<'trend' | 'players'>('trend')
+const activeTab = ref<'trend' | 'players' | 'playtime'>('trend')
 
 function handleTabChange(name: string | number) {
   if (name === 'players' && playersData.value.length === 0 && instanceId.value) {
@@ -503,6 +551,51 @@ async function searchPlayers() {
 function resetPlayerSearch() {
   playerKeyword.value = ''
   searchPlayers()
+}
+
+// ===== 游玩时长（合并自 Playtime 页） =====
+const playtimeSteamId = ref('')
+const playtimeLoading = ref(false)
+const playtimeResult = ref<PlaytimeVO | null>(null)
+const playtimeError = ref('')
+
+async function queryPlaytime() {
+  playtimeError.value = ''
+  const id = playtimeSteamId.value.trim()
+  if (!id) {
+    ElMessage.warning('请填写 SteamID')
+    return
+  }
+  if (!/^STEAM_[0-9]:[01]:\d+$/i.test(id)) {
+    playtimeError.value = 'SteamID 格式不正确，应为 STEAM_X:Y:Z 格式（例如 STEAM_1:0:12345）'
+    return
+  }
+  playtimeLoading.value = true
+  playtimeResult.value = null
+  try {
+    playtimeResult.value = await playtimeApi.query(id)
+    ElMessage.success('查询成功')
+  } catch (e: any) {
+    playtimeError.value = '查询失败：' + (e?.message || e)
+  } finally {
+    playtimeLoading.value = false
+  }
+}
+
+function resetPlaytime() {
+  playtimeSteamId.value = ''
+  playtimeResult.value = null
+  playtimeError.value = ''
+}
+
+function formatPlaytimeHours(hours: number): string {
+  if (!hours || hours <= 0) return '0 天'
+  const days = Math.floor(hours / 24)
+  const remainingHours = Math.floor(hours % 24)
+  if (days > 0) {
+    return `${days} 天 ${remainingHours} 小时`
+  }
+  return `${remainingHours} 小时`
 }
 
 // ===== 玩家详情 =====
@@ -713,5 +806,32 @@ onBeforeUnmount(() => {
 .error-text {
   color: var(--platform-red);
   word-break: break-all;
+}
+
+/* 游玩时长 Tab（合并自 Playtime 页） */
+.playtime-form {
+  margin-top: 4px;
+}
+
+.duration-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--platform-cyan);
+}
+
+.duration-sub {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--platform-text-secondary);
+}
+
+.steam-id {
+  font-family: 'Consolas', 'Monaco', monospace;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--platform-cyan);
 }
 </style>
