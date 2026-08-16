@@ -140,7 +140,7 @@ async function loadPluginMenus() {
 
         menus.push({
           index: `/extensions/app/${gameCode}`,
-          icon: "Connection",
+          icon: "Aim",
           title: plugin.pluginName || manifest?.gameName || gameCode,
           children: children.length
             ? children
