@@ -1,175 +1,142 @@
-// ==========================================
-// 全局 CSS 变量定义
-// 遵循设计规范文档
-// ==========================================
+// Game Platform Manager - Night Operations design tokens
+// The legacy variable names are kept so existing pages can migrate incrementally.
 
-// ========== Element Plus 原生色值 ==========
-// 主题色
-$--color-primary: #409EFF;
-$--color-primary-light-3: #79bbff;
-$--color-primary-light-5: #a0cfff;
-$--color-primary-light-7: #c6e2ff;
-$--color-primary-light-8: #d9ecff;
-$--color-primary-light-9: #ecf5ff;
-$--color-primary-dark-2: #337ecc;
+// ========== Semantic colors ==========
+$--color-primary: #27b5f3;
+$--color-primary-light-3: #68cafa;
+$--color-primary-light-5: #8ed7fb;
+$--color-primary-light-7: #b4e5fc;
+$--color-primary-light-8: #d0effd;
+$--color-primary-light-9: #e7f7fe;
+$--color-primary-dark-2: #1384b8;
 
-// 成功色
-$--color-success: #67C23A;
-$--color-success-light-3: #95d475;
-$--color-success-light-5: #b3e19d;
-$--color-success-light-7: #d1edc4;
-$--color-success-light-8: #e1f3d8;
-$--color-success-light-9: #f0f9eb;
-$--color-success-dark-2: #529b2e;
+$--color-success: #52cf82;
+$--color-success-light-3: #7edc9d;
+$--color-success-light-5: #9fe5b7;
+$--color-success-light-7: #c1efd0;
+$--color-success-light-8: #d8f5e2;
+$--color-success-light-9: #eafaf0;
+$--color-success-dark-2: #2e9b5b;
 
-// 警告色
-$--color-warning: #E6A23C;
-$--color-warning-light-3: #eebe77;
-$--color-warning-light-5: #f3d19e;
-$--color-warning-light-7: #f8e3c5;
-$--color-warning-light-8: #faecd8;
-$--color-warning-light-9: #fdf6ec;
-$--color-warning-dark-2: #b88230;
+$--color-warning: #f2b84b;
+$--color-warning-light-3: #f5ca77;
+$--color-warning-light-5: #f8d696;
+$--color-warning-light-7: #fbe3b5;
+$--color-warning-light-8: #fcebd0;
+$--color-warning-light-9: #fff5e4;
+$--color-warning-dark-2: #bb811d;
 
-// 危险色
-$--color-danger: #F56C6C;
-$--color-danger-light-3: #f89898;
-$--color-danger-light-5: #fab6b6;
-$--color-danger-light-7: #fcd3d3;
-$--color-danger-light-8: #fde2e2;
-$--color-danger-light-9: #fef0f0;
-$--color-danger-dark-2: #c45656;
+$--color-danger: #f0646a;
+$--color-danger-light-3: #f4878b;
+$--color-danger-light-5: #f7a4a8;
+$--color-danger-light-7: #fac2c5;
+$--color-danger-light-8: #fbd9db;
+$--color-danger-light-9: #fdebed;
+$--color-danger-dark-2: #c43c43;
 
-// 信息色
-$--color-info: #909399;
-$--color-info-light-3: #b1b3b8;
-$--color-info-light-5: #c8c9cc;
-$--color-info-light-7: #dedfe0;
-$--color-info-light-8: #e9e9eb;
-$--color-info-light-9: #f4f4f5;
-$--color-info-dark-2: #73767a;
+$--color-info: #8997a8;
+$--color-info-light-3: #a5b0bd;
+$--color-info-light-5: #bac3ce;
+$--color-info-light-7: #d0d7de;
+$--color-info-light-8: #e0e5ea;
+$--color-info-light-9: #edf0f3;
+$--color-info-dark-2: #657487;
 
-// ========== 中性色值 ==========
-$--color-text-primary: #303133;
-$--color-text-regular: #606266;
-$--color-text-secondary: #909399;
-$--color-text-placeholder: #a8abb2;
-$--color-text-disabled: #c0c4cc;
+// ========== Dark neutral system ==========
+$--color-text-primary: #e7eef5;
+$--color-text-regular: #c1ceda;
+$--color-text-secondary: #8d9cac;
+$--color-text-placeholder: #68788a;
+$--color-text-disabled: #465666;
+$--border-color: #2a3b4b;
+$--border-color-light: #314656;
+$--border-color-lighter: #223342;
+$--border-color-extra-light: #1b2a37;
+$--border-color-dark: #3e5264;
+$--fill-color: #1a2a38;
+$--fill-color-light: #1d3040;
+$--fill-color-lighter: #203545;
+$--fill-color-extra-light: #152532;
+$--fill-color-dark: #10202d;
+$--fill-color-blank: #132432;
+$--bg-color: #10202d;
+$--bg-color-page: #09151f;
+$--bg-color-overlay: #162936;
 
-$--border-color: #dcdfe6;
-$--border-color-light: #e4e7ed;
-$--border-color-lighter: #ebeef5;
-$--border-color-extra-light: #f2f6fc;
-$--border-color-dark: #d4d7de;
+// ========== Platform semantics ==========
+$--platform-status-running: #52cf82;
+$--platform-status-stopped: #8997a8;
+$--platform-status-error: #f0646a;
+$--platform-status-deploying: #f2b84b;
+$--platform-bg-error-row: rgba(240, 100, 106, 0.09);
+$--platform-bg-hover: rgba(39, 181, 243, 0.08);
 
-$--fill-color: #f0f2f5;
-$--fill-color-light: #f5f7fa;
-$--fill-color-lighter: #fafafa;
-$--fill-color-extra-light: #fafcff;
-$--fill-color-dark: #ebedf0;
-$--fill-color-blank: #ffffff;
-
-$--bg-color: #ffffff;
-$--bg-color-page: #f2f3f5;
-$--bg-color-overlay: #ffffff;
-
-// ========== 平台扩展色值 ==========
-$--platform-status-running: #67C23A;      // 运行中/在线
-$--platform-status-stopped: #909399;      // 已停止/离线
-$--platform-status-error: #F56C6C;        // 异常/故障
-$--platform-status-deploying: #E6A23C;    // 部署中/执行中
-
-$--platform-bg-error-row: #fef0f0;        // 异常行背景色
-$--platform-bg-hover: #f5f7fa;            // 行hover背景色
-
-// ========== 基准间距（8px网格系统） ==========
+// ========== Spacing ==========
 $--platform-spacing-unit: 8px;
+$--platform-spacing-xs: 4px;
+$--platform-spacing-sm: 8px;
+$--platform-spacing-md: 16px;
+$--platform-spacing-lg: 24px;
+$--platform-spacing-xl: 32px;
+$--platform-card-padding: 20px;
+$--platform-table-cell-padding: 11px 14px;
+$--platform-form-item-gap: 20px;
+$--platform-button-gap: 10px;
 
-$--platform-spacing-xs: 4px;      // 0.5单位 - 紧凑元素间距
-$--platform-spacing-sm: 8px;      // 1单位 - 元素内部间距
-$--platform-spacing-md: 16px;     // 2单位 - 卡片间距、表单项间距
-$--platform-spacing-lg: 24px;     // 3单位 - 内容区内边距
-$--platform-spacing-xl: 32px;     // 4单位 - 模块间距
-
-// ========== 特殊间距 ==========
-$--platform-card-padding: 20px;           // 卡片内边距
-$--platform-table-cell-padding: 12px 16px; // 表格单元格内边距
-$--platform-form-item-gap: 24px;          // 表单项垂直间距
-$--platform-button-gap: 12px;             // 按钮组间距
-
-// ========== 字体家族 ==========
-$--font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-  'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
-$--font-family-mono: 'SF Mono', Monaco, 'Andale Mono', 'Ubuntu Mono', Consolas,
-  'Courier New', Courier, monospace;
-
-// ========== 字体大小 ==========
-$--platform-font-size-xs: 12px;    // 辅助文字、标签
-$--platform-font-size-sm: 13px;    // 次要内容
-$--platform-font-size-base: 14px;  // 正文默认
-$--platform-font-size-md: 16px;    // 小标题
-$--platform-font-size-lg: 18px;    // 大标题
-$--platform-font-size-xl: 20px;    // 页面主标题
-
-// ========== 字体粗细 ==========
+// ========== Typography ==========
+$--font-family: 'Inter', 'SF Pro Display', 'PingFang SC', 'Microsoft YaHei',
+  -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+$--font-family-mono: 'SF Mono', 'JetBrains Mono', Monaco, Consolas,
+  'Liberation Mono', monospace;
+$--platform-font-size-xs: 12px;
+$--platform-font-size-sm: 13px;
+$--platform-font-size-base: 14px;
+$--platform-font-size-md: 16px;
+$--platform-font-size-lg: 18px;
+$--platform-font-size-xl: 22px;
 $--platform-font-weight-normal: 400;
 $--platform-font-weight-medium: 500;
 $--platform-font-weight-bold: 600;
-
-// ========== 行高 ==========
 $--platform-line-height-tight: 1.25;
 $--platform-line-height-base: 1.5;
 $--platform-line-height-loose: 1.75;
 
-// ========== 圆角规范 ==========
-$--border-radius-base: 4px;     // 按钮、输入框
-$--border-radius-small: 2px;    // 小型元素
-$--border-radius-round: 20px;   // 圆形按钮
-$--border-radius-circle: 100%;  // 完全圆形
+// ========== Shape and elevation ==========
+$--border-radius-base: 5px;
+$--border-radius-small: 3px;
+$--border-radius-round: 20px;
+$--border-radius-circle: 100%;
+$--platform-card-radius: 6px;
+$--platform-modal-radius: 8px;
+$--platform-tag-radius: 4px;
+$--box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+$--box-shadow-light: 0 4px 14px rgba(0, 0, 0, 0.16);
+$--box-shadow-lighter: 0 2px 8px rgba(0, 0, 0, 0.12);
+$--box-shadow-dark: 0 16px 36px rgba(0, 0, 0, 0.3);
+$--platform-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+$--platform-card-shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.22);
+$--platform-dropdown-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
 
-// ========== 平台扩展圆角 ==========
-$--platform-card-radius: 8px;      // 卡片圆角
-$--platform-modal-radius: 8px;     // 弹窗圆角
-$--platform-tag-radius: 4px;       // 标签圆角
-
-// ========== 阴影规范 ==========
-$--box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-$--box-shadow-light: 0 2px 8px 0 rgba(0, 0, 0, 0.06);
-$--box-shadow-lighter: 0 1px 4px 0 rgba(0, 0, 0, 0.04);
-$--box-shadow-dark: 0 4px 16px 0 rgba(0, 0, 0, 0.12);
-
-// ========== 平台扩展阴影 ==========
-$--platform-card-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.08);
-$--platform-card-shadow-hover: 0 4px 16px 0 rgba(0, 0, 0, 0.12);
-$--platform-dropdown-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.12);
-
-// ========== 布局尺寸 ==========
-$--platform-sidebar-width: 240px;
+// ========== Layout ==========
+$--platform-sidebar-width: 204px;
 $--platform-sidebar-collapsed-width: 64px;
 $--platform-header-height: 64px;
 $--platform-footer-height: 32px;
-$--platform-content-padding: 24px;
-
-// ========== 层级规范 ==========
+$--platform-content-padding: 18px;
 $--platform-z-index-sidebar: 100;
 $--platform-z-index-header: 99;
 $--platform-z-index-dropdown: 200;
 $--platform-z-index-modal: 300;
 $--platform-z-index-message: 400;
 $--platform-z-index-notification: 500;
-
-// ========== 过渡时间 ==========
-$--transition-duration: 0.3s;
-$--transition-duration-fast: 0.2s;
-$--transition-duration-slow: 0.5s;
-
-// ========== 过渡曲线 ==========
-$--transition-ease: cubic-bezier(0.645, 0.045, 0.355, 1);
+$--transition-duration: 0.24s;
+$--transition-duration-fast: 0.16s;
+$--transition-duration-slow: 0.4s;
+$--transition-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 $--transition-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
 $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
 
 :root {
-  // ========== Element Plus 原生色值 ==========
   --el-color-primary: #{$--color-primary};
   --el-color-primary-light-3: #{$--color-primary-light-3};
   --el-color-primary-light-5: #{$--color-primary-light-5};
@@ -177,7 +144,6 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --el-color-primary-light-8: #{$--color-primary-light-8};
   --el-color-primary-light-9: #{$--color-primary-light-9};
   --el-color-primary-dark-2: #{$--color-primary-dark-2};
-
   --el-color-success: #{$--color-success};
   --el-color-success-light-3: #{$--color-success-light-3};
   --el-color-success-light-5: #{$--color-success-light-5};
@@ -185,7 +151,6 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --el-color-success-light-8: #{$--color-success-light-8};
   --el-color-success-light-9: #{$--color-success-light-9};
   --el-color-success-dark-2: #{$--color-success-dark-2};
-
   --el-color-warning: #{$--color-warning};
   --el-color-warning-light-3: #{$--color-warning-light-3};
   --el-color-warning-light-5: #{$--color-warning-light-5};
@@ -193,7 +158,6 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --el-color-warning-light-8: #{$--color-warning-light-8};
   --el-color-warning-light-9: #{$--color-warning-light-9};
   --el-color-warning-dark-2: #{$--color-warning-dark-2};
-
   --el-color-danger: #{$--color-danger};
   --el-color-danger-light-3: #{$--color-danger-light-3};
   --el-color-danger-light-5: #{$--color-danger-light-5};
@@ -201,7 +165,6 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --el-color-danger-light-8: #{$--color-danger-light-8};
   --el-color-danger-light-9: #{$--color-danger-light-9};
   --el-color-danger-dark-2: #{$--color-danger-dark-2};
-
   --el-color-info: #{$--color-info};
   --el-color-info-light-3: #{$--color-info-light-3};
   --el-color-info-light-5: #{$--color-info-light-5};
@@ -210,39 +173,64 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --el-color-info-light-9: #{$--color-info-light-9};
   --el-color-info-dark-2: #{$--color-info-dark-2};
 
-  // ========== 中性色值 ==========
   --el-text-color-primary: #{$--color-text-primary};
   --el-text-color-regular: #{$--color-text-regular};
   --el-text-color-secondary: #{$--color-text-secondary};
   --el-text-color-placeholder: #{$--color-text-placeholder};
   --el-text-color-disabled: #{$--color-text-disabled};
-
   --el-border-color: #{$--border-color};
   --el-border-color-light: #{$--border-color-light};
   --el-border-color-lighter: #{$--border-color-lighter};
   --el-border-color-extra-light: #{$--border-color-extra-light};
   --el-border-color-dark: #{$--border-color-dark};
-
   --el-fill-color: #{$--fill-color};
   --el-fill-color-light: #{$--fill-color-light};
   --el-fill-color-lighter: #{$--fill-color-lighter};
   --el-fill-color-extra-light: #{$--fill-color-extra-light};
   --el-fill-color-dark: #{$--fill-color-dark};
   --el-fill-color-blank: #{$--fill-color-blank};
-
   --el-bg-color: #{$--bg-color};
   --el-bg-color-page: #{$--bg-color-page};
   --el-bg-color-overlay: #{$--bg-color-overlay};
+  --el-font-family: #{$--font-family};
+  --el-font-family-mono: #{$--font-family-mono};
+  --el-border-radius-base: #{$--border-radius-base};
+  --el-border-radius-small: #{$--border-radius-small};
+  --el-border-radius-round: #{$--border-radius-round};
+  --el-border-radius-circle: #{$--border-radius-circle};
+  --el-box-shadow: #{$--box-shadow};
+  --el-box-shadow-light: #{$--box-shadow-light};
+  --el-box-shadow-lighter: #{$--box-shadow-lighter};
+  --el-box-shadow-dark: #{$--box-shadow-dark};
+  --el-transition-duration: #{$--transition-duration};
+  --el-transition-duration-fast: #{$--transition-duration-fast};
+  --el-transition-duration-slow: #{$--transition-duration-slow};
+  --el-transition-ease: #{$--transition-ease};
+  --el-transition-ease-in: #{$--transition-ease-in};
+  --el-transition-ease-out: #{$--transition-ease-out};
 
-  // ========== 平台扩展色值 ==========
+  --platform-surface-0: #0b1722;
+  --platform-surface-1: #10202d;
+  --platform-surface-2: #142735;
+  --platform-surface-3: #1a3040;
+  --platform-topbar: #0a1620;
+  --platform-sidebar: #0b1a27;
+  --platform-sidebar-active: #152f41;
+  --platform-line: #263847;
+  --platform-cyan: #27b5f3;
+  --platform-amber: #f2b84b;
+  --platform-red: #f0646a;
+  --platform-green: #52cf82;
+  --platform-text-primary: #e7eef5;
+  --platform-text-regular: #c1ceda;
+  --platform-text-secondary: #8d9cac;
+  --platform-text-muted: #68788a;
   --platform-status-running: #{$--platform-status-running};
   --platform-status-stopped: #{$--platform-status-stopped};
   --platform-status-error: #{$--platform-status-error};
   --platform-status-deploying: #{$--platform-status-deploying};
   --platform-bg-error-row: #{$--platform-bg-error-row};
   --platform-bg-hover: #{$--platform-bg-hover};
-
-  // ========== 间距变量 ==========
   --platform-spacing-unit: #{$--platform-spacing-unit};
   --platform-spacing-xs: #{$--platform-spacing-xs};
   --platform-spacing-sm: #{$--platform-spacing-sm};
@@ -253,10 +241,6 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --platform-table-cell-padding: #{$--platform-table-cell-padding};
   --platform-form-item-gap: #{$--platform-form-item-gap};
   --platform-button-gap: #{$--platform-button-gap};
-
-  // ========== 字体变量 ==========
-  --el-font-family: #{$--font-family};
-  --el-font-family-mono: #{$--font-family-mono};
   --platform-font-size-xs: #{$--platform-font-size-xs};
   --platform-font-size-sm: #{$--platform-font-size-sm};
   --platform-font-size-base: #{$--platform-font-size-base};
@@ -269,33 +253,17 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --platform-line-height-tight: #{$--platform-line-height-tight};
   --platform-line-height-base: #{$--platform-line-height-base};
   --platform-line-height-loose: #{$--platform-line-height-loose};
-
-  // ========== 圆角变量 ==========
-  --el-border-radius-base: #{$--border-radius-base};
-  --el-border-radius-small: #{$--border-radius-small};
-  --el-border-radius-round: #{$--border-radius-round};
-  --el-border-radius-circle: #{$--border-radius-circle};
   --platform-card-radius: #{$--platform-card-radius};
   --platform-modal-radius: #{$--platform-modal-radius};
   --platform-tag-radius: #{$--platform-tag-radius};
-
-  // ========== 阴影变量 ==========
-  --el-box-shadow: #{$--box-shadow};
-  --el-box-shadow-light: #{$--box-shadow-light};
-  --el-box-shadow-lighter: #{$--box-shadow-lighter};
-  --el-box-shadow-dark: #{$--box-shadow-dark};
   --platform-card-shadow: #{$--platform-card-shadow};
   --platform-card-shadow-hover: #{$--platform-card-shadow-hover};
   --platform-dropdown-shadow: #{$--platform-dropdown-shadow};
-
-  // ========== 布局变量 ==========
   --platform-sidebar-width: #{$--platform-sidebar-width};
   --platform-sidebar-collapsed-width: #{$--platform-sidebar-collapsed-width};
   --platform-header-height: #{$--platform-header-height};
   --platform-footer-height: #{$--platform-footer-height};
   --platform-content-padding: #{$--platform-content-padding};
-
-  // ========== 层级规范 ==========
   --platform-z-index-sidebar: #{$--platform-z-index-sidebar};
   --platform-z-index-header: #{$--platform-z-index-header};
   --platform-z-index-dropdown: #{$--platform-z-index-dropdown};
@@ -303,26 +271,21 @@ $--transition-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --platform-z-index-message: #{$--platform-z-index-message};
   --platform-z-index-notification: #{$--platform-z-index-notification};
 
-  // ========== 过渡变量 ==========
-  --el-transition-duration: #{$--transition-duration};
-  --el-transition-duration-fast: #{$--transition-duration-fast};
-  --el-transition-duration-slow: #{$--transition-duration-slow};
-  --el-transition-ease: #{$--transition-ease};
-  --el-transition-ease-in: #{$--transition-ease-in};
-  --el-transition-ease-out: #{$--transition-ease-out};
-
-  // ========== 兼容旧变量 ==========
+  // Compatibility aliases used by existing page styles.
   --sidebar-width: #{$--platform-sidebar-width};
   --sidebar-collapsed-width: #{$--platform-sidebar-collapsed-width};
   --header-height: #{$--platform-header-height};
   --footer-height: #{$--platform-footer-height};
   --spacing-xs: #{$--platform-spacing-xs};
   --spacing-sm: #{$--platform-spacing-sm};
-  --spacing-md: #{$--platform-spacing-sm};
-  --spacing-lg: #{$--platform-spacing-md};
-  --spacing-xl: #{$--platform-card-padding};
-  --spacing-xxl: #{$--platform-spacing-lg};
-  --box-shadow-base: #{$--box-shadow};
+  --spacing-md: #{$--platform-spacing-md};
+  --spacing-lg: #{$--platform-spacing-lg};
+  --spacing-xl: #{$--platform-spacing-xl};
+  --spacing-xxl: #{$--platform-spacing-xl};
+  --box-shadow-base: #{$--box-shadow-light};
   --box-shadow-light: #{$--box-shadow-light};
   --box-shadow-dark: #{$--box-shadow-dark};
+  --border-radius-base: #{$--border-radius-base};
+  --bg-color-page: #{$--bg-color-page};
+  --bg-color: #{$--bg-color};
 }

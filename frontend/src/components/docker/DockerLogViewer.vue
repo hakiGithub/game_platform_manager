@@ -490,8 +490,8 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--el-fill-color-light);
-    border-bottom: 1px solid var(--el-border-color);
+    background: var(--platform-surface-2);
+    border-bottom: 1px solid var(--platform-line);
     border-radius: var(--el-border-radius-base) var(--el-border-radius-base) 0 0;
     flex-wrap: wrap;
     gap: 12px;
@@ -506,13 +506,13 @@ onBeforeUnmount(() => {
 
   .log-options {
     padding: 12px 16px;
-    background: var(--el-fill-color-lighter);
-    border-bottom: 1px solid var(--el-border-color);
+    background: var(--platform-surface-1);
+    border-bottom: 1px solid var(--platform-line);
   }
 
   .log-content {
     flex: 1;
-    background: #1e1e1e;
+    background: var(--platform-surface-0);
     overflow: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 13px;
@@ -524,15 +524,15 @@ onBeforeUnmount(() => {
     }
 
     &::-webkit-scrollbar-track {
-      background: #2d2d2d;
+      background: var(--platform-surface-1);
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #555;
+      background: var(--platform-line);
       border-radius: 4px;
 
       &:hover {
-        background: #666;
+        background: var(--platform-cyan);
       }
     }
 
@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
       align-items: center;
       justify-content: center;
       height: 200px;
-      color: #999;
+      color: var(--platform-text-muted);
     }
 
     .log-lines {
@@ -553,14 +553,14 @@ onBeforeUnmount(() => {
     .log-line {
       display: flex;
       padding: 2px 0;
-      color: #d4d4d4;
+      color: var(--platform-text-regular);
 
       &:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--platform-bg-hover);
       }
 
       .log-timestamp {
-        color: #6a9955;
+        color: var(--platform-green);
         margin-right: 12px;
         flex-shrink: 0;
       }
@@ -574,23 +574,23 @@ onBeforeUnmount(() => {
         flex-shrink: 0;
 
         &.level-info {
-          background: #264f78;
-          color: #9cdcfe;
+          background: rgba(39, 181, 243, 0.18);
+          color: var(--platform-cyan);
         }
 
         &.level-warn {
-          background: #6a4f1e;
-          color: #dcdcaa;
+          background: rgba(242, 184, 75, 0.18);
+          color: var(--platform-amber);
         }
 
         &.level-error {
-          background: #5a1d1d;
-          color: #f48771;
+          background: rgba(240, 100, 106, 0.18);
+          color: var(--platform-red);
         }
 
         &.level-debug {
-          background: #3a3a3a;
-          color: #808080;
+          background: var(--platform-surface-2);
+          color: var(--platform-text-secondary);
         }
       }
 
@@ -600,8 +600,8 @@ onBeforeUnmount(() => {
         white-space: pre-wrap;
 
         :deep(mark) {
-          background: #613214;
-          color: #f8f8f8;
+          background: rgba(242, 184, 75, 0.24);
+          color: var(--platform-text-primary);
           padding: 0 2px;
           border-radius: 2px;
         }
@@ -611,21 +611,21 @@ onBeforeUnmount(() => {
     // 不同级别日志的颜色
     .log-level-error {
       .log-message {
-        color: #f48771;
+        color: var(--platform-red);
       }
     }
 
     .log-level-warn {
       .log-message {
-        color: #dcdcaa;
+        color: var(--platform-amber);
       }
     }
   }
 
   .log-stats {
     padding: 8px 16px;
-    background: var(--el-fill-color-light);
-    border-top: 1px solid var(--el-border-color);
+    background: var(--platform-surface-2);
+    border-top: 1px solid var(--platform-line);
     border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
     font-size: 12px;
     color: var(--el-text-color-secondary);

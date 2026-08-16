@@ -33,6 +33,28 @@ const pagination = reactive({
   size: 10,
   total: 0,
 });
+const lastRefreshAt = ref("等待同步");
+const resourceMetrics = [
+  { key: "cpu", label: "CPU" },
+  { key: "memory", label: "内存" },
+  { key: "disk", label: "磁盘" },
+];
+
+const onlineHostCount = computed(
+  () => tableData.value.filter((host) => host.status === 1).length,
+);
+const offlineHostCount = computed(
+  () => tableData.value.filter((host) => host.status === 0).length,
+);
+const lanHostCount = computed(
+  () => tableData.value.filter((host) => host.isLanHost).length,
+);
+const attentionHostCount = computed(
+  () =>
+    tableData.value.filter(
+      (host) => host.status === 0 || getHostPeakUsage(host) >= 80,
+    ).length,
+);
 
 // 弹窗相关
 const dialogVisible = ref(false);
@@ -235,7 +257,8 @@ async function fetchData() {
     pagination.total = data.total || 0;
 
     // 加载在线主机的资源使用情况
-    loadResourcesForOnlineHosts();
+    await loadResourcesForOnlineHosts();
+    lastRefreshAt.value = formatRefreshTime();
   } catch (error) {
     console.error("Failed to fetch host list:", error);
   } finally {
@@ -427,6 +450,11 @@ function handleTerminal(row) {
   });
 }
 
+// 主机详情
+function handleDetail(row) {
+  router.push(`/host/detail/${row.id}`);
+}
+
 // 测试连接（表格行）
 async function handleTest(row) {
   try {
@@ -473,6 +501,32 @@ function getProgressColor(value) {
   return "var(--el-color-success)";
 }
 
+function getHostPeakUsage(row) {
+  return Math.max(
+    getResourceUsage(row, "cpu"),
+    getResourceUsage(row, "memory"),
+    getResourceUsage(row, "disk"),
+  );
+}
+
+function getResourceUsage(row, key) {
+  return formatUsage(row.resources?.[key]?.usage);
+}
+
+function getResourceTone(value) {
+  if (value >= 80) return "danger";
+  if (value >= 60) return "warning";
+  return "normal";
+}
+
+function formatRefreshTime() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 // 统一格式化资源使用率，保留 1 位小数
 function formatUsage(value) {
   const num = Number(value);
@@ -492,201 +546,212 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="host-container">
-    <!-- 搜索区域 -->
-    <el-card class="search-card" shadow="never">
-      <el-form :model="searchForm" inline>
+  <div class="host-container host-operations-page">
+    <section class="host-hero">
+      <div class="hero-copy">
+        <span class="section-kicker">HOST CONTROL / HOST INVENTORY</span>
+        <h1>主机工作台</h1>
+        <p>集中查看连接健康、资源水位和 SSH 运维入口，先确认主机状态，再进入具体处置。</p>
+      </div>
+      <div class="hero-actions">
+        <div class="hero-status">
+          <span class="live-pulse" aria-hidden="true"></span>
+          <div>
+            <strong>连接面正常</strong>
+            <small>上次同步 {{ lastRefreshAt }}</small>
+          </div>
+        </div>
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
+          纳管主机
+        </el-button>
+      </div>
+    </section>
+
+    <section class="host-situation" aria-label="主机运行态势">
+      <div class="situation-intro">
+        <span class="section-kicker">HOST SITUATION</span>
+        <strong>当前纳管态势</strong>
+        <small>资源和连接状态来自最近一次同步</small>
+      </div>
+      <div class="situation-stat">
+        <span>在线主机</span>
+        <strong>{{ onlineHostCount }}/{{ tableData.length }}</strong>
+      </div>
+      <div class="situation-stat">
+        <span>离线主机</span>
+        <strong :class="{ 'is-warning': offlineHostCount > 0 }">{{ offlineHostCount }}</strong>
+      </div>
+      <div class="situation-stat">
+        <span>资源告警</span>
+        <strong :class="{ 'is-warning': attentionHostCount > 0 }">{{ attentionHostCount }}</strong>
+      </div>
+      <div class="situation-stat">
+        <span>局域网主机</span>
+        <strong>{{ lanHostCount }}</strong>
+      </div>
+      <div class="situation-action">
+        <el-button link @click="fetchData">
+          <el-icon><Refresh /></el-icon>
+          刷新数据
+        </el-button>
+      </div>
+    </section>
+
+    <section class="host-filter-panel" aria-label="主机筛选">
+      <div class="panel-heading filter-heading">
+        <div>
+          <span class="section-kicker">FILTER / CONNECTION</span>
+          <h2>筛选主机</h2>
+        </div>
+        <span class="filter-hint">按名称、地址或连接状态定位资产</span>
+      </div>
+      <el-form class="host-filter-form" :model="searchForm" inline>
         <el-form-item label="主机名称">
           <el-input
             v-model="searchForm.name"
-            placeholder="主机名称"
+            placeholder="例如：ubuntu-01"
             clearable
-            style="width: 200px"
             @keyup.enter="handleSearch"
           />
         </el-form-item>
         <el-form-item label="IP地址">
           <el-input
             v-model="searchForm.ip"
-            placeholder="IP地址"
+            placeholder="例如：10.0.0.12"
             clearable
-            style="width: 160px"
             @keyup.enter="handleSearch"
           />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select
-            v-model="searchForm.status"
-            placeholder="全部"
-            clearable
-            style="width: 120px"
-          >
+        <el-form-item label="连接状态">
+          <el-select v-model="searchForm.status" placeholder="全部状态" clearable>
             <el-option label="在线" :value="1" />
             <el-option label="离线" :value="0" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="handleSearch">
             <el-icon><Search /></el-icon>
-            搜索
+            应用筛选
           </el-button>
           <el-button @click="handleReset">
             <el-icon><Refresh /></el-icon>
-            重置
+            清空
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </section>
 
-    <!-- 表格区域 -->
-    <el-card class="table-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span class="title">主机列表</span>
-          <div class="header-actions">
-            <el-button @click="fetchData">
-              <el-icon><Refresh /></el-icon>
-              刷新
-            </el-button>
-            <el-button type="primary" @click="handleAdd">
-              <el-icon><Plus /></el-icon>
-              新增主机
-            </el-button>
-          </div>
+    <section class="host-table-panel" aria-label="主机清单">
+      <div class="panel-heading table-heading">
+        <div>
+          <span class="section-kicker">MANAGED HOSTS</span>
+          <h2>主机清单</h2>
+          <p>{{ pagination.total }} 个纳管资产 · 连接与资源状态实时可见</p>
         </div>
-      </template>
+        <div class="table-actions">
+          <el-button @click="fetchData">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+          <el-button type="primary" @click="handleAdd">
+            <el-icon><Plus /></el-icon>
+            新增主机
+          </el-button>
+        </div>
+      </div>
 
       <el-table
         v-loading="loading"
+        class="host-table"
         :data="tableData"
         style="width: 100%"
         :row-class-name="tableRowClassName"
       >
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <div class="status-cell">
-              <el-icon :color="getStatusColor(row.status)" :size="16">
-                <component :is="getStatusIcon(row.status)" />
-              </el-icon>
-              <span :style="{ color: getStatusColor(row.status) }">
-                {{ row.status === 1 ? "在线" : "离线" }}
-              </span>
+            <div class="host-status-cell" :class="row.status === 1 ? 'is-online' : 'is-offline'">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span>{{ row.status === 1 ? "在线" : "离线" }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="主机名称" min-width="180">
+        <el-table-column label="主机" min-width="170">
           <template #default="{ row }">
-            <div class="host-name-cell">
-              <span class="host-name">{{ row.name }}</span>
-              <el-tag
-                v-if="row.isLanHost"
-                size="small"
-                type="success"
-                effect="plain"
-                >局域网</el-tag
-              >
-              <el-tag
-                v-if="row.osType"
-                size="small"
-                type="info"
-                effect="plain"
-                >{{ row.osType }}</el-tag
-              >
+            <div class="host-identity">
+              <span class="host-icon"><el-icon><Monitor /></el-icon></span>
+              <div>
+                <button class="host-name-button" type="button" @click="handleEdit(row)">
+                  {{ row.name }}
+                </button>
+                <div class="host-tags">
+                  <el-tag v-if="row.isLanHost" size="small" type="success" effect="plain">局域网</el-tag>
+                  <el-tag v-if="row.osType || row.os" size="small" type="info" effect="plain">{{ row.osType || row.os }}</el-tag>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="ip" label="IP地址" width="140" />
-        <el-table-column prop="sshPort" label="SSH端口" width="100" />
-        <el-table-column label="资源使用率" min-width="200">
+        <el-table-column label="连接" min-width="150">
           <template #default="{ row }">
-            <div
-              v-if="row.status === 1 && row.resources"
-              class="resources-cell"
-            >
-              <div class="resource-item">
-                <span class="resource-label">CPU</span>
+            <div class="connection-cell">
+              <strong>{{ row.ip }}</strong>
+              <span>SSH {{ row.sshPort }} · {{ row.sshUsername || "root" }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="资源水位" min-width="220">
+          <template #default="{ row }">
+            <div v-if="row.status === 1 && row.resources" class="resource-stack">
+              <div v-for="metric in resourceMetrics" :key="metric.key" class="resource-line" :class="`is-${getResourceTone(getResourceUsage(row, metric.key))}`">
+                <span>{{ metric.label }}</span>
                 <el-progress
-                  :percentage="formatUsage(row.resources.cpu?.usage)"
-                  :stroke-width="6"
-                  :color="getProgressColor(formatUsage(row.resources.cpu?.usage))"
+                  :percentage="getResourceUsage(row, metric.key)"
+                  :stroke-width="5"
+                  :show-text="false"
+                  :color="getProgressColor(getResourceUsage(row, metric.key))"
                 />
-              </div>
-              <div class="resource-item">
-                <span class="resource-label">内存</span>
-                <el-progress
-                  :percentage="formatUsage(row.resources.memory?.usage)"
-                  :stroke-width="6"
-                  :color="getProgressColor(formatUsage(row.resources.memory?.usage))"
-                />
-              </div>
-              <div class="resource-item">
-                <span class="resource-label">磁盘</span>
-                <el-progress
-                  :percentage="formatUsage(row.resources.disk?.usage)"
-                  :stroke-width="6"
-                  :color="getProgressColor(formatUsage(row.resources.disk?.usage))"
-                />
+                <strong>{{ getResourceUsage(row, metric.key) }}%</strong>
               </div>
             </div>
-            <span v-else-if="row.status === 0" class="resource-offline"
-              >离线</span
-            >
-            <span v-else class="resource-loading">
-              <el-icon class="is-loading"><Loading /></el-icon>
-            </span>
+            <span v-else-if="row.status === 0" class="resource-offline">资源不可用 · 主机离线</span>
+            <span v-else class="resource-loading"><el-icon class="is-loading"><Loading /></el-icon> 正在同步</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="环境" min-width="130">
+          <template #default="{ row }">
+            <div class="host-context">
+              <strong>{{ row.os || row.osType || "Linux 主机" }}</strong>
+              <span>{{ row.remark || (row.isLanHost ? "局域网接入" : "远程接入") }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button
-              type="primary"
-              link
-              size="small"
-              :disabled="row.status !== 1"
-              @click="handleTerminal(row)"
-            >
-              <el-icon><Monitor /></el-icon>
-              终端
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="handleTest(row)"
-            >
-              测试
-            </el-button>
-            <el-button
-              type="warning"
-              link
-              size="small"
-              :disabled="row.status !== 1"
-              @click="handleRefreshHosts(row)"
-            >
-              hosts
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="handleEdit(row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              type="danger"
-              link
-              size="small"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
+            <div class="host-actions">
+              <el-button link size="small" @click="handleDetail(row)">详情</el-button>
+              <el-button link size="small" :disabled="row.status !== 1" @click="handleTerminal(row)">
+                <el-icon><Monitor /></el-icon>
+                终端
+              </el-button>
+              <el-button link size="small" @click="handleTest(row)">测试连接</el-button>
+              <el-button link size="small" class="hosts-action" :disabled="row.status !== 1" @click="handleRefreshHosts(row)">hosts</el-button>
+              <el-button link size="small" @click="handleEdit(row)">编辑</el-button>
+              <el-button link size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="host-empty-state">
+            <el-icon><Monitor /></el-icon>
+            <strong>暂无匹配主机</strong>
+            <span>调整筛选条件或新增一台纳管主机</span>
+          </div>
+        </template>
       </el-table>
 
-      <!-- 分页 -->
-      <div class="pagination-wrapper">
+      <div class="table-footer">
+        <span class="table-footer-note"><i class="live-pulse" aria-hidden="true"></i> 资源状态已接入</span>
         <el-pagination
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.size"
@@ -697,7 +762,7 @@ onMounted(() => {
           @current-change="handlePageChange"
         />
       </div>
-    </el-card>
+    </section>
 
     <!-- 新增/编辑弹窗 -->
     <el-dialog
@@ -1192,6 +1257,586 @@ onMounted(() => {
         display: none;
       }
     }
+  }
+}
+</style>
+
+<style lang="scss" scoped>
+.host-operations-page {
+  --host-gap: 14px;
+  padding: 4px 2px 24px;
+  color: var(--platform-text-primary);
+}
+
+.host-hero,
+.host-situation,
+.host-filter-panel,
+.host-table-panel {
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-1);
+}
+
+.host-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 138px;
+  padding: 24px 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(115deg, rgba(39, 181, 243, 0.12), transparent 43%),
+    var(--platform-surface-1);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
+}
+
+.section-kicker {
+  display: block;
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+}
+
+.hero-copy h1 {
+  margin: 8px 0 7px;
+  color: var(--platform-text-primary);
+  font-size: clamp(24px, 2.4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hero-copy p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--platform-text-secondary);
+  font-size: 13px;
+}
+
+.hero-actions,
+.hero-status,
+.situation-action,
+.panel-heading,
+.table-actions,
+.host-identity,
+.host-status-cell,
+.host-actions,
+.table-footer,
+.filter-heading {
+  display: flex;
+  align-items: center;
+}
+
+.hero-actions {
+  gap: 20px;
+}
+
+.hero-status {
+  gap: 10px;
+
+  strong,
+  small {
+    display: block;
+  }
+
+  strong {
+    color: var(--platform-text-regular);
+    font-size: 13px;
+  }
+
+  small {
+    margin-top: 3px;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+}
+
+.live-pulse,
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--platform-green);
+  box-shadow: 0 0 0 3px rgba(82, 207, 130, 0.12);
+}
+
+.host-situation {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.45fr) repeat(4, minmax(88px, 0.65fr)) auto;
+  align-items: center;
+  gap: 0;
+  min-height: 78px;
+  margin-top: var(--host-gap);
+  padding: 12px 18px;
+  border-radius: 5px;
+  background: var(--platform-surface-2);
+}
+
+.situation-intro {
+  display: grid;
+  gap: 3px;
+
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+}
+
+.situation-stat {
+  display: grid;
+  gap: 4px;
+  padding: 0 14px;
+  border-left: 1px solid var(--platform-line);
+
+  span {
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 17px;
+    font-weight: 600;
+
+    &.is-warning {
+      color: var(--platform-amber);
+    }
+  }
+}
+
+.situation-action {
+  justify-content: flex-end;
+  padding-left: 10px;
+}
+
+.host-filter-panel,
+.host-table-panel {
+  margin-top: var(--host-gap);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.host-filter-panel {
+  padding: 17px 18px 5px;
+  background: var(--platform-surface-1);
+}
+
+.panel-heading {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.panel-heading h2 {
+  margin: 5px 0 0;
+  color: var(--platform-text-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.filter-hint,
+.table-heading p {
+  color: var(--platform-text-muted);
+  font-size: 11px;
+}
+
+.host-filter-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 13px;
+
+  :deep(.el-form-item) {
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+
+  :deep(.el-form-item__label) {
+    padding-bottom: 5px;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select) {
+    width: 190px;
+  }
+
+  :deep(.el-select) {
+    width: 150px;
+  }
+
+  .filter-actions {
+    margin-left: auto;
+  }
+}
+
+.host-table-panel {
+  background: var(--platform-surface-1);
+}
+
+.table-heading {
+  padding: 17px 18px 15px;
+  border-bottom: 1px solid var(--platform-line);
+}
+
+.table-heading p {
+  margin: 5px 0 0;
+}
+
+.table-actions {
+  gap: 8px;
+}
+
+.host-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-row-hover-bg-color: rgba(39, 181, 243, 0.06);
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.015);
+  --el-table-border-color: var(--platform-line);
+  --el-table-text-color: var(--platform-text-regular);
+  --el-table-header-text-color: var(--platform-text-muted);
+
+  :deep(.el-table__inner-wrapper::before) {
+    display: none;
+  }
+
+  :deep(.el-table__header-wrapper th.el-table__cell) {
+    height: 42px;
+    background: rgba(255, 255, 255, 0.015);
+    color: var(--platform-text-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  :deep(.el-table__body-wrapper td.el-table__cell) {
+    height: 78px;
+    padding: 10px 0;
+    border-bottom-color: var(--platform-line);
+  }
+
+  :deep(.el-table__body tr:last-child td.el-table__cell) {
+    border-bottom: 0;
+  }
+
+  :deep(.el-table__body tr.row-stopped) {
+    opacity: 0.68;
+  }
+}
+
+.host-status-cell {
+  gap: 8px;
+  color: var(--platform-text-secondary);
+  font-size: 12px;
+
+  &.is-online {
+    color: var(--platform-green);
+  }
+
+  &.is-offline {
+    color: var(--platform-text-muted);
+
+    .status-dot {
+      background: var(--platform-text-muted);
+      box-shadow: none;
+    }
+  }
+}
+
+.host-identity {
+  gap: 10px;
+  min-width: 0;
+}
+
+.host-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(39, 181, 243, 0.45);
+  border-radius: 5px;
+  color: var(--platform-cyan);
+  background: rgba(39, 181, 243, 0.06);
+}
+
+.host-name-button {
+  max-width: 145px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  color: var(--platform-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--platform-cyan);
+    outline: none;
+  }
+}
+
+.host-tags {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+
+  :deep(.el-tag) {
+    height: 18px;
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 16px;
+  }
+}
+
+.connection-cell,
+.host-context {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  strong {
+    overflow: hidden;
+    color: var(--platform-text-primary);
+    font-family: var(--el-font-family-mono);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    overflow: hidden;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.host-context {
+  strong {
+    font-family: inherit;
+    font-weight: 550;
+  }
+}
+
+.resource-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 165px;
+}
+
+.resource-line {
+  display: grid;
+  grid-template-columns: 36px minmax(50px, 1fr) 35px;
+  align-items: center;
+  gap: 7px;
+
+  > span,
+  > strong {
+    font-size: 10px;
+  }
+
+  > span {
+    color: var(--platform-text-muted);
+  }
+
+  > strong {
+    color: var(--platform-text-secondary);
+    font-family: var(--el-font-family-mono);
+    font-weight: 500;
+    text-align: right;
+  }
+
+  :deep(.el-progress-bar__outer) {
+    background: var(--platform-surface-3);
+  }
+}
+
+.resource-offline,
+.resource-loading {
+  color: var(--platform-text-muted);
+  font-size: 11px;
+}
+
+.resource-loading {
+  color: var(--platform-cyan);
+}
+
+.host-actions {
+  flex-wrap: wrap;
+  gap: 2px 7px;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    padding: 2px 0;
+    color: var(--platform-cyan);
+    font-size: 11px;
+  }
+
+  :deep(.el-button:hover:not(.is-disabled)) {
+    color: var(--platform-text-primary);
+  }
+
+  :deep(.el-button.is-disabled) {
+    color: var(--platform-text-muted);
+  }
+
+  :deep(.hosts-action) {
+    color: var(--platform-amber);
+  }
+
+  :deep(.el-button--danger) {
+    color: var(--platform-red);
+  }
+}
+
+.table-footer {
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--platform-line);
+}
+
+.table-footer-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--platform-text-muted);
+  font-size: 11px;
+}
+
+.table-footer-note .live-pulse {
+  width: 7px;
+  height: 7px;
+}
+
+.host-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 36px 0;
+  color: var(--platform-text-muted);
+
+  .el-icon {
+    color: var(--platform-cyan);
+    font-size: 26px;
+  }
+
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    font-size: 11px;
+  }
+}
+
+@media screen and (max-width: 1180px) {
+  .host-situation {
+    grid-template-columns: minmax(180px, 1.3fr) repeat(4, minmax(72px, 0.7fr));
+  }
+
+  .situation-action {
+    display: none;
+  }
+
+  .host-filter-form {
+    flex-wrap: wrap;
+
+    .filter-actions {
+      margin-left: 0;
+    }
+  }
+
+  .host-table {
+    :deep(.el-table__body-wrapper),
+    :deep(.el-table__header-wrapper) {
+      overflow-x: auto;
+    }
+  }
+}
+
+@media screen and (max-width: 780px) {
+  .host-hero,
+  .panel-heading,
+  .table-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .host-hero {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .hero-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .host-situation {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 0;
+    padding: 16px;
+  }
+
+  .situation-intro {
+    grid-column: 1 / -1;
+  }
+
+  .situation-stat {
+    padding: 0 12px;
+
+    &:nth-of-type(2n) {
+      border-left: 0;
+    }
+  }
+
+  .host-filter-panel {
+    padding: 16px 14px 4px;
+  }
+
+  .filter-hint {
+    display: none;
+  }
+
+  .host-filter-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    :deep(.el-input),
+    :deep(.el-select) {
+      width: 100%;
+    }
+
+    .filter-actions {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .table-heading {
+    padding: 16px 14px;
+  }
+
+  .table-actions {
+    width: 100%;
   }
 }
 </style>

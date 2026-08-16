@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { getOperationLogs, exportLogs } from "@/api/system";
 
@@ -39,6 +39,11 @@ const pagination = reactive({
   total: 0,
 });
 
+const successfulLogs = computed(() => tableData.value.filter((item) => item.result === "success").length);
+const failedLogs = computed(() => tableData.value.filter((item) => item.result !== "success").length);
+const touchedScopes = computed(() => new Set(tableData.value.map((item) => item.operationType).filter(Boolean)).size);
+const latestLogTime = computed(() => tableData.value[0]?.time || "等待首条事件");
+
 // 获取列表
 async function fetchData() {
   loading.value = true;
@@ -57,7 +62,17 @@ async function fetchData() {
     delete params.timeRange;
 
     const data = await getOperationLogs(params);
-    tableData.value = data.records || [];
+    tableData.value = (data.records || []).map((row) => ({
+      ...row,
+      time: row.time || row.operationTime || "",
+      operator: row.operator || row.operatorName || "",
+      operationType: row.operationType || row.operationModule || "system",
+      target: row.target || row.objectName || row.targetName || "",
+      content: row.content || row.operationContent || "",
+      result: row.result || (row.responseStatus === 1 ? "success" : "fail"),
+      ip: row.ip || row.ipAddress || "",
+      userAgent: row.userAgent || row.client || "",
+    }));
     pagination.total = data.total || 0;
   } catch (error) {
     console.error("Failed to fetch operation logs:", error);
@@ -215,9 +230,51 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="logs-container">
+  <div class="logs-container audit-console">
+    <div class="audit-command-header">
+      <div class="audit-command-header__copy">
+        <span class="audit-kicker">AUDIT STREAM / SYSTEM LOGS</span>
+        <h1>系统日志</h1>
+        <p>追踪平台级操作、目标对象与结果状态，为异常处置保留完整上下文。</p>
+      </div>
+      <div class="audit-command-header__status">
+        <i class="status-dot is-online" />
+        <span>READ ONLY EVENT STREAM</span>
+      </div>
+    </div>
+
+    <div class="audit-signal-grid" aria-label="系统日志概览">
+      <div class="audit-signal-card">
+        <span class="audit-signal-card__label">TOTAL EVENTS</span>
+        <strong>{{ pagination.total }}</strong>
+        <small>当前查询范围内的事件总数</small>
+      </div>
+      <div class="audit-signal-card audit-signal-card--green">
+        <span class="audit-signal-card__label">SUCCESSFUL</span>
+        <strong>{{ successfulLogs }}</strong>
+        <small>当前页成功操作</small>
+      </div>
+      <div class="audit-signal-card audit-signal-card--red">
+        <span class="audit-signal-card__label">ATTENTION</span>
+        <strong>{{ failedLogs }}</strong>
+        <small>当前页需要关注的结果</small>
+      </div>
+      <div class="audit-signal-card audit-signal-card--purple">
+        <span class="audit-signal-card__label">ACTIVE SCOPES</span>
+        <strong>{{ touchedScopes }}</strong>
+        <small>最新事件 {{ latestLogTime }}</small>
+      </div>
+    </div>
+
     <!-- 搜索区域 -->
-    <el-card class="search-card" shadow="never">
+    <el-card class="search-card audit-filter-deck" shadow="never">
+      <div class="audit-filter-deck__header">
+        <div>
+          <span class="audit-kicker">QUERY BUILDER</span>
+          <h2>事件筛选</h2>
+        </div>
+        <span class="audit-filter-deck__hint">FILTERS APPLY TO THE EVENT STREAM</span>
+      </div>
       <el-form :model="searchForm" inline>
         <el-form-item label="关键词">
           <el-input
@@ -307,10 +364,13 @@ onMounted(() => {
     </el-card>
 
     <!-- 表格区域 -->
-    <el-card class="table-card" shadow="never">
+    <el-card class="table-card audit-stream-panel" shadow="never">
       <template #header>
         <div class="card-header">
-          <span class="title">操作日志</span>
+          <div>
+            <span class="audit-kicker">EVENT STREAM</span>
+            <span class="title">操作日志</span>
+          </div>
           <div class="header-actions">
             <el-button @click="fetchData">
               <el-icon><Refresh /></el-icon>
@@ -324,7 +384,7 @@ onMounted(() => {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="tableData" style="width: 100%">
+      <el-table class="audit-table" v-loading="loading" :data="tableData" style="width: 100%">
         <el-table-column prop="time" label="操作时间" width="180" show-overflow-tooltip />
         <el-table-column prop="operator" label="操作人" width="100" show-overflow-tooltip />
         <el-table-column label="操作类型" width="100">
@@ -426,6 +486,225 @@ onMounted(() => {
     :deep(.el-form-item) {
       margin-bottom: 12px;
     }
+  }
+}
+
+.audit-console {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.audit-command-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 14px;
+  padding: 22px 24px;
+  background: linear-gradient(115deg, rgba(19, 42, 55, 0.96), rgba(11, 24, 34, 0.96));
+  border: 1px solid rgba(91, 135, 154, 0.32);
+  border-left: 3px solid var(--platform-purple, #c792ff);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.audit-kicker,
+.audit-signal-card__label {
+  color: #d3adff;
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.audit-command-header h1 {
+  margin: 7px 0 5px;
+  color: var(--el-text-color-primary);
+  font-size: 25px;
+  font-weight: 600;
+}
+
+.audit-command-header p {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.audit-command-header__status,
+.audit-filter-deck__hint {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 11px;
+  color: var(--el-text-color-secondary);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  background: rgba(6, 15, 23, 0.48);
+  border: 1px solid rgba(91, 135, 154, 0.26);
+  border-radius: 3px;
+}
+
+.audit-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.audit-signal-card {
+  min-width: 0;
+  min-height: 96px;
+  padding: 14px 15px;
+  background: rgba(15, 32, 44, 0.86);
+  border: 1px solid var(--platform-line);
+  border-top: 2px solid var(--platform-cyan);
+  border-radius: 4px;
+}
+
+.audit-signal-card--green { border-top-color: var(--platform-green); }
+.audit-signal-card--red { border-top-color: var(--platform-red); }
+.audit-signal-card--purple { border-top-color: #c792ff; }
+
+.audit-signal-card__label {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--el-text-color-disabled);
+}
+
+.audit-signal-card strong {
+  display: block;
+  color: var(--el-text-color-primary);
+  font-family: var(--el-font-family-mono);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.audit-signal-card small {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-filter-deck,
+.audit-stream-panel {
+  overflow: hidden;
+  background: rgba(12, 27, 38, 0.82);
+  border-color: var(--platform-line);
+  border-radius: 4px;
+}
+
+.audit-filter-deck {
+  margin-bottom: 14px;
+}
+
+.audit-filter-deck :deep(.el-card__body) {
+  padding: 18px 20px 6px;
+}
+
+.audit-filter-deck__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--platform-line);
+}
+
+.audit-filter-deck__header h2 {
+  margin: 5px 0 0;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.audit-filter-deck__hint {
+  color: var(--el-text-color-disabled);
+  font-size: 9px;
+}
+
+.audit-filter-deck :deep(.el-form-item__label) {
+  color: var(--el-text-color-secondary);
+}
+
+.audit-filter-deck :deep(.el-input__wrapper),
+.audit-filter-deck :deep(.el-range-editor.el-input__wrapper) {
+  background: rgba(7, 17, 26, 0.64);
+  box-shadow: 0 0 0 1px rgba(91, 135, 154, 0.22) inset;
+}
+
+.audit-filter-deck .quick-time {
+  padding-top: 4px;
+}
+
+.audit-filter-deck .quick-time :deep(.el-button) {
+  color: var(--el-text-color-secondary);
+  background: rgba(24, 45, 59, 0.68);
+  border-color: rgba(91, 135, 154, 0.24);
+}
+
+.audit-stream-panel :deep(.el-card__header) {
+  padding: 14px 18px;
+  background: rgba(18, 39, 51, 0.72);
+  border-bottom-color: var(--platform-line);
+}
+
+.audit-stream-panel :deep(.el-card__body) {
+  padding: 0 18px 18px;
+}
+
+.audit-stream-panel .card-header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audit-stream-panel .card-header .title {
+  font-size: 16px;
+}
+
+.audit-table {
+  background: rgba(8, 19, 28, 0.52);
+}
+
+.audit-table :deep(.el-table__header-wrapper th) {
+  color: var(--el-text-color-secondary);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: rgba(24, 45, 59, 0.88);
+}
+
+.audit-table :deep(.el-table__row:hover > td) {
+  background: rgba(55, 40, 77, 0.22) !important;
+}
+
+.audit-table :deep(.el-table__row td) {
+  border-bottom-color: rgba(91, 135, 154, 0.14);
+}
+
+.audit-console .pagination-wrapper {
+  padding-top: 4px;
+}
+
+@media screen and (max-width: 1024px) {
+  .audit-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media screen and (max-width: 768px) {
+  .audit-command-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .audit-filter-deck__header {
+    flex-direction: column;
   }
 }
 </style>

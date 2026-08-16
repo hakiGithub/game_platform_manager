@@ -79,6 +79,7 @@ tests/e2e/*.sh
 tests/e2e/*.java
 tests/e2e/*.class
 tests/e2e/screenshots/
+qa/
 
 # Agent workspace directories
 .style-audit/

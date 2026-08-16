@@ -515,7 +515,8 @@ onBeforeUnmount(() => {
 .progress-overview {
   margin-bottom: 20px;
   padding: 20px;
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
+  border: 1px solid var(--platform-line);
   border-radius: var(--border-radius-base);
 }
 
@@ -632,7 +633,7 @@ onBeforeUnmount(() => {
         height: 12px;
         border-radius: 50%;
         background: var(--el-border-color);
-        border: 2px solid var(--el-bg-color);
+        border: 2px solid var(--platform-surface-2);
         transition: all 0.3s ease;
       }
 
@@ -674,7 +675,7 @@ onBeforeUnmount(() => {
 
 // 日志区域
 .logs-section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--platform-line);
   border-radius: var(--border-radius-base);
   overflow: hidden;
 }
@@ -684,8 +685,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color);
+  background: var(--platform-surface-2);
+  border-bottom: 1px solid var(--platform-line);
 
   .logs-title {
     display: flex;
@@ -705,7 +706,7 @@ onBeforeUnmount(() => {
   height: 300px;
   overflow-y: auto;
   padding: 12px 16px;
-  background: #1e1e1e;
+  background: var(--platform-surface-0);
   font-family: var(--el-font-family-mono);
   font-size: 13px;
   line-height: 1.6;
@@ -724,65 +725,65 @@ onBeforeUnmount(() => {
   }
 
   .log-time {
-    color: #6e7681;
+    color: var(--platform-text-muted);
     flex-shrink: 0;
     min-width: 64px;
   }
 
   .log-level {
-    color: #8b949e;
+    color: var(--platform-text-secondary);
     flex-shrink: 0;
     min-width: 50px;
   }
 
   .log-message {
-    color: #c9d1d9;
+    color: var(--platform-text-regular);
     word-break: break-all;
     flex: 1;
   }
 
   &.log-info {
     .log-icon {
-      color: #58a6ff;
+      color: var(--platform-cyan);
     }
   }
 
   &.log-success {
     .log-icon {
-      color: #3fb950;
+      color: var(--platform-green);
     }
   }
 
   &.log-warning {
     .log-icon {
-      color: #d29922;
+      color: var(--platform-amber);
     }
   }
 
   &.log-error {
     .log-icon {
-      color: #f85149;
+      color: var(--platform-red);
     }
     .log-message {
-      color: #f85149;
+      color: var(--platform-red);
     }
   }
 
   &.log-debug {
     .log-icon {
-      color: #8b949e;
+      color: var(--platform-text-secondary);
     }
     .log-message {
-      color: #8b949e;
+      color: var(--platform-text-secondary);
     }
   }
 
   &.log-pending {
     .log-icon {
-      color: #8b949e;
+      color: var(--platform-text-secondary);
     }
     .log-message {
-      color: #8b949e;
+      color: var(--platform-text-secondary);
       font-style: italic;
     }
   }
@@ -803,16 +804,16 @@ onBeforeUnmount(() => {
   }
 
   &::-webkit-scrollbar-track {
-    background: #1e1e1e;
+    background: var(--platform-surface-0);
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #484f58;
+    background: var(--platform-line);
     border-radius: 4px;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #6e7681;
+    background: var(--platform-cyan);
   }
 }
 </style>

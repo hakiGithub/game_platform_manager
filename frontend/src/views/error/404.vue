@@ -39,7 +39,10 @@ function goBack() {
   justify-content: center;
   width: 100%;
   height: 100vh;
-  background-color: #f5f7fa;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(39, 181, 243, 0.12), transparent 34%),
+    var(--platform-bg);
 }
 
 .error-content {
@@ -49,7 +52,7 @@ function goBack() {
 .error-code {
   font-size: 120px;
   font-weight: 700;
-  color: #409eff;
+  color: var(--platform-cyan);
   line-height: 1;
   margin-bottom: 24px;
   text-shadow: 2px 2px 4px rgba(64, 158, 255, 0.2);
@@ -58,13 +61,13 @@ function goBack() {
 .error-title {
   font-size: 32px;
   font-weight: 600;
-  color: #303133;
+  color: var(--platform-text-primary);
   margin-bottom: 16px;
 }
 
 .error-description {
   font-size: 16px;
-  color: #606266;
+  color: var(--platform-text-secondary);
   margin-bottom: 32px;
 }
 

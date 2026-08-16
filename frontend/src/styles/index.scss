@@ -1,9 +1,6 @@
-// ==========================================
-// 全局样式入口
-// ==========================================
-// 注意: variables.scss 已通过 vite.config.js 的 additionalData 自动注入
+// Night Operations global surface and component rules.
+// Keep the application dark at the token layer so legacy pages can migrate safely.
 
-// 重置样式
 *,
 *::before,
 *::after {
@@ -13,17 +10,26 @@
 }
 
 html,
-body {
+body,
+#app {
   width: 100%;
   height: 100%;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  min-width: 992px;
+}
+
+html,
+body {
+  font-family: $--font-family;
   font-size: $--platform-font-size-base;
   line-height: $--platform-line-height-base;
   color: $--color-text-primary;
-  background-color: $--bg-color-page;
+  background: $--bg-color-page;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  overflow: hidden;
 }
 
 a {
@@ -41,36 +47,46 @@ ol {
   list-style: none;
 }
 
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
 img {
   max-width: 100%;
   height: auto;
 }
 
-// 滚动条样式
+::selection {
+  color: #fff;
+  background: rgba(39, 181, 243, 0.36);
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background-color: $--bg-color-page;
-  border-radius: 3px;
+  background: $--bg-color-page;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: $--border-color;
-  border-radius: 3px;
+  background: #32485a;
+  border: 2px solid $--bg-color-page;
+  border-radius: 999px;
 
   &:hover {
-    background-color: $--border-color-dark;
+    background: #496276;
   }
 }
 
-// NProgress 进度条样式
 #nprogress {
   .bar {
+    z-index: 10000;
+    height: 2px !important;
     background: $--color-primary !important;
-    height: 3px !important;
   }
 
   .peg {
@@ -78,27 +94,21 @@ img {
   }
 }
 
-// ==========================================
-// 通用工具类
-// ==========================================
-
-// 文本截断
+// ========== Common utilities ==========
 .text-ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-// 多行文本截断
 .text-ellipsis-2 {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   text-overflow: ellipsis;
 }
 
-// Flex 布局
 .flex {
   display: flex;
 }
@@ -123,48 +133,24 @@ img {
   flex: 1;
 }
 
-// 间距工具类
 @each $size in (xs, sm, md, lg, xl, xxl) {
-  .mt-#{$size} {
-    margin-top: var(--spacing-#{$size});
-  }
-  .mb-#{$size} {
-    margin-bottom: var(--spacing-#{$size});
-  }
-  .ml-#{$size} {
-    margin-left: var(--spacing-#{$size});
-  }
-  .mr-#{$size} {
-    margin-right: var(--spacing-#{$size});
-  }
-  .pt-#{$size} {
-    padding-top: var(--spacing-#{$size});
-  }
-  .pb-#{$size} {
-    padding-bottom: var(--spacing-#{$size});
-  }
-  .pl-#{$size} {
-    padding-left: var(--spacing-#{$size});
-  }
-  .pr-#{$size} {
-    padding-right: var(--spacing-#{$size});
-  }
+  .mt-#{$size} { margin-top: var(--spacing-#{$size}); }
+  .mb-#{$size} { margin-bottom: var(--spacing-#{$size}); }
+  .ml-#{$size} { margin-left: var(--spacing-#{$size}); }
+  .mr-#{$size} { margin-right: var(--spacing-#{$size}); }
+  .pt-#{$size} { padding-top: var(--spacing-#{$size}); }
+  .pb-#{$size} { padding-bottom: var(--spacing-#{$size}); }
+  .pl-#{$size} { padding-left: var(--spacing-#{$size}); }
+  .pr-#{$size} { padding-right: var(--spacing-#{$size}); }
 }
 
-// ==========================================
-// 卡片样式
-// ==========================================
-
 .page-card {
-  background-color: $--bg-color;
-  border-radius: $--border-radius-base;
-  box-shadow: $--box-shadow;
-  padding: $--platform-spacing-lg;
-  margin-bottom: $--platform-spacing-lg;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
+  margin-bottom: $--platform-spacing-md;
+  padding: $--platform-card-padding;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: $--platform-card-radius;
+  box-shadow: none;
 }
 
 .page-card-header {
@@ -173,228 +159,365 @@ img {
   justify-content: space-between;
   padding-bottom: $--platform-spacing-md;
   margin-bottom: $--platform-spacing-md;
-  border-bottom: 1px solid $--border-color-lighter;
+  border-bottom: 1px solid var(--platform-line);
 
   .title {
-    font-size: $--platform-font-size-md;
-    font-weight: 600;
     color: $--color-text-primary;
+    font-size: $--platform-font-size-md;
+    font-weight: $--platform-font-weight-bold;
   }
 }
-
-// ==========================================
-// 页面容器
-// ==========================================
 
 .page-container {
-  padding: $--platform-spacing-lg;
   min-height: calc(100vh - var(--header-height));
+  padding: var(--platform-content-padding);
 }
 
-// ==========================================
-// 响应式适配
-// ==========================================
+// ========== Element Plus dark adaptation ==========
+.el-card {
+  color: $--color-text-primary;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: $--platform-card-radius;
+  box-shadow: none;
+}
 
-// 1366x768 分辨率适配
-@media screen and (max-width: 1440px) {
-  :root {
-    --sidebar-width: 200px;
+.el-card__header {
+  border-bottom-color: var(--platform-line);
+}
+
+.el-button {
+  --el-button-bg-color: var(--platform-surface-2);
+  --el-button-border-color: var(--platform-line);
+  --el-button-text-color: var(--el-text-color-regular);
+  --el-button-hover-bg-color: var(--platform-surface-3);
+  --el-button-hover-border-color: var(--platform-cyan);
+  --el-button-hover-text-color: var(--el-color-primary-light-3);
+  --el-button-active-bg-color: var(--platform-surface-3);
+  background-color: var(--platform-surface-2) !important;
+  border-color: var(--platform-line) !important;
+  color: var(--platform-text-regular) !important;
+  min-height: 32px;
+  border-radius: 4px;
+  transition: background-color $--transition-duration-fast, border-color $--transition-duration-fast, color $--transition-duration-fast;
+
+  &.el-button--primary {
+    --el-button-bg-color: #126f9b;
+    --el-button-border-color: #1d99d0;
+    --el-button-text-color: #f5fbff;
+    --el-button-hover-bg-color: #198ab9;
+    --el-button-hover-border-color: #58c7f3;
+    background-color: #126f9b !important;
+    border-color: #1d99d0 !important;
+    color: #f5fbff !important;
   }
+
+  &.el-button--success {
+    --el-button-bg-color: #226f4a;
+    --el-button-border-color: #3a9f6a;
+    --el-button-text-color: #eafff1;
+    background-color: #226f4a !important;
+    border-color: #3a9f6a !important;
+    color: #eafff1 !important;
+  }
+
+  &.el-button--warning {
+    --el-button-bg-color: #725326;
+    --el-button-border-color: #b6812d;
+    --el-button-text-color: #fff5dd;
+    background-color: #725326 !important;
+    border-color: #b6812d !important;
+    color: #fff5dd !important;
+  }
+
+  &.el-button--danger {
+    --el-button-bg-color: #71353a;
+    --el-button-border-color: #b84d55;
+    --el-button-text-color: #fff0f1;
+    background-color: #71353a !important;
+    border-color: #b84d55 !important;
+    color: #fff0f1 !important;
+  }
+
+  &:not(.is-link):hover {
+    background-color: var(--platform-surface-3) !important;
+    border-color: var(--platform-cyan) !important;
+    color: var(--platform-cyan) !important;
+  }
+
+  &.el-button--primary:hover {
+    background-color: #198ab9 !important;
+    border-color: #58c7f3 !important;
+    color: #f5fbff !important;
+  }
+
+  &.is-link {
+    --el-button-bg-color: transparent;
+    --el-button-border-color: transparent;
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: var(--platform-cyan) !important;
+  }
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper,
+.el-input-number,
+.el-date-editor.el-input__wrapper {
+  --el-fill-color-blank: var(--platform-surface-0);
+  color: $--color-text-primary;
+  background: var(--platform-surface-0) !important;
+  border: 1px solid var(--platform-line);
+  box-shadow: none !important;
+
+  &:hover,
+  &.is-focus {
+    border-color: var(--platform-cyan);
+    box-shadow: 0 0 0 1px rgba(39, 181, 243, 0.14);
+  }
+}
+
+.el-input__inner,
+.el-textarea__inner,
+.el-select__input {
+  color: $--color-text-primary;
+
+  &::placeholder {
+    color: $--color-text-placeholder;
+  }
+}
+
+.el-checkbox__inner {
+  background: var(--platform-surface-0);
+  border-color: var(--platform-line-strong);
+}
+
+.el-input-group__append,
+.el-input-group__prepend {
+  color: $--color-text-secondary;
+  background: var(--platform-surface-2);
+  border-color: var(--platform-line);
+}
+
+.el-table {
+  color: $--color-text-regular;
+  background: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-bg-color: transparent;
+  --el-table-header-bg-color: var(--platform-surface-2);
+  --el-table-row-hover-bg-color: var(--platform-bg-hover);
+  --el-table-border-color: var(--platform-line);
+  --el-table-text-color: var(--el-text-color-regular);
+  --el-table-header-text-color: var(--el-text-color-secondary);
+
+  th.el-table__cell {
+    color: $--color-text-secondary;
+    background: var(--platform-surface-2);
+    font-size: $--platform-font-size-xs;
+    font-weight: $--platform-font-weight-medium;
+    letter-spacing: 0.02em;
+  }
+
+  td.el-table__cell,
+  th.el-table__cell {
+    border-bottom-color: var(--platform-line);
+  }
+
+  .el-table__inner-wrapper::before,
+  &::before,
+  &::after {
+    background-color: var(--platform-line);
+  }
+
+  .el-table__body tr:hover > td.el-table__cell {
+    background: var(--platform-bg-hover);
+  }
+}
+
+.el-descriptions {
+  --el-descriptions-table-border: var(--platform-line);
+  --el-descriptions-item-bordered-label-background: var(--platform-surface-2);
+  color: $--color-text-regular;
+
+  .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+    color: $--color-text-secondary;
+    background: var(--platform-surface-2);
+  }
+
+  .el-descriptions__content.el-descriptions__cell.is-bordered-content {
+    color: $--color-text-primary;
+    background: var(--platform-surface-1);
+  }
+}
+
+.el-tabs--border-card {
+  background: var(--platform-surface-1);
+  border-color: var(--platform-line);
+
+  > .el-tabs__header {
+    background: var(--platform-surface-2);
+    border-bottom-color: var(--platform-line);
+
+    .el-tabs__item {
+      color: $--color-text-secondary;
+      border-left-color: transparent;
+
+      &:hover {
+        color: $--color-primary-light-3;
+      }
+
+      &.is-active {
+        color: $--color-primary;
+        background: var(--platform-surface-1);
+        border-right-color: var(--platform-line);
+        border-left-color: var(--platform-line);
+      }
+    }
+  }
+}
+
+.el-tabs__item {
+  color: $--color-text-secondary;
+
+  &.is-active,
+  &:hover {
+    color: var(--platform-cyan);
+  }
+}
+
+.el-tabs__active-bar {
+  background-color: var(--platform-cyan);
+}
+
+.el-tabs__nav-wrap::after {
+  background-color: var(--platform-line);
+}
+
+.el-dialog,
+.el-message-box,
+.el-popover,
+.el-dropdown-menu,
+.el-select-dropdown,
+.el-picker-panel,
+.el-cascader-panel {
+  color: $--color-text-primary;
+  background: var(--platform-surface-2);
+  border-color: var(--platform-line);
+  box-shadow: var(--platform-dropdown-shadow);
+}
+
+.el-dialog__header,
+.el-dialog__footer {
+  border-color: var(--platform-line);
+}
+
+.el-dialog__title,
+.el-message-box__title {
+  color: $--color-text-primary;
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item,
+.el-picker-panel__shortcut {
+  color: $--color-text-regular;
+
+  &:hover,
+  &.hover {
+    color: $--color-text-primary;
+    background: var(--platform-bg-hover);
+  }
+}
+
+.el-dropdown-menu__item.is-disabled,
+.el-select-dropdown__item.is-disabled {
+  color: $--color-text-disabled;
+}
+
+.el-form-item__label,
+.el-checkbox__label,
+.el-radio__label {
+  color: $--color-text-regular;
+}
+
+.el-alert {
+  --el-alert-bg-color: var(--platform-surface-2);
+  --el-alert-border-color: var(--platform-line);
+  --el-alert-title-color: var(--el-text-color-primary);
+}
+
+.el-pagination {
+  --el-pagination-bg-color: var(--platform-surface-2);
+  --el-pagination-text-color: var(--el-text-color-secondary);
+  --el-pagination-button-color: var(--el-text-color-regular);
+  --el-pagination-button-bg-color: var(--platform-surface-2);
+  --el-pagination-hover-color: var(--platform-cyan);
+}
+
+.el-empty__description {
+  color: $--color-text-secondary;
+}
+
+.el-loading-mask {
+  background-color: rgba(9, 21, 31, 0.78);
+}
+
+.el-menu--popup,
+.el-menu--vertical {
+  background: var(--platform-surface-2) !important;
+}
+
+.el-popper,
+body > div[class*='el-popper'],
+body > div[class*='__popper'] {
+  z-index: 99999 !important;
+}
+
+// ========== Focus and interaction ==========
+:focus-visible {
+  outline: 2px solid var(--platform-cyan);
+  outline-offset: 2px;
+}
+
+.el-button:focus-visible,
+.el-input__wrapper:focus-within,
+.el-select__wrapper:focus-within {
+  box-shadow: 0 0 0 2px rgba(39, 181, 243, 0.24);
+}
+
+a:focus,
+button:focus,
+[role='button']:focus {
+  outline: 2px solid var(--platform-cyan);
+  outline-offset: 2px;
+}
+
+// Element Plus ships its own :root tokens. Keep the semantic dark palette as
+// the final layer so legacy components inherit the Night Operations contrast.
+:root {
+  --el-text-color-primary: var(--platform-text-primary) !important;
+  --el-text-color-regular: var(--platform-text-regular) !important;
+  --el-text-color-secondary: var(--platform-text-secondary) !important;
+  --el-text-color-placeholder: var(--platform-text-muted) !important;
+  --el-text-color-disabled: #465666 !important;
+  --el-bg-color: var(--platform-surface-1) !important;
+  --el-bg-color-page: var(--platform-bg-page) !important;
+  --el-bg-color-overlay: var(--platform-surface-2) !important;
+  --el-fill-color-blank: var(--platform-surface-1) !important;
+  --el-fill-color: var(--platform-surface-2) !important;
+  --el-fill-color-light: #1d3040 !important;
+  --el-fill-color-lighter: #203545 !important;
+  --el-border-color: var(--platform-line) !important;
+  --el-border-color-light: #314656 !important;
+  --el-border-color-lighter: #223342 !important;
 }
 
 @media screen and (max-width: 1366px) {
   :root {
-    --sidebar-width: 180px;
+    --sidebar-width: 188px;
   }
 
   .page-container {
     padding: var(--spacing-md);
   }
-}
-
-// ==========================================
-// Element Plus 样式覆盖
-// ==========================================
-
-// 修复 Element Plus 下拉框/弹出层在 Wujie 微前端或 overflow 容器中被遮挡的通病
-// 统一提升所有 popper 类弹出层的层级，并补齐基础视觉样式
-.el-popper,
-.el-select__popper,
-.el-dropdown__popper,
-.el-tooltip__popper,
-.el-picker__popper,
-.el-cascader__dropdown,
-.el-popper.is-light,
-.el-popper.is-pure,
-.el-popper.el-select__popper,
-body > .el-popper,
-body > div[class*="el-popper"],
-body > div[class*="__popper"] {
-  z-index: 99999 !important;
-  background-color: var(--el-bg-color-overlay, #ffffff) !important;
-  border: 1px solid var(--el-border-color-light, #e4e7ed) !important;
-  border-radius: 4px !important;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1) !important;
-}
-
-.el-select-dropdown__item.hover,
-.el-select-dropdown__item:hover,
-.el-dropdown-menu__item:hover,
-.el-picker-panel__shortcut:hover {
-  background-color: var(--el-color-primary-light-9, #f5f7fa) !important;
-}
-
-.el-select-dropdown__item.selected {
-  color: var(--el-color-primary, #409eff) !important;
-  font-weight: 700 !important;
-}
-
-// 表格样式优化
-.el-table {
-  .el-table__header-wrapper {
-    th {
-      background-color: $--bg-color-page !important;
-    }
-  }
-}
-
-// 对话框样式优化
-.el-dialog {
-  border-radius: $--border-radius-base;
-
-  .el-dialog__header {
-    border-bottom: 1px solid $--border-color-lighter;
-    padding: $--platform-spacing-lg;
-    margin-right: 0;
-  }
-
-  .el-dialog__body {
-    padding: $--platform-spacing-lg;
-  }
-
-  .el-dialog__footer {
-    border-top: 1px solid $--border-color-lighter;
-    padding: $--platform-spacing-lg;
-  }
-}
-
-// 表单项样式优化
-.el-form-item {
-  margin-bottom: $--platform-spacing-lg;
-}
-
-// 卡片样式优化
-.el-card {
-  border-radius: $--border-radius-base;
-  border: none;
-  box-shadow: $--box-shadow;
-}
-
-// ==========================================
-// 交互反馈增强（ISSUE-005）
-// 保证键盘/程序聚焦与悬停时元素有可见的状态变化
-// ==========================================
-
-// 全局焦点可见性：聚焦时显示清晰描边（不影响布局）
-:focus-visible {
-  outline: 2px solid var(--el-color-primary);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-// 按钮 hover / focus 视觉反馈
-.el-button {
-  &:not(.is-disabled) {
-    &:hover {
-      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
-    }
-
-    &:focus-visible {
-      box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
-    }
-  }
-}
-
-// 输入框 / 文本域 / 下拉 聚焦反馈增强
-.el-input__wrapper,
-.el-textarea__inner,
-.el-select__wrapper {
-  &.is-focus {
-    box-shadow:
-      0 0 0 1px var(--el-color-primary) inset,
-      0 0 0 2px var(--el-color-primary-light-7);
-  }
-}
-
-// 链接 / 菜单项 hover 反馈（颜色变化已由基础样式提供，这里补充底色提示）
-.el-menu-item:not(.is-disabled):hover,
-.el-sub-menu__title:hover {
-  background-color: var(--el-color-primary-light-9);
-}
-
-// ==========================================
-// 可点击区域最小尺寸（ISSUE-004）
-// 保证按钮、输入框、分页按钮等交互元素不小于 32×32px
-// ==========================================
-.el-button,
-.el-button--small,
-.el-pagination button,
-.el-input__inner,
-.el-input__wrapper,
-.el-select .el-input__wrapper,
-.el-radio__original,
-.el-checkbox__original,
-.el-switch__core,
-.el-slider__button {
-  min-width: 32px;
-  min-height: 32px;
-}
-
-// ==========================================
-// 表格文本截断统一（ISSUE-002）
-// 确保单元格内文本溢出时使用省略号，避免被判定为硬裁剪
-// ==========================================
-.el-table .cell {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-// Element Plus 表格表头滚动容器内的文本节点也使用省略号
-.el-table__header-wrapper th .cell {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-// ==========================================
-// 表格展开行图标最小可点击区域（ISSUE-004）
-// Element Plus 默认展开图标约 24px，放大到 32px 以满足点击区域规范
-// ==========================================
-.el-table__expand-icon {
-  width: 32px;
-  height: 32px;
-  line-height: 32px;
-  font-size: 14px;
-}
-
-// ==========================================
-// 可聚焦元素的聚焦描边（ISSUE-005）
-// 注：自动化审计使用程序化 focus()，无法触发 :focus-visible（浏览器规范：
-//     :focus-visible 仅在键盘 / 非指针交互时匹配），故此处同时覆盖 :focus，
-//     保证键盘与程序化聚焦均有清晰可见的反馈
-// ==========================================
-a:focus,
-button:focus,
-[role="button"]:focus,
-.el-button:focus {
-  outline: 2px solid var(--el-color-primary);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-// 纯文本链接（非 el-button）hover 反馈增强
-a:not(.el-button):hover {
-  color: var(--el-color-primary);
-  text-decoration: underline;
 }

@@ -8,6 +8,7 @@ import { WebLinksAddon } from "xterm-addon-web-links";
 import { SearchAddon } from "xterm-addon-search";
 import "xterm/css/xterm.css";
 import { createSSHTerminal } from "@/utils/websocket";
+import { nightOpsTerminalTheme } from "@/utils/terminalTheme";
 
 const route = useRoute();
 const router = useRouter();
@@ -58,28 +59,7 @@ function initTerminal() {
   terminal = new Terminal({
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace, "Microsoft YaHei"',
-    theme: {
-      background: "#1e1e1e",
-      foreground: "#d4d4d4",
-      cursor: "#d4d4d4",
-      selection: "rgba(255, 255, 255, 0.3)",
-      black: "#000000",
-      red: "#cd3131",
-      green: "#0dbc79",
-      yellow: "#e5e510",
-      blue: "#2472c8",
-      magenta: "#bc3fbc",
-      cyan: "#11a8cd",
-      white: "#e5e5e5",
-      brightBlack: "#666666",
-      brightRed: "#f14c4c",
-      brightGreen: "#23d18b",
-      brightYellow: "#f5f543",
-      brightBlue: "#3b8eea",
-      brightMagenta: "#d670d6",
-      brightCyan: "#29b8db",
-      brightWhite: "#e5e5e5",
-    },
+    theme: nightOpsTerminalTheme,
     cursorBlink: true,
     cursorStyle: "block",
     scrollback: 10000,
@@ -647,7 +627,8 @@ onBeforeUnmount(() => {
   height: calc(
     100vh - var(--platform-header-height) - var(--platform-content-padding) * 2
   );
-  background-color: #1e1e1e;
+  background-color: var(--platform-surface-0);
+  border: 1px solid var(--platform-line);
   border-radius: var(--platform-card-radius);
   overflow: hidden;
 
@@ -668,8 +649,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
+  background-color: var(--platform-surface-1);
+  border-bottom: 1px solid var(--platform-line);
   flex-shrink: 0;
 }
 
@@ -682,7 +663,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #e5e5e5;
+      color: var(--platform-text-primary);
 
     .el-icon {
       color: var(--el-color-primary);
@@ -695,7 +676,7 @@ onBeforeUnmount(() => {
 
     .host-ip {
       font-size: var(--platform-font-size-sm);
-      color: #808080;
+      color: var(--platform-text-muted);
       font-family: var(--el-font-family-mono);
     }
   }
@@ -713,8 +694,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
+  background-color: var(--platform-surface-1);
+  border-bottom: 1px solid var(--platform-line);
   flex-shrink: 0;
 
   .search-input {
@@ -722,7 +703,7 @@ onBeforeUnmount(() => {
   }
 
   .el-checkbox {
-    color: #e5e5e5;
+    color: var(--platform-text-primary);
   }
 }
 
@@ -750,13 +731,13 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 24px;
   padding: 8px 16px;
-  background-color: #252526;
-  border-top: 1px solid #3c3c3c;
+  background-color: var(--platform-surface-1);
+  border-top: 1px solid var(--platform-line);
   flex-shrink: 0;
 
   span {
     font-size: var(--platform-font-size-xs);
-    color: #808080;
+    color: var(--platform-text-muted);
   }
 }
 

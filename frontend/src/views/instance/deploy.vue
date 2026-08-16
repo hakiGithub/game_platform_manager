@@ -33,6 +33,17 @@ const steps = [
   { title: "确认部署", icon: "Check" },
 ];
 
+const stepDescriptions = [
+  "锁定一台在线节点，确认资源水位与 SSH 通道可用。",
+  "选择运行时模板，并确认部署方式、默认端口和环境依赖。",
+  "填写实例标识、端口、资源限制与游戏运行参数。",
+  "在真正执行前检查节点环境、端口占用和运行时条件。",
+  "复核部署契约，确认后将创建一条可追踪的部署任务。",
+];
+const activeStepDescription = computed(
+  () => stepDescriptions[currentStep.value] || "完成当前阶段后继续。",
+);
+
 // 主机列表
 const hostList = ref([]);
 const selectedHost = ref(null);
@@ -739,48 +750,78 @@ onMounted(() => {
 
 <template>
   <div class="deploy-container">
-    <el-card shadow="never">
+    <el-card shadow="never" class="deploy-shell">
       <template #header>
         <div class="card-header">
-          <span class="title">部署游戏实例</span>
-          <el-tag v-if="selectedHost" type="info" size="small">
-            <el-icon><Monitor /></el-icon>
-            {{ selectedHost.name }}
-          </el-tag>
-          <el-tag
-            v-if="selectedGame"
-            type="primary"
-            size="small"
-            style="margin-left: 8px"
-          >
-            <el-icon><Grid /></el-icon>
-            {{ selectedGame.gameName }}
-          </el-tag>
+          <div class="header-copy">
+            <span class="section-kicker">PROVISIONING BAY / INSTANCE DEPLOYMENT</span>
+            <span class="title">部署游戏实例</span>
+            <p>从节点选择到环境校验，建立一条可回溯的实例部署链路。</p>
+          </div>
+          <div class="header-context">
+            <el-tag v-if="selectedHost" type="info" size="small">
+              <el-icon><Monitor /></el-icon>
+              {{ selectedHost.name }}
+            </el-tag>
+            <el-tag v-if="selectedGame" type="primary" size="small">
+              <el-icon><Grid /></el-icon>
+              {{ selectedGame.gameName }}
+            </el-tag>
+            <span class="header-status">
+              <i></i>
+              {{ currentStep + 1 }} / {{ steps.length }} STAGES
+            </span>
+          </div>
         </div>
       </template>
 
-      <!-- 步骤条 -->
-      <el-steps
-        :active="currentStep"
-        finish-status="success"
-        align-center
-        class="steps"
-      >
-        <el-step
-          v-for="(step, index) in steps"
-          :key="index"
-          :title="step.title"
-        >
-          <template #icon>
-            <el-icon :size="24">
-              <component :is="step.icon" />
-            </el-icon>
-          </template>
-        </el-step>
-      </el-steps>
+      <div class="deploy-workbench">
+        <aside class="deploy-rail">
+          <div class="rail-caption">DEPLOYMENT FLOW</div>
+          <div class="rail-context">
+            <span>当前目标</span>
+            <strong>{{ selectedHost?.name || "待选择主机" }}</strong>
+            <small>{{ selectedHost?.ip || "选择在线节点开始" }}</small>
+            <div class="rail-divider"></div>
+            <strong>{{ selectedGame?.gameName || "待选择游戏" }}</strong>
+            <small>{{ selectedGame?.gameCode || "运行时模板未锁定" }}</small>
+          </div>
+          <el-steps
+            :active="currentStep"
+            finish-status="success"
+            direction="vertical"
+            class="steps"
+          >
+            <el-step
+              v-for="(step, index) in steps"
+              :key="index"
+              :title="step.title"
+            >
+              <template #icon>
+                <el-icon :size="18">
+                  <component :is="step.icon" />
+                </el-icon>
+              </template>
+            </el-step>
+          </el-steps>
+          <div class="rail-note">
+            <el-icon><InfoFilled /></el-icon>
+            <span>每个阶段都可以返回调整，部署任务只会在最后确认后创建。</span>
+          </div>
+        </aside>
 
-      <!-- 步骤内容 -->
-      <div class="step-content">
+        <section class="deploy-main">
+          <div class="stage-header">
+            <div>
+              <span class="section-kicker">STAGE {{ String(currentStep + 1).padStart(2, "0") }} / {{ steps[currentStep]?.title }}</span>
+              <h2>{{ steps[currentStep]?.title }}</h2>
+              <p>{{ activeStepDescription }}</p>
+            </div>
+            <span class="stage-index">0{{ currentStep + 1 }}</span>
+          </div>
+
+          <!-- 步骤内容 -->
+          <div class="step-content">
         <!-- 步骤1：选择主机 -->
         <div v-show="currentStep === 0" class="step-panel">
           <div class="step-title">
@@ -794,7 +835,7 @@ onMounted(() => {
               :xs="24"
               :sm="12"
               :md="8"
-              :lg="6"
+              :lg="12"
             >
               <div
                 class="host-card"
@@ -1618,6 +1659,8 @@ onMounted(() => {
         </el-button>
         <el-button @click="handleCancel">取消</el-button>
       </div>
+        </section>
+      </div>
     </el-card>
 
     <!-- 部署进度弹窗 -->
@@ -2123,6 +2166,509 @@ onMounted(() => {
         }
       }
     }
+  }
+}
+
+/* Deployment Bay overrides: a staged operations workspace rather than a generic form card. */
+.deploy-container {
+  max-width: none;
+  margin: 0;
+  padding: 4px 2px 28px;
+  color: var(--platform-text-primary);
+}
+
+.deploy-shell {
+  overflow: hidden;
+  border: 1px solid var(--platform-line) !important;
+  border-radius: 6px !important;
+  background: var(--platform-surface-1) !important;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.14) !important;
+}
+
+.deploy-shell :deep(.el-card__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--platform-line);
+  background:
+    linear-gradient(115deg, rgba(67, 184, 232, 0.14), transparent 45%),
+    var(--platform-surface-2);
+}
+
+.deploy-shell :deep(.el-card__body) {
+  padding: 0;
+}
+
+.card-header {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.header-copy {
+  display: grid;
+  gap: 5px;
+
+  .title {
+    color: var(--platform-text-primary) !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.025em;
+  }
+
+  p {
+    margin: 0;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+}
+
+.header-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+
+  i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--platform-accent);
+    box-shadow: 0 0 0 4px var(--platform-accent-soft);
+  }
+}
+
+.deploy-workbench {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 620px;
+}
+
+.deploy-rail {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 18px 18px;
+  border-right: 1px solid var(--platform-line);
+  background: var(--platform-surface-0);
+}
+
+.rail-caption,
+.section-kicker {
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.rail-context {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+  padding: 12px;
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-2);
+
+  span,
+  small {
+    color: var(--platform-text-muted);
+    font-size: 10px;
+  }
+
+  strong {
+    overflow: hidden;
+    color: var(--platform-text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    font-family: var(--el-font-family-mono);
+  }
+}
+
+.rail-divider {
+  height: 1px;
+  margin: 8px 0 5px;
+  background: var(--platform-line);
+}
+
+.deploy-rail .steps {
+  margin: 24px 0 0 !important;
+
+  :deep(.el-step) {
+    min-height: 57px;
+  }
+
+  :deep(.el-step__head) {
+    width: 22px;
+  }
+
+  :deep(.el-step__icon) {
+    width: 22px;
+    height: 22px;
+    border-width: 1px;
+    background: var(--platform-surface-0);
+  }
+
+  :deep(.el-step__line) {
+    top: 23px;
+    bottom: -5px;
+    background: var(--platform-line);
+  }
+
+  :deep(.el-step__main) {
+    padding-left: 10px;
+  }
+
+  :deep(.el-step__title) {
+    color: var(--platform-text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 22px;
+  }
+
+  :deep(.el-step__title.is-process),
+  :deep(.el-step__title.is-success) {
+    color: var(--platform-text-primary);
+    font-weight: 650;
+  }
+
+  :deep(.el-step__head.is-process) {
+    color: var(--platform-accent);
+    border-color: var(--platform-accent);
+  }
+
+  :deep(.el-step__head.is-success) {
+    color: var(--platform-green);
+    border-color: var(--platform-green);
+  }
+}
+
+.rail-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--platform-line);
+  color: var(--platform-text-muted);
+  font-size: 10px;
+  line-height: 1.55;
+
+  .el-icon {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--platform-accent);
+  }
+}
+
+.deploy-main {
+  min-width: 0;
+  background: var(--platform-surface-1);
+}
+
+.stage-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--platform-line);
+  background: linear-gradient(90deg, rgba(67, 184, 232, 0.06), transparent 58%);
+
+  h2 {
+    margin: 6px 0 4px;
+    color: var(--platform-text-primary);
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    max-width: 560px;
+    margin: 0;
+    color: var(--platform-text-secondary);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+}
+
+.stage-index {
+  color: var(--platform-accent);
+  font-family: var(--el-font-family-mono);
+  font-size: 28px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.step-content {
+  min-height: 0 !important;
+  padding: 22px 24px 24px !important;
+}
+
+.step-panel {
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+.step-content > .step-panel > .step-title {
+  display: none;
+}
+
+.host-card {
+  min-height: 270px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--platform-line);
+  border-radius: 4px;
+  background: var(--platform-surface-0);
+
+  &:hover:not(.is-offline) {
+    border-color: rgba(67, 184, 232, 0.72);
+    background: var(--platform-surface-2);
+    box-shadow: 0 14px 24px rgba(0, 0, 0, 0.14);
+    transform: translateY(-2px);
+  }
+
+  &.is-selected {
+    border-color: var(--platform-accent);
+    background: var(--platform-accent-soft);
+    box-shadow: inset 0 0 0 1px rgba(67, 184, 232, 0.18);
+  }
+
+  &.is-offline {
+    border-color: var(--platform-line);
+    background: var(--platform-surface-2);
+  }
+
+  .host-header {
+    margin-bottom: 14px;
+
+    .host-icon {
+      color: var(--platform-accent);
+    }
+
+    .host-name {
+      color: var(--platform-text-primary);
+      font-size: 15px;
+      font-weight: 650;
+    }
+  }
+
+  .host-info {
+    padding: 12px 0;
+    border-top: 1px solid var(--platform-line);
+    border-bottom: 1px solid var(--platform-line);
+
+    .info-item {
+      margin-bottom: 7px;
+      font-size: 10px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+
+      .label {
+        min-width: 55px;
+        color: var(--platform-text-muted);
+      }
+
+      .value {
+        color: var(--platform-text-regular);
+      }
+    }
+  }
+
+  .host-resources {
+    margin-top: 14px;
+
+    .resource-item {
+      margin-bottom: 9px;
+
+      .resource-label,
+      .resource-value {
+        color: var(--platform-text-muted);
+        font-family: var(--el-font-family-mono);
+        font-size: 10px;
+      }
+
+      .resource-label {
+        min-width: 34px;
+      }
+    }
+
+    :deep(.el-progress-bar__outer) {
+      background: var(--platform-surface-3);
+    }
+  }
+
+  .selected-mark {
+    top: 10px;
+    right: 10px;
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    background: var(--platform-accent);
+  }
+}
+
+.game-list {
+  max-height: 540px;
+  padding-right: 8px;
+
+  .game-item {
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+    background: var(--platform-surface-0);
+
+    &:hover,
+    &.is-selected {
+      border-color: var(--platform-accent);
+      background: var(--platform-accent-soft);
+    }
+  }
+}
+
+.game-detail {
+  padding: 16px;
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-0);
+
+  .detail-header,
+  .method-description {
+    background: var(--platform-surface-2);
+  }
+}
+
+.config-form .config-section,
+.confirm-section {
+  padding: 17px;
+  border: 1px solid var(--platform-line);
+  border-radius: 4px;
+  background: var(--platform-surface-0);
+}
+
+.config-form .config-section {
+  margin-bottom: 12px;
+
+  .section-title {
+    color: var(--platform-text-primary);
+    border-bottom-color: var(--platform-line);
+  }
+
+  .empty-env-vars {
+    border-color: var(--platform-line);
+    background: var(--platform-surface-2);
+  }
+}
+
+.env-check-container {
+  max-width: none;
+  margin: 0;
+
+  .env-check-item {
+    border: 1px solid var(--platform-line);
+    border-left-width: 3px;
+    border-radius: 4px;
+    background: var(--platform-surface-0);
+
+    &.success {
+      background: rgba(82, 207, 130, 0.07);
+    }
+
+    &.error {
+      background: rgba(240, 100, 106, 0.07);
+    }
+  }
+}
+
+.confirm-section {
+  margin-bottom: 12px;
+
+  :deep(.el-descriptions__body),
+  :deep(.el-descriptions__table) {
+    background: var(--platform-surface-2);
+  }
+
+  :deep(.el-descriptions__label.el-descriptions__cell.is-bordered-label) {
+    background: var(--platform-surface-3);
+  }
+}
+
+.step-actions {
+  justify-content: flex-end !important;
+  gap: 8px;
+  margin-top: 0 !important;
+  padding: 16px 24px 20px !important;
+  border-top: 1px solid var(--platform-line) !important;
+  background: var(--platform-surface-2);
+}
+
+@media screen and (max-width: 900px) {
+  .deploy-workbench {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .deploy-rail {
+    padding-inline: 14px;
+  }
+
+  .step-content,
+  .stage-header {
+    padding-inline: 18px !important;
+  }
+}
+
+@media screen and (max-width: 680px) {
+  .card-header,
+  .header-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-context {
+    justify-content: flex-start;
+  }
+
+  .deploy-workbench {
+    display: block;
+    min-height: 0;
+  }
+
+  .deploy-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--platform-line);
+  }
+
+  .deploy-rail .steps {
+    margin-top: 16px !important;
+
+    :deep(.el-step) {
+      min-height: 44px;
+    }
+  }
+
+  .rail-note {
+    display: none;
+  }
+
+  .stage-header {
+    padding-block: 17px !important;
+  }
+
+  .stage-index {
+    font-size: 22px;
   }
 }
 </style>

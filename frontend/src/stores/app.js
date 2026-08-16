@@ -14,7 +14,10 @@ export const useAppStore = defineStore("app", () => {
   const loading = ref(false);
 
   // 主题设置
-  const theme = ref(localStorage.getItem("theme") || "light");
+  const theme = ref(localStorage.getItem("theme") || "dark");
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-theme", theme.value);
+  }
 
   // 计算属性
   const isMobile = computed(() => device.value === "mobile");

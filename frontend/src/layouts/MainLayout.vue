@@ -1,14 +1,10 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
-import { useRoute } from "vue-router";
 import { useAppStore } from "@/stores/app";
-import { useUserStore } from "@/stores/user";
 import Sidebar from "./Sidebar.vue";
 import Header from "./Header.vue";
 
-const route = useRoute();
 const appStore = useAppStore();
-const userStore = useUserStore();
 
 const sidebarWidth = computed(() => {
   return appStore.sidebarCollapsed
@@ -70,6 +66,8 @@ onBeforeUnmount(() => {
 .main-layout {
   width: 100%;
   height: 100vh;
+  color: var(--el-text-color-primary);
+  background: var(--platform-surface-0);
   overflow: hidden;
 }
 
@@ -78,8 +76,9 @@ onBeforeUnmount(() => {
 }
 
 .main-content {
-  background-color: var(--el-bg-color-page);
-  padding: var(--spacing-lg);
+  position: relative;
+  background: var(--platform-surface-0);
+  padding: var(--platform-content-padding);
   flex: 1;
   overflow-y: auto;
 }
@@ -105,7 +104,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   text-align: center;
   padding: 24px;
-  background: var(--el-bg-color-page);
+  background: var(--platform-surface-0);
   color: var(--el-text-color-primary);
 
   .notice-icon {

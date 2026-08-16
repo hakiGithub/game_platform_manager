@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useAppStore } from "@/stores/app";
+import { useUserStore } from "@/stores/user";
 import { getPluginList, getPluginManifest } from "@/api/plugin";
 
 defineProps({
@@ -13,200 +13,217 @@ defineProps({
 
 const route = useRoute();
 const router = useRouter();
-const appStore = useAppStore();
+const userStore = useUserStore();
 
-// 静态菜单（基础功能）
-const staticMenuItems = [
+const workspaceMenuItems = [
   {
-    index: "/dashboard",
+    index: "/workspace/overview",
     icon: "Odometer",
-    title: "仪表盘",
+    title: "运行总览",
   },
+];
+
+const resourceMenuItems = [
   {
-    index: "/host",
+    index: "/resources/hosts",
     icon: "Monitor",
-    title: "主机管理",
-    children: [{ index: "/host/list", title: "主机列表" }],
+    title: "主机资源",
+    children: [{ index: "/resources/hosts/list", title: "主机列表" }],
   },
   {
-    index: "/instance",
+    index: "/resources/containers",
+    icon: "Box",
+    title: "容器资源",
+    children: [{ index: "/resources/containers/list", title: "容器列表" }],
+  },
+];
+
+const serviceMenuItems = [
+  {
+    index: "/services/instances",
     icon: "Grid",
-    title: "实例管理",
-    children: [{ index: "/instance/list", title: "实例列表" }],
+    title: "实例服务",
+    children: [{ index: "/services/instances/list", title: "实例列表" }],
   },
   {
-    index: "/game",
+    index: "/services/games",
     icon: "TrendCharts",
-    title: "游戏管理",
-    children: [{ index: "/game/list", title: "游戏列表" }],
+    title: "游戏目录",
+    children: [{ index: "/services/games/list", title: "游戏列表" }],
   },
-];
-
-// 动态插件菜单（从后端加载，每个 running 插件作为一级菜单）
-const pluginMenuItems = ref([]);
-
-// 任务中心菜单（位于动态插件菜单之后、系统设置之前）
-const taskMenuItems = [
   {
-    index: "/task",
+    index: "/services/tasks",
     icon: "List",
-    title: "任务中心",
-    children: [{ index: "/task/list", title: "任务列表" }],
+    title: "执行队列",
+    children: [{ index: "/services/tasks/list", title: "任务列表" }],
   },
 ];
 
-// 系统菜单（包含插件管理入口）
+const staticExtensionMenuItems = [
+  {
+    index: "/extensions/plugins",
+    icon: "Connection",
+    title: "插件扩展",
+    children: [{ index: "/extensions/plugins/list", title: "插件列表" }],
+  },
+];
+
 const systemMenuItems = [
   {
     index: "/system",
     icon: "Setting",
     title: "系统设置",
     children: [
-      { index: "/system/settings", title: "系统配置" },
-      { index: "/system/logs", title: "系统日志" },
-      { index: "/plugins/list", title: "插件管理" },
+      { index: "/system/configuration", title: "系统配置" },
+      { index: "/system/audit", title: "审计日志" },
     ],
   },
 ];
 
-// 合并菜单：静态 + 动态插件 + 任务中心 + 系统
-const menuItems = computed(() => [
-  ...staticMenuItems,
+const pluginMenuItems = ref([]);
+
+const extensionMenuItems = computed(() => [
+  ...staticExtensionMenuItems,
   ...pluginMenuItems.value,
-  ...taskMenuItems,
-  ...systemMenuItems,
 ]);
 
-/**
- * 从插件ID提取游戏编码
- */
-function extractGameCode(pluginId) {
-  if (!pluginId) return "";
-  if (pluginId.startsWith("plugin-")) {
-    return pluginId.substring("plugin-".length);
+const menuSections = computed(() => [
+  { key: "workspace", label: "工作台", items: workspaceMenuItems },
+  { key: "resources", label: "资源管理", items: resourceMenuItems },
+  { key: "services", label: "服务编排", items: serviceMenuItems },
+  { key: "extensions", label: "扩展中心", items: extensionMenuItems.value },
+  { key: "system", label: "平台设置", items: systemMenuItems },
+]);
+
+const activeMenu = computed(() => {
+  if (route.path.startsWith("/extensions/app/")) {
+    const [, , gameCode] = route.path.split("/");
+    return `/extensions/app/${gameCode}`;
   }
-  return "";
+  return route.meta?.navPath || route.path;
+});
+
+const defaultOpeneds = computed(() => {
+  const matchedPaths = route.matched
+    .map((item) => item.path)
+    .filter((path) => path && path !== route.path);
+  if (route.path.startsWith("/extensions/app/")) {
+    matchedPaths.push(activeMenu.value);
+  }
+  return [...new Set(matchedPaths)];
+});
+
+function extractGameCode(pluginId) {
+  if (!pluginId || !pluginId.startsWith("plugin-")) return "";
+  return pluginId.substring("plugin-".length);
 }
 
-/**
- * 加载已启动插件的菜单
- * 每个 running 插件作为一级菜单（标题为插件名），下挂其菜单项作为二级菜单
- */
 async function loadPluginMenus() {
   try {
     const plugins = await getPluginList();
-    const runningPlugins = (plugins || []).filter((p) => p.running);
+    const runningPlugins = (plugins || []).filter((plugin) => plugin.running);
     const menus = [];
+
     for (const plugin of runningPlugins) {
       const gameCode = extractGameCode(plugin.pluginId);
       if (!gameCode) continue;
+
       try {
         const manifest = await getPluginManifest(gameCode);
         const backendMenus = manifest?.frontend?.menus || [];
-        // 菜单项按 order 排序
-        const sortedMenus = [...backendMenus].sort(
-          (a, b) => (a.order || 0) - (b.order || 0)
-        );
-        const children = sortedMenus.map((m) => ({
-          index: `/plugin/${gameCode}${m.path}`,
-          title: m.title,
-        }));
+        const children = [...backendMenus]
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((menu) => ({
+            index: `/extensions/app/${gameCode}${menu.path}`,
+            title: menu.title,
+          }));
+
         menus.push({
-          index: `/plugin/${gameCode}`,
+          index: `/extensions/app/${gameCode}`,
           icon: "Connection",
           title: plugin.pluginName || manifest?.gameName || gameCode,
-          children:
-            children.length > 0
-              ? children
-              : [{ index: `/plugin/${gameCode}/dashboard`, title: "仪表盘" }],
+          children: children.length
+            ? children
+            : [{ index: `/extensions/app/${gameCode}/dashboard`, title: "仪表盘" }],
         });
-      } catch (e) {
-        console.error(`Failed to load manifest for ${gameCode}:`, e);
+      } catch (error) {
+        console.error(`Failed to load manifest for ${gameCode}:`, error);
       }
     }
+
     pluginMenuItems.value = menus;
-  } catch (e) {
-    console.error("Failed to load plugin menus:", e);
+  } catch (error) {
+    console.error("Failed to load plugin menus:", error);
   }
 }
 
-// 当前激活菜单
-const activeMenu = computed(() => {
-  const { path } = route;
-  return path;
-});
-
-// 默认展开的菜单
-const defaultOpeneds = computed(() => {
-  const matched = route.matched;
-  return matched.map((item) => item.path).filter((path) => path !== route.path);
-});
-
-// 菜单点击
 function handleSelect(index) {
-  // 从插件菜单切到另一个插件菜单时，保留 instanceId 等 query（避免反复弹窗选实例）
-  if (
-    index.startsWith("/plugin/") &&
-    route.path.startsWith("/plugin/")
-  ) {
+  if (index.startsWith("/extensions/app/") && route.path.startsWith("/extensions/app/")) {
     router.push({ path: index, query: route.query });
-  } else {
-    router.push(index);
+    return;
   }
+  router.push(index);
 }
 
-onMounted(() => {
-  loadPluginMenus();
-});
+onMounted(loadPluginMenus);
 </script>
 
 <template>
   <aside class="sidebar" :class="{ 'is-collapsed': collapsed }">
-    <!-- Logo -->
     <div class="sidebar-logo">
-      <el-icon v-if="collapsed" :size="24"><Monitor /></el-icon>
-      <template v-else>
-        <el-icon :size="24"><Monitor /></el-icon>
+      <div class="logo-mark"><el-icon :size="22"><Monitor /></el-icon></div>
+      <div class="logo-copy">
         <span class="logo-text">游戏服务器管理</span>
-      </template>
+        <span class="logo-meta">NIGHT OPS · 1.0</span>
+      </div>
     </div>
 
-    <!-- 菜单 -->
     <el-scrollbar class="sidebar-menu-wrapper">
       <el-menu
+        class="sidebar-menu"
         :default-active="activeMenu"
         :default-openeds="defaultOpeneds"
         :collapse="collapsed"
         :collapse-transition="false"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
+        background-color="transparent"
+        text-color="var(--el-text-color-secondary)"
+        active-text-color="var(--platform-cyan)"
         @select="handleSelect"
       >
-        <template v-for="item in menuItems" :key="item.index">
-          <!-- 有子菜单 -->
-          <el-sub-menu v-if="item.children" :index="item.index">
-            <template #title>
-              <el-icon><component :is="item.icon" /></el-icon>
-              <span>{{ item.title }}</span>
-            </template>
-            <el-menu-item
-              v-for="child in item.children"
-              :key="child.index"
-              :index="child.index"
-            >
-              {{ child.title }}
-            </el-menu-item>
-          </el-sub-menu>
+        <div v-for="section in menuSections" :key="section.key" class="menu-section">
+          <div class="menu-section-label">{{ section.label }}</div>
 
-          <!-- 无子菜单 -->
-          <el-menu-item v-else :index="item.index">
-            <el-icon><component :is="item.icon" /></el-icon>
-            <template #title>{{ item.title }}</template>
-          </el-menu-item>
-        </template>
+          <template v-for="item in section.items" :key="item.index">
+            <el-sub-menu v-if="item.children" :index="item.index">
+              <template #title>
+                <el-icon><component :is="item.icon" /></el-icon>
+                <span>{{ item.title }}</span>
+              </template>
+              <el-menu-item v-for="child in item.children" :key="child.index" :index="child.index">
+                {{ child.title }}
+              </el-menu-item>
+            </el-sub-menu>
+
+            <el-menu-item v-else :index="item.index">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <template #title>{{ item.title }}</template>
+            </el-menu-item>
+          </template>
+        </div>
       </el-menu>
     </el-scrollbar>
+
+    <div class="sidebar-footer">
+      <div class="footer-status"><span></span> 运维控制台在线</div>
+      <div class="footer-user">
+        <el-avatar :size="32" :src="userStore.avatar" icon="UserFilled" />
+        <span class="footer-user-copy">
+          <span class="footer-user-name">{{ userStore.nickname || userStore.username || "管理员" }}</span>
+          <span class="footer-user-role">OPERATIONS</span>
+        </span>
+        <el-icon class="footer-user-arrow"><ArrowDown /></el-icon>
+      </div>
+    </div>
   </aside>
 </template>
 
@@ -215,70 +232,223 @@ onMounted(() => {
   position: fixed;
   top: 0;
   left: 0;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
   width: var(--sidebar-width);
   height: 100vh;
-  background-color: #304156;
+  color: var(--el-text-color-primary);
+  background: linear-gradient(180deg, #0c1d2a 0%, #0a1824 100%);
+  border-right: 1px solid var(--platform-line);
   transition: width var(--transition-duration);
-  z-index: 1001;
   overflow: hidden;
 
   &.is-collapsed {
     width: var(--sidebar-collapsed-width);
 
     .sidebar-logo {
-      padding: 0;
       justify-content: center;
+      padding: 0;
     }
 
-    .logo-text {
+    .logo-copy,
+    .footer-user-copy,
+    .footer-user-arrow,
+    .footer-status {
       display: none;
+    }
+
+    .footer-user {
+      justify-content: center;
     }
   }
 }
 
 .sidebar-logo {
   display: flex;
+  flex: 0 0 var(--header-height);
   align-items: center;
+  gap: 12px;
   height: var(--header-height);
-  padding: 0 var(--spacing-lg);
-  background-color: #263445;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
-  overflow: hidden;
+  padding: 0 18px;
+  background: var(--platform-topbar);
+  border-bottom: 1px solid var(--platform-line);
   white-space: nowrap;
+}
 
-  .logo-text {
-    margin-left: var(--spacing-sm);
-  }
+.logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  color: var(--platform-cyan);
+  background: rgba(39, 181, 243, 0.1);
+  border: 1px solid rgba(39, 181, 243, 0.36);
+  border-radius: 8px;
+}
+
+.logo-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.logo-text {
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.logo-meta,
+.footer-user-role {
+  color: var(--el-text-color-placeholder);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
 }
 
 .sidebar-menu-wrapper {
-  height: calc(100vh - var(--header-height));
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  padding: 14px 8px 0;
 }
 
-:deep(.el-menu) {
-  border-right: none;
+:deep(.sidebar-menu-wrapper .el-scrollbar__wrap) {
+  height: 100%;
+}
+
+:deep(.sidebar-menu-wrapper .el-scrollbar__view) {
+  min-height: 100%;
+}
+
+.sidebar-menu {
+  width: 100%;
+  border-right: 0;
+}
+
+.menu-section {
+  margin-bottom: 12px;
+}
+
+.menu-section-label {
+  padding: 0 14px 7px;
+  color: var(--el-text-color-placeholder);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 18px;
+  text-transform: uppercase;
 }
 
 :deep(.el-menu-item),
 :deep(.el-sub-menu__title) {
-  &:hover {
-    background-color: #263445 !important;
-  }
+  height: 40px;
+  margin: 2px 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  line-height: 40px;
+  transition: color var(--transition-duration-fast), background var(--transition-duration-fast), border-color var(--transition-duration-fast);
+}
+
+:deep(.el-menu-item:hover),
+:deep(.el-sub-menu__title:hover) {
+  color: var(--el-text-color-primary) !important;
+  background: rgba(39, 181, 243, 0.08) !important;
+  border-color: rgba(39, 181, 243, 0.14);
 }
 
 :deep(.el-menu-item.is-active) {
-  background-color: #409eff !important;
-  color: #fff !important;
+  color: var(--platform-cyan) !important;
+  background: linear-gradient(90deg, rgba(39, 181, 243, 0.18), rgba(39, 181, 243, 0.06)) !important;
+  border-color: rgba(39, 181, 243, 0.24);
+  box-shadow: inset 2px 0 0 var(--platform-cyan);
 }
 
-:deep(.el-sub-menu .el-menu-item.is-active) {
-  background-color: #409eff !important;
-  color: #fff !important;
+:deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+  color: var(--platform-cyan) !important;
 }
 
-:deep(.el-menu-item.is-active .el-icon) {
-  color: #fff !important;
+:deep(.el-sub-menu .el-menu) {
+  background: rgba(4, 13, 21, 0.25) !important;
+}
+
+:deep(.el-sub-menu .el-menu-item) {
+  min-width: 0;
+  padding-left: 50px !important;
+  color: var(--el-text-color-secondary);
+}
+
+:deep(.el-menu--collapse) {
+  width: var(--sidebar-collapsed-width);
+}
+
+:deep(.el-menu--collapse .menu-section-label) {
+  display: none;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex: 0 0 82px;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(5, 14, 22, 0.35);
+  border-top: 1px solid var(--platform-line);
+}
+
+.footer-status {
+  color: var(--el-text-color-placeholder);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.footer-status span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  background: var(--platform-green);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(82, 207, 130, 0.1);
+}
+
+.footer-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  color: var(--el-text-color-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.footer-user-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.footer-user-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footer-user-arrow {
+  color: var(--el-text-color-secondary);
 }
 </style>

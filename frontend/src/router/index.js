@@ -2,263 +2,247 @@ import { createRouter, createWebHistory } from 'vue-router'
 import NProgress from 'nprogress'
 import { useUserStore } from '@/stores/user'
 
-// 路由配置
+// 路由配置：按“工作台 / 资源 / 服务 / 扩展 / 系统”组织，旧路径通过重定向保留兼容性。
 const routes = [
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
-    meta: {
-      title: '登录',
-      requiresAuth: false
-    }
+    meta: { title: '登录', requiresAuth: false }
   },
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
-    redirect: '/dashboard',
+    redirect: '/workspace/overview',
     children: [
       {
-        path: 'dashboard',
-        name: 'Dashboard',
-        component: () => import('@/views/dashboard/index.vue'),
-        meta: {
-          title: '仪表盘',
-          icon: 'Odometer',
-          requiresAuth: true
-        }
-      },
-      {
-        path: 'host',
-        name: 'Host',
-        redirect: '/host/list',
-        meta: {
-          title: '主机管理',
-          icon: 'Monitor',
-          requiresAuth: true
-        },
+        path: 'workspace',
+        name: 'Workspace',
+        redirect: '/workspace/overview',
+        meta: { title: '工作台', icon: 'Odometer', requiresAuth: true },
         children: [
           {
-            path: 'list',
-            name: 'HostList',
-            component: () => import('@/views/host/index.vue'),
-            meta: {
-              title: '主机列表',
-              requiresAuth: true
-            }
-          },
-          {
-            path: 'terminal/:id',
-            name: 'HostTerminal',
-            component: () => import('@/views/host/terminal.vue'),
-            meta: {
-              title: '主机终端',
-              requiresAuth: true,
-              hidden: true
-            }
+            path: 'overview',
+            name: 'Dashboard',
+            component: () => import('@/views/dashboard/index.vue'),
+            meta: { title: '运行总览', navPath: '/workspace/overview', requiresAuth: true }
           }
         ]
       },
       {
-        path: 'instance',
-        name: 'Instance',
-        redirect: '/instance/list',
-        meta: {
-          title: '实例管理',
-          icon: 'Grid',
-          requiresAuth: true
-        },
+        path: 'resources',
+        name: 'Resources',
+        meta: { title: '资源管理', requiresAuth: true },
         children: [
           {
-            path: 'list',
-            name: 'InstanceList',
-            component: () => import('@/views/instance/index.vue'),
-            meta: {
-              title: '实例列表',
-              requiresAuth: true
-            }
+            path: 'hosts',
+            name: 'Hosts',
+            redirect: '/resources/hosts/list',
+            meta: { title: '主机资源', icon: 'Monitor', navPath: '/resources/hosts', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'HostList',
+                component: () => import('@/views/host/index.vue'),
+                meta: { title: '主机列表', navPath: '/resources/hosts/list', requiresAuth: true }
+              },
+              {
+                path: 'detail/:id',
+                name: 'HostDetail',
+                component: () => import('@/views/host/detail.vue'),
+                meta: { title: '主机详情', navPath: '/resources/hosts', requiresAuth: true, hidden: true }
+              },
+              {
+                path: 'terminal/:id',
+                name: 'HostTerminal',
+                component: () => import('@/views/host/terminal.vue'),
+                meta: { title: '主机终端', navPath: '/resources/hosts', requiresAuth: true, hidden: true }
+              }
+            ]
           },
           {
-            path: 'detail/:id',
-            name: 'InstanceDetail',
-            component: () => import('@/views/instance/detail.vue'),
-            meta: {
-              title: '实例详情',
-              requiresAuth: true,
-              hidden: true
-            }
-          },
-          {
-            path: 'deploy',
-            name: 'InstanceDeploy',
-            component: () => import('@/views/instance/deploy.vue'),
-            meta: {
-              title: '部署实例',
-              requiresAuth: true,
-              hidden: true
-            }
+            path: 'containers',
+            name: 'Containers',
+            redirect: '/resources/containers/list',
+            meta: { title: '容器资源', icon: 'Box', navPath: '/resources/containers', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'DockerList',
+                component: () => import('@/views/docker/index.vue'),
+                meta: { title: '容器列表', navPath: '/resources/containers/list', requiresAuth: true }
+              },
+              {
+                path: 'detail/:id',
+                name: 'DockerContainer',
+                component: () => import('@/views/docker/container.vue'),
+                meta: { title: '容器详情', navPath: '/resources/containers', requiresAuth: true, hidden: true }
+              }
+            ]
           }
         ]
       },
       {
-        path: 'game',
-        name: 'Game',
-        redirect: '/game/list',
-        meta: {
-          title: '游戏管理',
-          icon: 'TrendCharts',
-          requiresAuth: true
-        },
+        path: 'services',
+        name: 'Services',
+        meta: { title: '服务编排', requiresAuth: true },
         children: [
           {
-            path: 'list',
-            name: 'GameList',
-            component: () => import('@/views/game/index.vue'),
-            meta: {
-              title: '游戏列表',
-              requiresAuth: true
-            }
-          }
-        ]
-      },
-      {
-        path: 'task',
-        name: 'Task',
-        redirect: '/task/list',
-        meta: {
-          title: '任务中心',
-          icon: 'List',
-          requiresAuth: true
-        },
-        children: [
-          {
-            path: 'list',
-            name: 'TaskList',
-            component: () => import('@/views/task/index.vue'),
-            meta: {
-              title: '任务列表',
-              requiresAuth: true
-            }
+            path: 'instances',
+            name: 'Instances',
+            redirect: '/services/instances/list',
+            meta: { title: '实例服务', icon: 'Grid', navPath: '/services/instances', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'InstanceList',
+                component: () => import('@/views/instance/index.vue'),
+                meta: { title: '实例列表', navPath: '/services/instances/list', requiresAuth: true }
+              },
+              {
+                path: 'detail/:id',
+                name: 'InstanceDetail',
+                component: () => import('@/views/instance/detail.vue'),
+                meta: { title: '实例详情', navPath: '/services/instances', requiresAuth: true, hidden: true }
+              },
+              {
+                path: 'deploy',
+                name: 'InstanceDeploy',
+                component: () => import('@/views/instance/deploy.vue'),
+                meta: { title: '部署实例', navPath: '/services/instances', requiresAuth: true, hidden: true }
+              }
+            ]
           },
           {
-            path: 'detail/:id',
-            name: 'TaskDetail',
-            component: () => import('@/views/task/detail.vue'),
-            meta: {
-              title: '任务详情',
-              requiresAuth: true,
-              hidden: true
-            }
-          }
-        ]
-      },
-      {
-        path: 'plugins',
-        name: 'Plugins',
-        redirect: '/plugins/list',
-        meta: {
-          title: '插件管理',
-          icon: 'Connection',
-          requiresAuth: true
-        },
-        children: [
-          {
-            path: 'list',
-            name: 'PluginList',
-            component: () => import('@/views/plugin/index.vue'),
-            meta: {
-              title: '插件列表',
-              requiresAuth: true
-            }
-          }
-        ]
-      },
-      {
-        // Wujie 子应用加载路由
-        // 支持 /plugin/:gameCode/:menuPath 形式访问插件子应用页面
-        // menuPath 对应插件前端的路由 path（如 dashboard、maps、rcon）
-        // menuPath 可选，缺省时使用 dashboard
-        path: 'plugin/:gameCode/:menuPath(.*)?',
-        name: 'PluginApp',
-        component: () => import('@/plugins/components/PluginTab.vue'),
-        props: route => ({
-          gameCode: route.params.gameCode,
-          menuPath: Array.isArray(route.params.menuPath)
-            ? route.params.menuPath[0] || 'dashboard'
-            : route.params.menuPath || 'dashboard',
-          instanceId: Number(route.query.instanceId) || 0,
-          instanceName: route.query.instanceName || '',
-          hostId: Number(route.query.hostId) || 0,
-          hostIp: route.query.hostIp || '',
-          deployPath: route.query.deployPath || '',
-          ports: route.query.ports ? JSON.parse(route.query.ports) : {}
-        }),
-        meta: {
-          title: '插件应用',
-          requiresAuth: true,
-          hidden: true
-        }
-      },
-      {
-        path: 'docker',
-        name: 'Docker',
-        redirect: '/docker/list',
-        meta: {
-          title: 'Docker管理',
-          icon: 'Box',
-          requiresAuth: true
-        },
-        children: [
-          {
-            path: 'list',
-            name: 'DockerList',
-            component: () => import('@/views/docker/index.vue'),
-            meta: {
-              title: '容器管理',
-              requiresAuth: true
-            }
+            path: 'games',
+            name: 'Games',
+            redirect: '/services/games/list',
+            meta: { title: '游戏目录', icon: 'TrendCharts', navPath: '/services/games', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'GameList',
+                component: () => import('@/views/game/index.vue'),
+                meta: { title: '游戏列表', navPath: '/services/games/list', requiresAuth: true }
+              }
+            ]
           },
           {
-            path: 'container/:id',
-            name: 'DockerContainer',
-            component: () => import('@/views/docker/container.vue'),
-            meta: {
-              title: '容器详情',
-              requiresAuth: true,
-              hidden: true
-            }
+            path: 'tasks',
+            name: 'Tasks',
+            redirect: '/services/tasks/list',
+            meta: { title: '执行队列', icon: 'List', navPath: '/services/tasks', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'TaskList',
+                component: () => import('@/views/task/index.vue'),
+                meta: { title: '任务列表', navPath: '/services/tasks/list', requiresAuth: true }
+              },
+              {
+                path: 'detail/:id',
+                name: 'TaskDetail',
+                component: () => import('@/views/task/detail.vue'),
+                meta: { title: '任务详情', navPath: '/services/tasks', requiresAuth: true, hidden: true }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        path: 'extensions',
+        name: 'Extensions',
+        meta: { title: '扩展中心', requiresAuth: true },
+        children: [
+          {
+            path: 'plugins',
+            name: 'Plugins',
+            redirect: '/extensions/plugins/list',
+            meta: { title: '插件扩展', icon: 'Connection', navPath: '/extensions/plugins', requiresAuth: true },
+            children: [
+              {
+                path: 'list',
+                name: 'PluginList',
+                component: () => import('@/views/plugin/index.vue'),
+                meta: { title: '插件列表', navPath: '/extensions/plugins/list', requiresAuth: true }
+              }
+            ]
+          },
+          {
+            path: 'app/:gameCode/:menuPath(.*)?',
+            name: 'PluginApp',
+            component: () => import('@/plugins/components/PluginTab.vue'),
+            props: route => ({
+              gameCode: route.params.gameCode,
+              menuPath: Array.isArray(route.params.menuPath)
+                ? route.params.menuPath[0] || 'dashboard'
+                : route.params.menuPath || 'dashboard',
+              instanceId: Number(route.query.instanceId) || 0,
+              instanceName: route.query.instanceName || '',
+              hostId: Number(route.query.hostId) || 0,
+              hostIp: route.query.hostIp || '',
+              deployPath: route.query.deployPath || '',
+              ports: route.query.ports ? JSON.parse(route.query.ports) : {}
+            }),
+            meta: { title: '插件工作区', navPath: '/extensions/plugins', requiresAuth: true, hidden: true }
           }
         ]
       },
       {
         path: 'system',
         name: 'System',
-        redirect: '/system/settings',
-        meta: {
-          title: '系统设置',
-          icon: 'Setting',
-          requiresAuth: true
-        },
+        redirect: '/system/configuration',
+        meta: { title: '系统设置', icon: 'Setting', requiresAuth: true },
         children: [
           {
-            path: 'settings',
+            path: 'configuration',
             name: 'SystemSettings',
             component: () => import('@/views/system/settings.vue'),
-            meta: {
-              title: '系统配置',
-              requiresAuth: true
-            }
+            meta: { title: '系统配置', navPath: '/system/configuration', requiresAuth: true }
           },
           {
-            path: 'logs',
+            path: 'audit',
             name: 'SystemLogs',
             component: () => import('@/views/system/logs.vue'),
-            meta: {
-              title: '系统日志',
-              requiresAuth: true
-            }
+            meta: { title: '审计日志', navPath: '/system/audit', requiresAuth: true }
           }
         ]
+      },
+
+      // 旧路径兼容：外部书签与现有页面内部跳转仍可平滑进入新信息架构。
+      { path: 'dashboard', redirect: '/workspace/overview', meta: { requiresAuth: true, hidden: true } },
+      { path: 'host', redirect: '/resources/hosts/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'host/list', redirect: '/resources/hosts/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'host/detail/:id', redirect: to => ({ path: `/resources/hosts/detail/${to.params.id}`, query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'host/terminal/:id', redirect: to => ({ path: `/resources/hosts/terminal/${to.params.id}`, query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'instance', redirect: '/services/instances/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'instance/list', redirect: '/services/instances/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'instance/detail/:id', redirect: to => ({ path: `/services/instances/detail/${to.params.id}`, query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'instance/deploy', redirect: to => ({ path: '/services/instances/deploy', query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'game', redirect: '/services/games/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'game/list', redirect: '/services/games/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'task', redirect: '/services/tasks/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'task/list', redirect: '/services/tasks/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'task/detail/:id', redirect: to => ({ path: `/services/tasks/detail/${to.params.id}`, query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'docker', redirect: '/resources/containers/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'docker/list', redirect: '/resources/containers/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'docker/container/:id', redirect: to => ({ path: `/resources/containers/detail/${to.params.id}`, query: to.query }), meta: { requiresAuth: true, hidden: true } },
+      { path: 'plugins', redirect: '/extensions/plugins/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'plugins/list', redirect: '/extensions/plugins/list', meta: { requiresAuth: true, hidden: true } },
+      { path: 'system/settings', redirect: '/system/configuration', meta: { requiresAuth: true, hidden: true } },
+      { path: 'system/logs', redirect: '/system/audit', meta: { requiresAuth: true, hidden: true } },
+      {
+        path: 'plugin/:gameCode/:menuPath(.*)?',
+        redirect: to => {
+          const menuPath = Array.isArray(to.params.menuPath)
+            ? to.params.menuPath.join('/')
+            : to.params.menuPath
+          return {
+            path: `/extensions/app/${to.params.gameCode}/${menuPath || 'dashboard'}`,
+            query: to.query
+          }
+        },
+        meta: { requiresAuth: true, hidden: true }
       }
     ]
   },
@@ -266,10 +250,7 @@ const routes = [
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
-    meta: {
-      title: '页面不存在',
-      requiresAuth: false
-    }
+    meta: { title: '页面不存在', requiresAuth: false }
   }
 ]
 

@@ -583,6 +583,7 @@ const logsSearchKeyword = ref('')
 const logsLevelFilter = ref('')
 const logWsClient = ref(null)
 const logsContainerRef = ref(null)
+const recentLogs = computed(() => logs.value.slice(-6))
 
 async function fetchLogs() {
   logsLoading.value = true
@@ -1086,78 +1087,148 @@ onBeforeUnmount(() => {
   <div class="instance-detail-container">
     <!-- 顶部信息栏 -->
     <el-card class="info-card" shadow="never" v-loading="loading">
-      <div class="instance-header">
+      <div class="command-identity">
+        <div class="command-kicker">
+          <span class="live-dot" :class="{ 'is-live': instanceInfo.status === 'running' }" />
+          INSTANCE CONTROL ROOM
+          <span class="command-channel">INSTANCE / {{ String(instanceInfo.id || instanceId).padStart(2, '0') }}</span>
+        </div>
+        <span class="command-hint">
+          {{ instanceInfo.status === 'running' ? 'LIVE RUNTIME' : 'MANUAL ACTION REQUIRED' }}
+        </span>
+      </div>
+      <div class="command-header">
         <div class="header-left">
-          <el-button link @click="router.push('/instance/list')">
+          <el-button class="back-button" link @click="router.push('/instance/list')">
             <el-icon><ArrowLeft /></el-icon>
             返回列表
           </el-button>
+          <div class="instance-mark"><el-icon :size="22"><Grid /></el-icon></div>
           <div class="instance-title">
-            <h2>{{ instanceInfo.name }}</h2>
-            <el-tag :type="statusType(instanceInfo.status)" size="small" effect="dark">
-              {{ instanceInfo.runStatusDesc }}
-            </el-tag>
-          </div>
-          <div class="instance-meta">
-            <span><el-icon><Grid /></el-icon> {{ instanceInfo.game }}</span>
-            <el-divider direction="vertical" />
-            <span>
-              <el-icon><Cpu /></el-icon>
-              <el-tag
-                :type="getDeployTypeTagType(instanceInfo.deployType)"
-                size="small"
-                effect="plain"
-                style="margin-left: 4px"
-              >
-                {{ getDeployTypeShort(instanceInfo.deployType) }}
+            <span class="title-kicker">SERVICE INSTANCE</span>
+            <div class="title-line">
+              <h1>{{ instanceInfo.name }}</h1>
+              <el-tag :type="statusType(instanceInfo.status)" size="small" effect="dark">
+                {{ instanceInfo.runStatusDesc }}
               </el-tag>
-            </span>
-            <el-divider direction="vertical" />
-            <span><el-icon><Monitor /></el-icon> {{ instanceInfo.hostName }}</span>
-            <el-divider direction="vertical" />
-            <span><el-icon><Link /></el-icon> {{ instanceInfo.ip }}:{{ instanceInfo.port }}</span>
+            </div>
+            <div class="instance-meta">
+              <span><el-icon><Grid /></el-icon> {{ instanceInfo.game }}</span>
+              <span><el-icon><Cpu /></el-icon> {{ getDeployTypeShort(instanceInfo.deployType) }}</span>
+              <span><el-icon><Monitor /></el-icon> {{ instanceInfo.hostName }}</span>
+              <span><el-icon><Link /></el-icon> {{ instanceInfo.ip }}:{{ instanceInfo.port }}</span>
+            </div>
           </div>
         </div>
-        <div class="header-right">
-          <template v-if="instanceInfo.status === 'running'">
-            <el-button type="warning" :loading="actionLoading" @click="handleStop">
-              <el-icon><VideoPause /></el-icon>
-              停止
-            </el-button>
-            <el-button type="info" :loading="actionLoading" @click="handleRestart">
-              <el-icon><RefreshRight /></el-icon>
-              重启
-            </el-button>
-          </template>
-          <template v-else-if="instanceInfo.status === 'stopped'">
-            <el-button type="success" :loading="actionLoading" @click="handleStart">
-              <el-icon><VideoPlay /></el-icon>
-              启动
-            </el-button>
-          </template>
-          <template v-else-if="instanceInfo.status === 'error'">
-            <el-button type="warning" :loading="actionLoading" @click="handleRestart">
-              <el-icon><RefreshRight /></el-icon>
-              重启
-            </el-button>
-          </template>
-          <template v-else>
-            <el-tag type="warning" effect="dark">{{ instanceInfo.runStatusDesc }}</el-tag>
-          </template>
+
+        <div class="command-state">
+          <span class="command-state__label">RUNTIME STATE</span>
+          <strong>{{ instanceInfo.status === 'running' ? 'LIVE' : 'STANDBY' }}</strong>
+          <small>{{ instanceInfo.status === 'running' ? '接受实时遥测与运维指令' : '启动实例后恢复实时遥测' }}</small>
+        </div>
+      </div>
+
+      <div class="command-dashboard" aria-label="实例运行指标">
+        <div class="command-stat command-stat--players">
+          <span class="stat-label">ONLINE PLAYERS</span>
+          <strong>{{ instanceInfo.players || 0 }}<small> / {{ instanceInfo.maxPlayers || 0 }}</small></strong>
+          <div class="player-track"><span :style="{ width: `${instanceInfo.maxPlayers ? Math.min(100, (instanceInfo.players / instanceInfo.maxPlayers) * 100) : 0}%` }" /></div>
+        </div>
+        <div class="command-stat">
+          <span class="stat-label">CPU LOAD</span>
+          <strong>{{ hasMetrics ? `${Math.round(instanceInfo.cpu || 0)}%` : '-' }}</strong>
+          <el-progress class="command-progress" :percentage="Math.round(instanceInfo.cpu || 0)" :show-text="false" :stroke-width="5" />
+        </div>
+        <div class="command-stat">
+          <span class="stat-label">MEMORY</span>
+          <strong>{{ hasMetrics ? `${Math.round(instanceInfo.memory || 0)}%` : '-' }}</strong>
+          <small class="stat-note">{{ hasMetrics ? (instanceInfo.memoryUsageText || '动态采样') : '等待遥测' }}</small>
+          <el-progress class="command-progress" :percentage="Math.round(instanceInfo.memory || 0)" :show-text="false" :stroke-width="5" status="success" />
+        </div>
+        <div class="command-stat">
+          <span class="stat-label">UPTIME</span>
+          <strong>{{ instanceInfo.status === 'running' && hasMetrics ? formatUptime(instanceInfo.uptime) : '-' }}</strong>
+          <small class="stat-note">{{ instanceInfo.status === 'running' ? '动态采样' : '实例未运行' }}</small>
+        </div>
+        <div class="command-action-rail">
+          <span class="action-label">COMMAND DECK</span>
+          <div class="header-right">
+            <template v-if="instanceInfo.status === 'running'">
+              <el-button type="warning" :loading="actionLoading" @click="handleStop">
+                <el-icon><VideoPause /></el-icon>
+                停止
+              </el-button>
+              <el-button type="info" :loading="actionLoading" @click="handleRestart">
+                <el-icon><RefreshRight /></el-icon>
+                重启
+              </el-button>
+            </template>
+            <template v-else-if="instanceInfo.status === 'stopped'">
+              <el-button type="success" :loading="actionLoading" @click="handleStart">
+                <el-icon><VideoPlay /></el-icon>
+                启动
+              </el-button>
+            </template>
+            <template v-else-if="instanceInfo.status === 'error'">
+              <el-button type="warning" :loading="actionLoading" @click="handleRestart">
+                <el-icon><RefreshRight /></el-icon>
+                重启
+              </el-button>
+            </template>
+            <template v-else>
+              <el-tag type="warning" effect="dark">{{ instanceInfo.runStatusDesc }}</el-tag>
+            </template>
+          </div>
+        </div>
+      </div>
+      <div class="instance-signal-band" aria-label="实例运行上下文">
+        <div class="signal-cell">
+          <span>RUNTIME ID</span>
+          <strong class="mono-text">{{ runtimeMetadata?.containerId || instanceInfo.id || '-' }}</strong>
+        </div>
+        <div class="signal-cell">
+          <span>HOST / PORT</span>
+          <strong>{{ instanceInfo.hostName }} · {{ instanceInfo.ip }}:{{ instanceInfo.port }}</strong>
+        </div>
+        <div class="signal-cell signal-cell--wide">
+          <span>WORK DIR</span>
+          <strong class="mono-text">{{ runtimeMetadata?.workDir || instanceInfo.deployPath || '-' }}</strong>
+        </div>
+        <div class="signal-cell">
+          <span>CREATED</span>
+          <strong>{{ instanceInfo.createdAt || '-' }}</strong>
         </div>
       </div>
     </el-card>
     
     <!-- Tab内容 -->
     <el-card class="content-card" shadow="never">
-      <el-tabs v-model="activeTab" type="border-card">
+      <el-tabs v-model="activeTab" tab-position="left" class="workbench-tabs">
         <!-- 基础信息 -->
         <el-tab-pane name="info">
           <template #label>
             <span><el-icon><InfoFilled /></el-icon> 基础信息</span>
           </template>
-          <div class="tab-content">
-            <el-descriptions :column="2" border>
+          <div class="tab-content overview-workbench">
+            <div class="tab-spotlight tab-spotlight--overview">
+              <div>
+                <span class="tab-spotlight__kicker">OPERATIONS SNAPSHOT</span>
+                <h3>实例运行概览</h3>
+                <p>从静态配置、实时资源到最近事件，快速判断当前实例是否需要处置。</p>
+              </div>
+              <span class="tab-spotlight__signal"><i class="status-dot is-online" />{{ instanceInfo.status === 'running' ? 'LIVE TELEMETRY' : 'TELEMETRY PAUSED' }}</span>
+            </div>
+            <div class="overview-layout">
+              <section class="overview-panel summary-panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">INSTANCE</span>
+                    <h3>基本信息</h3>
+                  </div>
+                  <el-tag size="small" effect="plain" type="info">静态配置</el-tag>
+                </div>
+
+                <el-descriptions class="details-descriptions" :column="2" border>
               <el-descriptions-item label="实例名称">
                 <el-icon><Document /></el-icon>
                 {{ instanceInfo.name }}
@@ -1256,7 +1327,7 @@ onBeforeUnmount(() => {
                 <el-icon><Folder /></el-icon>
                 {{ instanceInfo.deployPath || '-' }}
               </el-descriptions-item>
-            </el-descriptions>
+                </el-descriptions>
 
             <!-- 运行时元数据（docker-compose 部署信息） -->
             <div v-if="runtimeMetadata" class="runtime-metadata-section">
@@ -1319,6 +1390,83 @@ onBeforeUnmount(() => {
                 </el-table>
               </div>
             </div>
+              </section>
+
+              <section class="overview-panel resource-panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">RUNTIME</span>
+                    <h3>资源监控</h3>
+                  </div>
+                  <span class="refresh-state">
+                    <i class="status-dot" :class="{ 'is-online': instanceInfo.status === 'running' }" />
+                    {{ instanceInfo.status === 'running' ? '实时' : '未运行' }}
+                  </span>
+                </div>
+
+                <div class="resource-list">
+                  <div class="resource-row">
+                    <div class="resource-label"><span>CPU 使用率</span><strong>{{ hasMetrics ? `${Math.round(instanceInfo.cpu || 0)}%` : '-' }}</strong></div>
+                    <el-progress :percentage="Math.round(instanceInfo.cpu || 0)" :show-text="false" :stroke-width="6" />
+                    <span class="resource-meta">{{ instanceInfo.status === 'running' ? '动态采样' : '实例未运行' }}</span>
+                  </div>
+                  <div class="resource-row">
+                    <div class="resource-label"><span>内存使用率</span><strong>{{ hasMetrics ? (instanceInfo.memoryUsageText || `${Math.round(instanceInfo.memory || 0)}%`) : '-' }}</strong></div>
+                    <el-progress :percentage="Math.round(instanceInfo.memory || 0)" :show-text="false" :stroke-width="6" status="success" />
+                    <span class="resource-meta">{{ instanceInfo.status === 'running' ? '动态采样' : '实例未运行' }}</span>
+                  </div>
+                  <div class="resource-row uptime-row">
+                    <div class="resource-label"><span>运行时间</span><strong>{{ instanceInfo.status === 'running' && hasMetrics ? formatUptime(instanceInfo.uptime) : '-' }}</strong></div>
+                    <div class="uptime-track">
+                      <span v-if="instanceInfo.status === 'running'" class="uptime-pulse" />
+                    </div>
+                    <span class="resource-meta">每 15 秒刷新</span>
+                  </div>
+                </div>
+
+                <div v-if="metricsError" class="metrics-warning">
+                  <el-icon><WarningFilled /></el-icon>
+                  {{ metricsError }}
+                </div>
+              </section>
+            </div>
+
+            <div class="overview-lower-grid">
+              <section class="overview-panel players-panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">PLAYERS</span>
+                    <h3>在线玩家 <em>({{ instanceInfo.players || 0 }})</em></h3>
+                  </div>
+                  <span class="panel-muted">上限 {{ instanceInfo.maxPlayers || 0 }}</span>
+                </div>
+                <div class="player-summary">
+                  <div class="player-count">{{ instanceInfo.players || 0 }}<small>/{{ instanceInfo.maxPlayers || 0 }}</small></div>
+                  <div class="player-track"><span :style="{ width: `${Math.min(100, instanceInfo.maxPlayers ? (instanceInfo.players / instanceInfo.maxPlayers) * 100 : 0)}%` }" /></div>
+                  <p>当前实例在线玩家</p>
+                </div>
+              </section>
+
+              <section class="overview-panel recent-log-panel" @click="activeTab = 'logs'">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">EVENT STREAM</span>
+                    <h3>实时日志</h3>
+                  </div>
+                  <button class="panel-link" type="button" @click.stop="activeTab = 'logs'">查看全部 <el-icon><ArrowRight /></el-icon></button>
+                </div>
+                <div v-if="recentLogs.length" class="recent-log-list">
+                  <div v-for="(log, index) in recentLogs" :key="index" class="recent-log-line" :class="log.level">
+                    <span class="recent-log-time">{{ log.time }}</span>
+                    <span class="recent-log-message">{{ log.message }}</span>
+                  </div>
+                </div>
+                <div v-else class="recent-log-empty">
+                  <el-icon><Tickets /></el-icon>
+                  <span>切换到日志查看以开启实时日志流</span>
+                </div>
+              </section>
+            </div>
           </div>
         </el-tab-pane>
         
@@ -1327,7 +1475,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Setting /></el-icon> 配置管理</span>
           </template>
-          <div class="tab-content" v-loading="configLoading">
+          <div class="tab-content config-workbench" v-loading="configLoading">
+            <div class="tab-spotlight tab-spotlight--config">
+              <div>
+                <span class="tab-spotlight__kicker">CONFIGURATION WORKBENCH</span>
+                <h3>配置编排</h3>
+                <p>在结构化表单与原始文件之间切换，保存前确认当前作用域。</p>
+              </div>
+              <span class="tab-spotlight__meta"><el-icon><Document /></el-icon>{{ configFileName || '等待选择配置文件' }}</span>
+            </div>
             <div class="config-header">
               <div class="config-left">
                 <el-radio-group v-model="configMode" size="small">
@@ -1401,7 +1557,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Folder /></el-icon> 文件管理</span>
           </template>
-          <div class="tab-content">
+          <div class="tab-content file-workbench">
+            <div class="tab-spotlight tab-spotlight--files">
+              <div>
+                <span class="tab-spotlight__kicker">FILESYSTEM EXPLORER</span>
+                <h3>文件系统</h3>
+                <p>以路径为主线浏览实例数据，常用操作保持在当前目录的操作带内。</p>
+              </div>
+              <span class="tab-spotlight__meta"><el-icon><FolderOpened /></el-icon>{{ currentPath || '/' }}</span>
+            </div>
             <div class="file-header">
               <el-breadcrumb separator="/">
                 <el-breadcrumb-item>
@@ -1473,7 +1637,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Tickets /></el-icon> 日志查看</span>
           </template>
-          <div class="tab-content">
+          <div class="tab-content log-workbench">
+            <div class="tab-spotlight tab-spotlight--logs">
+              <div>
+                <span class="tab-spotlight__kicker">LOG STREAM</span>
+                <h3>日志流</h3>
+                <p>把筛选、刷新与事件正文放进同一条阅读路径，优先定位异常与上下文。</p>
+              </div>
+              <span class="tab-spotlight__meta"><i class="status-dot" :class="{ 'is-online': logsAutoRefresh }" />{{ logsAutoRefresh ? 'LIVE STREAM' : 'PAUSED' }}</span>
+            </div>
             <div class="log-header">
               <div class="log-filters">
                 <el-input
@@ -1532,7 +1704,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Monitor /></el-icon> 控制台</span>
           </template>
-          <div class="tab-content console-tab">
+          <div class="tab-content console-tab console-workbench">
+            <div class="tab-spotlight tab-spotlight--console">
+              <div>
+                <span class="tab-spotlight__kicker">COMMAND TERMINAL</span>
+                <h3>运行控制台</h3>
+                <p>连接状态、命令历史与输入提示保持在同一终端上下文中。</p>
+              </div>
+              <span class="tab-spotlight__meta"><i class="status-dot" :class="{ 'is-online': consoleConnected }" />{{ consoleConnected ? 'CONNECTED' : consoleConnecting ? 'CONNECTING' : 'OFFLINE' }}</span>
+            </div>
             <div class="console-toolbar">
               <el-tag :type="consoleConnected ? 'success' : 'danger'" size="small" effect="dark">
                 <el-icon v-if="consoleConnecting" class="is-loading"><Loading /></el-icon>
@@ -1577,7 +1757,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Download /></el-icon> 备份还原</span>
           </template>
-          <div class="tab-content">
+          <div class="tab-content backup-workbench">
+            <div class="tab-spotlight tab-spotlight--backup">
+              <div>
+                <span class="tab-spotlight__kicker">BACKUP VAULT</span>
+                <h3>备份与还原</h3>
+                <p>将快照、活动任务和恢复动作组织在一处，降低高风险操作的确认成本。</p>
+              </div>
+              <span class="tab-spotlight__meta"><el-icon><Lock /></el-icon>{{ backupStore.hasActiveBackup || backupStore.hasActiveRestore ? 'TASK IN PROGRESS' : 'VAULT READY' }}</span>
+            </div>
             <!-- 活动进度显示 -->
             <div v-if="backupStore.hasActiveBackup || backupStore.hasActiveRestore" class="active-progress-section">
               <BackupProgress
@@ -1786,7 +1974,15 @@ onBeforeUnmount(() => {
           <template #label>
             <span><el-icon><Connection /></el-icon> 插件扩展</span>
           </template>
-          <div class="tab-content plugin-tab-content">
+          <div class="tab-content plugin-tab-content plugin-workbench">
+            <div class="tab-spotlight tab-spotlight--plugin">
+              <div>
+                <span class="tab-spotlight__kicker">PLUGIN WORKSPACE</span>
+                <h3>游戏扩展工作区</h3>
+                <p>插件能力在实例上下文中运行，主应用负责承载边界与运行时身份。</p>
+              </div>
+              <span class="tab-spotlight__meta"><el-icon><Connection /></el-icon>{{ instanceInfo.gameCode || '等待游戏识别' }}</span>
+            </div>
             <PluginTab
               v-if="instanceInfo.gameCode"
               :instance-id="Number(instanceId)"
@@ -1875,11 +2071,15 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 .instance-detail-container {
+  min-width: 0;
+
   .info-card {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+    background: var(--platform-surface-1);
+    border-color: var(--platform-line);
 
     :deep(.el-card__body) {
-      padding: 16px 20px;
+      padding: 14px 18px;
     }
   }
 
@@ -1896,15 +2096,110 @@ onBeforeUnmount(() => {
   }
 
   .content-card {
+    background: var(--platform-surface-1);
+    border-color: var(--platform-line);
+
     :deep(.el-card__body) {
       padding: 0;
     }
     
     :deep(.el-tabs__content) {
-      padding: 20px;
+      padding: 16px;
     }
   }
 }
+
+.command-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(91, 135, 154, 0.16);
+}
+
+.command-kicker,
+.command-channel,
+.command-hint,
+.signal-cell span {
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.command-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #86b4c5;
+}
+
+.command-channel {
+  margin-left: 7px;
+  color: #5e8291;
+}
+
+.command-hint {
+  color: #6b8c99;
+  white-space: nowrap;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgba(140, 169, 179, 0.65);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.live-dot.is-live {
+  border-color: var(--platform-green);
+  background: var(--platform-green);
+  box-shadow: 0 0 0 4px rgba(48, 207, 116, 0.11), 0 0 13px rgba(48, 207, 116, 0.65);
+}
+
+.instance-header {
+  padding: 14px 0 15px;
+  border-bottom: 1px solid rgba(91, 135, 154, 0.16);
+}
+
+.instance-signal-band {
+  display: grid;
+  grid-template-columns: 0.8fr 0.8fr 1.7fr 0.9fr;
+  margin-top: 13px;
+  border: 1px solid rgba(83, 132, 163, 0.24);
+  background: rgba(8, 26, 39, 0.42);
+}
+
+.signal-cell {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 10px 13px;
+  border-right: 1px solid rgba(91, 135, 154, 0.15);
+}
+
+.signal-cell:last-child { border-right: 0; }
+
+.signal-cell strong {
+  overflow: hidden;
+  color: #d8eaf0;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-cell .mono-text {
+  color: #8bc8dc;
+  font-family: var(--el-font-family-mono);
+  font-size: 11px;
+}
+
+.signal-cell--wide strong { color: #9ebcc7; }
 
 .instance-header {
   display: flex;
@@ -1916,7 +2211,7 @@ onBeforeUnmount(() => {
   .header-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
   }
   
@@ -1927,7 +2222,8 @@ onBeforeUnmount(() => {
     
     h2 {
       margin: 0;
-      font-size: var(--platform-font-size-lg);
+      color: var(--el-text-color-primary);
+      font-size: 20px;
       font-weight: var(--platform-font-weight-bold);
     }
   }
@@ -1950,8 +2246,530 @@ onBeforeUnmount(() => {
   }
 }
 
+.command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 17px 0 18px;
+}
+
+.command-header .header-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+
+.back-button {
+  flex: 0 0 auto;
+  color: #83c9df !important;
+}
+
+.back-button:hover { color: #d9f7ff !important; }
+
+.instance-mark {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  place-items: center;
+  border: 1px solid rgba(74, 191, 231, 0.42);
+  border-radius: 14px;
+  color: #95e4fb;
+  background: linear-gradient(145deg, rgba(29, 104, 132, 0.75), rgba(16, 56, 75, 0.75));
+  box-shadow: 0 0 26px rgba(22, 180, 230, 0.12);
+}
+
+.command-header .instance-title {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.title-kicker,
+.command-state__label,
+.stat-label,
+.action-label {
+  color: #6d94a2;
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-line h1 {
+  overflow: hidden;
+  margin: 0;
+  color: #ecf7fa;
+  font-size: 24px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-header .instance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 13px;
+  color: #8baab6;
+  font-size: 11px;
+}
+
+.command-header .instance-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.command-header .instance-meta .el-icon { color: #6faec1; }
+
+.command-state {
+  display: grid;
+  min-width: 190px;
+  gap: 4px;
+  padding: 10px 14px;
+  border-left: 1px solid rgba(91, 135, 154, 0.25);
+}
+
+.command-state strong {
+  color: var(--platform-green);
+  font-family: var(--el-font-family-mono);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.command-state small {
+  color: #7f9da7;
+  font-size: 11px;
+}
+
+.command-dashboard {
+  display: grid;
+  grid-template-columns: 1.05fr 0.9fr 1.08fr 0.95fr 1.4fr;
+  border: 1px solid rgba(83, 132, 163, 0.25);
+  background: rgba(8, 26, 39, 0.46);
+}
+
+.command-stat,
+.command-action-rail {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 6px;
+  min-height: 86px;
+  padding: 13px 15px;
+  border-right: 1px solid rgba(91, 135, 154, 0.16);
+}
+
+.command-stat > strong {
+  overflow: hidden;
+  color: #e1f0f4;
+  font-family: var(--el-font-family-mono);
+  font-size: 20px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-stat > strong small {
+  color: #7896a2;
+  font-size: 12px;
+}
+
+.command-stat--players > strong { color: #95e5f8; }
+
+.command-progress { width: 100%; }
+
+.command-progress :deep(.el-progress-bar__outer) { background: rgba(2, 15, 25, 0.78); }
+.command-progress :deep(.el-progress-bar__inner) { background: #42bfe9; }
+.command-progress :deep(.el-progress-bar__inner.el-progress-bar__inner--success) { background: #48d18d; }
+
+.stat-note { color: #6f8d98; font-size: 10px; }
+
+.command-action-rail {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-right: 0;
+  background: linear-gradient(100deg, rgba(20, 65, 80, 0.12), rgba(31, 78, 94, 0.3));
+}
+
+.command-action-rail .header-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.command-action-rail .el-button { min-width: 70px; }
+
+.header-metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-left: auto;
+  margin-right: 12px;
+  border-left: 1px solid var(--platform-line);
+}
+
+.header-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 76px;
+  padding: 0 14px;
+  border-right: 1px solid var(--platform-line);
+
+  span {
+    color: var(--el-text-color-secondary);
+    font-size: 11px;
+  }
+
+  strong {
+    color: var(--el-text-color-primary);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+.workbench-tabs {
+  min-height: 580px;
+  background: var(--platform-surface-1) !important;
+  border: 1px solid var(--platform-line) !important;
+
+  :deep(.el-tabs__header) {
+    width: 174px;
+    margin: 0;
+    padding: 14px 10px;
+    background: linear-gradient(180deg, rgba(12, 34, 48, 0.96), rgba(9, 24, 37, 0.96)) !important;
+    border-right: 1px solid var(--platform-line) !important;
+  }
+
+  :deep(.el-tabs__nav-wrap) { padding: 0; }
+  :deep(.el-tabs__nav-wrap::after) { display: none; }
+  :deep(.el-tabs__nav) { width: 100%; border: 0; }
+  :deep(.el-tabs__active-bar) { display: none; }
+
+  :deep(.el-tabs__item) {
+    display: flex;
+    height: 43px;
+    align-items: center;
+    justify-content: flex-start;
+    margin: 3px 0;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--platform-text-secondary) !important;
+    font-size: 12px;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+
+  :deep(.el-tabs__item .el-icon) {
+    margin-right: 9px;
+    color: #7094a1;
+  }
+
+  :deep(.el-tabs__item.is-active) {
+    color: #b9efff !important;
+    background: rgba(22, 105, 131, 0.3) !important;
+    border-color: rgba(44, 180, 221, 0.42);
+    box-shadow: inset 2px 0 0 #32c9f4;
+  }
+
+  :deep(.el-tabs__item.is-active .el-icon) { color: #67dcfa; }
+  :deep(.el-tabs__item:hover) { color: #d3f6fd !important; background: rgba(22, 82, 104, 0.26); }
+
+  :deep(.el-tabs__content) {
+    min-width: 0;
+    padding: 21px;
+    background: var(--platform-surface-1) !important;
+    color: var(--platform-text-regular);
+  }
+}
+
 .tab-content {
   min-height: 400px;
+}
+
+.overview-layout,
+.overview-lower-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-layout {
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+}
+
+.overview-lower-grid {
+  grid-template-columns: minmax(220px, 0.52fr) minmax(0, 1.48fr);
+  margin-top: 12px;
+}
+
+.overview-panel {
+  min-width: 0;
+  padding: 16px;
+  background: var(--platform-surface-2);
+  border: 1px solid var(--platform-line);
+  border-radius: 5px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--platform-line);
+
+  h3 {
+    margin: 2px 0 0;
+    color: var(--el-text-color-primary);
+    font-size: 15px;
+    font-weight: 600;
+
+    em {
+      color: var(--el-text-color-secondary);
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 400;
+    }
+  }
+}
+
+.panel-kicker {
+  color: var(--el-text-color-disabled);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.panel-muted,
+.refresh-state {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.refresh-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--platform-green);
+  border-radius: 50%;
+
+  &.is-online {
+    box-shadow: 0 0 0 3px rgba(82, 207, 130, 0.12);
+  }
+}
+
+.details-descriptions {
+  :deep(.el-descriptions__label),
+  :deep(.el-descriptions__content) {
+    padding: 10px 12px;
+  }
+
+  :deep(.el-descriptions__label) {
+    width: 108px;
+    white-space: nowrap;
+  }
+}
+
+.resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 8px 2px 4px;
+}
+
+.resource-row {
+  .resource-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+
+    strong {
+      color: var(--platform-cyan);
+      font-size: 17px;
+      font-weight: 600;
+    }
+  }
+
+  :deep(.el-progress-bar__outer) {
+    background: var(--platform-surface-0);
+  }
+
+  :deep(.el-progress-bar__inner) {
+    background: var(--platform-cyan);
+  }
+
+  .resource-meta {
+    display: block;
+    margin-top: 5px;
+    color: var(--el-text-color-disabled);
+    font-size: 11px;
+  }
+}
+
+.uptime-track,
+.player-track {
+  height: 6px;
+  overflow: hidden;
+  background: var(--platform-surface-0);
+  border-radius: 999px;
+
+  > span {
+    display: block;
+    height: 100%;
+    background: var(--platform-green);
+    border-radius: inherit;
+    transition: width var(--transition-duration);
+  }
+}
+
+.uptime-track {
+  position: relative;
+  background: linear-gradient(90deg, var(--platform-surface-0), var(--platform-surface-2));
+
+  .uptime-pulse {
+    position: absolute;
+    top: 50%;
+    left: 18%;
+    width: 8px;
+    height: 8px;
+    background: var(--platform-green);
+    border: 2px solid var(--platform-surface-1);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(82, 207, 130, 0.14), 0 0 12px rgba(82, 207, 130, 0.58);
+    transform: translate(-50%, -50%);
+  }
+}
+
+.metrics-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 9px 10px;
+  color: var(--platform-amber);
+  font-size: 12px;
+  background: rgba(242, 184, 75, 0.08);
+  border: 1px solid rgba(242, 184, 75, 0.25);
+  border-radius: 4px;
+}
+
+.player-summary {
+  padding: 10px 2px 4px;
+
+  .player-count {
+    color: var(--el-text-color-primary);
+    font-size: 32px;
+    font-weight: 600;
+
+    small {
+      margin-left: 4px;
+      color: var(--el-text-color-secondary);
+      font-size: 14px;
+      font-weight: 400;
+    }
+  }
+
+  .player-track {
+    margin: 16px 0 10px;
+
+    span {
+      background: var(--platform-cyan);
+    }
+  }
+
+  p {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+}
+
+.recent-log-panel {
+  cursor: pointer;
+  transition: border-color var(--transition-duration-fast), background-color var(--transition-duration-fast);
+
+  &:hover {
+    background: var(--platform-surface-3);
+    border-color: rgba(39, 181, 243, 0.48);
+  }
+}
+
+.panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--platform-cyan);
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.recent-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 122px;
+  overflow: hidden;
+  font-family: var(--el-font-family-mono);
+  font-size: 11px;
+}
+
+.recent-log-line {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+
+  .recent-log-time {
+    flex-shrink: 0;
+    color: var(--el-text-color-disabled);
+  }
+
+  .recent-log-message {
+    overflow: hidden;
+    color: var(--el-text-color-regular);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &.error .recent-log-message { color: var(--platform-red); }
+  &.warning .recent-log-message { color: var(--platform-amber); }
+}
+
+.recent-log-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 72px;
+  color: var(--el-text-color-disabled);
+  font-size: 12px;
 }
 
 // 插件 Tab
@@ -2333,9 +3151,308 @@ onBeforeUnmount(() => {
   }
 }
 
+// 子工作区视觉语言
+.content-card :deep(.workbench-tabs .el-tabs__content) {
+  padding: 21px;
+}
+
+.tab-spotlight {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 74px;
+  margin-bottom: 16px;
+  padding: 15px 18px;
+  background: linear-gradient(110deg, rgba(24, 45, 59, 0.9), rgba(14, 28, 39, 0.94));
+  border: 1px solid rgba(91, 135, 154, 0.24);
+  border-left: 3px solid var(--platform-cyan);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+
+  h3 {
+    margin: 5px 0 4px;
+    color: var(--el-text-color-primary);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  p {
+    margin: 0;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+}
+
+.tab-spotlight__kicker {
+  color: var(--platform-cyan);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.tab-spotlight__meta,
+.tab-spotlight__signal {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--el-text-color-secondary);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: rgba(6, 15, 23, 0.46);
+  border: 1px solid rgba(91, 135, 154, 0.24);
+  border-radius: 3px;
+}
+
+.tab-spotlight__meta .el-icon,
+.tab-spotlight__signal .el-icon {
+  color: var(--platform-cyan);
+}
+
+.tab-spotlight__meta .status-dot:not(.is-online) {
+  background: var(--el-text-color-disabled);
+  box-shadow: none;
+}
+
+.tab-spotlight--overview { border-left-color: var(--platform-green); }
+.tab-spotlight--overview .tab-spotlight__kicker { color: var(--platform-green); }
+.tab-spotlight--config { border-left-color: #b68cff; }
+.tab-spotlight--config .tab-spotlight__kicker { color: #c5a7ff; }
+.tab-spotlight--files { border-left-color: var(--platform-amber); }
+.tab-spotlight--files .tab-spotlight__kicker { color: var(--platform-amber); }
+.tab-spotlight--logs { border-left-color: var(--platform-cyan); }
+.tab-spotlight--console { border-left-color: var(--platform-green); }
+.tab-spotlight--console .tab-spotlight__kicker { color: var(--platform-green); }
+.tab-spotlight--backup { border-left-color: #c792ff; }
+.tab-spotlight--backup .tab-spotlight__kicker { color: #d3adff; }
+.tab-spotlight--plugin { border-left-color: #66d9ff; }
+
+.config-workbench {
+  .config-header {
+    min-height: 54px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(17, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  .config-form,
+  .config-editor {
+    max-width: none;
+    padding: 16px;
+    background: rgba(18, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  .config-form-inner {
+    max-width: 860px;
+    padding-top: 6px;
+  }
+
+  :deep(.config-textarea .el-textarea__inner) {
+    min-height: 390px !important;
+    padding: 15px 16px;
+    color: #bfe7ef;
+    line-height: 1.7;
+    background: #08131c;
+    border-color: rgba(91, 135, 154, 0.3);
+  }
+
+  :deep(.el-alert) {
+    background: rgba(16, 33, 45, 0.86);
+    border-color: rgba(91, 135, 154, 0.22);
+  }
+}
+
+.file-workbench {
+  .file-header {
+    min-height: 54px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(17, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  :deep(.el-table) {
+    background: rgba(11, 24, 34, 0.72);
+    border: 1px solid var(--platform-line);
+  }
+
+  :deep(.el-table__header-wrapper th) {
+    color: var(--el-text-color-secondary);
+    font-family: var(--el-font-family-mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    background: rgba(24, 45, 59, 0.88);
+  }
+
+  :deep(.el-table__row) {
+    transition: background-color var(--transition-duration-fast);
+  }
+
+  :deep(.el-table__row:hover > td) {
+    background: rgba(25, 68, 86, 0.24) !important;
+  }
+
+  .file-name {
+    font-family: var(--el-font-family-mono);
+    font-size: 12px;
+  }
+}
+
+.log-workbench {
+  .log-header {
+    min-height: 54px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(17, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  .log-content {
+    min-height: 420px;
+    padding: 16px 18px;
+    background: #071118;
+    border: 1px solid rgba(91, 135, 154, 0.3);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  }
+
+  .log-line {
+    position: relative;
+    margin-bottom: 0;
+    padding: 6px 0 6px 12px;
+    border-bottom: 1px solid rgba(91, 135, 154, 0.1);
+
+    &::before {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 2px;
+      background: rgba(91, 135, 154, 0.3);
+      content: '';
+    }
+
+    &.error::before { background: var(--platform-red); }
+    &.warning::before { background: var(--platform-amber); }
+    &.info::before { background: var(--platform-cyan); }
+  }
+}
+
+.console-workbench {
+  .console-toolbar {
+    min-height: 42px;
+    margin-bottom: 10px;
+    padding: 7px 10px;
+    background: rgba(17, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  .console-output {
+    min-height: 350px;
+    padding: 18px;
+    background: #050b10;
+    border: 1px solid rgba(82, 207, 130, 0.24);
+    border-radius: 4px;
+    box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.24);
+  }
+
+  .console-line {
+    padding: 4px 0;
+    line-height: 1.55;
+  }
+
+  .console-input {
+    align-items: center;
+    margin-top: 2px;
+    padding: 8px 10px;
+    background: rgba(17, 34, 46, 0.78);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  :deep(.console-input .el-input__wrapper) {
+    background: #08131c;
+    box-shadow: none;
+  }
+}
+
+.backup-workbench {
+  .active-progress-section {
+    margin-bottom: 14px;
+    padding: 12px;
+    background: rgba(49, 39, 20, 0.22);
+    border: 1px solid rgba(242, 184, 75, 0.28);
+    border-radius: 4px;
+  }
+
+  .backup-header {
+    min-height: 54px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(17, 34, 46, 0.72);
+    border: 1px solid var(--platform-line);
+    border-radius: 4px;
+  }
+
+  :deep(.el-table) {
+    background: rgba(11, 24, 34, 0.72);
+    border: 1px solid var(--platform-line);
+  }
+
+  :deep(.el-table__header-wrapper th) {
+    color: var(--el-text-color-secondary);
+    font-family: var(--el-font-family-mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    background: rgba(24, 45, 59, 0.88);
+  }
+}
+
+.plugin-workbench {
+  .tab-spotlight {
+    margin-bottom: 12px;
+  }
+
+  :deep(.plugin-tab) {
+    min-height: 410px;
+    padding: 14px;
+    background: rgba(8, 19, 28, 0.62);
+    border: 1px solid rgba(102, 217, 255, 0.22);
+    border-radius: 4px;
+  }
+}
+
 // 响应式适配
 @media screen and (max-width: 768px) {
-  .instance-header {
+  .command-identity {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .command-hint { padding-left: 16px; }
+
+  .instance-signal-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .signal-cell:nth-child(2) { border-right: 0; }
+  .signal-cell--wide { grid-column: 1 / -1; border-top: 1px solid rgba(91, 135, 154, 0.15); }
+
+  .command-header {
     flex-direction: column;
     align-items: flex-start;
     
@@ -2352,6 +3469,18 @@ onBeforeUnmount(() => {
       }
     }
   }
+
+  .command-state {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 0 0;
+    border-top: 1px solid rgba(91, 135, 154, 0.2);
+    border-left: 0;
+  }
+
+  .command-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .command-action-rail { grid-column: 1 / -1; border-top: 1px solid rgba(91, 135, 154, 0.16); }
+  .workbench-tabs :deep(.el-tabs__header) { width: 146px; }
   
   .config-header {
     flex-direction: column;

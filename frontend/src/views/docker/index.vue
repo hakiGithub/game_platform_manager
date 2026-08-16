@@ -1,13 +1,48 @@
 <template>
-  <div class="docker-page">
+  <div class="docker-page docker-command-page">
+    <section class="docker-hero">
+      <div class="hero-copy">
+        <span class="section-kicker">CONTAINER COMMAND / DOCKER INVENTORY</span>
+        <h1>容器编排台</h1>
+        <p>以节点为边界管理容器生命周期、资源水位和运行时关联。</p>
+      </div>
+      <div class="hero-context">
+        <div class="node-pulse" :class="{ 'is-live': selectedHost?.status === 1 }">
+          <span></span>
+          <div>
+            <small>TARGET NODE</small>
+            <strong>{{ selectedHost?.name || "等待选择节点" }}</strong>
+            <em>{{ selectedHost?.ip || "选择在线主机后读取 Docker 状态" }}</em>
+          </div>
+        </div>
+        <span class="hero-sync">30s SYNC</span>
+      </div>
+    </section>
+
+    <section class="docker-signal-strip" aria-label="Docker 状态摘要">
+      <div class="signal-intro">
+        <span class="section-kicker">RUNTIME SIGNAL</span>
+        <strong>{{ selectedHost ? "节点容器态势已接入" : "等待节点上下文" }}</strong>
+        <small>{{ selectedHost ? "容器与镜像数据按目标主机同步" : "先选择一台在线主机" }}</small>
+      </div>
+      <div class="signal-stat is-accent"><span>总容器</span><strong>{{ stats.total }}</strong></div>
+      <div class="signal-stat is-live"><span>运行中</span><strong>{{ stats.running }}</strong></div>
+      <div class="signal-stat"><span>已停止</span><strong>{{ stats.stopped }}</strong></div>
+      <div class="signal-stat is-linked"><span>已关联</span><strong>{{ stats.linked }}</strong></div>
+      <div class="signal-stat is-warning"><span>未关联</span><strong>{{ stats.unlinked }}</strong></div>
+    </section>
+
     <!-- 主机选择器 -->
     <el-card class="host-selector-card" shadow="never">
       <div class="host-selector">
         <div class="selector-left">
-          <span class="label">选择主机:</span>
+          <div class="selector-label">
+            <span class="label">TARGET NODE</span>
+            <small>容器与镜像按节点读取</small>
+          </div>
           <el-select
             v-model="selectedHostId"
-            placeholder="请选择主机"
+            placeholder="选择目标主机"
             style="width: 240px"
             @change="handleRefresh"
           >
@@ -105,44 +140,9 @@
             </el-form>
           </div>
 
-          <!-- 统计信息 -->
-          <div class="stats-section">
-            <el-row :gutter="16">
-              <el-col :span="4">
-                <div class="stat-item">
-                  <div class="stat-value">{{ stats.total }}</div>
-                  <div class="stat-label">总容器</div>
-                </div>
-              </el-col>
-              <el-col :span="4">
-                <div class="stat-item running">
-                  <div class="stat-value">{{ stats.running }}</div>
-                  <div class="stat-label">运行中</div>
-                </div>
-              </el-col>
-              <el-col :span="4">
-                <div class="stat-item stopped">
-                  <div class="stat-value">{{ stats.stopped }}</div>
-                  <div class="stat-label">已停止</div>
-                </div>
-              </el-col>
-              <el-col :span="4">
-                <div class="stat-item linked">
-                  <div class="stat-value">{{ stats.linked }}</div>
-                  <div class="stat-label">已关联</div>
-                </div>
-              </el-col>
-              <el-col :span="4">
-                <div class="stat-item unlinked">
-                  <div class="stat-value">{{ stats.unlinked }}</div>
-                  <div class="stat-label">未关联</div>
-                </div>
-              </el-col>
-            </el-row>
-          </div>
-
           <!-- 容器表格 -->
           <el-table
+            class="docker-table"
             v-loading="containerLoading"
             :data="containerList"
             style="width: 100%"
@@ -342,6 +342,7 @@
 
           <!-- 镜像表格 -->
           <el-table
+            class="docker-table"
             v-loading="imagesLoading"
             :data="imageList"
             style="width: 100%"
@@ -559,6 +560,9 @@ const hostList = computed(() => hostStore.hostList);
 
 // 选中的主机ID
 const selectedHostId = ref(null);
+const selectedHost = computed(() =>
+  hostList.value.find((host) => host.id === selectedHostId.value) || null,
+);
 
 // 当前Tab
 const activeTab = ref("containers");
@@ -865,8 +869,14 @@ function stopRefreshTimer() {
   }
 }
 
-onMounted(() => {
-  fetchContainers();
+onMounted(async () => {
+  try {
+    const data = await hostStore.fetchHostList({ size: 100 });
+    const firstOnlineHost = (data.records || []).find((host) => host.status === 1);
+    if (firstOnlineHost) selectedHostId.value = firstOnlineHost.id;
+  } catch (error) {
+    ElMessage.error("获取 Docker 主机列表失败");
+  }
   startRefreshTimer();
 });
 
@@ -1113,6 +1123,406 @@ onBeforeUnmount(() => {
         }
       }
     }
+  }
+}
+
+/* Container Command overrides: treat the page as a node-scoped operations console. */
+.docker-command-page {
+  padding: 4px 2px 28px;
+  color: var(--platform-text-primary);
+}
+
+.docker-hero,
+.docker-signal-strip,
+.docker-command-page .host-selector-card,
+.docker-command-page .content-card {
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-1);
+}
+
+.docker-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 170px;
+  padding: 24px 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(118deg, rgba(67, 184, 232, 0.15), transparent 45%),
+    linear-gradient(90deg, rgba(82, 207, 130, 0.04), transparent 68%),
+    var(--platform-surface-1);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.14);
+}
+
+.hero-copy {
+  display: grid;
+  gap: 6px;
+
+  h1 {
+    margin: 0;
+    color: var(--platform-text-primary);
+    font-size: clamp(25px, 3vw, 36px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+
+  p {
+    margin: 0;
+    color: var(--platform-text-secondary);
+    font-size: 12px;
+  }
+}
+
+.section-kicker {
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.hero-context {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.node-pulse {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-2);
+
+  > span {
+    width: 9px;
+    height: 9px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--platform-text-muted);
+  }
+
+  &.is-live {
+    border-color: rgba(82, 207, 130, 0.32);
+
+    > span {
+      background: var(--platform-green);
+      box-shadow: 0 0 0 4px rgba(82, 207, 130, 0.11);
+    }
+  }
+
+  small,
+  strong,
+  em {
+    display: block;
+  }
+
+  small,
+  em {
+    color: var(--platform-text-muted);
+    font-family: var(--el-font-family-mono);
+    font-size: 9px;
+    font-style: normal;
+  }
+
+  strong {
+    margin: 3px 0;
+    color: var(--platform-text-primary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+}
+
+.hero-sync {
+  padding-bottom: 2px;
+  color: var(--platform-accent);
+  font-family: var(--el-font-family-mono);
+  font-size: 9px;
+}
+
+.docker-signal-strip {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.6fr) repeat(5, minmax(72px, 0.7fr));
+  min-height: 76px;
+  margin-top: 14px;
+  padding: 11px 18px;
+  border-radius: 5px;
+  background: var(--platform-surface-2);
+}
+
+.signal-intro,
+.signal-stat {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.signal-intro {
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--platform-text-muted);
+    font-size: 10px;
+  }
+}
+
+.signal-stat {
+  position: relative;
+  gap: 5px;
+  padding: 0 13px;
+  border-left: 1px solid var(--platform-line);
+
+  &::before {
+    position: absolute;
+    top: 12px;
+    left: -1px;
+    width: 2px;
+    height: 29px;
+    background: var(--platform-text-muted);
+    content: "";
+  }
+
+  span {
+    color: var(--platform-text-muted);
+    font-size: 10px;
+  }
+
+  strong {
+    color: var(--platform-text-primary);
+    font-family: var(--el-font-family-mono);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  &.is-accent::before {
+    background: var(--platform-accent);
+  }
+
+  &.is-accent strong {
+    color: var(--platform-accent);
+  }
+
+  &.is-live::before {
+    background: var(--platform-green);
+  }
+
+  &.is-live strong {
+    color: var(--platform-green);
+  }
+
+  &.is-linked::before {
+    background: #9a8cff;
+  }
+
+  &.is-linked strong {
+    color: #b8adff;
+  }
+
+  &.is-warning::before {
+    background: var(--platform-amber);
+  }
+
+  &.is-warning strong {
+    color: var(--platform-amber);
+  }
+}
+
+.docker-command-page .host-selector-card {
+  margin: 14px 0;
+  border-radius: 5px;
+  background: var(--platform-surface-0);
+
+  :deep(.el-card__body) {
+    padding: 13px 18px;
+  }
+}
+
+.docker-command-page .host-selector {
+  align-items: center;
+}
+
+.selector-left {
+  gap: 14px !important;
+}
+
+.selector-label {
+  display: grid;
+  gap: 3px;
+
+  .label {
+    color: var(--platform-text-regular) !important;
+    font-family: var(--el-font-family-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+
+  small {
+    color: var(--platform-text-muted);
+    font-size: 10px;
+  }
+}
+
+.docker-command-page .content-card {
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--platform-surface-1);
+
+  :deep(.el-card__body) {
+    padding: 0;
+  }
+
+  :deep(.el-tabs__header) {
+    margin: 0;
+    padding: 0 18px;
+    background: var(--platform-surface-2);
+  }
+
+  :deep(.el-tabs__nav-wrap::after) {
+    background: var(--platform-line);
+  }
+
+  :deep(.el-tabs__content) {
+    padding: 18px;
+  }
+
+  :deep(.el-tabs__item) {
+    height: 54px;
+    color: var(--platform-text-muted);
+    font-size: 12px;
+  }
+
+  :deep(.el-tabs__item.is-active) {
+    color: var(--platform-accent);
+  }
+}
+
+.docker-command-page .filter-section {
+  margin-bottom: 14px;
+  padding: 12px 14px 2px;
+  border: 1px solid var(--platform-line);
+  border-radius: 4px;
+  background: var(--platform-surface-0);
+}
+
+.docker-command-page .docker-table {
+  :deep(.el-table__header-wrapper th) {
+    height: 42px;
+    background: var(--platform-surface-2);
+    color: var(--platform-text-muted);
+    font-family: var(--el-font-family-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+
+  :deep(.el-table__row td) {
+    height: 70px;
+    border-bottom-color: var(--platform-line);
+  }
+
+  :deep(.el-table__row:hover > td) {
+    background: rgba(67, 184, 232, 0.06) !important;
+  }
+
+  :deep(.el-table__empty-block) {
+    min-height: 150px;
+  }
+}
+
+.docker-command-page .container-name,
+.docker-command-page .image-name {
+  color: var(--platform-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.docker-command-page .image-name,
+.docker-command-page .image-id,
+.docker-command-page .ports-list .port-item,
+.docker-command-page .resource-usage .mem-usage {
+  color: var(--platform-text-secondary);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+}
+
+.docker-command-page .ports-list .port-item {
+  padding: 2px 0;
+}
+
+.docker-command-page .resource-usage {
+  .cpu-usage {
+    gap: 7px;
+    margin-bottom: 6px;
+
+    .label {
+      color: var(--platform-text-muted);
+      font-family: var(--el-font-family-mono);
+      font-size: 9px;
+    }
+
+    :deep(.el-progress) {
+      flex: 1;
+    }
+
+    :deep(.el-progress-bar__outer) {
+      background: var(--platform-surface-3);
+    }
+  }
+}
+
+.docker-command-page .status-icon {
+  margin-right: 3px;
+}
+
+@media screen and (max-width: 900px) {
+  .docker-signal-strip {
+    grid-template-columns: minmax(170px, 1.4fr) repeat(5, minmax(62px, 0.7fr));
+    padding-inline: 12px;
+  }
+
+  .signal-stat {
+    padding-inline: 8px;
+  }
+}
+
+@media screen and (max-width: 680px) {
+  .docker-hero,
+  .hero-context,
+  .host-selector,
+  .selector-left,
+  .selector-right {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hero-context,
+  .selector-left,
+  .selector-right {
+    width: 100%;
+  }
+
+  .node-pulse,
+  .docker-command-page .host-selector .el-select {
+    width: 100% !important;
+  }
+
+  .docker-signal-strip {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 0;
+  }
+
+  .signal-intro {
+    grid-column: 1 / -1;
+  }
+
+  .signal-stat:nth-of-type(2) {
+    border-left: 0;
   }
 }
 </style>

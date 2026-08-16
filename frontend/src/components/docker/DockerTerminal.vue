@@ -91,6 +91,7 @@ import { ElMessage } from "element-plus";
 import { Delete, Refresh, FullScreen, Loading } from "@element-plus/icons-vue";
 import "xterm/css/xterm.css";
 import { useUserStore } from "@/stores/user";
+import { nightOpsTerminalTheme } from "@/utils/terminalTheme";
 
 const props = defineProps({
   hostId: {
@@ -140,29 +141,7 @@ function initTerminal() {
     rows: terminalRows.value,
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
-    theme: {
-      background: "#1e1e1e",
-      foreground: "#d4d4d4",
-      cursor: "#ffffff",
-      cursorAccent: "#000000",
-      selection: "rgba(255, 255, 255, 0.3)",
-      black: "#000000",
-      red: "#cd3131",
-      green: "#0dbc79",
-      yellow: "#e5e510",
-      blue: "#2472c8",
-      magenta: "#bc3fbc",
-      cyan: "#11a8cd",
-      white: "#e5e5e5",
-      brightBlack: "#666666",
-      brightRed: "#f14c4c",
-      brightGreen: "#23d18b",
-      brightYellow: "#f5f543",
-      brightBlue: "#3b8eea",
-      brightMagenta: "#d670d6",
-      brightCyan: "#29b8db",
-      brightWhite: "#e5e5e5",
-    },
+    theme: nightOpsTerminalTheme,
     cursorBlink: true,
     cursorStyle: "block",
     scrollback: 10000,
@@ -340,8 +319,8 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--el-fill-color-light);
-    border-bottom: 1px solid var(--el-border-color);
+    background: var(--platform-surface-1);
+    border-bottom: 1px solid var(--platform-line);
     border-radius: var(--el-border-radius-base) var(--el-border-radius-base) 0 0;
 
     .toolbar-left,
@@ -354,7 +333,7 @@ onBeforeUnmount(() => {
 
   .terminal-container {
     flex: 1;
-    background: #1e1e1e;
+    background: var(--platform-surface-0);
     padding: 8px;
     border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
     overflow: hidden;
@@ -380,15 +359,15 @@ onBeforeUnmount(() => {
       }
 
       &::-webkit-scrollbar-track {
-        background: #2d2d2d;
+        background: var(--platform-surface-1);
       }
 
       &::-webkit-scrollbar-thumb {
-        background: #555;
+        background: var(--platform-line);
         border-radius: 4px;
 
         &:hover {
-          background: #666;
+          background: var(--platform-cyan);
         }
       }
     }
@@ -400,7 +379,9 @@ onBeforeUnmount(() => {
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 10;
-    background: rgba(255, 255, 255, 0.95);
+    color: var(--platform-text-primary);
+    background: var(--platform-surface-2);
+    border: 1px solid var(--platform-line);
     padding: 20px;
     border-radius: var(--el-border-radius-base);
     box-shadow: var(--el-box-shadow-light);

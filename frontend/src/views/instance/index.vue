@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -48,6 +48,35 @@ const pagination = reactive({
   pageSize: 10,
   total: 0,
 });
+const lastRefreshAt = ref("等待编队同步");
+
+const runningInstanceCount = computed(
+  () => tableData.value.filter((row) => row.status === "running").length,
+);
+const transitionInstanceCount = computed(
+  () => tableData.value.filter((row) => ACTIVE_STATUSES.includes(row.status)).length,
+);
+const attentionInstanceCount = computed(
+  () => tableData.value.filter((row) => row.status === "error").length,
+);
+const onlinePlayerCount = computed(
+  () =>
+    tableData.value.reduce(
+      (total, row) => total + (row.status === "running" ? Number(row.onlinePlayers || 0) : 0),
+      0,
+    ),
+);
+const lifecycleSegments = computed(() => [
+  { key: "running", label: "运行中", value: runningInstanceCount.value, tone: "running" },
+  { key: "transition", label: "过渡中", value: transitionInstanceCount.value, tone: "transition" },
+  { key: "error", label: "需处置", value: attentionInstanceCount.value, tone: "error" },
+  {
+    key: "stopped",
+    label: "已停止",
+    value: tableData.value.filter((row) => row.status === "stopped").length,
+    tone: "stopped",
+  },
+]);
 
 // 日志查看弹窗
 const logDialogVisible = ref(false);
@@ -109,6 +138,7 @@ async function fetchData() {
     });
     tableData.value = data.records || [];
     pagination.total = data.total || 0;
+    lastRefreshAt.value = formatRefreshTime();
   } catch (error) {
     console.error("Failed to fetch instance list:", error);
   } finally {
@@ -322,6 +352,28 @@ function getAvailableActions(status) {
   return actions[status] || [];
 }
 
+function getPlayerLoad(row) {
+  if (row.status !== "running") return 0;
+  const online = Number(row.onlinePlayers || 0);
+  const max = Number(row.configInfo?.maxPlayers || 0);
+  return max > 0 ? Math.min(100, Math.round((online / max) * 100)) : 0;
+}
+
+function getPlayerLoadTone(row) {
+  const load = getPlayerLoad(row);
+  if (load >= 85) return "danger";
+  if (load >= 65) return "warning";
+  return "normal";
+}
+
+function formatRefreshTime() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 onMounted(() => {
   fetchHostOptions();
   fetchData().then(() => startAutoRefresh());
@@ -333,56 +385,69 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="instance-container">
-    <!-- 搜索区域 -->
-    <el-card class="search-card" shadow="never">
-      <el-form :model="searchForm" inline>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="searchForm.keyword"
-            placeholder="实例名称"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
+  <div class="instance-container instance-command-page">
+    <section class="instance-hero">
+      <div class="hero-copy">
+        <span class="section-kicker">INSTANCE COMMAND / SERVICE FLEET</span>
+        <h1>服务编队</h1>
+        <p>从实例生命周期、玩家负载和部署来源判断服务状态，再进入详情或执行运行编排。</p>
+      </div>
+      <div class="hero-actions">
+        <div class="hero-status">
+          <span class="fleet-pulse" aria-hidden="true"></span>
+          <div>
+            <strong>编队监控中</strong>
+            <small>自动刷新 · 上次同步 {{ lastRefreshAt }}</small>
+          </div>
+        </div>
+        <el-button type="primary" @click="handleDeploy">
+          <el-icon><Plus /></el-icon>
+          部署实例
+        </el-button>
+      </div>
+    </section>
+
+    <section class="lifecycle-rail" aria-label="实例生命周期态势">
+      <div class="rail-intro">
+        <span class="section-kicker">SERVICE FLEET</span>
+        <strong>运行编队</strong>
+        <small>实例正在经历什么</small>
+      </div>
+      <div v-for="segment in lifecycleSegments" :key="segment.key" class="life-segment" :class="`is-${segment.tone}`">
+        <span>{{ segment.label }}</span>
+        <strong>{{ segment.value }}</strong>
+      </div>
+      <div class="player-segment">
+        <span>玩家在线</span>
+        <strong>{{ onlinePlayerCount }}</strong>
+        <small>活跃服务负载</small>
+      </div>
+    </section>
+
+    <section class="instance-filter-panel" aria-label="实例编队筛选">
+      <div class="panel-heading filter-heading">
+        <div>
+          <span class="section-kicker">FILTER / LIFECYCLE</span>
+          <h2>编队筛选</h2>
+        </div>
+        <span class="filter-hint">按服务、游戏类型、宿主机或生命周期定位实例</span>
+      </div>
+      <el-form class="instance-filter-form" :model="searchForm" inline>
+        <el-form-item label="实例名称">
+          <el-input v-model="searchForm.keyword" placeholder="例如：生存服-01" clearable @keyup.enter="handleSearch" />
         </el-form-item>
-        <el-form-item label="主机">
-          <el-select
-            v-model="searchForm.hostId"
-            placeholder="全部"
-            clearable
-            style="width: 140px"
-          >
-            <el-option
-              v-for="item in hostOptions"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
+        <el-form-item label="宿主机">
+          <el-select v-model="searchForm.hostId" placeholder="全部宿主机" clearable>
+            <el-option v-for="item in hostOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="游戏">
-          <el-select
-            v-model="searchForm.game"
-            placeholder="全部"
-            clearable
-            style="width: 140px"
-          >
-            <el-option
-              v-for="item in gameOptions"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
+        <el-form-item label="游戏类型">
+          <el-select v-model="searchForm.game" placeholder="全部游戏" clearable>
+            <el-option v-for="item in gameOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select
-            v-model="searchForm.status"
-            placeholder="全部"
-            clearable
-            style="width: 120px"
-          >
+        <el-form-item label="生命周期">
+          <el-select v-model="searchForm.status" placeholder="全部状态" clearable>
             <el-option label="运行中" value="running" />
             <el-option label="已停止" value="stopped" />
             <el-option label="异常" value="error" />
@@ -390,10 +455,10 @@ onBeforeUnmount(() => {
             <el-option label="更新中" value="updating" />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="handleSearch">
             <el-icon><Search /></el-icon>
-            搜索
+            应用条件
           </el-button>
           <el-button @click="handleReset">
             <el-icon><Refresh /></el-icon>
@@ -401,119 +466,104 @@ onBeforeUnmount(() => {
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </section>
 
-    <!-- 表格区域 -->
-    <el-card class="table-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span class="title">实例列表</span>
-          <div class="header-actions">
-            <el-button @click="fetchData">
-              <el-icon><Refresh /></el-icon>
-              刷新
-            </el-button>
-            <el-button type="primary" @click="handleDeploy">
-              <el-icon><Plus /></el-icon>
-              部署实例
-            </el-button>
-          </div>
+    <section class="fleet-panel" aria-label="实例编队清单">
+      <div class="panel-heading fleet-heading">
+        <div>
+          <span class="section-kicker">MANAGED SERVICES</span>
+          <h2>实例编队</h2>
+          <p>{{ pagination.total }} 个服务单元 · 活跃实例每 5 秒同步</p>
         </div>
-      </template>
+        <div class="fleet-actions">
+          <el-button @click="fetchData">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+          <el-button type="primary" @click="handleDeploy">
+            <el-icon><Plus /></el-icon>
+            新增编队
+          </el-button>
+        </div>
+      </div>
 
       <el-table
         v-loading="loading"
+        class="fleet-table"
         :data="tableData"
         style="width: 100%"
         :row-class-name="tableRowClassName"
       >
-        <el-table-column label="状态" width="100">
+        <el-table-column label="生命周期" width="112">
           <template #default="{ row }">
-            <div class="status-cell">
-              <el-icon :color="statusColor(row.status)" :size="16">
-                <component
-                  :is="statusIcon(row.status)"
-                  :class="{ 'is-loading': ACTIVE_STATUSES.includes(row.status) }"
-                />
-              </el-icon>
-              <el-tag
-                :type="statusType(row.status)"
-                size="small"
-                effect="plain"
-              >
-                {{ row.runStatusDesc }}
-              </el-tag>
+            <div class="lifecycle-pill" :class="`is-${row.status}`">
+              <el-icon :class="{ 'is-loading': ACTIVE_STATUSES.includes(row.status) }"><component :is="statusIcon(row.status)" /></el-icon>
+              <span>{{ row.runStatusDesc }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="实例名称" min-width="150">
+        <el-table-column label="服务单元" min-width="230">
           <template #default="{ row }">
-            <el-link type="primary" @click="handleDetail(row)">
-              {{ row.instanceName }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="游戏" min-width="160">
-          <template #default="{ row }">
-            <div class="game-name-cell">
-              <el-avatar
-                v-if="row.iconUrl"
-                :src="row.iconUrl"
-                :size="28"
-                shape="square"
-              />
-              <el-avatar v-else :size="28" shape="square">
-                <el-icon><Grid /></el-icon>
-              </el-avatar>
-              <span class="game-name-text">{{ row.gameName }}</span>
+            <div class="service-cell">
+              <span class="service-icon"><el-icon><Grid /></el-icon></span>
+              <div>
+                <button class="service-name-button" type="button" @click="handleDetail(row)">{{ row.instanceName }}</button>
+                <div class="service-meta">
+                  <span>{{ row.gameName }}</span>
+                  <i></i>
+                  <span>{{ row.hostName }}</span>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="hostName" label="主机" width="120" />
-        <el-table-column label="端口" width="120">
+        <el-table-column label="玩家负载" min-width="180">
           <template #default="{ row }">
-            <span>{{ row.portConfig?.game || '-' }}</span>
+            <div v-if="row.status === 'running'" class="player-load" :class="`is-${getPlayerLoadTone(row)}`">
+              <div class="player-load-heading">
+                <strong>{{ row.onlinePlayers || 0 }} / {{ row.configInfo?.maxPlayers || 0 }}</strong>
+                <span>{{ getPlayerLoad(row) }}%</span>
+              </div>
+              <el-progress :percentage="getPlayerLoad(row)" :stroke-width="5" :show-text="false" :color="statusColor(row.status)" />
+            </div>
+            <span v-else class="load-unavailable">{{ row.runStatusDesc }} · 无在线玩家</span>
           </template>
         </el-table-column>
-        <el-table-column label="玩家数" width="100" align="center">
+        <el-table-column label="服务端点" min-width="128">
           <template #default="{ row }">
-            <span v-if="row.status === 'running'"
-              >{{ row.onlinePlayers || 0 }} / {{ row.configInfo?.maxPlayers || 0 }}</span
-            >
-            <span v-else class="text-muted">-</span>
+            <div class="endpoint-cell">
+              <strong>{{ row.portConfig?.game || "—" }}</strong>
+              <span>RCON {{ row.portConfig?.rcon || "—" }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="部署来源" min-width="140">
           <template #default="{ row }">
-            <div class="action-cell">
-              <!-- 运行中状态 -->
+            <div class="deployment-cell">
+              <strong>{{ row.deployType || "未知" }}</strong>
+              <span>{{ row.hostIp || row.hostName }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="运行编排" width="258" fixed="right">
+          <template #default="{ row }">
+            <div class="service-actions">
               <template v-if="row.status === 'running'">
                 <el-button type="warning" link size="small" :loading="row._loading" @click="handleStop(row)">停止</el-button>
-                <el-button type="primary" link size="small" @click="handleViewLogs(row)">查看日志</el-button>
+                <el-button type="primary" link size="small" @click="handleViewLogs(row)">日志</el-button>
               </template>
-              <!-- 已停止状态 -->
               <template v-else-if="row.status === 'stopped'">
                 <el-button type="success" link size="small" :loading="row._loading" @click="handleStart(row)">启动</el-button>
-                <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                <el-button type="danger" link size="small" @click="handleDelete(row)">卸载</el-button>
               </template>
-              <!-- 异常状态 -->
               <template v-else-if="row.status === 'error'">
                 <el-button type="warning" link size="small" @click="handleRetryDeploy(row)">重试</el-button>
-                <el-button type="primary" link size="small" @click="handleViewLogs(row)">查看日志</el-button>
-                <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+                <el-button type="primary" link size="small" @click="handleViewLogs(row)">日志</el-button>
+                <el-button type="danger" link size="small" @click="handleDelete(row)">卸载</el-button>
               </template>
-              <!-- 活跃过渡态（安装中/更新中/启动中/停止中） -->
               <template v-else-if="ACTIVE_STATUSES.includes(row.status)">
-                <el-button type="primary" link size="small" @click="handleViewLogs(row)">
-                  <el-icon class="is-loading"><Loading /></el-icon>
-                  查看日志
-                </el-button>
+                <el-button type="primary" link size="small" @click="handleViewLogs(row)"><el-icon class="is-loading"><Loading /></el-icon> 进度</el-button>
               </template>
-              <!-- 其他状态 -->
-              <template v-else>
-                <el-tag type="info" size="small">{{ row.runStatusDesc }}</el-tag>
-              </template>
-              <!-- 更多操作下拉 -->
               <el-dropdown v-if="getAvailableActions(row.status).length > 0" trigger="click" @command="(cmd) => handleCommand(cmd, row)">
                 <el-button type="primary" link size="small">更多<el-icon><ArrowDown /></el-icon></el-button>
                 <template #dropdown>
@@ -528,10 +578,17 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="fleet-empty-state">
+            <el-icon><Grid /></el-icon>
+            <strong>暂无匹配服务</strong>
+            <span>调整编队条件或部署一个新的游戏实例</span>
+          </div>
+        </template>
       </el-table>
 
-      <!-- 分页 -->
-      <div class="pagination-wrapper">
+      <div class="fleet-footer">
+        <span class="fleet-footer-note"><i class="fleet-pulse" aria-hidden="true"></i> 生命周期监控已接入</span>
         <el-pagination
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.pageSize"
@@ -542,7 +599,7 @@ onBeforeUnmount(() => {
           @current-change="handlePageChange"
         />
       </div>
-    </el-card>
+    </section>
 
     <!-- 删除确认弹窗 -->
     <el-dialog
@@ -708,6 +765,639 @@ onBeforeUnmount(() => {
     :deep(.el-form-item) {
       margin-bottom: 12px;
     }
+  }
+}
+</style>
+
+<style lang="scss" scoped>
+.instance-command-page {
+  --instance-gap: 14px;
+  --instance-accent: #b58cff;
+  --instance-accent-soft: rgba(181, 140, 255, 0.1);
+  --instance-player: #7de2b1;
+  padding: 4px 2px 24px;
+  color: var(--platform-text-primary);
+}
+
+.instance-hero,
+.lifecycle-rail,
+.instance-filter-panel,
+.fleet-panel {
+  border: 1px solid var(--platform-line);
+  background: var(--platform-surface-1);
+}
+
+.instance-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 138px;
+  padding: 24px 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(118deg, rgba(181, 140, 255, 0.14), transparent 46%),
+    var(--platform-surface-1);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
+}
+
+.section-kicker {
+  display: block;
+  color: var(--platform-text-muted);
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+}
+
+.hero-copy h1 {
+  margin: 8px 0 7px;
+  color: var(--platform-text-primary);
+  font-size: clamp(24px, 2.4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hero-copy p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--platform-text-secondary);
+  font-size: 13px;
+}
+
+.hero-actions,
+.hero-status,
+.panel-heading,
+.fleet-actions,
+.service-cell,
+.player-load-heading,
+.service-actions,
+.fleet-footer {
+  display: flex;
+  align-items: center;
+}
+
+.hero-actions {
+  gap: 20px;
+}
+
+.hero-status {
+  gap: 10px;
+
+  strong,
+  small {
+    display: block;
+  }
+
+  strong {
+    color: var(--platform-text-regular);
+    font-size: 13px;
+  }
+
+  small {
+    margin-top: 3px;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+}
+
+.fleet-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--instance-accent);
+  box-shadow: 0 0 0 3px var(--instance-accent-soft);
+}
+
+.lifecycle-rail {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.4fr) repeat(4, minmax(78px, 0.7fr)) minmax(110px, 0.8fr);
+  align-items: stretch;
+  gap: 0;
+  min-height: 78px;
+  margin-top: var(--instance-gap);
+  padding: 12px 18px;
+  border-radius: 5px;
+  background:
+    linear-gradient(90deg, rgba(181, 140, 255, 0.04), transparent 50%),
+    var(--platform-surface-2);
+}
+
+.rail-intro,
+.life-segment,
+.player-segment {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.rail-intro {
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+}
+
+.life-segment,
+.player-segment {
+  position: relative;
+  padding: 0 15px;
+  border-left: 1px solid var(--platform-line);
+
+  &::before {
+    position: absolute;
+    top: 14px;
+    left: -1px;
+    width: 2px;
+    height: 28px;
+    background: var(--platform-text-muted);
+    content: "";
+  }
+
+  > span,
+  > small {
+    color: var(--platform-text-muted);
+    font-size: 11px;
+  }
+
+  > strong {
+    color: var(--platform-text-primary);
+    font-size: 18px;
+    font-weight: 650;
+  }
+
+  &.is-running {
+    &::before {
+      background: var(--platform-green);
+    }
+  }
+
+  &.is-transition {
+    &::before {
+      background: var(--platform-amber);
+    }
+  }
+
+  &.is-error {
+    &::before {
+      background: var(--platform-red);
+    }
+
+    > strong {
+      color: var(--platform-red);
+    }
+  }
+}
+
+.player-segment {
+  &::before {
+    background: var(--instance-player);
+  }
+
+  > strong {
+    color: var(--instance-player);
+  }
+}
+
+.instance-filter-panel,
+.fleet-panel {
+  margin-top: var(--instance-gap);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.instance-filter-panel {
+  padding: 17px 18px 5px;
+  background: var(--platform-surface-1);
+}
+
+.panel-heading {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.panel-heading h2 {
+  margin: 5px 0 0;
+  color: var(--platform-text-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.filter-hint,
+.fleet-heading p {
+  color: var(--platform-text-muted);
+  font-size: 11px;
+}
+
+.instance-filter-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 13px;
+
+  :deep(.el-form-item) {
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+
+  :deep(.el-form-item__label) {
+    padding-bottom: 5px;
+    color: var(--platform-text-muted);
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select) {
+    width: 160px;
+  }
+
+  :deep(.el-input) {
+    width: 190px;
+  }
+
+  .filter-actions {
+    margin-left: auto;
+  }
+}
+
+.fleet-panel {
+  background: var(--platform-surface-1);
+}
+
+.fleet-heading {
+  padding: 17px 18px 15px;
+  border-bottom: 1px solid var(--platform-line);
+}
+
+.fleet-heading p {
+  margin: 5px 0 0;
+}
+
+.fleet-actions {
+  gap: 8px;
+}
+
+.fleet-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-row-hover-bg-color: rgba(181, 140, 255, 0.06);
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.015);
+  --el-table-border-color: var(--platform-line);
+  --el-table-text-color: var(--platform-text-regular);
+  --el-table-header-text-color: var(--platform-text-muted);
+
+  :deep(.el-table__inner-wrapper::before) {
+    display: none;
+  }
+
+  :deep(.el-table__header-wrapper th.el-table__cell) {
+    height: 42px;
+    background: rgba(255, 255, 255, 0.015);
+    color: var(--platform-text-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  :deep(.el-table__body-wrapper td.el-table__cell) {
+    height: 82px;
+    padding: 10px 0;
+    border-bottom-color: var(--platform-line);
+  }
+
+  :deep(.el-table__body tr:last-child td.el-table__cell) {
+    border-bottom: 0;
+  }
+
+  :deep(.el-table__body tr.row-error) {
+    background: rgba(235, 87, 87, 0.045);
+  }
+
+  :deep(.el-table__body tr.row-stopped) {
+    opacity: 0.66;
+  }
+}
+
+.lifecycle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--platform-text-muted);
+  font-size: 11px;
+
+  .el-icon {
+    font-size: 15px;
+  }
+
+  &.is-running {
+    color: var(--platform-green);
+  }
+
+  &.is-starting,
+  &.is-stopping,
+  &.is-installing,
+  &.is-updating {
+    color: var(--platform-amber);
+  }
+
+  &.is-error {
+    color: var(--platform-red);
+  }
+}
+
+.service-cell {
+  gap: 10px;
+  min-width: 0;
+}
+
+.service-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(181, 140, 255, 0.48);
+  border-radius: 6px;
+  color: var(--instance-accent);
+  background: var(--instance-accent-soft);
+}
+
+.service-name-button {
+  max-width: 170px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  color: var(--platform-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--instance-accent);
+    outline: none;
+  }
+}
+
+.service-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--platform-text-muted);
+  font-size: 10px;
+
+  span {
+    max-width: 105px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  i {
+    width: 3px;
+    height: 3px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--platform-text-muted);
+  }
+}
+
+.player-load {
+  display: grid;
+  gap: 7px;
+  min-width: 135px;
+
+  &.is-danger .player-load-heading strong,
+  &.is-danger .player-load-heading span {
+    color: var(--platform-red);
+  }
+
+  &.is-warning .player-load-heading span {
+    color: var(--platform-amber);
+  }
+
+  :deep(.el-progress-bar__outer) {
+    background: var(--platform-surface-3);
+  }
+}
+
+.player-load-heading {
+  justify-content: space-between;
+
+  strong {
+    color: var(--instance-player);
+    font-family: var(--el-font-family-mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--platform-text-muted);
+    font-family: var(--el-font-family-mono);
+    font-size: 10px;
+  }
+}
+
+.load-unavailable,
+.endpoint-cell span,
+.deployment-cell span {
+  color: var(--platform-text-muted);
+  font-size: 10px;
+}
+
+.endpoint-cell,
+.deployment-cell {
+  display: grid;
+  gap: 4px;
+
+  strong {
+    color: var(--platform-text-primary);
+    font-family: var(--el-font-family-mono);
+    font-size: 12px;
+    font-weight: 550;
+  }
+}
+
+.deployment-cell {
+  strong {
+    color: var(--instance-accent);
+    font-family: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+}
+
+.service-actions {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    padding: 2px 0;
+    color: var(--instance-accent);
+    font-size: 11px;
+  }
+
+  :deep(.el-button:hover:not(.is-disabled)) {
+    color: var(--platform-text-primary);
+  }
+
+  :deep(.el-button--warning) {
+    color: var(--platform-amber);
+  }
+
+  :deep(.el-button--success) {
+    color: var(--platform-green);
+  }
+
+  :deep(.el-button--danger),
+  :deep(.dropdown-danger) {
+    color: var(--platform-red);
+  }
+}
+
+.fleet-footer {
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--platform-line);
+}
+
+.fleet-footer-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--platform-text-muted);
+  font-size: 11px;
+}
+
+.fleet-footer-note .fleet-pulse {
+  width: 7px;
+  height: 7px;
+}
+
+.fleet-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 36px 0;
+  color: var(--platform-text-muted);
+
+  .el-icon {
+    color: var(--instance-accent);
+    font-size: 26px;
+  }
+
+  strong {
+    color: var(--platform-text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    font-size: 11px;
+  }
+}
+
+@media screen and (max-width: 1180px) {
+  .lifecycle-rail {
+    grid-template-columns: minmax(170px, 1.3fr) repeat(4, minmax(68px, 0.7fr)) minmax(90px, 0.8fr);
+  }
+
+  .instance-filter-form {
+    flex-wrap: wrap;
+
+    .filter-actions {
+      margin-left: 0;
+    }
+  }
+
+  .fleet-table {
+    :deep(.el-table__body-wrapper),
+    :deep(.el-table__header-wrapper) {
+      overflow-x: auto;
+    }
+  }
+}
+
+@media screen and (max-width: 780px) {
+  .instance-hero,
+  .panel-heading,
+  .fleet-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .instance-hero {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .hero-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .lifecycle-rail {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 0;
+    padding: 16px;
+  }
+
+  .rail-intro {
+    grid-column: 1 / -1;
+  }
+
+  .life-segment,
+  .player-segment {
+    padding: 0 12px;
+
+    &:nth-of-type(2n + 1) {
+      border-left: 0;
+    }
+  }
+
+  .instance-filter-panel {
+    padding: 16px 14px 4px;
+  }
+
+  .filter-hint {
+    display: none;
+  }
+
+  .instance-filter-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    :deep(.el-input),
+    :deep(.el-select) {
+      width: 100%;
+    }
+
+    .filter-actions {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .fleet-heading {
+    padding: 16px 14px;
+  }
+
+  .fleet-actions {
+    width: 100%;
   }
 }
 </style>

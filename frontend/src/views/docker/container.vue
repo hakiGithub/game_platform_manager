@@ -481,9 +481,9 @@ function formatFileSize(bytes) {
 
 // 获取进度条颜色
 function getProgressColor(percentage) {
-  if (percentage >= 80) return "#f56c6c";
-  if (percentage >= 60) return "#e6a23c";
-  return "#67c23a";
+  if (percentage >= 80) return "#f0646a";
+  if (percentage >= 60) return "#f2b84b";
+  return "#52cf82";
 }
 
 // 获取容器详情
@@ -652,8 +652,10 @@ onMounted(() => {
   .page-header {
     margin-bottom: 20px;
     padding: 16px 20px;
-    background: #fff;
+    background: var(--platform-surface-1);
+    border: 1px solid var(--platform-line);
     border-radius: var(--el-border-radius-base);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 
     .header-content {
       display: flex;
@@ -681,6 +683,20 @@ onMounted(() => {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      color: var(--platform-text-primary);
+    }
+  }
+
+  .info-card,
+  .stats-card,
+  .tabs-card {
+    :deep(.el-card__header) {
+      background: var(--platform-surface-2);
+      border-bottom-color: var(--platform-line);
+    }
+
+    :deep(.el-card__body) {
+      background: var(--platform-surface-1);
     }
   }
 
@@ -696,6 +712,9 @@ onMounted(() => {
   .stat-box {
     text-align: center;
     padding: 20px;
+    background: var(--platform-surface-0);
+    border: 1px solid var(--platform-line);
+    border-radius: var(--el-border-radius-base);
 
     .stat-title {
       font-size: 14px;
@@ -706,6 +725,7 @@ onMounted(() => {
     .percentage-value {
       font-size: 24px;
       font-weight: 600;
+      color: var(--platform-text-primary);
     }
 
     .percentage-label {
