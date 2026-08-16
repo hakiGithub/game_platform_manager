@@ -92,38 +92,47 @@ async function handleEnterPlugin(row) {
     ElMessage.error("无法识别插件游戏编码");
     return;
   }
-  currentPluginForInstance.value = { row, gameCode };
-  instanceDialogVisible.value = true;
+
+  // 先查实例列表：0 个提示部署、1 个自动选中进入、多个弹窗选择
   instanceLoading.value = true;
   instanceList.value = [];
   try {
     const data = await getInstanceList({ gameCode, current: 1, size: 100 });
     instanceList.value = data?.records || [];
-    if (instanceList.value.length === 0) {
-      ElMessage.warning(`未找到游戏编码 ${gameCode} 的实例，请先部署对应游戏`);
-    }
   } catch (error) {
     ElMessage.error("获取实例列表失败：" + (error.message || ""));
-  } finally {
     instanceLoading.value = false;
+    return;
   }
+
+  if (instanceList.value.length === 0) {
+    ElMessage.warning(`未找到游戏编码 ${gameCode} 的实例，请先部署对应游戏`);
+    return;
+  }
+  if (instanceList.value.length === 1) {
+    // 唯一实例：默认选中直接进入，无需弹窗
+    enterPluginWithInstance(gameCode, instanceList.value[0]);
+    return;
+  }
+
+  currentPluginForInstance.value = { row, gameCode };
+  instanceDialogVisible.value = true;
+  instanceLoading.value = false;
+}
+
+/** 进入插件（实例信息仅传 instanceId，其余由插件页反查补全） */
+function enterPluginWithInstance(gameCode, instance) {
+  router.push({
+    path: `/plugin/${gameCode}`,
+    query: { instanceId: instance.id },
+  });
 }
 
 function handleSelectInstance(instance) {
   if (!instance || !currentPluginForInstance.value) return;
   const gameCode = currentPluginForInstance.value.gameCode;
   instanceDialogVisible.value = false;
-  router.push({
-    path: `/plugin/${gameCode}`,
-    query: {
-      instanceId: instance.id,
-      instanceName: instance.instanceName || "",
-      hostId: instance.hostId || 0,
-      hostIp: instance.hostIp || "",
-      deployPath: instance.installPath || "",
-      ports: instance.portConfig ? JSON.stringify(instance.portConfig) : "{}",
-    },
-  });
+  enterPluginWithInstance(gameCode, instance);
 }
 
 async function handleStart(row) {

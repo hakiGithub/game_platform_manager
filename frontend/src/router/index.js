@@ -177,12 +177,8 @@ const routes = [
               menuPath: Array.isArray(route.params.menuPath)
                 ? route.params.menuPath[0] || 'dashboard'
                 : route.params.menuPath || 'dashboard',
-              instanceId: Number(route.query.instanceId) || 0,
-              instanceName: route.query.instanceName || '',
-              hostId: Number(route.query.hostId) || 0,
-              hostIp: route.query.hostIp || '',
-              deployPath: route.query.deployPath || '',
-              ports: route.query.ports ? JSON.parse(route.query.ports) : {}
+              // 实例状态仅经 instanceId 传递，其余信息由 PluginTab 按 gameCode 反查补全
+              instanceId: Number(route.query.instanceId) || 0
             }),
             meta: { title: '插件工作区', navPath: '/extensions/plugins', requiresAuth: true, hidden: true }
           }

@@ -24,15 +24,15 @@ const props = withDefaults(
     menuPath?: string;
     /** 实例 ID（来自 URL query，0 表示未选） */
     instanceId: number;
-    /** 实例名称 */
+    /** 实例名称（兼容旧版 query，新链路仅传 instanceId，由反查补全） */
     instanceName?: string;
-    /** 主机 ID */
+    /** 主机 ID（兼容旧版 query） */
     hostId?: number;
-    /** 主机 IP */
+    /** 主机 IP（兼容旧版 query） */
     hostIp?: string;
-    /** 部署路径 */
+    /** 部署路径（兼容旧版 query） */
     deployPath?: string;
-    /** 端口映射 */
+    /** 端口映射（兼容旧版 query） */
     ports?: Record<string, number>;
   }>(),
   {
@@ -95,17 +95,33 @@ const currentMenuRequireInstance = computed(() => {
   return menu.requireInstance !== false;
 });
 
-// 当前实例信息（来自 query 或弹窗选择后写入 query）
+// 反查补全的当前实例信息（按 instanceId 从实例列表匹配）
+// （instanceList 已在实例选择对话框声明，兼作切换下拉数据源）
+const resolvedInstance = ref<any>(null);
+
+// 当前实例信息：优先反查补全（仅 query 传 instanceId），回退旧版 props 字段
 // 对于 requireInstance=false 的菜单，即便没有实例也允许渲染子应用
 const currentInstance = computed(() => {
+  const inst = resolvedInstance.value;
+  if (inst) {
+    return {
+      id: inst.id,
+      instanceName: inst.instanceName || "",
+      hostId: inst.hostId || 0,
+      hostIp: inst.hostIp || "",
+      installPath: inst.installPath || "",
+      portConfig: inst.portConfig || {},
+    };
+  }
   if (props.instanceId) {
+    // 反查未命中（实例可能已被删除）或列表未加载：回退 props 兼容旧 query
     return {
       id: props.instanceId,
       instanceName: props.instanceName || "",
       hostId: props.hostId || 0,
       hostIp: props.hostIp || "",
       installPath: props.deployPath || "",
-      portConfig: props.ports || {},
+      portConfig: props.ports || ({} as Record<string, number>),
     };
   }
   // requireInstance=false 时返回占位实例信息，使 Wujie 子应用可正常加载
@@ -120,6 +136,12 @@ const currentInstance = computed(() => {
     };
   }
   return null;
+});
+
+// 当前实例运行状态（头部状态点用）
+const currentInstanceStatus = computed(() => {
+  const inst = resolvedInstance.value;
+  return inst ? statusType(inst.status ?? inst.runStatus) : "";
 });
 
 // Wujie 子应用 URL
@@ -167,16 +189,14 @@ function reloadPlugin() {
 const reloadKey = ref(0);
 
 /**
- * 检查实例选择，未选时弹出对话框
+ * 实例选择检查：
  * - requireInstance=false 的菜单跳过实例选择
- * - 已携带 instanceId 时直接复用
+ * - 已携带 instanceId：按 ID 反查补全实例信息（切换下拉数据一并加载）
+ * - 未选：0 个提示部署、1 个默认选中直接进入、多个弹窗选择
  */
 async function ensureInstanceOrPrompt() {
   if (!currentMenuRequireInstance.value) return;
-  if (props.instanceId) return;
-  instanceDialogVisible.value = true;
   instanceLoading.value = true;
-  instanceList.value = [];
   try {
     const data = await getInstanceList({
       gameCode: props.gameCode,
@@ -184,11 +204,28 @@ async function ensureInstanceOrPrompt() {
       size: 100,
     });
     instanceList.value = data?.records || [];
+
+    if (props.instanceId) {
+      // 已选：反查补全（instanceId 可能已失效，未命中时回退 props）
+      resolvedInstance.value =
+        instanceList.value.find((i) => i.id === props.instanceId) || null;
+      return;
+    }
+
     if (instanceList.value.length === 0) {
       ElMessage.warning(
         `未找到游戏编码 ${props.gameCode} 的实例，请先在实例管理中部署`
       );
+      return;
     }
+    if (instanceList.value.length === 1) {
+      // 唯一实例：默认选中直接进入（仅写 instanceId，避免 query 膨胀）
+      selectInstance(instanceList.value[0]);
+      return;
+    }
+
+    // 多个实例：弹窗选择
+    instanceDialogVisible.value = true;
   } catch (e: any) {
     ElMessage.error("获取实例列表失败：" + (e?.message || ""));
   } finally {
@@ -197,23 +234,34 @@ async function ensureInstanceOrPrompt() {
 }
 
 /**
- * 选择实例后，将信息写入 URL query（router.replace 避免历史记录污染）
+ * 选中实例：写入 URL query（仅 instanceId，其余由反查补全）
  */
-function handleSelectInstance(instance: any) {
+function selectInstance(instance: any) {
+  if (!instance) return;
   instanceDialogVisible.value = false;
   router.replace({
     path: route.path,
-    query: {
-      instanceId: instance.id,
-      instanceName: instance.instanceName || "",
-      hostId: instance.hostId || 0,
-      hostIp: instance.hostIp || "",
-      deployPath: instance.installPath || "",
-      ports: instance.portConfig
-        ? JSON.stringify(instance.portConfig)
-        : "{}",
-    },
+    query: { instanceId: instance.id },
   });
+}
+
+/** 弹窗选择（复用 selectInstance） */
+function handleSelectInstance(instance: any) {
+  selectInstance(instance);
+}
+
+/**
+ * 头部切换实例：更新 query + 重载子应用（gameCode/menuPath 不变时
+ * PluginContainer key 不变，需手动触发 reload）
+ */
+function handleSwitchInstance(instanceId: number) {
+  const id = Number(instanceId);
+  if (!id || id === currentInstance.value?.id) return;
+  router.replace({
+    path: route.path,
+    query: { instanceId: id },
+  });
+  reloadPlugin();
 }
 
 // 监听 gameCode 变化，加载 manifest 并检查实例选择
@@ -236,6 +284,16 @@ watch(
   () => props.menuPath,
   async () => {
     if (!pluginStore.currentManifest) return;
+    await ensureInstanceOrPrompt();
+  }
+);
+
+// 监听 instanceId 变化（切换实例 / URL 直接修改）：重新反查补全实例信息
+// （子应用重载由 handleSwitchInstance 显式触发，此处仅更新头部显示与下拉选中态）
+watch(
+  () => props.instanceId,
+  async (newId) => {
+    if (!pluginStore.currentManifest || !newId) return;
     await ensureInstanceOrPrompt();
   }
 );
@@ -266,6 +324,42 @@ watch(
           选择实例
         </el-button>
       </el-empty>
+    </div>
+
+    <!-- 当前实例指示条（仅要求实例的菜单展示）：状态点 + 实例名 + 切换下拉 -->
+    <div
+      v-else-if="currentMenuRequireInstance && currentInstance"
+      class="plugin-instance-bar"
+    >
+      <div class="instance-bar-left">
+        <span class="instance-dot" :class="`is-${currentInstanceStatus || 'info'}`" />
+        <span class="instance-name">{{ currentInstance.instanceName || '未命名实例' }}</span>
+      </div>
+      <el-dropdown
+        v-if="instanceList.length > 1"
+        trigger="click"
+        @command="handleSwitchInstance"
+      >
+        <el-button size="small" text class="instance-switch-btn">
+          切换实例
+          <el-icon><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item
+              v-for="inst in instanceList"
+              :key="inst.id"
+              :command="inst.id"
+              :disabled="inst.id === currentInstance.id"
+            >
+              <span class="instance-option">
+                <span class="instance-dot" :class="`is-${statusType(inst.status ?? inst.runStatus) || 'info'}`" />
+                {{ inst.instanceName }}
+              </span>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
 
     <!-- Wujie 子应用 -->
@@ -408,5 +502,49 @@ watch(
   position: relative;
   background: var(--el-bg-color);
   height: 100%;
+}
+
+.plugin-instance-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color-page);
+
+  .instance-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .instance-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+  }
+
+  .instance-switch-btn {
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.instance-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &.is-success { background: #67c23a; }
+  &.is-danger { background: #f56c6c; }
+  &.is-warning { background: #e6a23c; }
+  &.is-info { background: #909399; }
+}
+
+.instance-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>
