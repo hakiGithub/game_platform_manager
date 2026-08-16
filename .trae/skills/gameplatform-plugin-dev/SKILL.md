@@ -8,7 +8,7 @@ agent_created: true
 
 ## 概述
 
-本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此）。
+本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此；当前版本 v3.4.0，见 `references/changelog.md`）。
 
 ## 文档导航（references/ 索引）
 

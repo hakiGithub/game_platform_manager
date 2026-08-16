@@ -55,8 +55,12 @@ v3.0+ 起 `PluginContext` 仅持元数据（`getPluginId`/`getGameCode`/`getGame
 
 - `relativePath` 相对实例"游戏数据根目录"，用正斜杠。
 - Native/LinuxGSM：根目录 = `instance.installPath`
-- Docker 类：根目录 = 容器内工作目录（`runtimeMetadata.containerWorkDir`）
+- Docker 类：根目录 = 容器内工作目录（解析链：`configInfo.containerWorkDir` → `workDir` → 类型默认值 → 游戏元数据 `deployConfig.<deployType>.workingDir` 回退，见 `host_services.md` §3.1）
 - **禁止 `..`**，越界抛 `IllegalArgumentException`。
+- **Docker 类文件操作坑**：
+  - `docker cp` 的目标/源**必须在宿主机**（`/tmp/.gp-*`）。传本地（Windows）路径会被 docker CLI 解析成容器引用，报 `copying between containers is not supported`——下载用 `downloadFileToMemory`（内部已处理），不要自写 docker cp 到本地
+  - `docker cp` 不会自动创建父目录，写入前需先 `mkdir -p`
+  - compose 容器重建（宿主机重启）后容器 ID 变化：宿主对账会自动重新匹配并写回（容器名前缀/显式 container_name），插件侧无需处理；`ContainerIdResolver` 对 compose 动态查询优先，不盲信缓存的 containerId
 
 ## 8. 异常层级
 

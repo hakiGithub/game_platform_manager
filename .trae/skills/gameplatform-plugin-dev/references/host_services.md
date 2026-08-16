@@ -1,6 +1,6 @@
 # 宿主服务面（Host Services）
 
-> 对齐版本：v3.1.0（ADR-0001）｜ 权威源：`backend/plugin/` 源码
+> 对齐版本：v3.4.0（ADR-0001/ADR-0006）｜ 权威源：`backend/plugin/` 源码
 
 除持久化外，宿主还通过以下 SPI 向插件暴露主机/实例/文件能力。实现由宿主核心模块提供，通过插件 Spring 子容器注入。
 
@@ -75,6 +75,31 @@ public interface InstanceFileService {
 
 > ⚠️ **路径安全**：禁止 `..` 跳出根目录，越界抛 `IllegalArgumentException`。
 > **路径归一化**：`AbstractInstanceFileService.validateRelativePath` 必须剥离前导 `./` 与段内 `/./`，确保路径字符串归一化。
+
+### 3.1 Docker 类部署的路由语义（docker / docker-compose / linuxgsm-docker）
+
+Docker 类实例的文件操作在**容器内**执行（`docker exec` / `docker cp`），路由由 `InstanceFileServiceImpl.buildRoute` 解析（主应用文件管理端点与补丁安装 PatchInstallExecutor 均复用同一路由，见 ADR-0006 决策 4，避免第二套路径解析）：
+
+- **路径根目录（resolvedPath 基准）**：`containerWorkDir` 解析链为
+  1. `configInfo.containerWorkDir`（部署适配器写入）
+  2. `configInfo.workDir`
+  3. 部署类型默认值（docker → `/home/steam`、docker-compose → `/`、linuxgsm-docker → `/app`）
+  4. 回退读取游戏元数据 `deployConfig.<deployType>.workingDir`（如 l4d2 → `/l4d2`；老实例 configInfo 未记录 workingDir 时走此路径，避免路径解析到容器根）
+- **容器标识解析（ContainerIdResolver，compose 重建容错）**：
+  - `docker-compose`：**动态查询优先**（`docker ps -q -f name={projectName}_`，projectName 取 runtimeMetadata.projectName 或按实例 ID 推导 `game{id}`），查询失败回退显式容器名（compose `container_name` 模板变量，如 `l4d2`），再回退缓存 containerId。宿主机重启容器重建（ID 变更）后仍能解析到新容器
+  - `docker` / `linuxgsm-docker`：containerId 优先，缺失时容器名兜底（含 DockerAdapter 默认命名 `game-instance-{id}`）
+- **下载到内存（downloadFileToMemory）**：docker 分支先把 `docker cp` 到**宿主机临时路径**（`/tmp/.gp-download-*`）再经 SFTP 读回。⚠️ 不要直接把 `docker cp` 的目标/源设为本地（Windows）路径——docker CLI 会把 `D:\...` 解析成容器引用，报 `copying between containers is not supported`
+- **写文件（writeTextFile）**：内容先经 SFTP 流式写宿主临时文件再 `docker cp` 进容器（避免大内容内联进命令参数触发 `Argument list too long`）；`docker cp` 不会自动创建父目录，需先 `mkdir -p`
+
+### 3.2 容器重建后的对账写回（宿主机重启场景）
+
+`DockerInstanceSyncStrategy` 对账匹配三级：
+1. 容器 ID 精确匹配（runtime_metadata.containerId，支持 12 位短 ID 与 64 位完整 ID 互为前缀）
+2. 容器名精确匹配（runtime_metadata.containerName / configInfo CONTAINER_NAME 等）
+3. docker-compose 项目名前缀匹配（`{projectName}_`，compose 容器名规范）
+4. 多字段严格匹配（镜像 IMAGE_REPO+IMAGE_TAG / image + 容器名含 gameCode 关键字）
+
+匹配成功即把新 containerId **写回 runtime_metadata**（`writeBackContainerId`），供删除清理/控制台/文件路由直接使用——宿主机重启、容器重建后无需人工干预即自愈。
 
 ## 4. FileAccessService — 主机级远程文件 + 命令执行
 
