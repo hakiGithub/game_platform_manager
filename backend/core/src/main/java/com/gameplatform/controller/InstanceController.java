@@ -8,8 +8,10 @@ import com.gameplatform.config.GamePlatformConfig;
 import com.gameplatform.dto.InstanceCreateDTO;
 import com.gameplatform.dto.InstanceUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
+import com.gameplatform.plugin.service.AbstractInstanceFileService;
+import com.gameplatform.plugin.service.FileAccessService;
+import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.service.DeployService;
-import com.gameplatform.service.FileService;
 import com.gameplatform.service.HostService;
 import com.gameplatform.service.InstanceService;
 import com.gameplatform.util.AesUtil;
@@ -29,6 +31,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -49,9 +53,8 @@ public class InstanceController {
     private final InstanceService instanceService;
     private final HostService hostService;
     private final GamePlatformConfig gamePlatformConfig;
-    private final FileService fileService;
+    private final AbstractInstanceFileService instanceFileService;
     private final DeployService deployService;
-    private final com.gameplatform.mapper.HostMapper hostMapper;
 
     /**
      * 获取实例列表(分页)
@@ -495,6 +498,9 @@ public class InstanceController {
 
     /**
      * 获取文件列表
+     *
+     * <p>按部署方式路由：docker 类经 docker exec 读取容器内目录，
+     * native 类经 SFTP 读取宿主机目录（路径解析统一走 InstanceFileService）。</p>
      */
     @Operation(summary = "获取文件列表", description = "获取实例目录下的文件列表")
     @GetMapping("/{id}/files")
@@ -505,41 +511,32 @@ public class InstanceController {
             return Result.fail("实例不存在");
         }
 
-        // 构建完整路径：安装路径 + 相对路径（兼容历史 ~ 未展开的安装路径）
-        String installPath = resolveInstallPath(instance);
-        String fullPath;
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            fullPath = installPath;
-        } else {
-            // 确保路径拼接正确
-            if (installPath.endsWith("/")) {
-                fullPath = installPath + (path.startsWith("/") ? path.substring(1) : path);
-            } else {
-                fullPath = installPath + (path.startsWith("/") ? path : "/" + path);
-            }
+        try {
+            // 路由基准目录（native: installPath+rel；docker: 容器工作目录+rel），用于 VO 相对化
+            AbstractInstanceFileService.FileRoute route = instanceFileService.resolveRoute(id, path);
+            List<FileAccessService.FileInfo> fileInfos = instanceFileService.listFiles(id, path);
+
+            // 转换为VO：返回相对路径，去掉路由基准目录前缀
+            String base = route.resolvedPath;
+            List<FileInfoVO> voList = fileInfos.stream().map(info -> {
+                FileInfoVO vo = new FileInfoVO();
+                vo.setName(info.getName());
+                String relativePath = info.getPath().substring(base.length());
+                vo.setPath(relativePath.isEmpty() ? "/" : relativePath);
+                vo.setIsDirectory(info.isDirectory());
+                vo.setSize(info.getSize());
+                vo.setLastModified(info.getLastModified());
+                return vo;
+            }).toList();
+
+            return Result.success(voList);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
         }
-
-        // 通过SFTP获取文件列表
-        List<FileService.FileInfo> fileInfos = fileService.listFiles(instance.getHostId(), fullPath);
-
-        // 转换为VO
-        List<FileInfoVO> voList = fileInfos.stream().map(info -> {
-            FileInfoVO vo = new FileInfoVO();
-            vo.setName(info.getName());
-            // 返回相对路径，去掉安装路径前缀
-            String relativePath = info.getPath().substring(installPath.length());
-            vo.setPath(relativePath.isEmpty() ? "/" : relativePath);
-            vo.setIsDirectory(info.isDirectory());
-            vo.setSize(info.getSize());
-            vo.setLastModified(info.getLastModified());
-            return vo;
-        }).toList();
-
-        return Result.success(voList);
     }
 
     /**
-     * 下载文件
+     * 下载文件（按部署方式路由：docker 经 docker cp 取容器内文件）
      */
     @Operation(summary = "下载文件", description = "下载实例文件")
     @GetMapping("/{id}/files/download")
@@ -550,30 +547,19 @@ public class InstanceController {
             return ResponseEntity.notFound().build();
         }
 
-        // 构建完整路径
-        String installPath = resolveInstallPath(instance);
-        String fullPath;
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            fullPath = installPath;
-        } else {
-            if (installPath.endsWith("/")) {
-                fullPath = installPath + (path.startsWith("/") ? path.substring(1) : path);
-            } else {
-                fullPath = installPath + (path.startsWith("/") ? path : "/" + path);
-            }
+        try {
+            byte[] content = instanceFileService.downloadFileToMemory(id, path);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + getFileName(path) + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(content);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
         }
-
-        // 通过SFTP下载文件到内存
-        byte[] content = fileService.downloadFileToMemory(instance.getHostId(), fullPath);
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + getFileName(path) + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(content);
     }
 
     /**
-     * 上传文件
+     * 上传文件（按部署方式路由：docker 经 SFTP 临时文件 + docker cp 进容器）
      */
     @Operation(summary = "上传文件", description = "上传文件到实例目录")
     @PostMapping("/{id}/files/upload")
@@ -586,34 +572,42 @@ public class InstanceController {
             return Result.fail("实例不存在");
         }
 
-        // 构建完整路径
-        String installPath = resolveInstallPath(instance);
-        String fullPath;
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            // 如果只指定了根路径，则文件名使用上传文件的原始文件名
-            fullPath = installPath + "/" + file.getOriginalFilename();
-        } else {
-            if (installPath.endsWith("/")) {
-                fullPath = installPath + (path.startsWith("/") ? path.substring(1) : path);
+        try {
+            // 目标相对路径：目录路径 + 原始文件名
+            String targetRel;
+            if (path == null || path.isEmpty() || "/".equals(path)) {
+                targetRel = file.getOriginalFilename();
             } else {
-                fullPath = installPath + (path.startsWith("/") ? path : "/" + path);
+                targetRel = path.endsWith("/")
+                        ? path + file.getOriginalFilename()
+                        : path + "/" + file.getOriginalFilename();
             }
+
+            // MultipartFile → 本地临时文件 → 按部署方式上传（避免扩展容器传参）
+            Path temp = Files.createTempFile("gp-upload-", ".tmp");
+            try {
+                file.transferTo(temp);
+                instanceFileService.uploadLocalFile(id, targetRel, temp.toAbsolutePath().toString());
+            } finally {
+                Files.deleteIfExists(temp);
+            }
+
+            UploadResultVO result = new UploadResultVO();
+            result.setSuccess(true);
+            result.setFileName(file.getOriginalFilename());
+            result.setFileSize(file.getSize());
+            result.setPath(path);
+
+            return Result.success(result);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        } catch (Exception e) {
+            return Result.fail("上传失败: " + e.getMessage());
         }
-
-        // 通过SFTP上传文件
-        fileService.uploadFile(instance.getHostId(), fullPath, file);
-
-        UploadResultVO result = new UploadResultVO();
-        result.setSuccess(true);
-        result.setFileName(file.getOriginalFilename());
-        result.setFileSize(file.getSize());
-        result.setPath(path);
-
-        return Result.success(result);
     }
 
     /**
-     * 删除文件
+     * 删除文件（按部署方式路由：docker 经 docker exec rm）
      */
     @Operation(summary = "删除文件", description = "删除实例文件")
     @DeleteMapping("/{id}/files")
@@ -624,24 +618,16 @@ public class InstanceController {
         if (instance == null) {
             return Result.fail("实例不存在");
         }
-
-        // 构建完整路径
-        String installPath = resolveInstallPath(instance);
-        String fullPath;
         if (path == null || path.isEmpty() || "/".equals(path)) {
             return Result.fail("文件路径不能为空");
-        } else {
-            if (installPath.endsWith("/")) {
-                fullPath = installPath + (path.startsWith("/") ? path.substring(1) : path);
-            } else {
-                fullPath = installPath + (path.startsWith("/") ? path : "/" + path);
-            }
         }
 
-        // 通过SFTP删除文件
-        fileService.deleteFile(instance.getHostId(), fullPath);
-
-        return Result.success();
+        try {
+            instanceFileService.deleteFile(id, path);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**
@@ -816,19 +802,4 @@ public class InstanceController {
         private String path;
     }
 
-    /**
-     * 解析实例安装路径：兼容历史数据中未展开的 ~ 路径
-     * （字面 ~ 会致文件管理 SFTP NO_SUCH_FILE）。
-     */
-    private String resolveInstallPath(InstanceVO instance) {
-        String installPath = instance.getInstallPath();
-        if (installPath == null || !installPath.startsWith("~/")) {
-            return installPath;
-        }
-        com.gameplatform.entity.Host host = hostMapper.selectById(instance.getHostId());
-        if (host != null && host.getSshUser() != null && !host.getSshUser().isBlank()) {
-            return "/home/" + host.getSshUser() + installPath.substring(1);
-        }
-        return installPath;
-    }
 }

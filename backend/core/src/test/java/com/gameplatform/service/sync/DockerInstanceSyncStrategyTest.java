@@ -302,4 +302,85 @@ class DockerInstanceSyncStrategyTest {
 
         verifyNoInteractions(dockerContainerLinkService);
     }
+
+    // ===== 容器重建回归（宿主机重启场景，容器 ID 变更）=====
+
+    private static final String OLD_CONTAINER_ID =
+            "225438da8ac44c46ad92742262bc7db17014889448c4c82692b0893eace6e385";
+    private static final String NEW_CONTAINER_ID =
+            "9f3c21be77d5e4a8b02c6d91e4fa8b31c0a2d4e6f8a1b3c5d7e9f0a1b2c3d4e5f";
+
+    /**
+     * 构造实例 56 的真实形态：config 只有 IMAGE_REPO/IMAGE_TAG/CONTAINER_NAME（无 image 字段），
+     * runtime_metadata 存旧 containerId；容器列表里是重建后的新容器。
+     */
+    private GameInstance composeRecreatedInstance() {
+        GameInstance recreated = new GameInstance();
+        recreated.setId(56L);
+        recreated.setHostId(10L);
+        recreated.setDeployType("docker-compose");
+        recreated.setGameCode("l4d2");
+        recreated.setInstanceName("l4d2_server");
+        recreated.setConfigInfo(Map.of(
+                "CONTAINER_NAME", "l4d2",           // compose 显式容器名（模板变量）
+                "IMAGE_REPO", "gameservermanagers/gameserver",
+                "IMAGE_TAG", "l4d2"
+        ));
+        recreated.setRuntimeMetadata(Map.of("containerId", OLD_CONTAINER_ID));
+        return recreated;
+    }
+
+    @Test
+    void matchContainer_composeContainerRecreated_matchesByProjectPrefix() {
+        // 宿主机重启容器重建：旧 ID 失效，通过 compose 容器名前缀 game56_ 重新匹配
+        GameInstance recreated = composeRecreatedInstance();
+        ContainerInfo container = new ContainerInfo(
+                NEW_CONTAINER_ID, "game56_l4d2_1", "gameservermanagers/gameserver", "l4d2");
+
+        InstanceMatchResult result = strategy.matchContainer(recreated, List.of(container));
+
+        assertThat(result.matched()).isTrue();
+        assertThat(result.containerId()).isEqualTo(NEW_CONTAINER_ID);
+    }
+
+    @Test
+    void matchContainer_imageRepoAndTag_recognizedByMultipleFields() {
+        // 容器名不含 projectName 前缀时，走第 3 级多字段匹配（镜像 + gameCode 关键字）；
+        // config 用 IMAGE_REPO+IMAGE_TAG 组合，必须能识别为镜像
+        GameInstance recreated = composeRecreatedInstance();
+        ContainerInfo container = new ContainerInfo(
+                NEW_CONTAINER_ID, "custom-l4d2-instance", "gameservermanagers/gameserver", "l4d2");
+
+        InstanceMatchResult result = strategy.matchContainer(recreated, List.of(container));
+
+        assertThat(result.matched()).isTrue();
+        assertThat(result.containerId()).isEqualTo(NEW_CONTAINER_ID);
+    }
+
+    @Test
+    void matchContainer_sameContainerId_matchesByExactId() {
+        // 未重建时旧容器 ID 直接命中（不回写）
+        GameInstance recreated = composeRecreatedInstance();
+        ContainerInfo container = new ContainerInfo(
+                OLD_CONTAINER_ID, "game56_l4d2_1", "gameservermanagers/gameserver", "l4d2");
+
+        InstanceMatchResult result = strategy.matchContainer(recreated, List.of(container));
+
+        assertThat(result.matched()).isTrue();
+        assertThat(result.containerId()).isEqualTo(OLD_CONTAINER_ID);
+    }
+
+    @Test
+    void matchContainer_shortIdPrefix_matches() {
+        // runtime 存完整 ID，docker ps 返回 12 位短 ID，互为前缀应匹配
+        GameInstance recreated = composeRecreatedInstance();
+        String shortId = OLD_CONTAINER_ID.substring(0, 12);
+        ContainerInfo container = new ContainerInfo(
+                shortId, "game56_l4d2_1", "gameservermanagers/gameserver", "l4d2");
+
+        InstanceMatchResult result = strategy.matchContainer(recreated, List.of(container));
+
+        assertThat(result.matched()).isTrue();
+        assertThat(result.containerId()).isEqualTo(shortId);
+    }
 }

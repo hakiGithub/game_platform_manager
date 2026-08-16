@@ -186,20 +186,20 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         if (route.isNative()) {
             return fileAccessService.downloadFileToMemory(route.hostId, route.resolvedPath);
         }
-        // Docker: docker cp 到本地 temp 再读取
-        Path temp = null;
+        // Docker: docker cp 到宿主临时路径（docker cp 的目标必须在宿主机，
+        // 传本地 Windows 路径会被解析成容器引用报 "copying between containers"），
+        // 再经 SFTP 读回内存
+        HostCredentials conn = deployAccess.credentials(route.hostId);
+        String tempHostPath = "/tmp/.gp-download-" + UUID.randomUUID();
         try {
-            temp = Files.createTempFile("gp-download-", ".bin");
             SshUtil.CommandResult r = executeOnHost(route.hostId,
-                "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + shellQuote(temp.toAbsolutePath().toString()));
+                "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + tempHostPath);
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 失败: " + r.getError());
             }
-            return Files.readAllBytes(temp);
-        } catch (IOException e) {
-            throw new RuntimeException("读取下载文件失败", e);
+            return fileAccessService.downloadFileToMemory(route.hostId, tempHostPath);
         } finally {
-            deleteTempQuietly(temp);
+            cleanupRemoteTemp(conn, tempHostPath);
         }
     }
 

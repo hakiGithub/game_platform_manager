@@ -39,13 +39,17 @@ public class ContainerIdResolver {
     public String resolve(InstanceVO instance, Map<String, Object> metadata) {
         String deployType = instance.getDeployType();
 
-        String containerId = getString(metadata, "containerId", null);
-        if (containerId != null && !containerId.isBlank()) {
-            return containerId;
-        }
-
         if ("docker".equals(deployType) || "linuxgsm-docker".equals(deployType)) {
+            // docker run 创建后容器 ID 稳定：containerId 优先
+            String containerId = getString(metadata, "containerId", null);
+            if (containerId != null && !containerId.isBlank()) {
+                return containerId;
+            }
+            // 容器名兜底（兼容显式配置与 DockerAdapter 默认命名 game-instance-{id}）
             String containerName = resolveContainerName(metadata);
+            if (containerName == null || containerName.isBlank()) {
+                containerName = instance.getId() == null ? null : "game-instance-" + instance.getId();
+            }
             if (containerName != null && !containerName.isBlank()) {
                 return containerName;
             }
@@ -54,6 +58,8 @@ public class ContainerIdResolver {
         }
 
         if ("docker-compose".equals(deployType)) {
+            // compose 容器重建后 ID 会变（宿主机重启场景）：动态查询当前真实容器，
+            // containerId 仅作查询失败时的回退（不盲信，避免同步写回前用旧 ID 操作失败）。
             // projectName 限定精确识别（game{id}）：避免多项目同名容器（CONTAINER_NAME=l4d2）误匹配。
             // 优先 runtimeMetadata.projectName，缺失时按实例 ID 推导 game{id}
             String projectName = getString(metadata, "projectName", null);
@@ -71,20 +77,30 @@ public class ContainerIdResolver {
             }
             SshUtil.CommandResult r = sshUtil.executeCommand(
                 conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(), cmd);
-            if (r.getExitCode() != 0) {
-                throw new IllegalStateException("解析容器 ID 失败: " + r.getError());
+            if (r.getExitCode() == 0) {
+                String output = r.getOutput().trim();
+                if (!output.isEmpty()) {
+                    String[] lines = output.split("\n");
+                    if (lines.length > 1) {
+                        throw new IllegalStateException(
+                            "容器 ID 不唯一，匹配到 " + lines.length + " 个容器");
+                    }
+                    return lines[0];
+                }
             }
-            String output = r.getOutput().trim();
-            if (output.isEmpty()) {
-                throw new IllegalStateException(
-                    "无法解析容器 ID（容器未运行）: " + instance.getId());
+            // 动态查询失败/容器未运行：回退容器名（compose 可能显式 container_name，如 l4d2，
+            // 此时 projectName 前缀查询无匹配；容器名在重建后稳定，可直接交给 docker exec 解析），
+            // 再回退缓存 containerId（至少能给出旧容器标识供排障）
+            String containerName = resolveContainerName(metadata);
+            if (containerName != null && !containerName.isBlank()) {
+                return containerName;
             }
-            String[] lines = output.split("\n");
-            if (lines.length > 1) {
-                throw new IllegalStateException(
-                    "容器 ID 不唯一，匹配到 " + lines.length + " 个容器");
+            String containerId = getString(metadata, "containerId", null);
+            if (containerId != null && !containerId.isBlank()) {
+                return containerId;
             }
-            return lines[0];
+            throw new IllegalStateException(
+                "无法解析容器 ID（容器未运行或查询失败）: " + instance.getId());
         }
 
         throw new IllegalStateException("不支持的部署类型: " + deployType);

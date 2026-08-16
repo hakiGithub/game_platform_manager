@@ -163,6 +163,22 @@ public class DockerInstanceSyncStrategy {
             }
         }
 
+        // 第 2.5 级：docker-compose 项目名前缀匹配
+        // compose 容器名规范为 {projectName}_{service}_{n}（如 game56_l4d2_1），
+        // 宿主机重启容器重建（ID 变更）后，项目名前缀是稳定的重新识别依据。
+        // 注意：config 的 CONTAINER_NAME 是容器内环境变量，不是容器名，不能作精确匹配依据。
+        if ("docker-compose".equals(instance.getDeployType())) {
+            String projectName = resolveProjectName(instance);
+            if (projectName != null && !projectName.isBlank()) {
+                String prefix = projectName + "_";
+                for (ContainerInfo c : containers) {
+                    if (c.containerName() != null && c.containerName().startsWith(prefix)) {
+                        return InstanceMatchResult.matched(InstanceStatus.RUNNING, c.containerId());
+                    }
+                }
+            }
+        }
+
         // 第 3 级：多字段严格匹配
         for (ContainerInfo c : containers) {
             if (matchByMultipleFields(instance, c)) {
@@ -291,8 +307,29 @@ public class DockerInstanceSyncStrategy {
             if (image != null) {
                 return image;
             }
+            // docker-compose 模板变量风格：IMAGE_REPO + IMAGE_TAG 组合
+            String repo = pickFirstNonBlankString(config, "IMAGE_REPO", "imageRepo");
+            if (repo != null) {
+                String tag = pickFirstNonBlankString(config, "IMAGE_TAG", "imageTag");
+                return tag == null ? repo : repo + ":" + tag;
+            }
         }
         return null;
+    }
+
+    /**
+     * 解析 compose 项目名：优先 runtime_metadata.projectName（部署时写入），
+     * 缺失时按实例 ID 推导 game{id}（与 DockerComposeAdapter.PROJECT_PREFIX 约定一致）。
+     */
+    private String resolveProjectName(GameInstance instance) {
+        Map<String, Object> runtime = instance.getRuntimeMetadata();
+        if (runtime != null) {
+            Object projectName = runtime.get("projectName");
+            if (projectName instanceof String s && !s.isBlank()) {
+                return s;
+            }
+        }
+        return instance.getId() == null ? null : "game" + instance.getId();
     }
 
     private String extractKeyword(GameInstance instance) {
