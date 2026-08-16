@@ -195,12 +195,6 @@ const routes = [
             name: 'SystemSettings',
             component: () => import('@/views/system/settings.vue'),
             meta: { title: '系统配置', navPath: '/system/configuration', requiresAuth: true }
-          },
-          {
-            path: 'audit',
-            name: 'SystemLogs',
-            component: () => import('@/views/system/logs.vue'),
-            meta: { title: '审计日志', navPath: '/system/audit', requiresAuth: true }
           }
         ]
       },
@@ -226,7 +220,6 @@ const routes = [
       { path: 'plugins', redirect: '/extensions/plugins/list', meta: { requiresAuth: true, hidden: true } },
       { path: 'plugins/list', redirect: '/extensions/plugins/list', meta: { requiresAuth: true, hidden: true } },
       { path: 'system/settings', redirect: '/system/configuration', meta: { requiresAuth: true, hidden: true } },
-      { path: 'system/logs', redirect: '/system/audit', meta: { requiresAuth: true, hidden: true } },
       {
         path: 'plugin/:gameCode/:menuPath(.*)?',
         redirect: to => {

@@ -47,8 +47,6 @@ class GameServiceTest {
     @Mock
     private com.gameplatform.mapper.GameInstanceMapper gameInstanceMapper;
 
-    @Mock
-    private LogService logService;
 
     @InjectMocks
     private GameServiceImpl gameService;
@@ -105,7 +103,6 @@ class GameServiceTest {
             game.setId(2L);
             return 1;
         });
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         GameVO result = gameService.createGame(createDTO);
@@ -118,7 +115,6 @@ class GameServiceTest {
         assertEquals(createDTO.getDefaultPort(), result.getDefaultPort());
         verify(gameMetadataMapper).selectByGameCode(createDTO.getGameCode());
         verify(gameMetadataMapper).insert(any(GameMetadata.class));
-        verify(logService).log(anyString(), eq("CREATE"), eq("GAME"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -126,7 +122,6 @@ class GameServiceTest {
     void testCreateGameCodeExists() {
         // Given
         when(gameMetadataMapper.selectByGameCode(createDTO.getGameCode())).thenReturn(testGame);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -143,7 +138,6 @@ class GameServiceTest {
         // Given
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
         when(gameMetadataMapper.updateById(any(GameMetadata.class))).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         GameVO result = gameService.updateGame(updateDTO);
@@ -156,7 +150,6 @@ class GameServiceTest {
         assertEquals(testGame.getGameCode(), result.getGameCode());
         verify(gameMetadataMapper).selectById(1L);
         verify(gameMetadataMapper).updateById(any(GameMetadata.class));
-        verify(logService).log(anyString(), eq("UPDATE"), eq("GAME"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -164,7 +157,6 @@ class GameServiceTest {
     void testUpdateGameNotFound() {
         // Given
         when(gameMetadataMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -181,7 +173,6 @@ class GameServiceTest {
         // Given
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
         when(gameMetadataMapper.deleteById(1L)).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         gameService.deleteGame(1L);
@@ -189,7 +180,6 @@ class GameServiceTest {
         // Then
         verify(gameMetadataMapper).selectById(1L);
         verify(gameMetadataMapper).deleteById(1L);
-        verify(logService).log(anyString(), eq("DELETE"), eq("GAME"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -197,7 +187,6 @@ class GameServiceTest {
     void testDeleteGameNotFound() {
         // Given
         when(gameMetadataMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {

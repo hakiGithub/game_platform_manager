@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.task.TaskLog;
@@ -65,7 +64,6 @@ public class TaskController {
      */
     @Operation(summary = "提交任务", description = "提交异步任务，返回任务ID")
     @PostMapping
-    @OperationLog(type = "CREATE", target = "TASK", description = "提交任务")
     public Result<String> submit(@RequestBody TaskSubmitRequest request) {
         // 自动填充提交者（前端传入的 submitter 会被覆盖，防止伪造）
         String submitter = getCurrentUsername();
@@ -133,7 +131,6 @@ public class TaskController {
      */
     @Operation(summary = "取消任务", description = "协作式取消，PENDING 直接取消，RUNNING 等待 Handler 优雅退出")
     @PostMapping("/{taskId}/cancel")
-    @OperationLog(type = "CANCEL", target = "TASK", description = "取消任务")
     public Result<Boolean> cancel(
             @Parameter(description = "任务ID") @PathVariable String taskId) {
         boolean accepted = taskAdminService.cancel(taskId);
@@ -148,7 +145,6 @@ public class TaskController {
      */
     @Operation(summary = "重试任务", description = "基于原任务 payload 创建新任务，原任务状态不变")
     @PostMapping("/{taskId}/retry")
-    @OperationLog(type = "RETRY", target = "TASK", description = "重试任务")
     public Result<String> retry(
             @Parameter(description = "原任务ID") @PathVariable String taskId) {
         String newTaskId = taskAdminService.retry(taskId);
@@ -160,7 +156,6 @@ public class TaskController {
      */
     @Operation(summary = "删除任务", description = "软删除，仅终态任务（COMPLETED/FAILED/CANCELLED）可删除")
     @DeleteMapping("/{taskId}")
-    @OperationLog(type = "DELETE", target = "TASK", description = "删除任务")
     public Result<Boolean> delete(
             @Parameter(description = "任务ID") @PathVariable String taskId) {
         boolean deleted = taskAdminService.delete(taskId);

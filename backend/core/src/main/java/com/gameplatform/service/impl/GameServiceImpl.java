@@ -13,7 +13,6 @@ import com.gameplatform.entity.GameInstance;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.service.GameService;
-import com.gameplatform.service.LogService;
 import com.gameplatform.vo.DeployConfigVO;
 import com.gameplatform.vo.GameVO;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +38,6 @@ public class GameServiceImpl implements GameService {
 
     private final GameMetadataMapper gameMetadataMapper;
     private final GameInstanceMapper gameInstanceMapper;
-    private final LogService logService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -55,8 +53,6 @@ public class GameServiceImpl implements GameService {
         
         gameMetadataMapper.insert(game);
         
-        logService.log(getCurrentUser(), "CREATE", "GAME", 
-                "创建游戏: " + game.getGameName(), "success", null, null);
         
         return convertToVO(game);
     }
@@ -72,8 +68,6 @@ public class GameServiceImpl implements GameService {
         BeanUtil.copyProperties(dto, game, "id", "gameCode");
         gameMetadataMapper.updateById(game);
         
-        logService.log(getCurrentUser(), "UPDATE", "GAME", 
-                "更新游戏: " + game.getGameName(), "success", null, null);
         
         return convertToVO(game);
     }
@@ -88,8 +82,6 @@ public class GameServiceImpl implements GameService {
         
         gameMetadataMapper.deleteById(id);
         
-        logService.log(getCurrentUser(), "DELETE", "GAME", 
-                "删除游戏: " + game.getGameName(), "success", null, null);
     }
 
     @Override
@@ -228,9 +220,5 @@ public class GameServiceImpl implements GameService {
     /**
      * 获取当前用户
      */
-    private String getCurrentUser() {
-        // TODO: 从SecurityContext获取当前用户
-        return "admin";
-    }
 
 }

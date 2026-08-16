@@ -46,8 +46,6 @@ class HostServiceTest {
     @Mock
     private HostMapper hostMapper;
 
-    @Mock
-    private LogService logService;
 
     @Mock
     private SshUtil sshUtil;
@@ -112,7 +110,6 @@ class HostServiceTest {
             host.setId(2L);
             return 1;
         });
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         HostVO result = hostService.createHost(createDTO);
@@ -125,7 +122,6 @@ class HostServiceTest {
         assertTrue(result.getIsLanHost(), "isLanHost 应从 createDTO 透传 true");
         verify(hostMapper).selectByIpAddress(createDTO.getIp());
         verify(hostMapper).insert(any(Host.class));
-        verify(logService).log(anyString(), eq("CREATE"), eq("HOST"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -144,7 +140,6 @@ class HostServiceTest {
             host.setId(2L);
             return 1;
         });
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         HostVO result = hostService.createHost(dto);
@@ -159,7 +154,6 @@ class HostServiceTest {
     void testCreateHostIpExists() {
         // Given
         when(hostMapper.selectByIpAddress(createDTO.getIp())).thenReturn(testHost);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -176,7 +170,6 @@ class HostServiceTest {
         // Given
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(hostMapper.updateById(any(Host.class))).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         HostVO result = hostService.updateHost(updateDTO);
@@ -189,7 +182,6 @@ class HostServiceTest {
         assertFalse(result.getIsLanHost(), "isLanHost 应从 updateDTO 更新为 false");
         verify(hostMapper).selectById(1L);
         verify(hostMapper).updateById(any(Host.class));
-        verify(logService).log(anyString(), eq("UPDATE"), eq("HOST"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -197,7 +189,6 @@ class HostServiceTest {
     void testUpdateHostNotFound() {
         // Given
         when(hostMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -222,7 +213,6 @@ class HostServiceTest {
 
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(hostMapper.selectByIpAddress("192.168.1.200")).thenReturn(otherHost);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -237,7 +227,6 @@ class HostServiceTest {
         // Given
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(hostMapper.deleteById(1L)).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         hostService.deleteHost(1L);
@@ -245,7 +234,6 @@ class HostServiceTest {
         // Then
         verify(hostMapper).selectById(1L);
         verify(hostMapper).deleteById(1L);
-        verify(logService).log(anyString(), eq("DELETE"), eq("HOST"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -253,7 +241,6 @@ class HostServiceTest {
     void testDeleteHostNotFound() {
         // Given
         when(hostMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {

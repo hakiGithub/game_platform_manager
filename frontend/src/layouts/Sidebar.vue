@@ -73,7 +73,6 @@ const systemMenuItems = [
     title: "系统设置",
     children: [
       { index: "/system/configuration", title: "系统配置" },
-      { index: "/system/audit", title: "审计日志" },
     ],
   },
 ];

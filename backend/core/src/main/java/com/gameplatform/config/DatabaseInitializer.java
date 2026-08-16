@@ -123,7 +123,6 @@ public class DatabaseInitializer implements CommandLineRunner {
      */
     private void runMigrations() {
         // V1.1: 添加缺失的列
-        addColumnIfNotExists("operation_log", "remark", "TEXT");
         addColumnIfNotExists("game_instance", "database_config", "TEXT");
         addColumnIfNotExists("game_instance", "save_path", "VARCHAR(500)");
         addColumnIfNotExists("game_instance", "config_path", "VARCHAR(500)");

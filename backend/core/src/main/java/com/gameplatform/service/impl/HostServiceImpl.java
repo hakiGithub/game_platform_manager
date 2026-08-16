@@ -15,7 +15,6 @@ import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.HostService;
-import com.gameplatform.service.LogService;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
@@ -40,7 +39,6 @@ import java.util.stream.Collectors;
 public class HostServiceImpl implements HostService {
 
     private final HostMapper hostMapper;
-    private final LogService logService;
     private final SshUtil sshUtil;
     private final DeploymentAccess deployAccess;
 
@@ -88,8 +86,6 @@ public class HostServiceImpl implements HostService {
         
         hostMapper.insert(host);
         
-        logService.log(getCurrentUser(), "CREATE", "HOST", 
-                "创建主机: " + host.getHostName(), "success", null, null);
         
         return convertToVO(host);
     }
@@ -145,8 +141,6 @@ public class HostServiceImpl implements HostService {
         
         hostMapper.updateById(host);
         
-        logService.log(getCurrentUser(), "UPDATE", "HOST", 
-                "更新主机: " + host.getHostName(), "success", null, null);
         
         return convertToVO(host);
     }
@@ -161,8 +155,6 @@ public class HostServiceImpl implements HostService {
         
         hostMapper.deleteById(id);
         
-        logService.log(getCurrentUser(), "DELETE", "HOST", 
-                "删除主机: " + host.getHostName(), "success", null, null);
     }
 
     @Override
@@ -333,10 +325,6 @@ public class HostServiceImpl implements HostService {
     /**
      * 获取当前用户
      */
-    private String getCurrentUser() {
-        // TODO: 从SecurityContext获取当前用户
-        return "admin";
-    }
 
     @Override
     public void refreshAllHostsStatus() {

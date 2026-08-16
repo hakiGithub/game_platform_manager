@@ -46,8 +46,6 @@ class UserServiceTest {
     @Mock
     private JwtTokenProvider jwtTokenProvider;
 
-    @Mock
-    private LogService logService;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -98,7 +96,6 @@ class UserServiceTest {
     void testLoginFailUserNotFound() {
         // Given
         when(userMapper.selectByUsername("admin")).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         assertThrows(BusinessException.class, () -> {
@@ -115,7 +112,6 @@ class UserServiceTest {
         // Given
         loginDTO.setPassword("wrongpassword");
         when(userMapper.selectByUsername("admin")).thenReturn(testUser);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         assertThrows(BusinessException.class, () -> {

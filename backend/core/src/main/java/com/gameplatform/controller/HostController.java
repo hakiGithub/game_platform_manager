@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.config.GamePlatformConfig;
@@ -72,7 +71,6 @@ public class HostController {
      */
     @Operation(summary = "新增主机", description = "新增主机,SSH私钥加密存储")
     @PostMapping
-    @OperationLog(type = "CREATE", target = "HOST", description = "新增主机")
     public Result<HostVO> create(@Valid @RequestBody HostCreateDTO dto) {
         // 加密SSH私钥
         if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
@@ -87,7 +85,6 @@ public class HostController {
      */
     @Operation(summary = "更新主机", description = "更新主机信息")
     @PutMapping("/{id}")
-    @OperationLog(type = "UPDATE", target = "HOST", description = "更新主机")
     public Result<HostVO> update(@Parameter(description = "主机ID") @PathVariable Long id,
                                   @Valid @RequestBody HostUpdateDTO dto) {
         dto.setId(id);
@@ -107,7 +104,6 @@ public class HostController {
      */
     @Operation(summary = "删除主机", description = "删除主机")
     @DeleteMapping("/{id}")
-    @OperationLog(type = "DELETE", target = "HOST", description = "删除主机")
     public Result<Void> delete(@Parameter(description = "主机ID") @PathVariable Long id) {
         hostService.deleteHost(id);
         return Result.success();
@@ -118,7 +114,6 @@ public class HostController {
      */
     @Operation(summary = "测试SSH连接", description = "测试主机SSH连接是否正常")
     @PostMapping("/{id}/test")
-    @OperationLog(type = "TEST", target = "HOST", description = "测试SSH连接")
     public Result<ConnectionTestResult> testConnection(@Parameter(description = "主机ID") @PathVariable Long id) {
         HostVO host = hostService.getHostById(id);
         if (host == null) {
@@ -232,7 +227,6 @@ public class HostController {
      */
     @Operation(summary = "执行 hosts 刷新", description = "将 127.0.0.1 域名改为宿主机 LAN IP")
     @PostMapping("/{id}/hosts-refresh")
-    @OperationLog(type = "UPDATE", target = "HOST", description = "刷新宿主机 hosts")
     public Result<com.gameplatform.vo.HostsRefreshResult> refreshHosts(
             @Parameter(description = "主机ID") @PathVariable Long id,
             @RequestBody HostsRefreshRequest request) {

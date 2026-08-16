@@ -118,7 +118,4 @@ VALUES (
 );
 
 -- =====================================================
--- 4. 初始化操作日志
--- =====================================================
-INSERT INTO operation_log (operator, operation_type, operation_target, operation_content, operation_result, ip_address)
 VALUES ('system', 'INIT', 'SYSTEM', '系统初始化完成', 'success', '127.0.0.1');

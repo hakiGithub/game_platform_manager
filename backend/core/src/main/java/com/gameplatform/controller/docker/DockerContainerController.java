@@ -1,6 +1,5 @@
 package com.gameplatform.controller.docker;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.dto.docker.ContainerLogQueryDTO;
 import com.gameplatform.dto.docker.ContainerOperationDTO;
@@ -70,7 +69,6 @@ public class DockerContainerController {
      */
     @Operation(summary = "启动容器", description = "启动已停止的容器")
     @PostMapping("/{containerId}/start")
-    @OperationLog(type = "START", target = "CONTAINER", description = "启动容器")
     public Result<DockerContainerService.ContainerOperationResult> start(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId) {
@@ -84,7 +82,6 @@ public class DockerContainerController {
      */
     @Operation(summary = "停止容器", description = "停止运行中的容器")
     @PostMapping("/{containerId}/stop")
-    @OperationLog(type = "STOP", target = "CONTAINER", description = "停止容器")
     public Result<DockerContainerService.ContainerOperationResult> stop(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,
@@ -99,7 +96,6 @@ public class DockerContainerController {
      */
     @Operation(summary = "重启容器", description = "重启容器")
     @PostMapping("/{containerId}/restart")
-    @OperationLog(type = "RESTART", target = "CONTAINER", description = "重启容器")
     public Result<DockerContainerService.ContainerOperationResult> restart(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,
@@ -114,7 +110,6 @@ public class DockerContainerController {
      */
     @Operation(summary = "删除容器", description = "删除容器")
     @DeleteMapping("/{containerId}")
-    @OperationLog(type = "DELETE", target = "CONTAINER", description = "删除容器")
     public Result<DockerContainerService.ContainerOperationResult> delete(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,

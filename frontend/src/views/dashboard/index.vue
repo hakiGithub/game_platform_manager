@@ -9,7 +9,6 @@ import {
   startInstance,
   stopInstance,
 } from "@/api/instance";
-import { getOperationLogs } from "@/api/system";
 import { statusType } from "@/utils/instanceStatus";
 
 const router = useRouter();
@@ -60,7 +59,6 @@ const statistics = ref([
 const resourceTop5 = ref([]);
 const instanceStatusData = ref({ running: 0, stopped: 0, error: 0 });
 const instanceList = ref([]);
-const operationLogs = ref([]);
 const loading = ref(false);
 const lastRefreshAt = ref("等待首次刷新");
 let refreshTimer = null;
@@ -133,7 +131,6 @@ async function fetchDashboardData() {
     instanceList.value = instancesList.slice(0, 5);
 
     await fetchResourceTop5(hostList);
-    await fetchOperationLogs();
     lastRefreshAt.value = new Date().toLocaleTimeString("zh-CN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -164,20 +161,6 @@ async function fetchResourceTop5(hostList) {
   }
 
   resourceTop5.value = resourceData.sort((a, b) => b.cpu - a.cpu);
-}
-
-async function fetchOperationLogs() {
-  try {
-    const data = await getOperationLogs({ size: 5 });
-    operationLogs.value = (data.records || []).map((log) => ({
-      time: log.operationTime,
-      operator: log.operatorName,
-      action: log.operationContent,
-      result: log.responseStatus === 1 ? "success" : "fail",
-    }));
-  } catch (error) {
-    console.error("Failed to fetch operation logs:", error);
-  }
 }
 
 function getProgressColor(value) {
@@ -509,36 +492,6 @@ onBeforeUnmount(stopAutoRefresh);
           </template>
         </el-table-column>
       </el-table>
-    </section>
-
-    <section class="activity-panel">
-      <div class="panel-heading">
-        <div>
-          <span class="section-kicker">AUDIT TRAIL</span>
-          <h2>最近操作</h2>
-        </div>
-        <el-button link @click="router.push('/system/logs')">
-          查看全部 <el-icon><ArrowRight /></el-icon>
-        </el-button>
-      </div>
-      <div v-if="operationLogs.length" class="activity-list">
-        <div v-for="(log, index) in operationLogs" :key="`${log.time}-${index}`" class="activity-row">
-          <span class="activity-time">{{ log.time }}</span>
-          <span class="activity-marker" :class="log.result"></span>
-          <div class="activity-copy">
-            <strong>{{ log.action }}</strong>
-            <span>{{ log.operator }}</span>
-          </div>
-          <el-tag :type="log.result === 'success' ? 'success' : 'danger'" size="small">
-            {{ log.result === "success" ? "成功" : "失败" }}
-          </el-tag>
-        </div>
-      </div>
-      <div v-else class="empty-state activity-empty">
-        <el-icon><Tickets /></el-icon>
-        <strong>暂无操作记录</strong>
-        <span>系统产生的处置记录会显示在这里</span>
-      </div>
     </section>
 
     <div class="dashboard-footer">

@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
@@ -98,7 +97,6 @@ public class InstanceController {
      */
     @Operation(summary = "创建实例", description = "创建游戏实例并部署")
     @PostMapping
-    @OperationLog(type = "CREATE", target = "INSTANCE", description = "创建游戏实例")
     public Result<InstanceVO> create(@Valid @RequestBody InstanceCreateDTO dto) {
         InstanceVO instanceVO = instanceService.createInstance(dto);
         return Result.success(instanceVO);
@@ -109,7 +107,6 @@ public class InstanceController {
      */
     @Operation(summary = "更新实例配置", description = "更新游戏实例配置")
     @PutMapping("/{id}")
-    @OperationLog(type = "UPDATE", target = "INSTANCE", description = "更新实例配置")
     public Result<InstanceVO> update(@Parameter(description = "实例ID") @PathVariable Long id,
                                       @Valid @RequestBody InstanceUpdateDTO dto) {
         dto.setId(id);
@@ -122,7 +119,6 @@ public class InstanceController {
      */
     @Operation(summary = "删除实例", description = "删除游戏实例并卸载")
     @DeleteMapping("/{id}")
-    @OperationLog(type = "DELETE", target = "INSTANCE", description = "删除游戏实例")
     public Result<Void> delete(@Parameter(description = "实例ID") @PathVariable Long id) {
         instanceService.deleteInstance(id);
         return Result.success();
@@ -300,7 +296,6 @@ public class InstanceController {
      */
     @Operation(summary = "启动实例", description = "启动游戏实例")
     @PostMapping("/{id}/start")
-    @OperationLog(type = "START", target = "INSTANCE", description = "启动游戏实例")
     public Result<OperationResultVO> start(@Parameter(description = "实例ID") @PathVariable Long id) {
         boolean success = instanceService.startInstance(id);
         OperationResultVO result = new OperationResultVO();
@@ -314,7 +309,6 @@ public class InstanceController {
      */
     @Operation(summary = "停止实例", description = "停止游戏实例")
     @PostMapping("/{id}/stop")
-    @OperationLog(type = "STOP", target = "INSTANCE", description = "停止游戏实例")
     public Result<OperationResultVO> stop(@Parameter(description = "实例ID") @PathVariable Long id) {
         boolean success = instanceService.stopInstance(id);
         OperationResultVO result = new OperationResultVO();
@@ -328,7 +322,6 @@ public class InstanceController {
      */
     @Operation(summary = "重启实例", description = "重启游戏实例")
     @PostMapping("/{id}/restart")
-    @OperationLog(type = "RESTART", target = "INSTANCE", description = "重启游戏实例")
     public Result<OperationResultVO> restart(@Parameter(description = "实例ID") @PathVariable Long id) {
         boolean success = instanceService.restartInstance(id);
         OperationResultVO result = new OperationResultVO();
@@ -511,7 +504,6 @@ public class InstanceController {
      */
     @Operation(summary = "重试部署", description = "对异常状态的实例重新触发部署")
     @PostMapping("/{id}/retry-deploy")
-    @OperationLog(type = "DEPLOY", target = "INSTANCE", description = "重试部署实例")
     public Result<Void> retryDeploy(@Parameter(description = "实例ID") @PathVariable Long id) {
         instanceService.retryDeploy(id);
         return Result.success();
@@ -523,7 +515,6 @@ public class InstanceController {
      */
     @Operation(summary = "恢复中断的部署任务", description = "将所有部署中状态的实例标记为异常，用于清理因应用崩溃遗留的部署状态")
     @PostMapping("/recover-deploying")
-    @OperationLog(type = "DEPLOY", target = "INSTANCE", description = "恢复中断的部署任务")
     public Result<Integer> recoverDeployingInstances() {
         int count = instanceService.recoverDeployingInstances();
         return Result.success(count);
@@ -554,7 +545,6 @@ public class InstanceController {
      */
     @Operation(summary = "更新实例配置", description = "更新游戏实例配置文件")
     @PutMapping("/{id}/config")
-    @OperationLog(type = "UPDATE", target = "INSTANCE", description = "更新实例配置文件")
     public Result<Void> updateConfig(@Parameter(description = "实例ID") @PathVariable Long id,
                                       @RequestBody Map<String, Object> config) {
         InstanceUpdateDTO dto = new InstanceUpdateDTO();
@@ -632,7 +622,6 @@ public class InstanceController {
      */
     @Operation(summary = "上传文件", description = "上传文件到实例目录")
     @PostMapping("/{id}/files/upload")
-    @OperationLog(type = "UPLOAD", target = "INSTANCE", description = "上传文件")
     public Result<UploadResultVO> uploadFile(@Parameter(description = "实例ID") @PathVariable Long id,
                                               @Parameter(description = "目标路径") @RequestParam String path,
                                               @Parameter(description = "文件") @RequestParam("file") MultipartFile file) {
@@ -681,7 +670,6 @@ public class InstanceController {
      */
     @Operation(summary = "删除文件", description = "删除实例文件")
     @DeleteMapping("/{id}/files")
-    @OperationLog(type = "DELETE", target = "INSTANCE", description = "删除文件")
     public Result<Void> deleteFile(@Parameter(description = "实例ID") @PathVariable Long id,
                                     @Parameter(description = "文件路径") @RequestParam(required = false) String path,
                                     @RequestBody(required = false) Map<String, Object> body) {
@@ -731,7 +719,6 @@ public class InstanceController {
      */
     @Operation(summary = "保存文件内容", description = "写入实例文件文本内容")
     @PutMapping("/{id}/files/content")
-    @OperationLog(type = "UPDATE", target = "INSTANCE", description = "保存文件")
     public Result<Void> saveFileContent(@Parameter(description = "实例ID") @PathVariable Long id,
                                          @RequestBody Map<String, Object> body) {
         InstanceVO instance = instanceService.getInstanceById(id);
@@ -757,7 +744,6 @@ public class InstanceController {
      */
     @Operation(summary = "创建目录", description = "在实例目录下创建新目录")
     @PostMapping("/{id}/files/directory")
-    @OperationLog(type = "CREATE", target = "INSTANCE", description = "创建目录")
     public Result<Void> createDirectory(@Parameter(description = "实例ID") @PathVariable Long id,
                                          @RequestBody Map<String, Object> body) {
         InstanceVO instance = instanceService.getInstanceById(id);

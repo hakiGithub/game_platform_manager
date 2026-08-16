@@ -1,6 +1,5 @@
 package com.gameplatform.controller.docker;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.dto.docker.ContainerLinkDTO;
 import com.gameplatform.service.docker.DockerContainerLinkService;
@@ -37,7 +36,6 @@ public class DockerLinkController {
      */
     @Operation(summary = "创建关联", description = "手动创建容器与实例的关联")
     @PostMapping
-    @OperationLog(type = "CREATE", target = "CONTAINER_LINK", description = "创建容器关联")
     public Result<ContainerLinkVO> createLink(
             @Valid @RequestBody ContainerLinkDTO dto,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -52,7 +50,6 @@ public class DockerLinkController {
      */
     @Operation(summary = "更新关联", description = "更新容器关联信息")
     @PutMapping("/{id}")
-    @OperationLog(type = "UPDATE", target = "CONTAINER_LINK", description = "更新容器关联")
     public Result<ContainerLinkVO> updateLink(
             @Parameter(description = "关联记录ID") @PathVariable Long id,
             @RequestBody ContainerLinkDTO dto) {
@@ -66,7 +63,6 @@ public class DockerLinkController {
      */
     @Operation(summary = "删除关联", description = "删除容器关联")
     @DeleteMapping("/{id}")
-    @OperationLog(type = "DELETE", target = "CONTAINER_LINK", description = "删除容器关联")
     public Result<Void> deleteLink(
             @Parameter(description = "关联记录ID") @PathVariable Long id) {
         
@@ -106,7 +102,6 @@ public class DockerLinkController {
      */
     @Operation(summary = "执行自动关联", description = "根据镜像名称自动匹配并创建容器关联")
     @PostMapping("/auto")
-    @OperationLog(type = "AUTO_LINK", target = "CONTAINER_LINK", description = "执行自动关联")
     public Result<DockerContainerLinkService.AutoLinkResult> autoLink(
             @RequestBody AutoLinkRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {

@@ -1,6 +1,5 @@
 package com.gameplatform.controller.docker;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.service.docker.DockerImageService;
 import com.gameplatform.vo.docker.ImageListVO;
@@ -51,7 +50,6 @@ public class DockerImageController {
      */
     @Operation(summary = "删除镜像", description = "删除指定的镜像")
     @DeleteMapping("/{imageId}")
-    @OperationLog(type = "DELETE", target = "IMAGE", description = "删除镜像")
     public Result<DockerImageService.ImageDeleteResult> delete(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "镜像ID") @PathVariable String imageId,
@@ -66,7 +64,6 @@ public class DockerImageController {
      */
     @Operation(summary = "清理悬空镜像", description = "清理无标签的悬空镜像")
     @PostMapping("/prune")
-    @OperationLog(type = "PRUNE", target = "IMAGE", description = "清理悬空镜像")
     public Result<DockerImageService.ImagePruneResult> prune(
             @Parameter(description = "主机ID") @PathVariable Long hostId) {
         

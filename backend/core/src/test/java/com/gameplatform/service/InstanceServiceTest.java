@@ -59,8 +59,6 @@ class InstanceServiceTest {
     @Mock
     private HostMapper hostMapper;
 
-    @Mock
-    private LogService logService;
 
     @Mock
     private DeployAdapterFactory adapterFactory;
@@ -157,7 +155,6 @@ class InstanceServiceTest {
             instance.setId(2L);
             return 1;
         });
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         InstanceVO result = instanceService.createInstance(createDTO);
@@ -173,7 +170,6 @@ class InstanceServiceTest {
         verify(hostMapper, atLeast(1)).selectById(1L);
         verify(gameMetadataMapper, atLeast(1)).selectById(1L);
         verify(instanceMapper).insert(any(GameInstance.class));
-        verify(logService).log(anyString(), eq("CREATE"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -189,7 +185,6 @@ class InstanceServiceTest {
             g.setId(2L);
             return 1;
         });
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
         createDTO.setInstallPath("~/games/l4d2");
 
         // When
@@ -206,7 +201,6 @@ class InstanceServiceTest {
     void testCreateInstanceNameExists() {
         // Given
         when(instanceMapper.selectByHostIdAndInstanceName(createDTO.getHostId(), createDTO.getInstanceName())).thenReturn(testInstance);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -224,7 +218,6 @@ class InstanceServiceTest {
         // Given
         when(instanceMapper.selectByHostIdAndInstanceName(createDTO.getHostId(), createDTO.getInstanceName())).thenReturn(null);
         when(hostMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -240,7 +233,6 @@ class InstanceServiceTest {
         when(instanceMapper.selectByHostIdAndInstanceName(createDTO.getHostId(), createDTO.getInstanceName())).thenReturn(null);
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(gameMetadataMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -257,7 +249,6 @@ class InstanceServiceTest {
         when(instanceMapper.updateById(any(GameInstance.class))).thenReturn(1);
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         InstanceVO result = instanceService.updateInstance(updateDTO);
@@ -268,7 +259,6 @@ class InstanceServiceTest {
         assertEquals(updateDTO.getInstallPath(), result.getInstallPath());
         verify(instanceMapper).selectById(1L);
         verify(instanceMapper).updateById(any(GameInstance.class));
-        verify(logService).log(anyString(), eq("UPDATE"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -318,7 +308,6 @@ class InstanceServiceTest {
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         instanceService.deleteInstance(1L);
@@ -327,7 +316,6 @@ class InstanceServiceTest {
         verify(instanceMapper).selectById(1L);
         verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
         verify(instanceMapper).physicalDeleteById(1L);
-        verify(logService).log(anyString(), eq("DELETE"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -341,7 +329,6 @@ class InstanceServiceTest {
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         instanceService.deleteInstance(1L);
@@ -357,7 +344,6 @@ class InstanceServiceTest {
     void testDeleteInstanceNotFound() {
         // Given
         when(instanceMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -475,7 +461,6 @@ class InstanceServiceTest {
         when(instanceMapper.updateRunStatus(1L, 1)).thenReturn(1);
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.start(eq(1L), anyMap())).thenReturn(true);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         boolean result = instanceService.startInstance(1L);
@@ -483,7 +468,6 @@ class InstanceServiceTest {
         // Then
         assertTrue(result);
         verify(instanceMapper, times(2)).updateRunStatus(eq(1L), anyInt());
-        verify(logService).log(anyString(), eq("START"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -491,7 +475,6 @@ class InstanceServiceTest {
     void testStartInstanceNotFound() {
         // Given
         when(instanceMapper.selectById(1L)).thenReturn(null);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -506,7 +489,6 @@ class InstanceServiceTest {
         // Given
         testInstance.setRunStatus(1); // 运行中
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // When & Then
         BusinessException exception = assertThrows(BusinessException.class, () -> {
@@ -527,7 +509,6 @@ class InstanceServiceTest {
         when(instanceMapper.updateOnlinePlayers(1L, 0)).thenReturn(1);
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.stop(eq(1L), anyMap())).thenReturn(true);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         boolean result = instanceService.stopInstance(1L);
@@ -536,7 +517,6 @@ class InstanceServiceTest {
         assertTrue(result);
         verify(instanceMapper, times(2)).updateRunStatus(eq(1L), anyInt());
         verify(instanceMapper).updateOnlinePlayers(1L, 0);
-        verify(logService).log(anyString(), eq("STOP"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -584,7 +564,6 @@ class InstanceServiceTest {
         when(instanceMapper.updateRunStatus(eq(1L), anyInt())).thenReturn(1);
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.restart(eq(1L), anyMap())).thenReturn(true);
-        doNothing().when(logService).log(anyString(), anyString(), anyString(), anyString(), anyString(), isNull(), isNull());
 
         // When
         boolean result = instanceService.restartInstance(1L);

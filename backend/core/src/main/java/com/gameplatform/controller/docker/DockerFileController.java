@@ -1,6 +1,5 @@
 package com.gameplatform.controller.docker;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.dto.docker.FileContentUpdateDTO;
 import com.gameplatform.dto.docker.FileCopyDTO;
@@ -68,7 +67,6 @@ public class DockerFileController {
      */
     @Operation(summary = "更新文件内容", description = "更新容器内文件内容")
     @PutMapping("/content")
-    @OperationLog(type = "UPDATE", target = "FILE", description = "更新文件内容")
     public Result<DockerFileService.FileUpdateResult> updateFileContent(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,
@@ -83,7 +81,6 @@ public class DockerFileController {
      */
     @Operation(summary = "删除文件", description = "删除容器内文件或空目录")
     @DeleteMapping
-    @OperationLog(type = "DELETE", target = "FILE", description = "删除文件")
     public Result<DockerFileService.FileDeleteResult> deleteFile(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,
@@ -98,7 +95,6 @@ public class DockerFileController {
      */
     @Operation(summary = "上传文件", description = "上传文件到容器指定目录")
     @PostMapping("/upload")
-    @OperationLog(type = "UPLOAD", target = "FILE", description = "上传文件")
     public Result<DockerFileService.FileUploadResult> uploadFile(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,
@@ -129,7 +125,6 @@ public class DockerFileController {
      */
     @Operation(summary = "拷贝文件", description = "在容器与主机间拷贝文件")
     @PostMapping("/copy")
-    @OperationLog(type = "COPY", target = "FILE", description = "拷贝文件")
     public Result<DockerFileService.FileCopyResult> copyFile(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "容器ID") @PathVariable String containerId,

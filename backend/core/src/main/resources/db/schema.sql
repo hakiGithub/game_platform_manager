@@ -143,29 +143,6 @@ CREATE INDEX IF NOT EXISTS idx_plugin_info_plugin_id ON plugin_info(plugin_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_info_status ON plugin_info(status);
 CREATE INDEX IF NOT EXISTS idx_plugin_info_is_deleted ON plugin_info(is_deleted);
 
--- =====================================================
--- 6. 操作日志表 (operation_log)
--- =====================================================
-CREATE TABLE IF NOT EXISTS operation_log (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    operator          VARCHAR(50) NOT NULL,
-    operation_type    VARCHAR(50) NOT NULL,
-    operation_target  VARCHAR(100),
-    operation_content TEXT,
-    operation_result  VARCHAR(20),  -- success/fail
-    ip_address        VARCHAR(50),
-    error_message     TEXT,
-    create_time       DATETIME DEFAULT (datetime('now', 'localtime')),
-    update_time       DATETIME DEFAULT (datetime('now', 'localtime')),
-    is_deleted        INTEGER DEFAULT 0,
-    remark            TEXT
-);
-
--- 操作日志表索引
-CREATE INDEX IF NOT EXISTS idx_operation_log_operator ON operation_log(operator);
-CREATE INDEX IF NOT EXISTS idx_operation_log_operation_type ON operation_log(operation_type);
-CREATE INDEX IF NOT EXISTS idx_operation_log_create_time ON operation_log(create_time);
-CREATE INDEX IF NOT EXISTS idx_operation_log_is_deleted ON operation_log(is_deleted);
 
 -- =====================================================
 -- 7. 备份记录表 (backup_record)

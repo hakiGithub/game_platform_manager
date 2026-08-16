@@ -51,8 +51,6 @@ class InstanceServiceImplTest {
     @Mock
     private HostMapper hostMapper;
 
-    @Mock
-    private LogService logService;
 
     @Mock
     private DeployAdapterFactory adapterFactory;
@@ -126,7 +124,6 @@ class InstanceServiceImplTest {
         assertNotNull(result);
         assertEquals("test-instance", result.getInstanceName());
         verify(instanceMapper).insert(any(GameInstance.class));
-        verify(logService).log(anyString(), eq("CREATE"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test
@@ -157,7 +154,6 @@ class InstanceServiceImplTest {
         assertTrue(result);
         verify(instanceMapper).updateRunStatus(1L, 2); // 启动中状态
         verify(instanceMapper).updateRunStatus(1L, 1); // 运行中状态
-        verify(logService).log(anyString(), eq("START"), eq("INSTANCE"), anyString(), eq("success"), isNull(), isNull());
     }
 
     @Test

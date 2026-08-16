@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.entity.BackupRecord;
 import com.gameplatform.service.BackupService;
@@ -61,7 +60,6 @@ public class BackupController {
      */
     @Operation(summary = "创建数据库备份", description = "创建游戏数据库备份")
     @PostMapping("/database")
-    @OperationLog(type = "BACKUP", target = "DATABASE", description = "创建数据库备份")
     public Result<BackupRecord> createDatabaseBackup(
             @Parameter(description = "实例ID") @PathVariable Long instanceId,
             @Valid @RequestBody DatabaseBackupRequest request) {
@@ -80,7 +78,6 @@ public class BackupController {
      */
     @Operation(summary = "创建文件备份", description = "创建游戏存档/配置文件备份")
     @PostMapping("/files")
-    @OperationLog(type = "BACKUP", target = "FILES", description = "创建文件备份")
     public Result<BackupRecord> createFileBackup(
             @Parameter(description = "实例ID") @PathVariable Long instanceId,
             @Valid @RequestBody FileBackupRequest request) {
@@ -123,7 +120,6 @@ public class BackupController {
      */
     @Operation(summary = "取消备份", description = "取消正在进行的备份任务")
     @PostMapping("/{backupId}/cancel")
-    @OperationLog(type = "CANCEL", target = "BACKUP", description = "取消备份任务")
     public Result<Boolean> cancelBackup(
             @Parameter(description = "实例ID") @PathVariable Long instanceId,
             @Parameter(description = "备份ID") @PathVariable Long backupId) {
@@ -136,7 +132,6 @@ public class BackupController {
      */
     @Operation(summary = "还原备份", description = "从备份还原游戏数据")
     @PostMapping("/{backupId}/restore")
-    @OperationLog(type = "RESTORE", target = "BACKUP", description = "还原备份")
     public Result<Void> restoreBackup(
             @Parameter(description = "实例ID") @PathVariable Long instanceId,
             @Parameter(description = "备份ID") @PathVariable Long backupId) {
@@ -149,7 +144,6 @@ public class BackupController {
      */
     @Operation(summary = "删除备份", description = "删除指定的备份记录和文件")
     @DeleteMapping("/{backupId}")
-    @OperationLog(type = "DELETE", target = "BACKUP", description = "删除备份")
     public Result<Void> deleteBackup(
             @Parameter(description = "实例ID") @PathVariable Long instanceId,
             @Parameter(description = "备份ID") @PathVariable Long backupId) {

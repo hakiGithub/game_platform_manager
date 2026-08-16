@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.dto.GameCreateDTO;
@@ -106,7 +105,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "新增游戏", description = "新增游戏元数据")
     @PostMapping
-    @OperationLog(type = "CREATE", target = "GAME", description = "新增游戏元数据")
     public Result<GameVO> create(@Valid @RequestBody GameCreateDTO dto) {
         GameVO gameVO = gameService.createGame(dto);
         return Result.success(gameVO);
@@ -117,7 +115,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "更新游戏", description = "更新游戏元数据")
     @PutMapping("/{id}")
-    @OperationLog(type = "UPDATE", target = "GAME", description = "更新游戏元数据")
     public Result<GameVO> update(@Parameter(description = "游戏ID") @PathVariable Long id,
                                   @Valid @RequestBody GameUpdateDTO dto) {
         dto.setId(id);
@@ -130,7 +127,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "删除游戏", description = "删除游戏元数据")
     @DeleteMapping("/{id}")
-    @OperationLog(type = "DELETE", target = "GAME", description = "删除游戏元数据")
     public Result<Void> delete(@Parameter(description = "游戏ID") @PathVariable Long id) {
         gameService.deleteGame(id);
         return Result.success();
@@ -143,7 +139,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "重新扫描游戏配置", description = "重新扫描并加载所有游戏元数据YAML配置文件")
     @PostMapping("/scan")
-    @OperationLog(type = "MANAGE", target = "GAME", description = "重新扫描游戏元数据配置")
     public Result<Map<String, Object>> rescanMetadata() {
         log.info("手动触发游戏元数据重新扫描");
         GameMetadataScanner.ScanResult scanResult = gameMetadataScanner.scanAndLoad();
@@ -164,7 +159,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "从外部目录扫描", description = "从指定外部目录扫描游戏元数据配置文件")
     @PostMapping("/scan/external")
-    @OperationLog(type = "MANAGE", target = "GAME", description = "从外部目录扫描游戏配置")
     public Result<Map<String, Object>> scanExternalDirectory(
             @Parameter(description = "外部目录路径") @RequestParam String path) {
         log.info("从外部目录扫描游戏配置: {}", path);
@@ -205,7 +199,6 @@ public class GameMetadataController {
      */
     @Operation(summary = "导入游戏配置", description = "从YAML文件导入游戏元数据")
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @OperationLog(type = "CREATE", target = "GAME", description = "导入游戏配置")
     public Result<Map<String, Object>> importGameConfig(
             @Parameter(description = "YAML配置文件") @RequestParam("file") MultipartFile file) {
         log.info("导入游戏配置文件: {}", file.getOriginalFilename());

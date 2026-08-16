@@ -1,11 +1,7 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
-import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.dto.PageQueryDTO;
-import com.gameplatform.service.LogService;
-import com.gameplatform.vo.LogVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
@@ -16,10 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +31,6 @@ import java.util.stream.Collectors;
 @Validated
 public class SystemController {
 
-    private final LogService logService;
 
     /**
      * 健康检查
@@ -98,71 +90,9 @@ public class SystemController {
      */
     @Operation(summary = "更新系统设置", description = "更新系统配置信息")
     @PutMapping("/settings")
-    @OperationLog(type = "UPDATE", target = "SYSTEM", description = "更新系统设置")
     public Result<Void> updateSettings(@RequestBody SystemSettingsVO settings) {
         // 实际应保存到配置文件或数据库
         return Result.success();
-    }
-
-    /**
-     * 获取操作日志(分页)
-     */
-    @Operation(summary = "获取操作日志", description = "分页获取操作日志")
-    @GetMapping("/logs")
-    public Result<PageResult<LogVO>> getLogs(PageQueryDTO queryDTO) {
-        PageResult<LogVO> result = logService.pageLogs(queryDTO);
-        return Result.success(result);
-    }
-
-    /**
-     * 导出操作日志(CSV)
-     */
-    @Operation(summary = "导出操作日志", description = "按查询条件导出操作日志为CSV")
-    @GetMapping("/logs/export")
-    public ResponseEntity<byte[]> exportLogs(PageQueryDTO queryDTO) {
-        PageQueryDTO exportQuery = new PageQueryDTO();
-        exportQuery.setCurrent(1);
-        exportQuery.setSize(10000);
-        exportQuery.setKeyword(queryDTO.getKeyword());
-
-        PageResult<LogVO> result = logService.pageLogs(exportQuery);
-        byte[] csv = buildCsv(result.getRecords());
-
-        String filename = "operation-logs-" + LocalDate.now() + ".csv";
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .contentType(MediaType.parseMediaType("text/csv;charset=utf-8"))
-                .body(csv);
-    }
-
-    /**
-     * 获取最近操作日志
-     */
-    @Operation(summary = "获取最近操作日志", description = "获取最近N条操作日志")
-    @GetMapping("/logs/recent")
-    public Result<List<LogVO>> getRecentLogs(@RequestParam(defaultValue = "10") Integer limit) {
-        List<LogVO> logs = logService.getRecentLogs(limit);
-        return Result.success(logs);
-    }
-
-    /**
-     * 根据操作人获取日志
-     */
-    @Operation(summary = "根据操作人获取日志", description = "根据操作人获取操作日志")
-    @GetMapping("/logs/operator/{operator}")
-    public Result<List<LogVO>> getLogsByOperator(@PathVariable String operator) {
-        List<LogVO> logs = logService.getLogsByOperator(operator);
-        return Result.success(logs);
-    }
-
-    /**
-     * 根据操作类型获取日志
-     */
-    @Operation(summary = "根据操作类型获取日志", description = "根据操作类型获取操作日志")
-    @GetMapping("/logs/type/{type}")
-    public Result<List<LogVO>> getLogsByType(@PathVariable String type) {
-        List<LogVO> logs = logService.getLogsByOperationType(type);
-        return Result.success(logs);
     }
 
     /**
@@ -170,7 +100,6 @@ public class SystemController {
      */
     @Operation(summary = "清理系统缓存", description = "清理系统缓存")
     @PostMapping("/cache/clear")
-    @OperationLog(type = "CLEAR", target = "SYSTEM", description = "清理系统缓存")
     public Result<Void> clearCache() {
         // 清理缓存逻辑
         return Result.success();
@@ -194,43 +123,6 @@ public class SystemController {
         statistics.setTodayLogins(0L);
         statistics.setTodayOperations(0L);
         return Result.success(statistics);
-    }
-
-    private byte[] buildCsv(List<LogVO> logs) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        StringBuilder sb = new StringBuilder("\uFEFF");
-        sb.append("操作时间,操作人,操作类型,操作对象,操作内容,结果,IP地址,错误信息\n");
-
-        for (LogVO log : logs) {
-            sb.append(escapeCsv(log.getCreateTime() != null ? log.getCreateTime().format(formatter) : ""))
-                    .append(",")
-                    .append(escapeCsv(log.getOperator()))
-                    .append(",")
-                    .append(escapeCsv(log.getOperationType()))
-                    .append(",")
-                    .append(escapeCsv(log.getOperationTarget()))
-                    .append(",")
-                    .append(escapeCsv(log.getOperationContent()))
-                    .append(",")
-                    .append(escapeCsv(log.getOperationResult()))
-                    .append(",")
-                    .append(escapeCsv(log.getIpAddress()))
-                    .append(",")
-                    .append(escapeCsv(log.getErrorMessage()))
-                    .append("\n");
-        }
-
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
-    }
-
-    private String escapeCsv(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
     }
 
     // ========== VO ==========

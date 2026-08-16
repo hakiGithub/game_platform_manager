@@ -7,7 +7,6 @@ import com.gameplatform.config.JwtTokenProvider;
 import com.gameplatform.dto.LoginDTO;
 import com.gameplatform.entity.User;
 import com.gameplatform.mapper.UserMapper;
-import com.gameplatform.service.LogService;
 import com.gameplatform.service.UserService;
 import com.gameplatform.vo.LoginVO;
 import com.gameplatform.vo.UserVO;
@@ -33,7 +32,6 @@ public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
     private final JwtTokenProvider jwtTokenProvider;
-    private final LogService logService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -41,14 +39,12 @@ public class UserServiceImpl implements UserService {
         // 查询用户
         User user = userMapper.selectByUsername(dto.getUsername());
         if (user == null) {
-            logService.log(dto.getUsername(), "LOGIN", "USER", "用户登录", "fail", ipAddr, "用户不存在");
             throw new BusinessException("用户名或密码错误");
         }
 
         // 验证密码
         String passwordHash = SecureUtil.sha256(dto.getPassword());
         if (!passwordHash.equals(user.getPasswordHash())) {
-            logService.log(dto.getUsername(), "LOGIN", "USER", "用户登录", "fail", ipAddr, "密码错误");
             throw new BusinessException("用户名或密码错误");
         }
 
@@ -59,7 +55,6 @@ public class UserServiceImpl implements UserService {
         userMapper.updateLoginInfo(user.getId(), LocalDateTime.now(), ipAddr);
 
         // 记录登录日志
-        logService.log(user.getUsername(), "LOGIN", "USER", "用户登录成功", "success", ipAddr, null);
 
         // 构建响应
         UserVO userVO = convertToVO(user);
@@ -76,7 +71,6 @@ public class UserServiceImpl implements UserService {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.isAuthenticated()) {
             String username = authentication.getName();
-            logService.log(username, "LOGOUT", "USER", "用户登出", "success", null, null);
         }
     }
 
@@ -130,7 +124,6 @@ public class UserServiceImpl implements UserService {
         user.setPasswordHash(newPasswordHash);
         userMapper.updateById(user);
         
-        logService.log(username, "CHANGE_PASSWORD", "USER", "修改密码", "success", null, null);
     }
 
     /**

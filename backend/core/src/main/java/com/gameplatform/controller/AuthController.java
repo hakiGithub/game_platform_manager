@@ -1,6 +1,5 @@
 package com.gameplatform.controller;
 
-import com.gameplatform.annotation.OperationLog;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.config.JwtTokenProvider;
 import com.gameplatform.dto.LoginDTO;
@@ -45,7 +44,6 @@ public class AuthController {
      */
     @Operation(summary = "用户登录", description = "用户登录获取Token")
     @PostMapping("/login")
-    @OperationLog(type = "LOGIN", target = "USER", description = "用户登录")
     public Result<LoginVO> login(@Valid @RequestBody LoginDTO dto, HttpServletRequest request) {
         String ipAddr = getClientIp(request);
         LoginVO loginVO = userService.login(dto, ipAddr);
@@ -57,7 +55,6 @@ public class AuthController {
      */
     @Operation(summary = "用户登出", description = "用户登出")
     @PostMapping("/logout")
-    @OperationLog(type = "LOGOUT", target = "USER", description = "用户登出")
     public Result<Void> logout() {
         userService.logout();
         SecurityContextHolder.clearContext();
@@ -79,7 +76,6 @@ public class AuthController {
      */
     @Operation(summary = "修改密码", description = "修改当前用户密码")
     @PutMapping("/password")
-    @OperationLog(type = "UPDATE", target = "USER", description = "修改密码")
     public Result<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
         userService.changePassword(dto.getOldPassword(), dto.getNewPassword());
         return Result.success();

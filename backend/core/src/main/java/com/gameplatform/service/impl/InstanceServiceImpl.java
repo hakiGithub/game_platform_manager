@@ -19,7 +19,6 @@ import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.listener.PluginLifecycleHook;
 import com.gameplatform.service.DeployService;
 import com.gameplatform.service.InstanceService;
-import com.gameplatform.service.LogService;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +47,6 @@ public class InstanceServiceImpl implements InstanceService {
     private final GameInstanceMapper instanceMapper;
     private final GameMetadataMapper gameMetadataMapper;
     private final HostMapper hostMapper;
-    private final LogService logService;
     private final DeployAdapterFactory adapterFactory;
     private final DeployService deployService;
     private final SshUtil sshUtil;
@@ -109,8 +107,6 @@ public class InstanceServiceImpl implements InstanceService {
             throw new BusinessException("该主机下实例名称「" + dto.getInstanceName() + "」已存在，请更换名称后重试");
         }
 
-        logService.log(getCurrentUser(), "CREATE", "INSTANCE",
-                "创建实例: " + instance.getInstanceName(), "success", null, null);
 
         // 通知 gameCode 匹配的插件扩展点（异常不影响实例创建）
         try {
@@ -175,8 +171,6 @@ public class InstanceServiceImpl implements InstanceService {
         BeanUtil.copyProperties(dto, instance, "id");
         instanceMapper.updateById(instance);
         
-        logService.log(getCurrentUser(), "UPDATE", "INSTANCE", 
-                "更新实例: " + instance.getInstanceName(), "success", null, null);
         
         return convertToVO(instance);
     }
@@ -213,8 +207,6 @@ public class InstanceServiceImpl implements InstanceService {
         }
         log.info("物理删除实例成功: id={}, name={}", id, instance.getInstanceName());
 
-        logService.log(getCurrentUser(), "DELETE", "INSTANCE",
-                "删除实例: " + instance.getInstanceName(), "success", null, null);
     }
 
     @Override
@@ -357,23 +349,17 @@ public class InstanceServiceImpl implements InstanceService {
             
             if (success) {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.RUNNING.getCode());
-                logService.log(getCurrentUser(), "START", "INSTANCE",
-                        "启动实例成功: " + instance.getInstanceName(), "success", null, null);
                 log.info("实例启动成功: {}", instance.getInstanceName());
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStartHooks(id, instance.getGameCode());
             } else {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-                logService.log(getCurrentUser(), "START", "INSTANCE", 
-                        "启动实例失败: " + instance.getInstanceName(), "failure", null, "启动命令执行失败");
                 log.error("实例启动失败: {}", instance.getInstanceName());
             }
             
             return success;
         } catch (Exception e) {
             instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-            logService.log(getCurrentUser(), "START", "INSTANCE", 
-                    "启动实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("启动实例异常: {}", instance.getInstanceName(), e);
             throw new BusinessException("启动实例失败: " + e.getMessage());
         }
@@ -410,23 +396,17 @@ public class InstanceServiceImpl implements InstanceService {
             if (success) {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.STOPPED.getCode());
                 instanceMapper.updateOnlinePlayers(id, 0);
-                logService.log(getCurrentUser(), "STOP", "INSTANCE",
-                        "停止实例成功: " + instance.getInstanceName(), "success", null, null);
                 log.info("实例停止成功: {}", instance.getInstanceName());
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStopHooks(id, instance.getGameCode());
             } else {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-                logService.log(getCurrentUser(), "STOP", "INSTANCE", 
-                        "停止实例失败: " + instance.getInstanceName(), "failure", null, "停止命令执行失败");
                 log.error("实例停止失败: {}", instance.getInstanceName());
             }
             
             return success;
         } catch (Exception e) {
             instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-            logService.log(getCurrentUser(), "STOP", "INSTANCE", 
-                    "停止实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("停止实例异常: {}", instance.getInstanceName(), e);
             throw new BusinessException("停止实例失败: " + e.getMessage());
         }
@@ -455,21 +435,15 @@ public class InstanceServiceImpl implements InstanceService {
             
             if (success) {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.RUNNING.getCode());
-                logService.log(getCurrentUser(), "RESTART", "INSTANCE",
-                        "重启实例成功: " + instance.getInstanceName(), "success", null, null);
                 log.info("实例重启成功: {}", instance.getInstanceName());
             } else {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-                logService.log(getCurrentUser(), "RESTART", "INSTANCE", 
-                        "重启实例失败: " + instance.getInstanceName(), "failure", null, "重启命令执行失败");
                 log.error("实例重启失败: {}", instance.getInstanceName());
             }
             
             return success;
         } catch (Exception e) {
             instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态
-            logService.log(getCurrentUser(), "RESTART", "INSTANCE", 
-                    "重启实例异常: " + instance.getInstanceName(), "failure", null, e.getMessage());
             log.error("重启实例异常: {}", instance.getInstanceName(), e);
             throw new BusinessException("重启实例失败: " + e.getMessage());
         }
@@ -571,8 +545,6 @@ public class InstanceServiceImpl implements InstanceService {
             // 调用适配器执行命令
             String result = adapter.executeCommand(id, config, command);
             
-            logService.log(getCurrentUser(), "EXECUTE", "INSTANCE", 
-                    "执行命令: " + instance.getInstanceName() + " - " + command, "success", null, null);
             
             return result;
             
