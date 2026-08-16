@@ -317,18 +317,10 @@ watch(
       :sub-title="pluginStore.error"
     />
 
-    <!-- 未选实例提示（仅 requireInstance=true 的菜单展示） -->
-    <div v-else-if="!currentInstance" class="plugin-empty">
-      <el-empty description="请先选择要管理的实例">
-        <el-button type="primary" @click="ensureInstanceOrPrompt">
-          选择实例
-        </el-button>
-      </el-empty>
-    </div>
-
-    <!-- 当前实例指示条（仅要求实例的菜单展示）：状态点 + 实例名 + 切换下拉 -->
+    <!-- 当前实例指示条（独立于互斥链，与子应用同时渲染）：
+         仅要求实例的菜单展示，状态点 + 实例名 + 切换下拉 -->
     <div
-      v-else-if="currentMenuRequireInstance && currentInstance"
+      v-if="currentMenuRequireInstance && currentInstance"
       class="plugin-instance-bar"
     >
       <div class="instance-bar-left">
@@ -360,6 +352,15 @@ watch(
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+    </div>
+
+    <!-- 未选实例提示（独立链：与指示条、子应用互斥关系解耦） -->
+    <div v-if="!currentInstance" class="plugin-empty">
+      <el-empty description="请先选择要管理的实例">
+        <el-button type="primary" @click="ensureInstanceOrPrompt">
+          选择实例
+        </el-button>
+      </el-empty>
     </div>
 
     <!-- Wujie 子应用 -->
