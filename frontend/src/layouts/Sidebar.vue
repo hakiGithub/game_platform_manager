@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useUserStore } from "@/stores/user";
 import { getPluginList, getPluginManifest } from "@/api/plugin";
 
 defineProps({
@@ -13,7 +12,6 @@ defineProps({
 
 const route = useRoute();
 const router = useRouter();
-const userStore = useUserStore();
 
 const workspaceMenuItems = [
   {
@@ -213,17 +211,6 @@ onMounted(loadPluginMenus);
       </el-menu>
     </el-scrollbar>
 
-    <div class="sidebar-footer">
-      <div class="footer-status"><span></span> 运维控制台在线</div>
-      <div class="footer-user">
-        <el-avatar :size="32" :src="userStore.avatar" icon="UserFilled" />
-        <span class="footer-user-copy">
-          <span class="footer-user-name">{{ userStore.nickname || userStore.username || "管理员" }}</span>
-          <span class="footer-user-role">OPERATIONS</span>
-        </span>
-        <el-icon class="footer-user-arrow"><ArrowDown /></el-icon>
-      </div>
-    </div>
   </aside>
 </template>
 
@@ -251,15 +238,8 @@ onMounted(loadPluginMenus);
       padding: 0;
     }
 
-    .logo-copy,
-    .footer-user-copy,
-    .footer-user-arrow,
-    .footer-status {
+    .logo-copy {
       display: none;
-    }
-
-    .footer-user {
-      justify-content: center;
     }
 
     .sidebar-menu-wrapper {
@@ -437,6 +417,12 @@ onMounted(loadPluginMenus);
     justify-content: center;
   }
 
+  :deep(.el-menu--collapse .el-menu-tooltip__trigger) {
+    width: 100%;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
   :deep(.el-menu--collapse .el-menu-item .el-icon),
   :deep(.el-menu--collapse .el-sub-menu__title .el-icon) {
     margin: 0;
@@ -462,63 +448,4 @@ onMounted(loadPluginMenus);
   }
 }
 
-.sidebar-footer {
-  display: flex;
-  flex: 0 0 82px;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(5, 14, 22, 0.35);
-  border-top: 1px solid var(--platform-line);
-}
-
-.footer-status {
-  color: var(--el-text-color-placeholder);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
-.footer-status span {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 5px;
-  background: var(--platform-green);
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(82, 207, 130, 0.1);
-}
-
-.footer-user {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 0;
-  color: var(--el-text-color-primary);
-  text-align: left;
-  background: transparent;
-  border: 0;
-}
-
-.footer-user-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.footer-user-name {
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.footer-user-arrow {
-  color: var(--el-text-color-secondary);
-}
 </style>
