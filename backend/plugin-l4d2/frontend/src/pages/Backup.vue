@@ -1,12 +1,17 @@
 <template>
   <div class="backup-page">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>备份管理</span>
-          <el-button type="primary" size="small" @click="showCreate = true">创建备份</el-button>
-        </div>
-      </template>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / BACKUP &amp; RESTORE</span>
+        <h2>备份管理</h2>
+        <p>服务器配置备份的创建、还原与维护</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="showCreate = true">创建备份</el-button>
+      </div>
+    </div>
+
+    <el-card shadow="never" class="page-card backup-card">
       <el-table :data="backups" v-loading="loading" stripe>
         <el-table-column prop="name" label="备份名称" />
         <el-table-column prop="description" label="描述" show-overflow-tooltip />
@@ -193,9 +198,10 @@ onMounted(loadList)
 .backup-page {
   padding: 12px;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.backup-card {
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 </style>

@@ -1,5 +1,20 @@
 <template>
   <div class="monitor-page">
+    <!-- 页头 -->
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / PERFORMANCE</span>
+        <h2>性能监控</h2>
+        <p>实时资源占用与历史趋势分析</p>
+      </div>
+      <div class="header-actions">
+        <span class="hero-state">
+          <span class="status-dot" :class="config.collectEnabled ? 'running' : 'stopped'"></span>
+          {{ config.collectEnabled ? '采集中' : '已停用' }}
+        </span>
+      </div>
+    </div>
+
     <!-- 顶部：采集开关 + 配置展示 -->
     <el-card shadow="never" class="config-card">
       <div class="config-row">
@@ -374,55 +389,72 @@ function renderHistoryChart() {
   const diskUsedArr = historyData.value.map(d => Number(d.diskUsed ?? 0))
 
   historyChart.setOption({
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#142735',
+      borderColor: '#263847',
+      textStyle: { color: '#d9e5ed' }
+    },
     legend: {
-      data: ['CPU 总使用率(%)', 'CPU 最高核心(%)', '内存(GB)', '网络上行(KB/s)', '网络下行(KB/s)', '磁盘(GB)']
+      data: ['CPU 总使用率(%)', 'CPU 最高核心(%)', '内存(GB)', '网络上行(KB/s)', '网络下行(KB/s)', '磁盘(GB)'],
+      textStyle: { color: '#8d9cac' }
     },
     grid: { left: 60, right: 80, bottom: 60, top: 40 },
-    xAxis: { type: 'category', data: times, axisLabel: { rotate: 30 } },
-    yAxis: { type: 'value', name: '数值' },
+    xAxis: {
+      type: 'category',
+      data: times,
+      axisLabel: { rotate: 30, color: '#8d9cac' },
+      axisLine: { lineStyle: { color: '#263847' } }
+    },
+    yAxis: {
+      type: 'value',
+      name: '数值',
+      nameTextStyle: { color: '#8d9cac' },
+      axisLabel: { color: '#8d9cac' },
+      splitLine: { lineStyle: { color: '#263847' } }
+    },
     series: [
       {
         name: 'CPU 总使用率(%)',
         type: 'line',
         smooth: true,
         data: cpuPercentArr,
-        itemStyle: { color: '#409eff' }
+        itemStyle: { color: '#27b5f3' }
       },
       {
         name: 'CPU 最高核心(%)',
         type: 'line',
         smooth: true,
         data: cpuMaxCoreArr,
-        itemStyle: { color: '#67c23a' }
+        itemStyle: { color: '#52cf82' }
       },
       {
         name: '内存(GB)',
         type: 'line',
         smooth: true,
         data: memUsedArr,
-        itemStyle: { color: '#e6a23c' }
+        itemStyle: { color: '#f2b84b' }
       },
       {
         name: '网络上行(KB/s)',
         type: 'line',
         smooth: true,
         data: netUpArr,
-        itemStyle: { color: '#f56c6c' }
+        itemStyle: { color: '#f0646a' }
       },
       {
         name: '网络下行(KB/s)',
         type: 'line',
         smooth: true,
         data: netDownArr,
-        itemStyle: { color: '#909399' }
+        itemStyle: { color: '#8d9cac' }
       },
       {
         name: '磁盘(GB)',
         type: 'line',
         smooth: true,
         data: diskUsedArr,
-        itemStyle: { color: '#9c27b0' }
+        itemStyle: { color: '#c397f5' }
       }
     ]
   })
@@ -497,7 +529,7 @@ onBeforeUnmount(() => {
 
 .config-card,
 .history-card {
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .config-row {
@@ -546,7 +578,7 @@ onBeforeUnmount(() => {
 }
 
 .stat-card {
-  border-radius: 8px;
+  border-radius: 6px;
   min-height: 152px;
   display: flex;
   flex-direction: column;
@@ -588,11 +620,11 @@ onBeforeUnmount(() => {
   line-height: 1.2;
 
   &.warning {
-    color: var(--el-color-warning);
+    color: var(--platform-amber);
   }
 
   &.exception {
-    color: var(--el-color-danger);
+    color: var(--platform-red);
   }
 
   &.net {

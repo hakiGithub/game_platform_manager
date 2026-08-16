@@ -47,9 +47,10 @@ watch(() => props.logs.length, () => {
   padding: 8px 12px;
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-size: 12px;
-  background: #1e1e1e;
-  color: #d4d4d4;
-  border-radius: 4px;
+  background: var(--platform-surface-0);
+  color: var(--platform-text-regular);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
 }
 .log-line {
   white-space: pre-wrap;
@@ -57,10 +58,10 @@ watch(() => props.logs.length, () => {
   line-height: 1.6;
 }
 .error-line {
-  color: #f56c6c;
+  color: var(--platform-red);
 }
 .empty {
-  color: #888;
+  color: var(--platform-text-muted);
   text-align: center;
   padding: 20px;
 }

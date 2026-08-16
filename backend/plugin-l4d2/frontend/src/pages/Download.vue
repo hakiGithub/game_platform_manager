@@ -1,7 +1,18 @@
 <template>
   <div class="download-page">
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / DOWNLOADS</span>
+        <h2>资源下载</h2>
+        <p>URL 与 Steam Workshop 资源下载任务管理</p>
+      </div>
+      <div class="header-actions">
+        <el-button size="small" @click="loadTasks" :loading="loading">刷新</el-button>
+      </div>
+    </div>
+
     <!-- 顶部：URL / Workshop Tab 切换 -->
-    <el-card shadow="never" class="form-card">
+    <el-card shadow="never" class="page-card form-card">
       <el-tabs v-model="activeTab">
         <!-- Tab 1: URL 下载表单 -->
         <el-tab-pane label="URL 下载" name="url">
@@ -82,14 +93,11 @@
     </el-card>
 
     <!-- 任务列表 -->
-    <el-card shadow="never" class="tasks-card">
+    <el-card shadow="never" class="page-card tasks-card">
       <template #header>
         <div class="card-header">
           <span>下载任务</span>
           <div class="header-actions">
-            <el-button size="small" @click="loadTasks" :loading="loading">
-              刷新
-            </el-button>
             <el-button
               size="small"
               type="warning"
@@ -684,8 +692,12 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.form-card {
-  border-radius: 4px;
+.form-card,
+.tasks-card {
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .url-form,
@@ -697,7 +709,7 @@ onBeforeUnmount(() => {
 .form-tip {
   margin-left: 12px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
 }
 
 .card-header {
@@ -711,20 +723,16 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.tasks-card {
-  border-radius: 4px;
-}
-
 .progress-bytes {
   display: flex;
   justify-content: space-between;
   margin-top: 4px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
 }
 
 .speed-text {
-  color: var(--el-color-primary);
+  color: var(--platform-cyan);
 }
 
 .workshop-preview {
@@ -743,7 +751,7 @@ onBeforeUnmount(() => {
 }
 
 .error-text {
-  color: var(--el-color-danger);
+  color: var(--platform-red);
   word-break: break-all;
 }
 </style>

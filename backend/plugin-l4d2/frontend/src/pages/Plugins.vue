@@ -1,7 +1,11 @@
 <template>
   <div class="plugins-page">
-    <div class="page-header">
-      <h1 class="page-title">插件管理</h1>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SOURCEMOD PLUGINS</span>
+        <h2>插件管理</h2>
+        <p>管理服务器 SourceMod 插件的安装、启用与导出</p>
+      </div>
         <div class="header-actions">
           <el-button
             type="primary"
@@ -61,7 +65,7 @@
         </template>
       </el-alert>
 
-      <el-card shadow="hover" class="plugins-card">
+      <el-card shadow="never" class="plugins-card page-card">
         <el-table
           :data="plugins"
           style="width: 100%"
@@ -91,9 +95,13 @@
 
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'enabled' ? 'success' : 'info'" size="small">
+              <span class="status-cell">
+                <span
+                  class="status-dot"
+                  :class="row.status === 'enabled' ? 'running' : 'stopped'"
+                ></span>
                 {{ row.status === 'enabled' ? '已启用' : '已禁用' }}
-              </el-tag>
+              </span>
             </template>
           </el-table-column>
 
@@ -344,8 +352,8 @@
                 class="result-item"
                 :class="{ 'result-failed': r.status === 'FAILED' }"
               >
-                <el-icon v-if="r.status === 'SUCCESS'" color="#67c23a"><CircleCheckFilled /></el-icon>
-                <el-icon v-else color="#f56c6c"><CircleCloseFilled /></el-icon>
+                <el-icon v-if="r.status === 'SUCCESS'" color="var(--platform-green)"><CircleCheckFilled /></el-icon>
+                <el-icon v-else color="var(--platform-red)"><CircleCloseFilled /></el-icon>
                 <span class="r-name">{{ r.pluginName }}</span>
                 <span class="r-msg">{{ r.message }}</span>
               </div>
@@ -924,26 +932,21 @@ onBeforeUnmount(() => {
 .plugins-page {
   height: 100%;
   overflow-y: auto;
-}
-
-.page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
+  flex-direction: column;
+  gap: 16px;
 }
 
 .header-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .plugins-card {
@@ -953,11 +956,12 @@ onBeforeUnmount(() => {
 
     .name {
       font-weight: 500;
+      color: var(--platform-text-primary);
     }
 
     .desc {
       font-size: 12px;
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-secondary);
     }
   }
 }
@@ -969,7 +973,7 @@ onBeforeUnmount(() => {
 .export-tip {
   margin-top: 12px;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   text-align: center;
 }
 </style>

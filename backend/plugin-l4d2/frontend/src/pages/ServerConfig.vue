@@ -1,8 +1,11 @@
 <template>
   <div class="server-config-page">
-    <!-- 页面标题 -->
-    <div class="page-header">
-      <h1 class="page-title">服务器配置管理</h1>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SERVER CONFIG</span>
+        <h2>服务器配置管理</h2>
+        <p>server.cfg 核心参数、额外配置与自定义内容管理</p>
+      </div>
       <div class="header-actions">
         <el-button @click="openFileDialog">
           <el-icon><Document /></el-icon>
@@ -22,7 +25,7 @@
     <el-skeleton :loading="loading" :rows="12" animated>
       <template #default>
         <!-- 基础配置表单 -->
-        <el-card shadow="never" class="config-card">
+        <el-card shadow="never" class="page-card config-card">
           <template #header>
             <div class="card-header">
               <span>基础配置</span>
@@ -89,7 +92,7 @@
         </el-card>
 
         <!-- 额外配置 KV 表 -->
-        <el-card shadow="never" class="config-card">
+        <el-card shadow="never" class="page-card config-card">
           <template #header>
             <div class="card-header">
               <span>额外配置</span>
@@ -131,7 +134,7 @@
         </el-card>
 
         <!-- 自定义配置 -->
-        <el-card shadow="never" class="config-card">
+        <el-card shadow="never" class="page-card config-card">
           <template #header>
             <div class="card-header">
               <span>自定义配置</span>
@@ -446,29 +449,11 @@ onMounted(() => {
   gap: 12px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .config-card {
-  border-radius: 4px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .card-header {
@@ -480,14 +465,14 @@ onMounted(() => {
 
 .header-tip {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   font-weight: normal;
 }
 
 .empty-tip {
   padding: 16px;
   text-align: center;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   font-size: 13px;
 }
 
@@ -495,7 +480,7 @@ onMounted(() => {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: var(--el-color-danger);
+  color: var(--platform-red);
 }
 
 .file-dialog-toolbar {

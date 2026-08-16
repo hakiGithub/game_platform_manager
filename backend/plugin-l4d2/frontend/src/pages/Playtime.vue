@@ -1,5 +1,13 @@
 <template>
   <div class="playtime-page">
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / PLAYTIME</span>
+        <h2>游玩时长</h2>
+        <p>通过 Steam Web API 查询玩家 L4D2 总时长与实战时长</p>
+      </div>
+    </div>
+
     <el-card shadow="never" class="query-card">
       <template #header>
         <div class="card-header">
@@ -143,7 +151,7 @@ function formatHours(hours: number): string {
 }
 
 .query-card {
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .card-header {
@@ -165,39 +173,42 @@ function formatHours(hours: number): string {
 
 .result-card {
   margin-top: 16px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .steam-id {
   font-family: 'Consolas', 'Monaco', monospace;
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 13px;
+  color: var(--platform-cyan);
 }
 
 .duration-text {
   font-size: 16px;
   font-weight: 600;
-  color: var(--el-color-primary);
+  color: var(--platform-cyan);
 }
 
 .duration-sub {
   margin-left: 8px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
 }
 
 .result-tip {
   margin-top: 12px;
   padding: 8px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
   display: flex;
   align-items: flex-start;
   gap: 6px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   line-height: 1.6;
 }
 

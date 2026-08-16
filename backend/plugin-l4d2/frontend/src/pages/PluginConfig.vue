@@ -1,33 +1,35 @@
 <template>
   <div class="plugin-config-page">
-    <el-card v-loading="loading">
-      <template #header>
-        <div class="card-header">
-          <span>插件配置</span>
-          <div class="header-actions">
-            <el-select
-              v-model="selectedPlugin"
-              placeholder="选择插件"
-              filterable
-              teleported
-              style="width: 280px"
-              @change="onPluginChange"
-            >
-              <el-option
-                v-for="p in plugins"
-                :key="p.name"
-                :label="p.name"
-                :value="p.name"
-              />
-            </el-select>
-            <el-button @click="loadPlugins" :loading="pluginsLoading">刷新插件</el-button>
-            <el-button @click="showCandidates = true" :disabled="!selectedPlugin">
-              查看候选路径
-            </el-button>
-          </div>
-        </div>
-      </template>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / PLUGIN CONFIG</span>
+        <h2>插件配置</h2>
+        <p>在线编辑 SourceMod 插件 cfg 配置项</p>
+      </div>
+      <div class="header-actions">
+        <el-select
+          v-model="selectedPlugin"
+          placeholder="选择插件"
+          filterable
+          teleported
+          style="width: 280px"
+          @change="onPluginChange"
+        >
+          <el-option
+            v-for="p in plugins"
+            :key="p.name"
+            :label="p.name"
+            :value="p.name"
+          />
+        </el-select>
+        <el-button @click="loadPlugins" :loading="pluginsLoading">刷新插件</el-button>
+        <el-button @click="showCandidates = true" :disabled="!selectedPlugin">
+          查看候选路径
+        </el-button>
+      </div>
+    </div>
 
+    <el-card v-loading="loading" class="page-card" shadow="never">
       <div v-if="!selectedPlugin" class="empty-tip">
         <el-empty description="请先选择插件" />
       </div>
@@ -264,11 +266,9 @@ onMounted(() => {
 <style scoped>
 .plugin-config-page {
   padding: 12px;
-}
-.card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
 }
 .header-actions {
   display: flex;
@@ -281,7 +281,7 @@ onMounted(() => {
 .config-path {
   margin-bottom: 16px;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -291,18 +291,20 @@ onMounted(() => {
   font-weight: 500;
 }
 .config-path code {
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
+  border: 1px solid var(--platform-line);
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'Monaco', 'Consolas', monospace;
   font-size: 12px;
+  color: var(--platform-cyan);
 }
 .config-path .synced {
-  color: var(--el-text-color-placeholder);
+  color: var(--platform-text-muted);
   font-size: 12px;
 }
 .muted {
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   font-size: 13px;
 }
 .footer-actions {

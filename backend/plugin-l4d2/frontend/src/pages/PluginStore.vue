@@ -1,41 +1,43 @@
 <template>
   <div class="plugin-store-page">
-    <el-card v-loading="loading">
-      <template #header>
-        <div class="card-header">
-          <span>插件商店</span>
-          <div class="header-actions">
-            <el-input
-              v-model="keyword"
-              placeholder="搜索插件名称/描述"
-              clearable
-              style="width: 220px"
-              @keyup.enter="loadList"
-              @clear="loadList"
-            />
-            <el-select
-              v-model="category"
-              placeholder="全部分类"
-              clearable
-              teleported
-              style="width: 160px"
-              @change="loadList"
-            >
-              <el-option
-                v-for="cat in categories"
-                :key="cat"
-                :label="cat"
-                :value="cat"
-              />
-            </el-select>
-            <el-button type="primary" @click="loadList" :loading="loading">
-              <el-icon><Refresh /></el-icon>
-              刷新
-            </el-button>
-          </div>
-        </div>
-      </template>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / PLUGIN STORE</span>
+        <h2>插件商店</h2>
+        <p>浏览远端插件仓库并下载到当前实例</p>
+      </div>
+      <div class="header-actions">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索插件名称/描述"
+          clearable
+          style="width: 220px"
+          @keyup.enter="loadList"
+          @clear="loadList"
+        />
+        <el-select
+          v-model="category"
+          placeholder="全部分类"
+          clearable
+          teleported
+          style="width: 160px"
+          @change="loadList"
+        >
+          <el-option
+            v-for="cat in categories"
+            :key="cat"
+            :label="cat"
+            :value="cat"
+          />
+        </el-select>
+        <el-button type="primary" @click="loadList" :loading="loading">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </div>
 
+    <el-card v-loading="loading" class="page-card" shadow="never">
       <div v-if="!plugins.length && !loading" class="empty-tip">
         <el-empty description="暂无插件" />
       </div>
@@ -51,7 +53,7 @@
         >
           <el-card
             class="plugin-card"
-            shadow="hover"
+            shadow="never"
             @click="openDetail(plugin)"
           >
             <div class="plugin-card-name">{{ plugin.name }}</div>
@@ -78,7 +80,7 @@
       </el-row>
     </el-card>
 
-    <el-card class="tasks-card">
+    <el-card class="tasks-card page-card" shadow="never">
       <template #header>
         <div class="card-header">
           <span>下载任务</span>
@@ -223,7 +225,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const renderedReadme = computed(() => {
   const raw = detail.value?.readme || ''
-  if (!raw) return '<p style="color: var(--el-text-color-secondary)">暂无 README</p>'
+  if (!raw) return '<p style="color: var(--platform-text-secondary)">暂无 README</p>'
   try {
     const html = marked.parse(raw, { async: false }) as string
     return DOMPurify.sanitize(html)
@@ -386,11 +388,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .plugin-store-page {
   padding: 12px;
-}
-.card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
 }
 .header-actions {
   display: flex;
@@ -403,20 +403,23 @@ onBeforeUnmount(() => {
 .plugin-card {
   margin-bottom: 16px;
   cursor: pointer;
-  transition: transform 0.15s;
+  transition: border-color 0.15s;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
 }
 .plugin-card:hover {
-  transform: translateY(-2px);
+  border-color: rgba(39, 181, 243, 0.45);
 }
 .plugin-card-name {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: var(--el-text-color-primary);
+  color: var(--platform-text-primary);
 }
 .plugin-card-desc {
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   min-height: 40px;
   margin-bottom: 8px;
   display: -webkit-box;
@@ -429,7 +432,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   align-items: center;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -441,11 +444,11 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 .tasks-card {
-  margin-top: 16px;
+  margin-top: 0;
 }
 .progress-bytes {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   margin-top: 4px;
 }
 .detail-content {
@@ -456,7 +459,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   flex-wrap: wrap;
 }
 .markdown-body {
@@ -464,13 +467,13 @@ onBeforeUnmount(() => {
   line-height: 1.6;
 }
 .markdown-body :deep(pre) {
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
   padding: 12px;
   border-radius: 4px;
   overflow-x: auto;
 }
 .markdown-body :deep(code) {
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
   padding: 2px 4px;
   border-radius: 3px;
 }

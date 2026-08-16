@@ -1,8 +1,12 @@
 <template>
   <div class="restart-page">
-    <!-- 页面标题 -->
-    <div class="page-header">
-      <h1 class="page-title">服务器重启管理</h1>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / RESTART CONTROL</span>
+        <h2>服务器重启管理</h2>
+        <p>RCON 与命令模式的服务器重启控制</p>
+      </div>
+      <div class="header-actions"></div>
     </div>
 
     <el-skeleton :loading="loading" :rows="10" animated>
@@ -21,7 +25,7 @@
         </el-alert>
 
         <!-- 重启配置卡片 -->
-        <el-card shadow="never" class="config-card">
+        <el-card shadow="never" class="page-card config-card">
           <template #header>
             <div class="card-header">
               <span>重启配置</span>
@@ -97,7 +101,7 @@
         </el-card>
 
         <!-- 重启操作卡片 -->
-        <el-card shadow="never" class="action-card">
+        <el-card shadow="never" class="page-card action-card">
           <template #header>
             <div class="card-header">
               <span>重启操作</span>
@@ -121,7 +125,7 @@
         </el-card>
 
         <!-- 高级选项 -->
-        <el-card shadow="never" class="advanced-card">
+        <el-card shadow="never" class="page-card advanced-card">
           <template #header>
             <div class="card-header">
               <span>高级选项</span>
@@ -315,25 +319,13 @@ onMounted(() => {
   gap: 12px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
 .config-card,
 .action-card,
 .advanced-card {
-  border-radius: 4px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .card-header {
@@ -346,7 +338,7 @@ onMounted(() => {
 .form-tip {
   margin-left: 12px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
 }
 
 .alert-line {
@@ -355,7 +347,7 @@ onMounted(() => {
 
 .alert-line code {
   font-family: 'Consolas', 'Monaco', monospace;
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
   padding: 1px 6px;
   border-radius: 3px;
   font-size: 12px;
@@ -376,7 +368,7 @@ onMounted(() => {
 
 .advanced-tip {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   line-height: 1.6;
 }
 </style>

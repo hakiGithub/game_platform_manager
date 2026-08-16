@@ -1,20 +1,22 @@
 <template>
   <div class="maps-page">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>地图管理</span>
-          <div class="header-actions">
-            <el-button type="primary" @click="showUploadDialog = true">上传地图</el-button>
-            <el-button :disabled="!selectedRows.length" @click="handleTrimBatch">
-              批量裁剪（{{ selectedRows.length }}）
-            </el-button>
-            <el-button @click="handleHotReload">热重载</el-button>
-            <el-button @click="loadList">刷新</el-button>
-          </div>
-        </div>
-      </template>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / MAP LIBRARY</span>
+        <h2>地图管理</h2>
+        <p>管理服务器地图 VPK 文件，支持批量裁剪与热重载</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="showUploadDialog = true">上传地图</el-button>
+        <el-button :disabled="!selectedRows.length" @click="handleTrimBatch">
+          批量裁剪（{{ selectedRows.length }}）
+        </el-button>
+        <el-button @click="handleHotReload">热重载</el-button>
+        <el-button @click="loadList">刷新</el-button>
+      </div>
+    </div>
 
+    <el-card class="page-card" shadow="never">
       <el-table
         v-loading="loading"
         :data="mapList"
@@ -247,14 +249,8 @@ onMounted(loadList)
 <style scoped>
 .maps-page {
   padding: 12px;
-}
-.card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.header-actions {
-  display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 16px;
 }
 </style>

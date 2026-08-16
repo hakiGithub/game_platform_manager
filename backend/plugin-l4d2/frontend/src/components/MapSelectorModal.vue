@@ -141,54 +141,55 @@ watch(() => props.modelValue, (val) => {
       display: flex;
       align-items: center;
       padding: 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       transition: all 0.2s;
       margin-bottom: 8px;
-      
+
       &:hover {
-        background-color: var(--el-fill-color-light);
+        background-color: var(--platform-bg-hover);
       }
-      
+
       &.selected {
-        background-color: var(--el-color-primary-light-9);
-        border: 1px solid var(--el-color-primary);
+        background-color: rgba(39, 181, 243, 0.12);
+        border: 1px solid var(--platform-cyan);
       }
-      
+
       .map-icon {
         width: 48px;
         height: 48px;
-        border-radius: 8px;
-        background-color: var(--el-fill-color);
+        border-radius: 6px;
+        background-color: var(--platform-surface-1);
+        border: 1px solid var(--platform-line);
         display: flex;
         align-items: center;
         justify-content: center;
         margin-right: 12px;
-        color: var(--el-color-primary);
+        color: var(--platform-cyan);
       }
-      
+
       .map-info {
         flex: 1;
-        
+
         .map-name {
           font-weight: 500;
           margin-bottom: 4px;
         }
-        
+
         .map-meta {
           display: flex;
           align-items: center;
           gap: 8px;
-          
+
           .map-size {
             font-size: 12px;
-            color: var(--el-text-color-secondary);
+            color: var(--platform-text-secondary);
           }
         }
       }
-      
+
       .check-icon {
-        color: var(--el-color-primary);
+        color: var(--platform-cyan);
         font-size: 24px;
       }
     }

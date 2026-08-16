@@ -1,14 +1,18 @@
 <template>
   <div class="rcon-page">
-    <div class="page-header">
-      <h1 class="page-title">RCON 控制台</h1>
-        <div class="header-actions">
-          <el-button @click="clearHistory">
-            <el-icon><Delete /></el-icon>
-            清空历史
-          </el-button>
-        </div>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / RCON CONSOLE</span>
+        <h2>RCON 控制台</h2>
+        <p>远程执行服务器命令，快速运维与调试</p>
       </div>
+      <div class="header-actions">
+        <el-button @click="clearHistory">
+          <el-icon><Delete /></el-icon>
+          清空历史
+        </el-button>
+      </div>
+    </div>
 
       <el-row :gutter="20">
         <!-- 命令输入区 -->
@@ -241,56 +245,48 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
 .console-card {
+  :deep(.el-card__body) {
+    border-radius: 6px;
+  }
+
   .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  
+
   .console-output {
     height: 500px;
     overflow-y: auto;
-    background-color: #1e1e1e;
-    border-radius: 8px;
+    background-color: var(--platform-surface-0);
+    border: 1px solid var(--platform-line);
+    border-radius: 6px;
     padding: 16px;
     margin-bottom: 16px;
     font-family: 'Consolas', 'Monaco', monospace;
-    
+
     .console-item {
       margin-bottom: 16px;
-      
+
       .command-line {
-        color: #4ec9b0;
+        color: var(--platform-cyan);
         margin-bottom: 8px;
-        
+
         .prompt {
           margin-right: 8px;
+          color: var(--platform-cyan);
         }
-        
+
         .command {
           font-weight: 500;
         }
       }
-      
+
       .output-line {
-        color: #d4d4d4;
+        color: var(--platform-text-regular);
         padding-left: 16px;
-        
+
         pre {
           margin: 0;
           white-space: pre-wrap;
@@ -299,16 +295,16 @@ onUnmounted(() => {
       }
     }
   }
-  
+
   .console-input {
     display: flex;
     gap: 12px;
-    
+
     .el-input {
       flex: 1;
-      
+
       .prompt {
-        color: #4ec9b0;
+        color: var(--platform-cyan);
         font-weight: 500;
       }
     }
@@ -319,24 +315,24 @@ onUnmounted(() => {
   .command-list {
     .command-item {
       padding: 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       transition: background-color 0.2s;
-      
+
       &:hover {
-        background-color: var(--el-fill-color-light);
+        background-color: var(--platform-bg-hover);
       }
-      
+
       .command-name {
         font-family: 'Consolas', 'Monaco', monospace;
-        color: var(--el-color-primary);
+        color: var(--platform-cyan);
         font-weight: 500;
         margin-bottom: 4px;
       }
-      
+
       .command-desc {
         font-size: 12px;
-        color: var(--el-text-color-secondary);
+        color: var(--platform-text-secondary);
       }
     }
   }
@@ -346,10 +342,10 @@ onUnmounted(() => {
   .tips-list {
     margin: 0;
     padding-left: 20px;
-    
+
     li {
       margin-bottom: 8px;
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-secondary);
       font-size: 13px;
     }
   }

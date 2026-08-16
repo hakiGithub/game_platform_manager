@@ -1,5 +1,20 @@
 <template>
   <div class="player-stats-page">
+    <!-- 页头 -->
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / PLAYER STATS</span>
+        <h2>玩家统计</h2>
+        <p>玩家趋势、活跃度与个人游玩记录分析</p>
+      </div>
+      <div class="header-actions">
+        <span class="hero-state">
+          <span class="status-dot" :class="config.enabled ? 'running' : 'stopped'"></span>
+          {{ config.enabled ? '采集中' : '已停用' }}
+        </span>
+      </div>
+    </div>
+
     <!-- 顶部：采集开关 + 配置展示 -->
     <el-card shadow="never" class="config-card">
       <div class="config-row">
@@ -373,22 +388,39 @@ function renderTrendChart() {
   const sampleCount = trendData.value.map(d => Number(d.sampleCount ?? 0))
 
   trendChart.setOption({
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#142735',
+      borderColor: '#263847',
+      textStyle: { color: '#d9e5ed' }
+    },
     legend: {
-      data: ['平均玩家', '峰值玩家', '独立玩家', '离线采样', '总采样']
+      data: ['平均玩家', '峰值玩家', '独立玩家', '离线采样', '总采样'],
+      textStyle: { color: '#8d9cac' }
     },
     grid: { left: 60, right: 70, bottom: 60, top: 40 },
-    xAxis: { type: 'category', data: times, axisLabel: { rotate: 30 } },
+    xAxis: {
+      type: 'category',
+      data: times,
+      axisLabel: { rotate: 30, color: '#8d9cac' },
+      axisLine: { lineStyle: { color: '#263847' } }
+    },
     yAxis: [
       {
         type: 'value',
         name: '玩家数',
-        position: 'left'
+        position: 'left',
+        nameTextStyle: { color: '#8d9cac' },
+        axisLabel: { color: '#8d9cac' },
+        splitLine: { lineStyle: { color: '#263847' } }
       },
       {
         type: 'value',
         name: '采样数',
-        position: 'right'
+        position: 'right',
+        nameTextStyle: { color: '#8d9cac' },
+        axisLabel: { color: '#8d9cac' },
+        splitLine: { show: false }
       }
     ],
     series: [
@@ -397,21 +429,21 @@ function renderTrendChart() {
         type: 'line',
         smooth: true,
         data: avgPlayers,
-        itemStyle: { color: '#409eff' }
+        itemStyle: { color: '#27b5f3' }
       },
       {
         name: '峰值玩家',
         type: 'line',
         smooth: true,
         data: peakPlayers,
-        itemStyle: { color: '#67c23a' }
+        itemStyle: { color: '#52cf82' }
       },
       {
         name: '独立玩家',
         type: 'line',
         smooth: true,
         data: uniquePlayers,
-        itemStyle: { color: '#e6a23c' }
+        itemStyle: { color: '#f2b84b' }
       },
       {
         name: '离线采样',
@@ -419,7 +451,7 @@ function renderTrendChart() {
         smooth: true,
         yAxisIndex: 1,
         data: offlineSamples,
-        itemStyle: { color: '#f56c6c' }
+        itemStyle: { color: '#f0646a' }
       },
       {
         name: '总采样',
@@ -427,7 +459,7 @@ function renderTrendChart() {
         smooth: true,
         yAxisIndex: 1,
         data: sampleCount,
-        itemStyle: { color: '#909399' }
+        itemStyle: { color: '#8d9cac' }
       }
     ]
   })
@@ -600,7 +632,7 @@ onBeforeUnmount(() => {
 
 .config-card,
 .tabs-card {
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .config-row {
@@ -679,7 +711,7 @@ onBeforeUnmount(() => {
 }
 
 .error-text {
-  color: var(--el-color-danger);
+  color: var(--platform-red);
   word-break: break-all;
 }
 </style>

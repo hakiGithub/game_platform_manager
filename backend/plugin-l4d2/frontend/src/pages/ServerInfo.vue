@@ -1,8 +1,17 @@
 <template>
   <div class="server-info-page">
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SERVER INFO</span>
+        <h2>服务器信息</h2>
+        <p>hostname、MOTD 与主机信息的在线编辑</p>
+      </div>
+      <div class="header-actions"></div>
+    </div>
+
     <el-row :gutter="20">
       <el-col :span="8">
-        <el-card v-loading="loading" class="info-card">
+        <el-card v-loading="loading" shadow="never" class="page-card info-card">
           <template #header>
             <div class="card-header">
               <span class="card-title">服务器名称</span>
@@ -20,7 +29,7 @@
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card v-loading="loading" class="info-card">
+        <el-card v-loading="loading" shadow="never" class="page-card info-card">
           <template #header>
             <div class="card-header">
               <span class="card-title">MOTD</span>
@@ -38,7 +47,7 @@
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card v-loading="loading" class="info-card">
+        <el-card v-loading="loading" shadow="never" class="page-card info-card">
           <template #header>
             <div class="card-header">
               <span class="card-title">Host</span>
@@ -143,11 +152,14 @@ onMounted(loadAll)
 }
 
 .info-card {
-  border-radius: 8px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 
   :deep(.el-card__header) {
     padding: 14px 16px;
-    border-bottom: 1px solid var(--el-border-color-lighter);
+    border-bottom: 1px solid var(--platform-line);
   }
 
   :deep(.el-card__body) {
@@ -165,12 +177,12 @@ onMounted(loadAll)
 .card-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: var(--platform-text-primary);
 }
 
 .card-subtitle {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   font-weight: 400;
   flex: 1;
 }
@@ -182,7 +194,7 @@ onMounted(loadAll)
 
 :deep(.el-input__inner::placeholder),
 :deep(.el-textarea__inner::placeholder) {
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-muted);
   opacity: 0.7;
 }
 </style>

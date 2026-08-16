@@ -1,21 +1,25 @@
 <template>
   <div class="admins-page">
-    <div class="page-header">
-      <h1 class="page-title">管理员管理</h1>
-        <div class="header-actions">
-          <el-button type="primary" @click="showAddDialog = true">
-            <el-icon><Plus /></el-icon>
-            添加管理员
-          </el-button>
-          <el-button @click="refreshAdmins" :loading="loading">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </div>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / ADMINS</span>
+        <h2>管理员管理</h2>
+        <p>SourceMod 管理员账号、权限旗标与免疫等级管理</p>
       </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="showAddDialog = true">
+          <el-icon><Plus /></el-icon>
+          添加管理员
+        </el-button>
+        <el-button @click="refreshAdmins" :loading="loading">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </div>
 
       <!-- 管理员列表 -->
-      <el-card shadow="hover" class="admins-card">
+      <el-card shadow="never" class="page-card admins-card">
         <el-table
           :data="admins"
           style="width: 100%"
@@ -72,7 +76,7 @@
       </el-card>
 
       <!-- 权限说明 -->
-      <el-card shadow="hover" class="flags-card" style="margin-top: 20px">
+      <el-card shadow="never" class="page-card flags-card" style="margin-top: 20px">
         <template #header>
           <span>权限说明</span>
         </template>
@@ -272,23 +276,12 @@ onMounted(() => {
   overflow-y: auto;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
+.admins-card,
+.flags-card {
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .flags-list {
@@ -303,10 +296,10 @@ onMounted(() => {
     align-items: center;
     gap: 8px;
     padding: 8px 0;
-    
+
     .flag-label {
       font-size: 14px;
-      color: var(--el-text-color-secondary);
+      color: var(--platform-text-regular);
     }
   }
 }

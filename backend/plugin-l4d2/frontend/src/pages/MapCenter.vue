@@ -736,21 +736,22 @@ onBeforeUnmount(() => {
       margin: 0 0 10px 0;
       font-size: 14px;
       font-weight: 600;
-      color: var(--el-text-color-primary);
+      color: var(--platform-text-primary);
     }
   }
 
   .command-block {
     margin: 0;
     padding: 12px 14px;
-    background: var(--el-fill-color-darker);
+    background: var(--platform-surface-2);
+    border: 1px solid var(--platform-line);
     border-radius: 6px;
     overflow-x: auto;
 
     code {
       font-family: 'Consolas', 'Monaco', monospace;
       font-size: 13px;
-      color: var(--el-text-color-regular);
+      color: var(--platform-cyan);
       white-space: pre;
       line-height: 1.6;
     }
@@ -767,7 +768,8 @@ onBeforeUnmount(() => {
       gap: 8px;
       flex-wrap: wrap;
       padding: 8px 12px;
-      background: var(--el-fill-color-light);
+      background: var(--platform-surface-1);
+      border: 1px solid var(--platform-line);
       border-radius: 6px;
 
       .link-url {
@@ -778,10 +780,10 @@ onBeforeUnmount(() => {
 
       .access-code {
         font-size: 13px;
-        color: var(--el-text-color-secondary);
+        color: var(--platform-text-secondary);
 
         strong {
-          color: var(--el-color-warning);
+          color: var(--platform-amber);
           font-family: 'Consolas', 'Monaco', monospace;
         }
       }
@@ -798,7 +800,7 @@ onBeforeUnmount(() => {
       height: 90px;
       border-radius: 6px;
       cursor: pointer;
-      border: 1px solid var(--el-border-color-lighter);
+      border: 1px solid var(--platform-line);
     }
   }
 }
@@ -809,13 +811,13 @@ onBeforeUnmount(() => {
   .crawl-progress-detail {
     margin-top: 8px;
     font-size: 13px;
-    color: var(--el-text-color-secondary);
+    color: var(--platform-text-secondary);
   }
 
   .crawl-error {
     margin-top: 8px;
     font-size: 13px;
-    color: var(--el-color-danger);
+    color: var(--platform-red);
   }
 }
 </style>

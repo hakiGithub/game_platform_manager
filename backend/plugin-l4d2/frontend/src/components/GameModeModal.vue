@@ -93,50 +93,51 @@ watch(() => props.modelValue, (val) => {
     display: flex;
     align-items: center;
     padding: 16px;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
     margin-bottom: 12px;
     border: 2px solid transparent;
-    
+
     &:hover {
-      background-color: var(--el-fill-color-light);
+      background-color: var(--platform-bg-hover);
     }
-    
+
     &.selected {
-      background-color: var(--el-color-primary-light-9);
-      border-color: var(--el-color-primary);
+      background-color: rgba(39, 181, 243, 0.12);
+      border-color: var(--platform-cyan);
     }
-    
+
     .mode-icon {
       width: 56px;
       height: 56px;
-      border-radius: 12px;
-      background-color: var(--el-fill-color);
+      border-radius: 6px;
+      background-color: var(--platform-surface-1);
+      border: 1px solid var(--platform-line);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--el-color-primary);
+      color: var(--platform-cyan);
       margin-right: 16px;
     }
-    
+
     .mode-info {
       flex: 1;
-      
+
       .mode-name {
         font-size: 16px;
         font-weight: 600;
         margin-bottom: 4px;
       }
-      
+
       .mode-desc {
         font-size: 13px;
-        color: var(--el-text-color-secondary);
+        color: var(--platform-text-secondary);
       }
     }
-    
+
     .check-icon {
-      color: var(--el-color-primary);
+      color: var(--platform-cyan);
       font-size: 24px;
     }
   }

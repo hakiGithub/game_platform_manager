@@ -1,5 +1,19 @@
 <template>
   <div class="logs-page">
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SERVER LOGS</span>
+        <h2>服务器日志</h2>
+        <p>实时日志流浏览与关键字检索</p>
+      </div>
+      <div class="header-actions">
+        <span class="hero-state">
+          <span class="status-dot" :class="connected ? 'running' : (paused ? 'deploying' : 'stopped')"></span>
+          {{ connected ? '已连接' : (paused ? '已暂停' : '未连接') }}
+        </span>
+      </div>
+    </div>
+
     <el-row :gutter="12">
       <el-col :span="6">
         <el-card>
@@ -120,6 +134,9 @@ onMounted(loadFileList)
 <style scoped>
 .logs-page {
   padding: 12px;
+}
+.logs-page :deep(.el-card) {
+  border-radius: 6px;
 }
 .card-header {
   display: flex;

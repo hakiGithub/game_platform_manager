@@ -1,8 +1,11 @@
 <template>
   <div class="version-page">
-    <!-- 页面标题 -->
-    <div class="page-header">
-      <h1 class="page-title">版本信息</h1>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / VERSION INFO</span>
+        <h2>版本信息</h2>
+        <p>插件构建版本、提交与运行环境详情</p>
+      </div>
       <div class="header-actions">
         <el-button @click="copyFullInfo">
           <el-icon><CopyDocument /></el-icon>
@@ -17,7 +20,7 @@
 
     <el-skeleton :loading="loading" :rows="8" animated>
       <template #default>
-        <el-card shadow="never" class="info-card">
+        <el-card shadow="never" class="page-card info-card">
           <el-descriptions v-if="info" :column="2" border>
             <el-descriptions-item label="插件版本">
               <el-tag type="success" size="small">{{ info.version || '-' }}</el-tag>
@@ -134,34 +137,16 @@ onMounted(() => {
   gap: 12px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .info-card {
-  border-radius: 4px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .mono-text {
   font-family: 'Consolas', 'Monaco', monospace;
-  background: var(--el-fill-color-light);
+  background: var(--platform-surface-2);
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 13px;

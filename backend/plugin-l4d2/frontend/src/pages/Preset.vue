@@ -1,19 +1,21 @@
 <template>
   <div class="preset-page">
-    <el-card v-loading="loading">
-      <template #header>
-        <div class="card-header">
-          <span>预设场景</span>
-          <div class="header-actions">
-            <el-tag v-if="instanceName" type="info">当前实例: {{ instanceName }}</el-tag>
-            <el-button @click="loadList" :loading="loading">
-              <el-icon><Refresh /></el-icon>
-              刷新
-            </el-button>
-          </div>
-        </div>
-      </template>
+    <div class="plugin-page-header">
+      <div class="header-meta">
+        <span class="section-kicker">L4D2 COMMAND / SCENE PRESETS</span>
+        <h2>预设场景</h2>
+        <p>一键应用预配置的插件组合与参数场景</p>
+      </div>
+      <div class="header-actions">
+        <el-tag v-if="instanceName" type="info">当前实例: {{ instanceName }}</el-tag>
+        <el-button @click="loadList" :loading="loading">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </div>
 
+    <el-card v-loading="loading" class="page-card" shadow="never">
       <div v-if="!instanceId" class="empty-tip">
         <el-empty description="请先选择实例" />
       </div>
@@ -31,7 +33,7 @@
           :md="8"
           :lg="6"
         >
-          <el-card class="preset-card" shadow="hover">
+          <el-card class="preset-card" shadow="never">
             <div class="preset-name">{{ preset.name }}</div>
             <div class="preset-desc">{{ preset.description || '无描述' }}</div>
             <div class="preset-tags">
@@ -232,11 +234,9 @@ onMounted(loadList)
 <style scoped>
 .preset-page {
   padding: 12px;
-}
-.card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
 }
 .header-actions {
   display: flex;
@@ -248,16 +248,23 @@ onMounted(loadList)
 }
 .preset-card {
   margin-bottom: 16px;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  transition: border-color 0.15s;
+}
+.preset-card:hover {
+  border-color: rgba(39, 181, 243, 0.45);
 }
 .preset-name {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: var(--el-text-color-primary);
+  color: var(--platform-text-primary);
 }
 .preset-desc {
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   min-height: 40px;
   margin-bottom: 12px;
   display: -webkit-box;
@@ -284,7 +291,7 @@ onMounted(loadList)
   font-size: 14px;
 }
 .muted {
-  color: var(--el-text-color-secondary);
+  color: var(--platform-text-secondary);
   font-size: 13px;
 }
 .plugin-list {
