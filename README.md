@@ -2,7 +2,7 @@
 
 > 游戏服务器统一管理平台 — 面向个人游戏服运维场景的轻量级管理后台
 
-采用前后端分离 + 插件化架构，支持多游戏、多主机的统一管理。
+采用前后端分离 + 插件化架构，支持多游戏、多主机的统一管理。当前前端已按“工作台 / 资源 / 服务 / 扩展 / 系统”重组信息架构，页面数据通过真实 REST API 获取。
 
 ## 核心特性
 
@@ -22,6 +22,22 @@
 | 前端 | Vue 3.4 · Vite 5 · Element Plus 2.6 · Pinia · XTerm.js · Wujie 微前端 |
 | 数据库 | SQLite（嵌入式，零安装） |
 
+## 页面与路由
+
+| 工作区 | 主要路由 | 页面 |
+|--------|----------|------|
+| 工作台 | `/workspace/overview` | 运行总览 |
+| 资源管理 | `/resources/hosts/list` | 主机列表、主机详情、主机终端 |
+| 资源管理 | `/resources/containers/list` | 容器列表、容器详情 |
+| 服务编排 | `/services/instances/list` | 实例列表、实例详情、实例部署 |
+| 服务编排 | `/services/games/list` | 游戏目录 |
+| 服务编排 | `/services/tasks/list` | 任务列表、任务详情 |
+| 扩展中心 | `/extensions/plugins/list` | 插件列表与插件工作区 |
+| 系统设置 | `/system/configuration` | 系统配置 |
+| 系统设置 | `/system/audit` | 审计日志 |
+
+旧版 `/dashboard`、`/host`、`/instance`、`/game`、`/task`、`/docker`、`/plugins` 和 `/system/settings` 等路径仍保留兼容重定向。
+
 ## 快速开始
 
 ### 环境要求
@@ -36,15 +52,15 @@
 .\scripts\rebuild-restart-all.ps1
 ```
 
-支持参数：`-SkipBackendCompile` / `-SkipPlugins` / `-SkipFrontend`
+支持参数：`-SkipBackendCompile` / `-SkipPlugins` / `-SkipFrontend`。
 
-bash 版（Git Bash）：
+bash 版：
 
 ```bash
 bash scripts/start-all.sh
 ```
 
-支持参数：`--backend-only` / `--frontend-only` / `--skip-compile` / `--skip-plugins` / `--port` / `--db`
+支持参数：`--backend-only` / `--frontend-only` / `--skip-compile` / `--skip-plugins` / `--port` / `--db`。
 
 ### 分别启动
 
@@ -63,18 +79,22 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000 即可使用。
+访问 http://localhost:3000 即可使用。前端开发服务器会将 `/api` 和 WebSocket 请求转发到 `http://localhost:8080`；开发时必须先启动真实后端，仓库不包含运行时 mock API。
 
 ## 项目结构
 
 ```
-game_platform_manger/
-├── backend/          # 后端（git submodule，Spring Boot 多模块）
-├── frontend/         # 前端（git submodule，Vue 3 + Vite）
-├── docs/             # 项目文档（分层组织）
-├── scripts/          # 全栈一键脚本
-├── .trae/skills/     # AI Skill 文档（插件开发等）
-└── AGENTS.md         # AI Agent 协作指南
+game_platform_manager/
+├── backend/          # Spring Boot 多模块后端与插件工程
+│   ├── api/           # API DTO / VO 契约
+│   ├── core/          # 主应用、控制器、服务与数据库访问
+│   ├── plugin/        # PF4J 插件 SDK
+│   └── plugin-l4d2/   # L4D2 插件及其前端
+├── frontend/          # Vue 3 + Vite 主前端
+├── docs/              # 项目文档（分层组织）
+├── scripts/           # 全栈启动与重启脚本
+├── .trae/skills/      # AI Skill 文档（插件开发等）
+└── AGENTS.md          # AI Agent 协作指南
 ```
 
 ## 文档导航
@@ -99,7 +119,7 @@ game_platform_manger/
 - 扩展点（`GameEnhancementExtension`）与菜单声明（ADR-0001）
 - `ExtensionClient` 持久化与宿主服务面
 - 任务中心 SDK（`TaskHandler` / `TaskHandlerExtension`）
-- Wujie 微前端集成与三种运行模式
+- Wujie 微前端集成与开发 / Wujie 两种运行模式
 - 参考实现 `examples/plugin-mygame`
 
 ## 许可证
