@@ -200,13 +200,19 @@ public class MapCenterService {
         // 从 result 提取详细计数（仅终态任务有 result）
         Object resultObj = task.getResult();
         if (resultObj instanceof Map<?, ?> resultMap) {
-            vo.setTotalPages(asInt(resultMap.get("totalPages")));
-            vo.setTotalMaps(asInt(resultMap.get("totalMaps")));
-            vo.setNewMaps(asInt(resultMap.get("newMaps")));
-            vo.setUpdatedMaps(asInt(resultMap.get("updatedMaps")));
-            vo.setSkippedMaps(asInt(resultMap.get("skippedMaps")));
-            vo.setFailedMaps(asInt(resultMap.get("failedMaps")));
-            Object source = resultMap.get("source");
+            // 任务中心可能存 Result<T> 包装（counts 在 "data" 键下），兼容两种形态
+            Map<?, ?> counts = resultMap;
+            Object data = resultMap.get("data");
+            if (data instanceof Map<?, ?> dataMap) {
+                counts = dataMap;
+            }
+            vo.setTotalPages(asInt(counts.get("totalPages")));
+            vo.setTotalMaps(asInt(counts.get("totalMaps")));
+            vo.setNewMaps(asInt(counts.get("newMaps")));
+            vo.setUpdatedMaps(asInt(counts.get("updatedMaps")));
+            vo.setSkippedMaps(asInt(counts.get("skippedMaps")));
+            vo.setFailedMaps(asInt(counts.get("failedMaps")));
+            Object source = counts.get("source");
             if (source != null) {
                 vo.setSource(source.toString());
             }

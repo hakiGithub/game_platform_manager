@@ -68,8 +68,10 @@ plugin-{gameCode}/frontend/
 │   ├── pages/         # 页面（路径须与 getMenus() 声明的 path 对齐）
 │   ├── router/index.ts
 │   ├── stores/        # Pinia
+│   ├── styles/            # Night Ops token 副本 + Element 暗色重肤（ADR-0007）
 │   ├── utils/runtime.ts    # detectMode
-│   └── utils/pluginSDK.ts  # Wujie 通信封装
+│   ├── utils/pluginSDK.ts  # Wujie 通信封装
+│   └── utils/wujiePopperFix.ts  # Wujie popper 定位修正（§9）
 ├── vite.config.ts
 └── package.json
 ```
@@ -82,3 +84,26 @@ plugin-{gameCode}/frontend/
 - Wujie 微前端环境下，Element Plus 下拉框/弹出层在主前端未设置全局 z-index 时会被遮挡，需在主前端 `styles/index.scss` 中为所有 popper 类组件统一设置 `z-index: 9999`
 - 配置管理表单需设置 `label-width` 为 220px，label 元素使用 `line-height: 32px`、`white-space: normal`、`word-break: break-word` 确保长字段名完整显示且与 input 框垂直对齐
 - 表格布局需设置 `table-layout="fixed"` 并固定列宽，确保操作列按钮文字完整显示
+
+## 8. Night Operations 主题与 token 隔离（ADR-0007，v3.5.0）
+
+主应用为暗色 "Night Operations" 设计语言，插件前端必须对齐，否则嵌入时白底刺眼、视觉割裂。
+
+- **token 复制而非共享**：Wujie shadow DOM 不继承宿主 CSS 变量，构建期跨目录 import 又破坏插件独立打包——把主应用 `frontend/src/styles/variables.scss` 完整复制到 `plugin-{gameCode}/frontend/src/styles/variables.scss`，两份文件头部互相注明同步关系；小工具（`utils/terminalTheme.js` 等）同样复制。
+- **暗色单主题**：`main.ts` 直接 `document.documentElement.classList.add('dark')`，不实现 themeInfo 明暗切换（Wujie 是唯一生产运行模式，宿主永远暗色）。
+- **页面模式**：统一页头（mono kicker `GAMECODE COMMAND / XXX` + 标题 + 描述 + 操作区）、状态用 `status-dot` + `--platform-status-*`、卡片 surface-1 + 1px line 边框 + 6px 圆角无阴影、卡片内不再出现裸十六进制浅色。
+- **⚠️ sass 私有成员陷阱**：主应用 variables.scss 的变量名以 `$--` 开头（如 `$--color-primary`）。主应用用旧版 `@import` 能读；插件若用 `@use ... as *`（vite additionalData 注入），**前导 `-` 的成员是私有的、不可见**，会报 Undefined variable。复制到插件时须去掉 `$--` 前缀（`$--color-primary` → `$color-primary`）。
+- **⚠️ Element 暗色变量特异性**：Element Plus 的 dark css-vars 定义在 `html.dark` 下，特异性 (0,1,1) 高于裸 `:root` (0,1,0)。插件 index.scss 末尾覆盖 `--el-*` 时选择器要写 `:root, html.dark { ... !important }`，否则弹层 overlay 等仍取 Element 原生暗灰。
+
+## 9. Wujie 下 popper 定位漂移（v3.5.0）
+
+**现象**：Element Plus 下拉框（el-select 等）弹层在 Wujie 嵌入下漂移（叠进下方表格 / 跑到视口左上角），dev 模式正常。
+
+**根因**：popper 的 flip/preventOverflow 修饰器基于 iframe 沙箱 window 尺寸判断空间（恒不可用 → 误翻转为 right/top），坐标又按错误的 offsetParent（跨 shadow 解析到宿主侧定位祖先）计算。
+
+**正确修法（运行时几何修正）**：见 `plugin-l4d2/frontend/src/utils/wujiePopperFix.ts`——App.vue 挂载时安装；监听 click/scroll/resize（capture），双 rAF 后把可见 `.el-select__popper` 改 `position: fixed` 并贴合到 `aria-expanded="true"` 输入框所属 `.el-select` rect 正下方。
+
+**❌ 不要用的方案**（均在 Wujie 下破坏弹层开关或定位）：
+- `popper-options` 改 `strategy: 'fixed'` → 弹层无法打开（沙箱内 update 抛异常）
+- `popper-options` 禁用 flip/preventOverflow → placement 正确但坐标仍错位
+- `:teleported="false"` → 被 el-card overflow 裁剪 + 点击事件经 shadow 重定向后开关失灵

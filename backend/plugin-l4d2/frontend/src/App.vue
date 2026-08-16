@@ -14,8 +14,12 @@ import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { usePluginStore } from '@/stores/plugin'
+import { installWujieSelectPopperFix } from '@/utils/wujiePopperFix'
 
 const pluginStore = usePluginStore()
+
+// Wujie 沙箱下 el-select 弹层定位漂移的运行时修正（见 utils/wujiePopperFix.ts）
+let teardownPopperFix: (() => void) | null = null
 
 // 监听实例信息变化，确保 store 与 Wujie props 保持一致
 watch(
@@ -29,6 +33,8 @@ watch(
 )
 
 onMounted(() => {
+  teardownPopperFix = installWujieSelectPopperFix()
+
   // Wujie 模式下优先从宿主 props 同步实例/认证信息
   // 主应用通过 props.instance 传递实例信息，pluginSDK 默认读取 props.instanceInfo 会遗漏
   pluginStore.syncFromWujieProps()
@@ -41,6 +47,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  teardownPopperFix?.()
   pluginStore.destroySDK()
 })
 </script>

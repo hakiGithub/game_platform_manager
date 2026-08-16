@@ -49,6 +49,14 @@ export default defineConfig({
       }
     }
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        // Night Ops token 注入（ADR-0007：插件自带 token 副本，变量名无 $-- 前缀）
+        additionalData: `@use "@/styles/variables.scss" as *;`
+      }
+    }
+  },
   build: {
     // 产物输出到后端 JAR 的 ui/ 目录，打包后随 JAR 一起部署
     outDir: '../src/main/resources/ui',

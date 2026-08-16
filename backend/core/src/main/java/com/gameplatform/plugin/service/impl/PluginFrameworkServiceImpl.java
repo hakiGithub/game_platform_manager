@@ -136,12 +136,17 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
 
     @Override
     public boolean unloadPlugin(String pluginId) {
+        return unloadPlugin(pluginId, true);
+    }
+
+    @Override
+    public boolean unloadPlugin(String pluginId, boolean purgeTasks) {
         try {
             // 获取扩展点（卸载前调用 onUnload 钩子）
             GameEnhancementExtension extension = getExtensionByPluginId(pluginId);
 
             // 先清理 Spring 子容器
-            springContextFactory.unloadPluginContext(pluginId, extension);
+            springContextFactory.unloadPluginContext(pluginId, extension, purgeTasks);
 
             boolean success = pluginManager.unloadPlugin(pluginId);
             if (success) {
@@ -165,9 +170,9 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
             if (plugin == null) return false;
             Path pluginPath = plugin.getPluginPath();
 
-            // 停止并卸载
+            // 停止并卸载（同插件即将重新加载，保留任务历史）
             stopPlugin(pluginId);
-            unloadPlugin(pluginId);
+            unloadPlugin(pluginId, false);
 
             // 重新加载
             String newPluginId = loadPlugin(pluginPath.toString());
@@ -187,8 +192,13 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
 
             PluginWrapper wrapper = pluginManager.getPlugin(pluginId);
             if (wrapper != null) {
+                // 先启动再发现扩展点：PF4J 的 per-plugin 扩展查找只对
+                // STARTED 状态的插件生效（AbstractExtensionFinder#find），
+                // 否则热加载后扩展点为空、Spring 上下文不会创建
+                pluginManager.startPlugin(pluginId);
+                GameEnhancementExtension found = getExtensionByPluginId(pluginId);
                 List<GameEnhancementExtension> extensions =
-                        pluginManager.getExtensions(GameEnhancementExtension.class, pluginId);
+                        found != null ? List.of(found) : List.of();
 
                 if (!extensions.isEmpty()) {
                     GameEnhancementExtension ext = extensions.get(0);
@@ -276,8 +286,15 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
      */
     private GameEnhancementExtension getExtensionByPluginId(String pluginId) {
         try {
-            return pluginManager.getExtensions(GameEnhancementExtension.class, pluginId)
-                    .stream()
+            List<GameEnhancementExtension> extensions =
+                    pluginManager.getExtensions(GameEnhancementExtension.class, pluginId);
+            if (!extensions.isEmpty()) {
+                return extensions.get(0);
+            }
+            // 单插件热加载路径下 PF4J 的 per-plugin 扩展索引为空（批量
+            // loadPlugins 才会填充），回退到全局扩展点按类归属过滤
+            return pluginManager.getExtensions(GameEnhancementExtension.class).stream()
+                    .filter(ext -> pluginId.equals(pluginManager.whichPlugin(ext.getClass())))
                     .findFirst()
                     .orElse(null);
         } catch (Exception e) {

@@ -241,6 +241,26 @@ bash scripts/start-all.sh --skip-compile --skip-plugins
 bash scripts/start-all.sh --port 3001 --db /path/db.sqlite
 ```
 
+### 部署策略（改什么部署什么）
+
+| 改动范围 | 部署方式 | 后端重启 |
+|----------|----------|----------|
+| 仅插件代码（plugin-l4d2 前端或 Java） | `bash scripts/deploy-plugin.sh`（热部署） | 否 |
+| 主应用代码（core/api/plugin 模块） | `bash scripts/start-all.sh`（或 `--backend-only`） | 是 |
+
+插件热部署流程：构建插件前端（可选）→ 打插件 JAR → PF4J API 卸载旧插件（释放 Windows jar 文件锁）→ 覆盖 `plugins/` 下的 jar → `POST /api/pf4j/plugins/load?jarName=...` 加载启动。卸载时传 `purgeTasks=false` 保留任务中心历史（运行中任务仍会被取消、旧 Handler 仍会注销）。
+
+```bash
+# 前端 + Java 全量构建后热部署（默认）
+bash scripts/deploy-plugin.sh
+
+# 仅改了插件 Java 代码
+bash scripts/deploy-plugin.sh --skip-frontend
+
+# 跳过构建，重新部署上次构建的 JAR
+bash scripts/deploy-plugin.sh --skip-build
+```
+
 ---
 
 ## 关键工程约定

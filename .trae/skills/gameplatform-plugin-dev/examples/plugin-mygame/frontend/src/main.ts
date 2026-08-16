@@ -12,6 +12,11 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
+import './styles/index.scss'
+
+// Night Operations 暗色单主题（ADR-0007）：与宿主主应用保持一致，无明暗切换
+document.documentElement.classList.add('dark')
 
 import App from './App.vue'
 import { createPluginRouter } from './router'

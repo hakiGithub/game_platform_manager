@@ -8,7 +8,7 @@ agent_created: true
 
 ## 概述
 
-本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此；当前版本 v3.4.0，见 `references/changelog.md`）。
+本技能为 GamePlatform 平台（PF4J + Spring 子容器 + Wujie 微前端）的插件开发与排查提供程序性知识。完整开发指南位于本 SKILL 目录下的 `references/` 分主题文件中（v3.1.0 起，原 `docs/PLUGIN_DEV_GUIDE.md` 已删除并迁移到此；当前版本 v3.5.0，见 `references/changelog.md`）。
 
 ## 文档导航（references/ 索引）
 
@@ -52,6 +52,8 @@ agent_created: true
    - 例外：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入）。
    - 详见 [ADR-0002](../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
 8. **废弃 standalone 模式（ADR-0003，v3.3.0）**：`plugin-l4d2-standalone` 已物理删除，新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。详见 [ADR-0003](../../../docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
+9. **部署策略（v3.5.0）**：只改插件代码用 `bash scripts/deploy-plugin.sh` 热部署（构建插件 → PF4J API 卸载释放 Windows jar 文件锁 → 覆盖 `plugins/` 下的 jar → `POST /api/pf4j/plugins/load?jarName=...` 加载启动，**后端不重启**，卸载传 `purgeTasks=false` 保留任务中心历史）；改主应用代码（core/api/plugin 模块）才用 `start-all.sh` 重启。宿主 `loadPlugin` 为"先 start 再发现扩展点"（PF4J per-plugin 扩展查找仅对 STARTED 状态生效，v3.5.0 修复的隐藏 bug）。
+10. **插件前端 Night Operations token 隔离（ADR-0007，v3.5.0）**：Wujie shadow DOM 不继承宿主 CSS 变量，插件前端须**复制**主应用 `frontend/src/styles/variables.scss` 的 `--platform-*` token 副本自管（暗色单主题，无明暗切换）；小工具类（如 `terminalTheme.js`）同样复制。注意两个 sass/Wujie 陷阱见 `references/frontend.md` §8-9。详见 [ADR-0007](../../../docs/design/adr/0007-plugin-frontend-nightops-token-isolation.md)。
 
 ## 可用类速查（接入规范）
 

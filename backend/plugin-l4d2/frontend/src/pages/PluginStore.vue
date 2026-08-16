@@ -19,9 +19,9 @@
           v-model="category"
           placeholder="全部分类"
           clearable
-          teleported
           style="width: 160px"
           @change="loadList"
+        
         >
           <el-option
             v-for="cat in categories"

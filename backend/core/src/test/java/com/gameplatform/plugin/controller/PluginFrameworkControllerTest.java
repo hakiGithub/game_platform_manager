@@ -17,7 +17,10 @@ import org.mockito.quality.Strictness;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.nio.file.Path;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
@@ -44,6 +47,9 @@ class PluginFrameworkControllerTest {
 
     @Mock
     private PluginFrameworkService pluginFrameworkService;
+
+    @Mock
+    private com.gameplatform.plugin.config.PluginConfig pluginConfig;
 
     @InjectMocks
     private PluginFrameworkController controller;
@@ -344,28 +350,112 @@ class PluginFrameworkControllerTest {
         @Test
         @DisplayName("卸载插件-成功")
         void testUnloadPluginSuccess() throws Exception {
-            // Given
-            when(pluginFrameworkService.unloadPlugin("test-plugin")).thenReturn(true);
+            // Given（purgeTasks 默认 true）
+            when(pluginFrameworkService.unloadPlugin("test-plugin", true)).thenReturn(true);
 
             // When & Then
             mockMvc.perform(delete("/pf4j/plugins/test-plugin"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200));
 
-            verify(pluginFrameworkService).unloadPlugin("test-plugin");
+            verify(pluginFrameworkService).unloadPlugin("test-plugin", true);
         }
 
         @Test
         @DisplayName("卸载插件-失败")
         void testUnloadPluginFail() throws Exception {
             // Given
-            when(pluginFrameworkService.unloadPlugin("test-plugin")).thenReturn(false);
+            when(pluginFrameworkService.unloadPlugin("test-plugin", true)).thenReturn(false);
 
             // When & Then
             mockMvc.perform(delete("/pf4j/plugins/test-plugin"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(400))
                     .andExpect(jsonPath("$.message").value("卸载插件失败"));
+        }
+
+        @Test
+        @DisplayName("卸载插件-热部署保留任务历史")
+        void testUnloadPluginKeepTasks() throws Exception {
+            // Given（deploy-plugin.sh 热部署传 purgeTasks=false）
+            when(pluginFrameworkService.unloadPlugin("test-plugin", false)).thenReturn(true);
+
+            // When & Then
+            mockMvc.perform(delete("/pf4j/plugins/test-plugin").param("purgeTasks", "false"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
+
+            verify(pluginFrameworkService).unloadPlugin("test-plugin", false);
+        }
+    }
+
+    // ==================== loadPlugin 测试 ====================
+
+    @Nested
+    @DisplayName("loadPlugin 方法测试")
+    class LoadPluginTests {
+
+        @TempDir
+        Path pluginsDir;
+
+        @Test
+        @DisplayName("加载插件-成功")
+        void testLoadPluginSuccess() throws Exception {
+            // Given
+            Path jar = pluginsDir.resolve("test-plugin-1.0.0.jar");
+            java.nio.file.Files.writeString(jar, "dummy");
+            when(pluginConfig.getPluginsDir()).thenReturn(pluginsDir.toString());
+            when(pluginFrameworkService.loadPlugin(jar.toString())).thenReturn("test-plugin");
+            when(pluginFrameworkService.startPlugin("test-plugin")).thenReturn(true);
+
+            // When & Then
+            mockMvc.perform(post("/pf4j/plugins/load").param("jarName", "test-plugin-1.0.0.jar"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value("test-plugin"));
+        }
+
+        @Test
+        @DisplayName("加载插件-拒绝路径穿越")
+        void testLoadPluginPathTraversal() throws Exception {
+            // Given
+            when(pluginConfig.getPluginsDir()).thenReturn(pluginsDir.toString());
+
+            // When & Then
+            mockMvc.perform(post("/pf4j/plugins/load").param("jarName", "../evil.jar"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(400))
+                    .andExpect(jsonPath("$.message").value("jarName 必须是插件目录内的文件名"));
+        }
+
+        @Test
+        @DisplayName("加载插件-文件不存在")
+        void testLoadPluginFileMissing() throws Exception {
+            // Given
+            when(pluginConfig.getPluginsDir()).thenReturn(pluginsDir.toString());
+
+            // When & Then
+            mockMvc.perform(post("/pf4j/plugins/load").param("jarName", "not-exist.jar"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(400))
+                    .andExpect(jsonPath("$.message").value("插件文件不存在: not-exist.jar"));
+        }
+
+        @Test
+        @DisplayName("加载插件-已加载但启动失败")
+        void testLoadPluginStartFail() throws Exception {
+            // Given
+            Path jar = pluginsDir.resolve("test-plugin-1.0.0.jar");
+            java.nio.file.Files.writeString(jar, "dummy");
+            when(pluginConfig.getPluginsDir()).thenReturn(pluginsDir.toString());
+            when(pluginFrameworkService.loadPlugin(jar.toString())).thenReturn("test-plugin");
+            when(pluginFrameworkService.startPlugin("test-plugin")).thenReturn(false);
+
+            // When & Then
+            mockMvc.perform(post("/pf4j/plugins/load").param("jarName", "test-plugin-1.0.0.jar"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(400))
+                    .andExpect(jsonPath("$.message").value("插件已加载但启动失败: test-plugin"));
         }
     }
 

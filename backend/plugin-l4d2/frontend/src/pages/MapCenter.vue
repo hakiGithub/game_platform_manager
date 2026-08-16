@@ -22,8 +22,8 @@
           <div class="crawl-text">
             <span class="crawl-label">爬取状态：</span>
             <el-tag :type="crawlStatusType" size="small">{{ crawlStatusText }}</el-tag>
-            <span v-if="crawlStatus" class="crawl-detail">
-              共 {{ crawlStatus.totalMaps }} 张 · 新增 {{ crawlStatus.newMaps }} · 更新 {{ crawlStatus.updatedMaps }}
+            <span v-if="crawlStatus && crawlStatus.totalMaps != null" class="crawl-detail">
+              共 {{ crawlStatus.totalMaps }} 张 · 新增 {{ crawlStatus.newMaps ?? 0 }} · 更新 {{ crawlStatus.updatedMaps ?? 0 }}
               <template v-if="crawlStatus.failedMaps"> · 失败 {{ crawlStatus.failedMaps }}</template>
             </span>
             <span v-else class="crawl-detail">暂无爬取记录</span>
@@ -61,6 +61,7 @@
           placeholder="来源"
           class="filter-select"
           @change="handleSearch"
+        
         >
           <el-option label="全部来源" value="" />
           <el-option label="ORANGE" value="ORANGE" />
@@ -71,6 +72,7 @@
           placeholder="游戏模式"
           class="filter-select"
           @change="handleSearch"
+        
         >
           <el-option label="全部模式" value="" />
           <el-option label="合作" value="合作" />
@@ -83,6 +85,7 @@
           placeholder="排序"
           class="filter-select-sort"
           @change="handleSearch"
+        
         >
           <el-option label="更新时间倒序" value="updateDateDesc" />
           <el-option label="文件大小倒序" value="fileSizeDesc" />

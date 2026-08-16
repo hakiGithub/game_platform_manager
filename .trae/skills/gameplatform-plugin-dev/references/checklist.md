@@ -45,6 +45,9 @@
 - [ ] 纯资源浏览页菜单显式设置 `requireInstance=Boolean.FALSE`（如地图中心）
 - [ ] 前端路由 path 与 `getMenus()` 声明的 path 严格对齐
 - [ ] `getManifest()` 不再写入 `features` 字段（ADR-0001 已废弃）
+- [ ] （双端插件）styles 带主应用 Night Ops token 副本（暗色单主题，ADR-0007）；变量名无 `$--` 前缀；`--el-*` 覆盖层选择器含 `html.dark`
+- [ ] （双端插件）下拉/弹层在 Wujie 嵌入下定位正常（集成 wujiePopperFix 模式，见 frontend.md §9）
+- [ ] 部署验证：改插件用 `deploy-plugin.sh` 热部署后插件 API/UI 正常、任务历史未丢失
 
 ### 2.2 验收标准
 

@@ -68,7 +68,8 @@
             </el-form-item>
 
             <el-form-item label="游戏模式">
-              <el-select v-model="configForm.gameMode" style="width: 100%" teleported>
+              <el-select v-model="configForm.gameMode" style="width: 100%"
+        >
                 <el-option
                   v-for="mode in GAME_MODES"
                   :key="mode.value"
@@ -79,7 +80,8 @@
             </el-form-item>
 
             <el-form-item label="难度">
-              <el-select v-model="configForm.difficulty" style="width: 100%" teleported>
+              <el-select v-model="configForm.difficulty" style="width: 100%"
+        >
                 <el-option
                   v-for="diff in DIFFICULTIES"
                   :key="diff.value"
@@ -165,8 +167,8 @@
           v-model="currentFileName"
           placeholder="选择配置文件"
           style="width: 240px"
-          teleported
           @change="loadFileContent"
+        
         >
           <el-option
             v-for="name in FILE_NAMES"

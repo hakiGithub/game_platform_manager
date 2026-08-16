@@ -87,6 +87,15 @@ public interface PluginFrameworkService {
     boolean unloadPlugin(String pluginId);
 
     /**
+     * 卸载插件。
+     *
+     * @param pluginId  插件ID
+     * @param purgeTasks 是否物理删除插件 source 的任务记录与日志
+     *                   （热部署/重载传 false 保留历史）
+     */
+    boolean unloadPlugin(String pluginId, boolean purgeTasks);
+
+    /**
      * 重新加载插件
      *
      * @param pluginId 插件ID

@@ -1,0 +1,607 @@
+// plugin-l4d2 frontend - Night Operations global surface and component rules.
+// 复制自 frontend/src/styles/index.scss 的 Element 暗色重肤模式（ADR-0007）。
+// 插件运行于 Wujie shadow DOM，popper 相关规则只保留通用选择器。
+// variables.scss 由 vite.config.ts 的 scss.additionalData 自动注入，无需 @use。
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+html,
+body {
+  font-family: $font-family;
+  font-size: $platform-font-size-base;
+  line-height: $platform-line-height-base;
+  color: $color-text-primary;
+  background: $bg-color-page;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $color-primary;
+  text-decoration: none;
+  transition: color $transition-duration-fast;
+
+  &:hover {
+    color: $color-primary-light-3;
+  }
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+::selection {
+  color: #fff;
+  background: rgba(39, 181, 243, 0.36);
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: $bg-color-page;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #32485a;
+  border: 2px solid $bg-color-page;
+  border-radius: 999px;
+
+  &:hover {
+    background: #496276;
+  }
+}
+
+// ========== Common utilities ==========
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@each $size in (xs, sm, md, lg, xl) {
+  .mt-#{$size} { margin-top: var(--platform-spacing-#{$size}); }
+  .mb-#{$size} { margin-bottom: var(--platform-spacing-#{$size}); }
+  .ml-#{$size} { margin-left: var(--platform-spacing-#{$size}); }
+  .mr-#{$size} { margin-right: var(--platform-spacing-#{$size}); }
+}
+
+// ========== Page patterns ==========
+.page-container {
+  min-height: 100%;
+  padding: var(--platform-content-padding);
+  background: $bg-color-page;
+}
+
+// 插件旧卡片类，映射为 Night Ops 卡片（页面渐进迁移）
+.content-card {
+  margin-bottom: $platform-spacing-md;
+  padding: $platform-card-padding;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: $platform-card-radius;
+  box-shadow: none;
+}
+
+.page-card {
+  @extend .content-card;
+}
+
+.page-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: $platform-spacing-md;
+  margin-bottom: $platform-spacing-md;
+  border-bottom: 1px solid var(--platform-line);
+
+  .title {
+    color: $color-text-primary;
+    font-size: $platform-font-size-md;
+    font-weight: $platform-font-weight-bold;
+  }
+}
+
+.page-title {
+  color: $color-text-primary;
+  font-size: $platform-font-size-lg;
+  font-weight: $platform-font-weight-bold;
+  margin-bottom: $platform-spacing-md;
+}
+
+// mono kicker 微标签（Night Operations 签名元素）
+.section-kicker {
+  font-family: $font-family-mono;
+  font-size: 10px;
+  font-weight: $platform-font-weight-medium;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--platform-text-muted);
+}
+
+// 统一插件页头：kicker + 标题 + 描述 + 操作区
+.plugin-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: $platform-spacing-md;
+  padding-bottom: $platform-spacing-md;
+  margin-bottom: $platform-spacing-md;
+  border-bottom: 1px solid var(--platform-line);
+
+  .header-meta {
+    .section-kicker {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    h2 {
+      color: var(--platform-text-primary);
+      font-size: $platform-font-size-xl;
+      font-weight: $platform-font-weight-bold;
+      line-height: $platform-line-height-tight;
+    }
+
+    p {
+      margin-top: 6px;
+      color: var(--platform-text-secondary);
+      font-size: $platform-font-size-sm;
+    }
+  }
+}
+
+// ========== Workspace 卡片（主应用运行总览统一视觉） ==========
+.workspace-card {
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
+
+  :deep(.el-card__header) {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--platform-line);
+  }
+
+  :deep(.el-card__body) {
+    padding: 16px;
+  }
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  .header-copy {
+    .section-kicker {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    h3 {
+      color: var(--platform-text-primary);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    small {
+      display: block;
+      margin-top: 3px;
+      color: var(--platform-text-secondary);
+      font-size: 12px;
+    }
+  }
+
+  .header-context {
+    color: var(--platform-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+// ========== Status semantics ==========
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--platform-status-stopped);
+  vertical-align: middle;
+
+  &.running {
+    background: var(--platform-status-running);
+    box-shadow: 0 0 6px rgba(82, 207, 130, 0.5);
+  }
+
+  &.stopped {
+    background: var(--platform-status-stopped);
+  }
+
+  &.error {
+    background: var(--platform-status-error);
+    box-shadow: 0 0 6px rgba(240, 100, 106, 0.5);
+  }
+
+  &.deploying {
+    background: var(--platform-status-deploying);
+    box-shadow: 0 0 6px rgba(242, 184, 75, 0.5);
+  }
+}
+
+// ========== Element Plus dark adaptation ==========
+.el-card {
+  color: $color-text-primary;
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: $platform-card-radius;
+  box-shadow: none;
+}
+
+.el-card__header {
+  border-bottom-color: var(--platform-line);
+}
+
+.el-button {
+  --el-button-bg-color: var(--platform-surface-2);
+  --el-button-border-color: var(--platform-line);
+  --el-button-text-color: var(--el-text-color-regular);
+  --el-button-hover-bg-color: var(--platform-surface-3);
+  --el-button-hover-border-color: var(--platform-cyan);
+  --el-button-hover-text-color: var(--el-color-primary-light-3);
+  --el-button-active-bg-color: var(--platform-surface-3);
+  min-height: 32px;
+  border-radius: 4px;
+  transition: background-color $transition-duration-fast, border-color $transition-duration-fast, color $transition-duration-fast;
+
+  &:not(.is-link):not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger) {
+    background-color: var(--platform-surface-2);
+    border-color: var(--platform-line);
+    color: var(--platform-text-regular);
+
+    &:hover {
+      background-color: var(--platform-surface-3);
+      border-color: var(--platform-cyan);
+      color: var(--platform-cyan);
+    }
+  }
+
+  &.el-button--primary {
+    background-color: #126f9b;
+    border-color: #1d99d0;
+    color: #f5fbff;
+
+    &:hover {
+      background-color: #198ab9;
+      border-color: #58c7f3;
+      color: #f5fbff;
+    }
+  }
+
+  &.el-button--success {
+    background-color: #226f4a;
+    border-color: #3a9f6a;
+    color: #eafff1;
+  }
+
+  &.el-button--warning {
+    background-color: #725326;
+    border-color: #b6812d;
+    color: #fff5dd;
+  }
+
+  &.el-button--danger {
+    background-color: #71353a;
+    border-color: #b84d55;
+    color: #fff0f1;
+  }
+
+  &.is-link {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--platform-cyan);
+  }
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper,
+.el-input-number,
+.el-date-editor.el-input__wrapper {
+  color: $color-text-primary;
+  background: var(--platform-surface-0);
+  border: 1px solid var(--platform-line);
+  box-shadow: none !important;
+
+  &:hover,
+  &.is-focus {
+    border-color: var(--platform-cyan);
+    box-shadow: 0 0 0 1px rgba(39, 181, 243, 0.14) !important;
+  }
+}
+
+.el-input__inner,
+.el-textarea__inner,
+.el-select__input {
+  color: $color-text-primary;
+
+  &::placeholder {
+    color: $color-text-placeholder;
+  }
+}
+
+.el-checkbox__inner {
+  background: var(--platform-surface-0);
+  border-color: var(--platform-line);
+}
+
+.el-input-group__append,
+.el-input-group__prepend {
+  color: $color-text-secondary;
+  background: var(--platform-surface-2);
+  border-color: var(--platform-line);
+}
+
+.el-table {
+  color: $color-text-regular;
+  background: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-bg-color: transparent;
+  --el-table-header-bg-color: var(--platform-surface-2);
+  --el-table-row-hover-bg-color: var(--platform-bg-hover);
+  --el-table-border-color: var(--platform-line);
+  --el-table-text-color: var(--el-text-color-regular);
+  --el-table-header-text-color: var(--el-text-color-secondary);
+
+  th.el-table__cell {
+    color: $color-text-secondary;
+    background: var(--platform-surface-2);
+    font-size: $platform-font-size-xs;
+    font-weight: $platform-font-weight-medium;
+    letter-spacing: 0.02em;
+  }
+
+  td.el-table__cell,
+  th.el-table__cell {
+    border-bottom-color: var(--platform-line);
+  }
+
+  .el-table__inner-wrapper::before,
+  &::before,
+  &::after {
+    background-color: var(--platform-line);
+  }
+
+  .el-table__body tr:hover > td.el-table__cell {
+    background: var(--platform-bg-hover);
+  }
+}
+
+.el-descriptions {
+  --el-descriptions-table-border: var(--platform-line);
+  --el-descriptions-item-bordered-label-background: var(--platform-surface-2);
+  color: $color-text-regular;
+
+  .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+    color: $color-text-secondary;
+    background: var(--platform-surface-2);
+  }
+
+  .el-descriptions__content.el-descriptions__cell.is-bordered-content {
+    color: $color-text-primary;
+    background: var(--platform-surface-1);
+  }
+}
+
+.el-tabs--border-card {
+  background: var(--platform-surface-1);
+  border-color: var(--platform-line);
+
+  > .el-tabs__header {
+    background: var(--platform-surface-2);
+    border-bottom-color: var(--platform-line);
+
+    .el-tabs__item {
+      color: $color-text-secondary;
+      border-left-color: transparent;
+
+      &:hover {
+        color: $color-primary-light-3;
+      }
+
+      &.is-active {
+        color: $color-primary;
+        background: var(--platform-surface-1);
+        border-right-color: var(--platform-line);
+        border-left-color: var(--platform-line);
+      }
+    }
+  }
+}
+
+.el-tabs__item {
+  color: $color-text-secondary;
+
+  &.is-active,
+  &:hover {
+    color: var(--platform-cyan);
+  }
+}
+
+.el-tabs__active-bar {
+  background-color: var(--platform-cyan);
+}
+
+.el-tabs__nav-wrap::after {
+  background-color: var(--platform-line);
+}
+
+.el-dialog,
+.el-message-box,
+.el-popover,
+.el-dropdown-menu,
+.el-select-dropdown,
+.el-picker-panel,
+.el-cascader-panel {
+  color: $color-text-primary;
+  background: var(--platform-surface-2);
+  border-color: var(--platform-line);
+  box-shadow: var(--platform-dropdown-shadow);
+}
+
+.el-dialog__header,
+.el-dialog__footer {
+  border-color: var(--platform-line);
+}
+
+.el-dialog__title,
+.el-message-box__title {
+  color: $color-text-primary;
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item,
+.el-picker-panel__shortcut {
+  color: $color-text-regular;
+
+  &:hover,
+  &.hover {
+    color: $color-text-primary;
+    background: var(--platform-bg-hover);
+  }
+}
+
+.el-select-dropdown__item.selected {
+  color: var(--platform-cyan);
+  font-weight: $platform-font-weight-bold;
+}
+
+.el-dropdown-menu__item.is-disabled,
+.el-select-dropdown__item.is-disabled {
+  color: $color-text-disabled;
+}
+
+.el-form-item__label,
+.el-checkbox__label,
+.el-radio__label {
+  color: $color-text-regular;
+}
+
+.el-alert {
+  --el-alert-bg-color: var(--platform-surface-2);
+  --el-alert-border-color: var(--platform-line);
+  --el-alert-title-color: var(--el-text-color-primary);
+}
+
+.el-pagination {
+  --el-pagination-bg-color: var(--platform-surface-2);
+  --el-pagination-text-color: var(--el-text-color-secondary);
+  --el-pagination-button-color: var(--el-text-color-regular);
+  --el-pagination-button-bg-color: var(--platform-surface-2);
+  --el-pagination-hover-color: var(--platform-cyan);
+}
+
+.el-empty__description {
+  color: $color-text-secondary;
+}
+
+.el-loading-mask {
+  background-color: rgba(9, 21, 31, 0.78);
+}
+
+.el-menu--popup,
+.el-menu--vertical {
+  background: var(--platform-surface-2) !important;
+}
+
+// 保留 z-index 修复（Wujie/overflow 容器中 popper 被遮挡），颜色交给上面的暗色覆盖
+.el-popper {
+  z-index: 99999 !important;
+}
+
+// ========== Focus and interaction ==========
+:focus-visible {
+  outline: 2px solid var(--platform-cyan);
+  outline-offset: 2px;
+}
+
+.el-button:focus-visible,
+.el-input__wrapper:focus-within,
+.el-select__wrapper:focus-within {
+  box-shadow: 0 0 0 2px rgba(39, 181, 243, 0.24);
+}
+
+// Element Plus ships its own :root tokens (and dark css-vars under html.dark,
+// whose specificity beats bare :root). Keep the semantic dark palette as the
+// final layer so components inherit the Night Operations contrast.
+:root,
+html.dark {
+  --el-text-color-primary: var(--platform-text-primary) !important;
+  --el-text-color-regular: var(--platform-text-regular) !important;
+  --el-text-color-secondary: var(--platform-text-secondary) !important;
+  --el-text-color-placeholder: var(--platform-text-muted) !important;
+  --el-text-color-disabled: #465666 !important;
+  --el-bg-color: var(--platform-surface-1) !important;
+  --el-bg-color-page: #09151f !important;
+  --el-bg-color-overlay: var(--platform-surface-2) !important;
+  --el-fill-color-blank: var(--platform-surface-1) !important;
+  --el-fill-color: var(--platform-surface-2) !important;
+  --el-fill-color-light: #1d3040 !important;
+  --el-fill-color-lighter: #203545 !important;
+  --el-border-color: var(--platform-line) !important;
+  --el-border-color-light: #314656 !important;
+  --el-border-color-lighter: #223342 !important;
+}

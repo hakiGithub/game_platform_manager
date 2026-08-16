@@ -108,7 +108,15 @@ ExtensionStoreException (扩展资源存储基类)
 
 详见 [ADR-0002](../../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
 
-## 13. 版本与维护
+## 13. 部署与热加载陷阱（v3.5.0）
+
+- **Windows jar 文件锁**：运行中的后端持有 `plugins/*.jar`（URLClassLoader），**覆盖/重命名都会失败**（"Device or resource busy"）。必须先 `DELETE /api/pf4j/plugins/{id}`（unload 关闭 classloader 释放锁）再覆盖，最后 `POST /api/pf4j/plugins/load?jarName=...` 重新加载。`scripts/deploy-plugin.sh` 已封装完整流程。
+- **热部署保留任务历史**：卸载接口默认 `purgeTasks=true` 会物理删除插件 source 的任务记录与日志（适合真正移除插件）。热部署/重载必须传 `?purgeTasks=false`——运行中任务仍会被协作式取消、旧 Handler 仍会注销（旧 classloader 必须释放），但爬取统计等历史保留。
+- **热加载后插件 API 500 / "没有 GameEnhancementExtension"**：宿主 `loadPlugin` 若在插件 STARTED **之前**查扩展点，PF4J 的 per-plugin 扩展查找返回空 → Spring 子容器不创建 → 控制器不注册。宿主 v3.5.0 已修（先 start 再查 + whichPlugin 回退）；若日志再现此行说明宿主是旧版，需重启升级宿主。
+- **端口通 ≠ 应用就绪**：后端健康探测过早返回（DispatcherServlet 初始化期间插件可能尚未被启动加载器装载），脚本需轮询插件出现在 `GET /api/pf4j/plugins` 列表后再操作。
+- **部署方式选择**：只改插件代码 → `deploy-plugin.sh`（免重启）；改主应用（core/api/plugin 模块）→ `start-all.sh` 重启（启动时自动加载插件）。
+
+## 14. 版本与维护
 
 - 本 SKILL 目录（`references/`）为插件开发文档唯一权威源（v3.1.0 起）。
 - 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。

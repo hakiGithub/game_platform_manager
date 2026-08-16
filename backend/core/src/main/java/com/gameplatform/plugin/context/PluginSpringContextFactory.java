@@ -236,6 +236,19 @@ public class PluginSpringContextFactory {
      * @param extension 扩展点（可为 null，为 null 时跳过 onUnload 钩子）
      */
     public void unloadPluginContext(String pluginId, GameEnhancementExtension extension) {
+        unloadPluginContext(pluginId, extension, true);
+    }
+
+    /**
+     * 卸载插件 Spring 上下文。
+     *
+     * @param purgeTasks 是否物理删除该插件 source 的任务记录与日志：
+     *                   卸载移除插件时为 true；热部署/重载（同插件即将重新
+     *                   加载）应为 false——取消运行中任务与注销 Handler 仍然
+     *                   执行（旧 classloader 必须释放），但保留历史记录供
+     *                   重载后的插件继续读取（如爬取统计）。
+     */
+    public void unloadPluginContext(String pluginId, GameEnhancementExtension extension, boolean purgeTasks) {
         PluginContextInfo info = loadedPlugins.remove(pluginId);
         if (info == null) {
             log.warn("插件 [{}] 未找到 Spring 上下文", pluginId);
@@ -244,8 +257,8 @@ public class PluginSpringContextFactory {
 
         log.info("卸载插件 [{}] Spring 上下文", pluginId);
 
-        // 1. 任务中心清理：取消运行中任务 + 注销 Handler + 物理删除记录（ADR-013）
-        cleanupTasksForPlugin(pluginId, info.getTaskSource());
+        // 1. 任务中心清理：取消运行中任务 + 注销 Handler（purgeTasks 时物理删除记录，ADR-013）
+        cleanupTasksForPlugin(pluginId, info.getTaskSource(), purgeTasks);
 
         // 2. 调用扩展点的 onUnload 钩子
         if (extension != null) {
@@ -287,8 +300,9 @@ public class PluginSpringContextFactory {
      *
      * @param pluginId 插件ID（仅日志用）
      * @param source   任务来源
+     * @param purgeTasks 是否物理删除任务记录与日志（热部署传 false 保留历史）
      */
-    private void cleanupTasksForPlugin(String pluginId, String source) {
+    private void cleanupTasksForPlugin(String pluginId, String source, boolean purgeTasks) {
         if (source == null || source.isBlank()) {
             return;
         }
@@ -315,7 +329,11 @@ public class PluginSpringContextFactory {
             log.warn("[TaskCenter] 插件 [{}] 注销任务处理器异常: {}", pluginId, e.getMessage());
         }
 
-        // 4. 物理删除任务记录与日志
+        // 4. 物理删除任务记录与日志（热部署时保留历史）
+        if (!purgeTasks) {
+            log.info("[TaskCenter] 热部署模式：保留插件 [{}] 的任务历史记录", pluginId);
+            return;
+        }
         try {
             int purged = taskAdminService.purgeBySource(source);
             if (purged > 0) {

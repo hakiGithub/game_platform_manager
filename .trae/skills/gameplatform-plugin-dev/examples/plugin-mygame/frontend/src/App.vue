@@ -13,10 +13,15 @@ import { onMounted } from 'vue'
 import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { usePluginStore } from '@/stores/plugin'
+import { installWujieSelectPopperFix } from '@/utils/wujiePopperFix'
 
 const pluginStore = usePluginStore()
 
+// Wujie 沙箱下 el-select 弹层定位漂移的运行时修正（见 references/frontend.md §9）
+let teardownPopperFix: (() => void) | null = null
+
 onMounted(() => {
+  teardownPopperFix = installWujieSelectPopperFix()
   // Wujie 模式下从主应用 props 同步实例 / 认证信息
   pluginStore.syncFromWujieProps()
   console.log('[MyGame] App mounted, mode=', pluginStore.mode, 'instance=', pluginStore.instanceInfo)
@@ -27,7 +32,7 @@ onMounted(() => {
 .mygame-app {
   width: 100%;
   height: 100%;
-  background-color: var(--el-bg-color);
+  background-color: var(--el-bg-color-page);
   color: var(--el-text-color-primary);
 }
 </style>

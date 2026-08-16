@@ -11,9 +11,9 @@
           v-model="selectedPlugin"
           placeholder="选择插件"
           filterable
-          teleported
           style="width: 280px"
           @change="onPluginChange"
+        
         >
           <el-option
             v-for="p in plugins"

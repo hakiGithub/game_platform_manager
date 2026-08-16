@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.controller;
 
 import com.gameplatform.common.result.Result;
+import com.gameplatform.plugin.config.PluginConfig;
 import com.gameplatform.plugin.service.PluginFrameworkService;
 import com.gameplatform.plugin.vo.PluginManifestVO;
 import com.gameplatform.plugin.vo.PluginStatusVO;
@@ -16,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class PluginFrameworkController {
 
     private final PluginFrameworkService pluginFrameworkService;
+    private final PluginConfig pluginConfig;
 
     // ==================== 插件管理API ====================
 
@@ -125,12 +129,42 @@ public class PluginFrameworkController {
     /**
      * 卸载插件
      */
-    @Operation(summary = "卸载插件", description = "卸载指定的插件")
+    @Operation(summary = "卸载插件", description = "卸载指定的插件；purgeTasks=false 保留任务历史（热部署用）")
     @DeleteMapping("/plugins/{pluginId}")
     public Result<Void> unloadPlugin(
-            @Parameter(description = "插件ID") @PathVariable String pluginId) {
-        boolean success = pluginFrameworkService.unloadPlugin(pluginId);
+            @Parameter(description = "插件ID") @PathVariable String pluginId,
+            @Parameter(description = "是否物理删除任务记录（默认 true）") @RequestParam(defaultValue = "true") boolean purgeTasks) {
+        boolean success = pluginFrameworkService.unloadPlugin(pluginId, purgeTasks);
         return success ? Result.success() : Result.fail("卸载插件失败");
+    }
+
+    /**
+     * 从插件目录加载插件
+     *
+     * <p>配合 unload 使用实现免重启热部署：unload 释放 jar 文件锁后
+     * 覆盖 jar，再调用本接口加载并启动。jarName 只允许插件目录内的
+     * 文件名（拒绝路径穿越）。
+     */
+    @Operation(summary = "加载插件", description = "从插件目录加载并启动指定 jar（配合卸载实现热部署）")
+    @PostMapping("/plugins/load")
+    public Result<String> loadPlugin(
+            @Parameter(description = "插件目录内的 jar 文件名") @RequestParam String jarName) {
+        Path pluginsPath = Path.of(pluginConfig.getPluginsDir()).toAbsolutePath().normalize();
+        Path jarPath = pluginsPath.resolve(jarName).normalize();
+        // 只允许加载插件目录内的文件，防止任意路径类加载
+        if (!jarPath.startsWith(pluginsPath)) {
+            return Result.fail("jarName 必须是插件目录内的文件名");
+        }
+        File jarFile = jarPath.toFile();
+        if (!jarFile.isFile()) {
+            return Result.fail("插件文件不存在: " + jarName);
+        }
+        String pluginId = pluginFrameworkService.loadPlugin(jarPath.toString());
+        if (pluginId == null) {
+            return Result.fail("加载插件失败");
+        }
+        boolean started = pluginFrameworkService.startPlugin(pluginId);
+        return started ? Result.success(pluginId) : Result.fail("插件已加载但启动失败: " + pluginId);
     }
 
     // ==================== 插件静态资源服务 ====================
