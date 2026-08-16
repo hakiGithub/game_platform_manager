@@ -32,8 +32,12 @@ public class DockerExecConnector {
      */
     public OpenedExec openInteractive(Host host, String containerId) throws Exception {
         DeploymentAccess.SshConnection ssh = deployAccess.connect(host);
+        // SSH exec channel 的 stdin 是管道，docker CLI 检测 isatty(stdin) 失败 →
+        // -t 被忽略（"the input device is not a TTY"）→ 容器内 sh 非交互 + stdin EOF 立即退出。
+        // 用宿主机 script(1) 包一层 pty：docker exec 的 stdin 变成 pty slave，-it 生效保持交互。
         String execCommand = String.format(
-                "docker exec -it %s sh -c 'TERM=xterm-256color; exec ${SHELL:-/bin/sh}'", containerId);
+                "script -qec 'docker exec -i %s sh -c \"TERM=xterm-256color; exec ${SHELL:-/bin/sh}\"' /dev/null",
+                containerId);
         ChannelExec channel = ssh.session().createExecChannel(execCommand);
         // 分配 pty：docker exec -it 需要 TTY 才能保持交互（清屏/终端控制符/命令回显）
         channel.setPtyType("xterm");

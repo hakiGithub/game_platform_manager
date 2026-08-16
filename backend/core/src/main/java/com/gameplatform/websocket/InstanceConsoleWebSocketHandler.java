@@ -315,14 +315,28 @@ public class InstanceConsoleWebSocketHandler extends TextWebSocketHandler {
         private void startOutputReaders() {
             // 读取标准输出
             stdoutReader = executorService.submit(() -> {
-                try (InputStream is = channel.getInvertedOut()) {
+                try (InputStream is = channel.getInvertedOut();
+                     InputStream err = channel.getInvertedErr()) {
                     byte[] buffer = new byte[1024];
                     int len;
-                    while (connected.get() && (len = is.read(buffer)) != -1) {
-                        String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
-                        sendOutput(output);
+                    while (connected.get()) {
+                        if (is.available() > 0) {
+                            len = is.read(buffer);
+                            if (len > 0) {
+                                String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                                sendOutput(output);
+                            }
+                        }
+                        if (err.available() > 0) {
+                            len = err.read(buffer);
+                            if (len > 0) {
+                                String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                                sendOutput(output);
+                            }
+                        }
+                        Thread.sleep(10);
                     }
-                } catch (IOException e) {
+                } catch (Exception e) {
                     if (connected.get()) {
                         log.error("读取标准输出失败: {}", e.getMessage());
                         sendError("连接已断开");
