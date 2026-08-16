@@ -8,7 +8,9 @@ import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.ContainerLogQueryDTO;
 import com.gameplatform.dto.docker.ContainerOperationDTO;
+import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerContainerService;
 import com.gameplatform.util.SshUtil;
@@ -38,6 +40,7 @@ import java.util.regex.Pattern;
 public class DockerContainerServiceImpl implements DockerContainerService {
 
     private final HostMapper hostMapper;
+    private final GameInstanceMapper instanceMapper;
     private final SshUtil sshUtil;
     private final DeploymentAccess deployAccess;
     private final ObjectMapper objectMapper;
@@ -55,7 +58,10 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         }
         
         List<ContainerListVO> containers = parseContainerList(result.getOutput());
-        
+
+        // 关联平台实例（按容器 ID/名称匹配，与同步对账同一套识别语义）
+        enrichInstanceLink(host, containers);
+
         // 过滤状态
         if (status != null && !status.isEmpty() && !"all".equalsIgnoreCase(status)) {
             containers = containers.stream()
@@ -72,8 +78,17 @@ public class DockerContainerServiceImpl implements DockerContainerService {
                     .toList();
         }
         
-        // TODO: 过滤关联状态（需要查询关联表）
-        
+        // 过滤关联状态
+        if (Boolean.TRUE.equals(linked)) {
+            containers = containers.stream()
+                    .filter(c -> Boolean.TRUE.equals(c.getIsLinked()))
+                    .toList();
+        } else if (Boolean.FALSE.equals(linked)) {
+            containers = containers.stream()
+                    .filter(c -> !Boolean.TRUE.equals(c.getIsLinked()))
+                    .toList();
+        }
+
         return containers;
     }
 
@@ -325,6 +340,78 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         }
         
         return containers;
+    }
+
+    /**
+     * 容器 ↔ 平台实例关联填充（与 DockerInstanceSyncStrategy 同一套识别语义）。
+     *
+     * <p>匹配优先级：
+     * <ol>
+     *   <li>runtime_metadata.containerId（支持 12 位短 ID 与 64 位完整 ID 互为前缀）</li>
+     *   <li>runtime_metadata.containerName / configInfo（CONTAINER_NAME 等）精确匹配容器名</li>
+     *   <li>docker 类默认命名 game-instance-{id}</li>
+     *   <li>docker-compose 项目名前缀 game{id}_（compose 容器名规范）</li>
+     * </ol>
+     */
+    private void enrichInstanceLink(Host host, List<ContainerListVO> containers) {
+        if (containers == null || containers.isEmpty()) {
+            return;
+        }
+        List<GameInstance> instances = instanceMapper.selectByHostId(host.getId());
+        if (instances == null || instances.isEmpty()) {
+            return;
+        }
+        for (ContainerListVO container : containers) {
+            String cid = container.getContainerId() == null ? "" : container.getContainerId().toLowerCase();
+            String cname = container.getContainerName() == null ? "" : container.getContainerName();
+            for (GameInstance inst : instances) {
+                if (matchInstance(inst, cid, cname)) {
+                    container.setIsLinked(true);
+                    container.setLinkedInstanceId(inst.getId());
+                    container.setLinkedInstanceName(inst.getInstanceName());
+                    break;
+                }
+            }
+        }
+    }
+
+    private boolean matchInstance(GameInstance inst, String containerId, String containerName) {
+        // 1. runtime_metadata.containerId（短 ID/完整 ID 互为前缀）
+        Map<String, Object> runtime = inst.getRuntimeMetadata();
+        if (runtime != null) {
+            Object cidObj = runtime.get("containerId");
+            if (cidObj instanceof String s && !s.isBlank()) {
+                String expected = s.toLowerCase();
+                if (containerId.startsWith(expected) || expected.startsWith(containerId)) {
+                    return true;
+                }
+            }
+            Object nameObj = runtime.get("containerName");
+            if (nameObj instanceof String n && !n.isBlank() && n.equals(containerName)) {
+                return true;
+            }
+        }
+        // 2. configInfo 容器名（compose 模板变量 / 显式配置）
+        Map<String, Object> config = inst.getConfigInfo();
+        if (config != null) {
+            for (String key : List.of("containerName", "CONTAINER_NAME", "container_name")) {
+                Object v = config.get(key);
+                if (v instanceof String s && !s.isBlank() && s.equals(containerName)) {
+                    return true;
+                }
+            }
+        }
+        // 3. docker 类默认命名 game-instance-{id}
+        if ("docker".equals(inst.getDeployType()) && inst.getId() != null
+                && containerName.equals("game-instance-" + inst.getId())) {
+            return true;
+        }
+        // 4. compose 项目名前缀 game{id}_（容器名规范 {project}_{service}_{n}）
+        if ("docker-compose".equals(inst.getDeployType()) && inst.getId() != null
+                && containerName.startsWith("game" + inst.getId() + "_")) {
+            return true;
+        }
+        return false;
     }
 
     private ContainerDetailVO parseContainerDetail(String output) {

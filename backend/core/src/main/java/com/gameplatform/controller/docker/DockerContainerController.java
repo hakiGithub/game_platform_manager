@@ -35,17 +35,21 @@ public class DockerContainerController {
 
     /**
      * 获取容器列表
+     *
+     * <p>返回 {containers, total}：前端 store 取 data.containers（此前返回数组导致列表空白）。</p>
      */
     @Operation(summary = "获取容器列表", description = "获取指定主机上的Docker容器列表")
     @GetMapping
-    public Result<List<ContainerListVO>> list(
+    public Result<java.util.Map<String, Object>> list(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "状态筛选") @RequestParam(required = false) String status,
             @Parameter(description = "关键词搜索") @RequestParam(required = false) String keyword,
             @Parameter(description = "关联状态筛选") @RequestParam(required = false) Boolean linked) {
-        
+
         List<ContainerListVO> containers = containerService.listContainers(hostId, status, keyword, linked);
-        return Result.success(containers);
+        return Result.success(java.util.Map.of(
+                "containers", containers,
+                "total", containers == null ? 0 : containers.size()));
     }
 
     /**

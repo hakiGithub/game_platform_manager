@@ -30,16 +30,20 @@ public class DockerImageController {
 
     /**
      * 获取镜像列表
+     *
+     * <p>返回 {images, total}：前端 store 取 data.images（此前返回数组导致列表空白）。</p>
      */
     @Operation(summary = "获取镜像列表", description = "获取主机上的Docker镜像列表")
     @GetMapping
-    public Result<List<ImageListVO>> list(
+    public Result<java.util.Map<String, Object>> list(
             @Parameter(description = "主机ID") @PathVariable Long hostId,
             @Parameter(description = "关键词搜索") @RequestParam(required = false) String keyword,
             @Parameter(description = "是否只显示悬空镜像") @RequestParam(required = false) Boolean dangling) {
-        
+
         List<ImageListVO> images = imageService.listImages(hostId, keyword, dangling);
-        return Result.success(images);
+        return Result.success(java.util.Map.of(
+                "images", images,
+                "total", images == null ? 0 : images.size()));
     }
 
     /**
