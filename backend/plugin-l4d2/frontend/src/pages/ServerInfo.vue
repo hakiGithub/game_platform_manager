@@ -199,51 +199,7 @@ onMounted(loadAll)
   }
 }
 
-// 主应用 workspace 卡片风格（Night Operations 统一视觉）
-.workspace-card {
-  background: var(--platform-surface-1);
-  border: 1px solid var(--platform-line);
-  border-radius: 6px;
-  box-shadow: none;
-
-  :deep(.el-card__header) {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--platform-line);
-  }
-
-  :deep(.el-card__body) {
-    padding: 16px;
-  }
-}
-
-.workspace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-
-  .header-copy {
-    .section-kicker {
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    h3 {
-      color: var(--platform-text-primary);
-      font-size: 15px;
-      font-weight: 600;
-      line-height: 1.3;
-    }
-
-    small {
-      display: block;
-      margin-top: 3px;
-      color: var(--platform-text-secondary);
-      font-size: 12px;
-    }
-  }
-}
-
+// workspace-card / workspace-header 样式为全局定义（styles/index.scss）
 .identity-body {
   .field-hint {
     margin-top: 8px;

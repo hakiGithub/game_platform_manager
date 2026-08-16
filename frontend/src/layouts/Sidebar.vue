@@ -134,6 +134,8 @@ async function loadPluginMenus() {
           .map((menu) => ({
             index: `/extensions/app/${gameCode}${menu.path}`,
             title: menu.title,
+            // 透传后端 PluginMenuDeclaration 声明的 icon（如地图管理 Map）
+            icon: menu.icon,
           }));
 
         menus.push({
@@ -198,7 +200,8 @@ onMounted(loadPluginMenus);
                 <span>{{ item.title }}</span>
               </template>
               <el-menu-item v-for="child in item.children" :key="child.index" :index="child.index">
-                {{ child.title }}
+                <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+                <template #title>{{ child.title }}</template>
               </el-menu-item>
             </el-sub-menu>
 

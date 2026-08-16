@@ -78,11 +78,16 @@
     </div>
 
     <!-- 快速操作 -->
-    <div class="page-card">
-      <div class="page-card-header">
-        <span class="title">快速操作</span>
-        <span class="section-kicker">LIFECYCLE</span>
-      </div>
+    <el-card class="workspace-card" shadow="never">
+      <template #header>
+        <div class="workspace-header">
+          <div class="header-copy">
+            <span class="section-kicker">LIFECYCLE</span>
+            <h3>快速操作</h3>
+          </div>
+          <span class="header-context">实例 {{ isRunning ? '运行中' : '已停止' }}</span>
+        </div>
+      </template>
       <div class="action-grid">
         <el-button type="success" size="large" class="action-btn" @click="startServer"
           :disabled="isRunning" :loading="actionLoading.start">
@@ -104,16 +109,20 @@
           <span>更新服务器</span>
         </el-button>
       </div>
-    </div>
+    </el-card>
 
     <!-- 服务器详情 -->
     <el-row :gutter="16">
       <el-col :span="12">
-        <div class="page-card">
-          <div class="page-card-header">
-            <span class="title">游戏设置</span>
-            <span class="section-kicker">GAME SETTINGS</span>
-          </div>
+        <el-card class="workspace-card detail-card" shadow="never">
+          <template #header>
+            <div class="workspace-header">
+              <div class="header-copy">
+                <span class="section-kicker">GAME SETTINGS</span>
+                <h3>游戏设置</h3>
+              </div>
+            </div>
+          </template>
           <div class="info-list">
             <div class="info-item">
               <span class="info-label">难度</span>
@@ -146,15 +155,19 @@
               <span class="info-value error-text">{{ serverStatus.reason }}</span>
             </div>
           </div>
-        </div>
+        </el-card>
       </el-col>
 
       <el-col :span="12">
-        <div class="page-card">
-          <div class="page-card-header">
-            <span class="title">快捷功能</span>
-            <span class="section-kicker">SHORTCUTS</span>
-          </div>
+        <el-card class="workspace-card detail-card" shadow="never">
+          <template #header>
+            <div class="workspace-header">
+              <div class="header-copy">
+                <span class="section-kicker">SHORTCUTS</span>
+                <h3>快捷功能</h3>
+              </div>
+            </div>
+          </template>
           <div class="quick-links">
             <div class="quick-link" @click="$router.push('/maps')">
               <div class="quick-link-icon map"><el-icon :size="20"><Map /></el-icon></div>
@@ -181,7 +194,7 @@
               <span class="quick-link-label">服务器配置</span>
             </div>
           </div>
-        </div>
+        </el-card>
       </el-col>
     </el-row>
   </div>
@@ -514,6 +527,20 @@ onUnmounted(() => {
       &:hover {
         text-decoration: underline;
       }
+    }
+  }
+}
+
+.detail-card {
+  height: 100%;
+
+  :deep(.el-card__body) {
+    display: flex;
+    flex-direction: column;
+
+    .info-list,
+    .quick-links {
+      flex: 1;
     }
   }
 }

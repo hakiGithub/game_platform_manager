@@ -201,6 +201,57 @@ img {
   }
 }
 
+// ========== Workspace 卡片（主应用运行总览统一视觉） ==========
+.workspace-card {
+  background: var(--platform-surface-1);
+  border: 1px solid var(--platform-line);
+  border-radius: 6px;
+  box-shadow: none;
+
+  :deep(.el-card__header) {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--platform-line);
+  }
+
+  :deep(.el-card__body) {
+    padding: 16px;
+  }
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  .header-copy {
+    .section-kicker {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    h3 {
+      color: var(--platform-text-primary);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    small {
+      display: block;
+      margin-top: 3px;
+      color: var(--platform-text-secondary);
+      font-size: 12px;
+    }
+  }
+
+  .header-context {
+    color: var(--platform-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
 // ========== Status semantics ==========
 .status-dot {
   display: inline-block;
