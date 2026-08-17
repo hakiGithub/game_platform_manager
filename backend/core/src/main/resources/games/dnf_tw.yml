@@ -1,0 +1,129 @@
+game:
+  code: dnf_tw
+  name: DNF台服
+  description: 地下城与勇士台服社区服务端（llnut/dnf 镜像，Docker Compose 部署，自带 MySQL 与网关）
+  version: "latest"
+  icon: /icons/dnf_tw.jpg
+
+  deployTypes:
+    - docker-compose
+
+  # 端口全景（向导部署时逐一做占用检测）：
+  #   game=7001  df_channel_r（主端口，客户端进服链路）
+  #   mysql=3000 宿主机 MySQL（容器内 4000，唯一可改端口 MYSQL_PORT）
+  #   gate=5505  dnf-gate-server HTTP（TLS 启用后另开 5504）
+  #   relay=7300 df_relay_r（TCP/UDP）
+  #   ch11/ch11_udp/ch52/ch52_udp  频道游戏端口（与 OPEN_CHANNEL 绑定，模板内写死）
+  #   stun 2311-2313/UDP
+  defaultPorts:
+    game: 7001
+    mysql: 3000
+    gate: 5505
+    relay: 7300
+    ch11: 30011
+    ch11_udp: 31011
+    ch52: 30052
+    ch52_udp: 31052
+    stun_start: 2311
+    stun_end: 2313
+
+  dependencies:
+    memory: "2G"
+    disk: "20G"
+    cpu: "1核"
+
+  dockerCompose:
+    # 容器内游戏数据根（文件管理路由用），数据经 bind mount 落在实例安装目录
+    workingDir: /data
+    composeTemplate: |
+      version: "2.3"
+
+      services:
+
+        dnf-1:
+          hostname: dnf-1
+          image: llnut/dnf:debian13-qf1031-latest
+          # privileged: true
+          # cap_add:
+          #   - NET_ADMIN
+          # tailscale必须配置devices
+          #devices:
+          #  - /dev/net/tun:/dev/net/tun
+          stop_grace_period: 30s
+          environment:
+            - TZ=Asia/Shanghai
+            - SERVER_GROUP=3
+            # 兼容GM工具使用cain数据库[也可以不配置，则会使用siroco数据库]
+            # - SERVER_GROUP_DB=cain
+            # 数据库root密码
+            - DNF_DB_ROOT_PASSWORD=${DNF_DB_ROOT_PASSWORD:-88888888}
+            # dnf-gate-server配置
+            - GATE_AES_KEY=${GATE_AES_KEY:-a1b2c3d4e5f6789012345678901234567890abcdef0123456789abcdef012345}
+            # TLS配置（可选，GATE_TLS_CERT_PATH与GATE_TLS_KEY_PATH同时设置时启用）
+            # - GATE_TLS_CERT_PATH=/data/server.crt
+            # - GATE_TLS_KEY_PATH=/data/server.key
+            # - GATE_TLS_BIND_ADDRESS=0.0.0.0:5504
+            # - GATE_TLS_ONLY=false
+            # 注册开关（可选，设为 false 时网关拒绝新用户注册）
+            # - GATE_REGISTRATION_OPEN=true
+            # 手动指定对外IP
+            - PUBLIC_IP=${PUBLIC_IP:-127.0.0.1}
+            # 仅开启11和52频道（与下方 30011/31011/30052/31052 端口映射绑定，
+            # 如需改频道请部署后手动同步修改 compose 端口）
+            - OPEN_CHANNEL='11,52'
+            # Netbird[可选配置][没有公网IP的可选私有内网接入]
+            #- NB_SETUP_KEY=''
+            #- NB_MANAGEMENT_URL=''
+            # 开启DDNS[可选配置]
+            # - DDNS_ENABLE=true
+            # - DDNS_DOMAIN=''
+          # shm_size: 1g【不可删除】，docker默认为64M较小，需要增加才能保证运行
+          shm_size: 1g
+          memswap_limit: -1
+          mem_limit: 1g
+          cpus: '1.0'
+          restart: always
+          ports:
+            - ${MYSQL_PORT:-3000}:4000/tcp             # mysql
+            - 5505:5505/tcp             # dnf-gate-server http
+            # - 5504:5504/tcp           # dnf-gate-server https（启用TLS后开放）
+            - 7001:7001/tcp             # df_channel_r
+            - 7001:7001/udp             # df_channel_r
+            - 7300:7300/tcp             # df_relay_r
+            - 7300:7300/udp             # df_relay_r
+            - 30011:30011/tcp           # df_game_r[ch.11]
+            - 31011:31011/udp           # df_game_r[ch.11]
+            - 30052:30052/tcp           # df_game_r[ch.52]
+            - 31052:31052/udp           # df_game_r[ch.52]
+            - 2311-2313:2311-2313/udp   # df_stun_r
+          volumes:
+            - ./data:/data
+            - ./mysql:/var/lib/mysql
+            - ./log:/home/neople/game/log
+
+    variables:
+      - name: MYSQL_PORT
+        label: MySQL 端口
+        type: integer
+        defaultValue: "3000"
+        required: false
+        description: 宿主机 MySQL 映射端口（容器内固定 4000）；注意 3000 常与平台前端等冲突，可按需修改
+      - name: DNF_DB_ROOT_PASSWORD
+        label: 数据库 root 密码
+        type: password
+        defaultValue: "88888888"
+        required: true
+        description: 游戏自带 MySQL 的 root 密码（默认沿用上游 88888888，GM 工具连接时使用）
+      - name: GATE_AES_KEY
+        label: 网关 AES Key
+        type: string
+        defaultValue: "a1b2c3d4e5f6789012345678901234567890abcdef0123456789abcdef012345"
+        required: false
+        hidden: true
+        description: dnf-gate-server AES 密钥（上游协议固定值，勿随意修改）
+      - name: PUBLIC_IP
+        label: 对外 IP
+        type: string
+        defaultValue: "127.0.0.1"
+        required: true
+        description: 客户端连接用的宿主机对外 IP（内网部署填宿主机内网 IP）
