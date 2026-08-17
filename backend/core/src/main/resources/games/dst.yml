@@ -9,11 +9,11 @@ game:
   deployTypes:
     - linuxgsm-docker
 
-  # 默认端口
+  # 默认端口（DST 实际端口，原 25565 系为 Minecraft 端口，系复制错误）
+  # 参考 LinuxGSM dstserver: 10999 (game), 27016 (master server)
   defaultPorts:
-    game: 25565
-    query: 25566
-    rcon: 25575
+    game: 10999
+    query: 27016
 
   # LinuxGSM Docker部署配置
   # 基于 gameservermanagers/gameserver:dst 镜像
