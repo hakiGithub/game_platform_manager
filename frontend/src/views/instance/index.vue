@@ -505,7 +505,10 @@ onBeforeUnmount(() => {
         <el-table-column label="服务单元" min-width="230">
           <template #default="{ row }">
             <div class="service-cell">
-              <span class="service-icon"><el-icon><Grid /></el-icon></span>
+              <span class="service-icon">
+                <img v-if="row.iconUrl" :src="row.iconUrl" :alt="row.gameName" class="service-icon-img">
+                <el-icon v-else><Grid /></el-icon>
+              </span>
               <div>
                 <button class="service-name-button" type="button" @click="handleDetail(row)">{{ row.instanceName }}</button>
                 <div class="service-meta">
@@ -1124,10 +1127,17 @@ onBeforeUnmount(() => {
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
+  overflow: hidden;
   border: 1px solid rgba(181, 140, 255, 0.48);
   border-radius: 6px;
   color: var(--instance-accent);
   background: var(--instance-accent-soft);
+}
+
+.service-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .service-name-button {

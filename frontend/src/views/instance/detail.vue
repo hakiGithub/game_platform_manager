@@ -1145,7 +1145,10 @@ onBeforeUnmount(() => {
             <el-icon><ArrowLeft /></el-icon>
             返回列表
           </el-button>
-          <div class="instance-mark"><el-icon :size="22"><Grid /></el-icon></div>
+          <div class="instance-mark">
+            <img v-if="instanceInfo.iconUrl" :src="instanceInfo.iconUrl" :alt="instanceInfo.game" class="instance-mark-img">
+            <el-icon v-else :size="22"><Grid /></el-icon>
+          </div>
           <div class="instance-title">
             <span class="title-kicker">SERVICE INSTANCE</span>
             <div class="title-line">
@@ -2327,11 +2330,18 @@ onBeforeUnmount(() => {
   height: 50px;
   flex: 0 0 50px;
   place-items: center;
+  overflow: hidden;
   border: 1px solid rgba(74, 191, 231, 0.42);
   border-radius: 14px;
   color: #95e4fb;
   background: linear-gradient(145deg, rgba(29, 104, 132, 0.75), rgba(16, 56, 75, 0.75));
   box-shadow: 0 0 26px rgba(22, 180, 230, 0.12);
+}
+
+.instance-mark-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .command-header .instance-title {
