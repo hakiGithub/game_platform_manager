@@ -125,6 +125,19 @@ public interface GameEnhancementExtension extends ExtensionPoint {
     }
 
     /**
+     * 实例配置更新后的钩子（ADR-0009）。
+     * <p>
+     * 实参为 update 后的<b>完整新 configInfo</b>（与 onInstanceCreate 对称）。
+     * 每次更新都触发，不做平台侧 configInfo diff——配置是否真变由插件自行比对。
+     * 典型消费：实例 configInfo 变更（改密码/端口）→ 主动失效对应连接池。
+     *
+     * @param instanceId 实例ID
+     * @param config     更新后的完整 configInfo
+     */
+    default void onInstanceUpdate(Long instanceId, Map<String, Object> config) {
+    }
+
+    /**
      * 实例启动前的钩子。
      *
      * @param instanceId 实例ID

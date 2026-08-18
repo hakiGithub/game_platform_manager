@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -87,6 +88,8 @@ public class SshUtil {
         final ClientSession session;
         final ReentrantLock lock = new ReentrantLock();
         volatile long lastUsed;
+        /** 钉住计数（>0 表示有 SSH 隧道复用此会话，空闲清理器跳过回收，ADR-0009） */
+        final AtomicInteger pinCount = new AtomicInteger(0);
 
         CachedSession(HostKey key, ClientSession session) {
             this.key = key;
@@ -155,12 +158,68 @@ public class SshUtil {
     }
 
     /**
+     * 获取被钉住的 SSH 会话（供 SSH 隧道使用，ADR-0009）。
+     * <p>
+     * 复用连接池中该主机的已认证会话（无则新建并入池），并递增钉住计数——
+     * 被钉住的会话不会被空闲清理器回收（隧道转发流量不会刷新 lastUsed，
+     * 若参与空闲回收会被 5 分钟超时误杀）。必须与
+     * {@link #releasePinnedSession(ClientSession)} 成对调用。
+     *
+     * @param host       主机地址
+     * @param port       SSH端口
+     * @param username   用户名
+     * @param privateKey 私钥(已解密)
+     * @param password   密码(可选)
+     * @return 已认证且被钉住的会话
+     * @throws Exception 建连或认证失败
+     */
+    public ClientSession acquirePinnedSession(String host, int port, String username,
+                                              String privateKey, String password) throws Exception {
+        long timeoutMs = sshConfig != null ? sshConfig.getSessionTimeout() : DEFAULT_TIMEOUT;
+        CachedSession cs = getOrCreateSession(host, port, username, privateKey, password, timeoutMs);
+        cs.lock.lockInterruptibly();
+        try {
+            // 二次校验：防止取池与加锁之间会话被清理/失效
+            if (!cs.isValid()) {
+                throw new RuntimeException("SSH 会话已失效: " + username + "@" + host + ":" + port);
+            }
+            cs.pinCount.incrementAndGet();
+            cs.lastUsed = System.currentTimeMillis();
+            return cs.session;
+        } finally {
+            cs.lock.unlock();
+        }
+    }
+
+    /**
+     * 释放会话钉住（与 {@link #acquirePinnedSession} 成对，ADR-0009）。
+     * 钉住计数减 1；会话本身留在池中继续供命令执行复用。
+     *
+     * @param session 此前 acquire 返回的会话；为 null 时直接返回
+     */
+    public void releasePinnedSession(ClientSession session) {
+        if (session == null) {
+            return;
+        }
+        for (CachedSession cs : sessionPool.values()) {
+            if (cs.session == session) {
+                cs.pinCount.decrementAndGet();
+                return;
+            }
+        }
+    }
+
+    /**
      * 清理空闲会话：周期性扫描池，关闭超过空闲超时的会话
      */
     private void reapIdleSessions() {
         try {
             for (Map.Entry<HostKey, CachedSession> e : sessionPool.entrySet()) {
                 CachedSession cs = e.getValue();
+                // 被隧道钉住的会话不回收（活跃隧道流量不刷新 lastUsed，ADR-0009）
+                if (cs.pinCount.get() > 0) {
+                    continue;
+                }
                 // 仅在未加锁（无活跃命令）且空闲超时时清理
                 if (cs.isIdle() && cs.lock.tryLock()) {
                     try {
@@ -802,7 +861,7 @@ public class SshUtil {
      * 解析私钥（支持 PEM 格式和 OpenSSH 格式）
      * 使用 Apache MINA SSHD 自带的 KeyPairResourceParser 解析
      */
-    private KeyPair parsePrivateKey(String privateKey) {
+    public static KeyPair parsePrivateKey(String privateKey) {
         if (StrUtil.isBlank(privateKey)) {
             return null;
         }

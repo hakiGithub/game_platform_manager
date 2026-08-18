@@ -293,6 +293,14 @@ public class GameYamlConfig {
          */
         private String hostCertPath = "/etc/ssl/certs/ca-certificates.crt";
 
+        /**
+         * 数据库连接声明（ADR-0009）：部署/更新时按此声明组装 configInfo.database。
+         * <p>
+         * 字段采用变量名引用式（字面量 + portVar/passwordVar 变量名引用），
+         * 变量解析与 .env 生成同源同规则（用户输入值 > variables 默认值 > 字面量兜底）。
+         */
+        private DatabaseConfig database;
+
         // SnakeYAML 需要显式的 setter 方法
         public void setVariables(List<VariableDefinition> variables) {
             this.variables = variables != null ? variables : new ArrayList<>();
@@ -300,6 +308,39 @@ public class GameYamlConfig {
 
         public void setNamedVolumes(List<String> namedVolumes) {
             this.namedVolumes = namedVolumes != null ? namedVolumes : new ArrayList<>();
+        }
+
+        public void setDatabase(DatabaseConfig database) {
+            this.database = database;
+        }
+    }
+
+    /**
+     * 数据库连接声明（ADR-0009，dockerCompose 部署节内）。
+     * <p>
+     * 组装结果写入 configInfo.database = {type, host, port, user, password, databases[]}。
+     */
+    @Data
+    public static class DatabaseConfig {
+        /** 数据库类型（如 mysql） */
+        private String type;
+        /** 主机：语义为实例所在主机的回环地址（经 SSH 隧道访问），如 127.0.0.1 */
+        private String host;
+        /** 端口变量名引用：取部署变量最终值（用户输入 > 默认值），如 MYSQL_PORT */
+        private String portVar;
+        /** 端口字面量兜底（portVar 未声明或解析失败时使用） */
+        private Integer port;
+        /** 用户名 */
+        private String user;
+        /** 密码变量名引用，如 DNF_DB_ROOT_PASSWORD */
+        private String passwordVar;
+        /** 密码字面量兜底 */
+        private String password;
+        /** 库名列表 */
+        private List<String> databases = new ArrayList<>();
+
+        public void setDatabases(List<String> databases) {
+            this.databases = databases != null ? databases : new ArrayList<>();
         }
     }
 

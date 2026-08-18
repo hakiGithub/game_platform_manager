@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
+import com.gameplatform.adapter.DockerComposeAdapter;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.*;
@@ -169,9 +170,34 @@ public class InstanceServiceImpl implements InstanceService {
         }
 
         BeanUtil.copyProperties(dto, instance, "id");
+
+        // 部署与更新同路径：按 database 声明 + 最新变量值重组 configInfo.database（ADR-0009），
+        // 避免裸 compose 变量与 database 节不一致；无 database 声明的游戏（非 compose 带 DB）跳过
+        try {
+            Map<String, Object> databaseInfo =
+                    DockerComposeAdapter.assembleDatabaseConfig(buildDeployConfig(instance));
+            if (databaseInfo != null) {
+                Map<String, Object> configInfo = instance.getConfigInfo() != null
+                        ? new HashMap<>(instance.getConfigInfo())
+                        : new HashMap<>();
+                configInfo.put("database", databaseInfo);
+                instance.setConfigInfo(configInfo);
+            }
+        } catch (Exception e) {
+            log.warn("重组 configInfo.database 失败（不影响实例更新）: instanceId={}", instance.getId(), e);
+        }
+
         instanceMapper.updateById(instance);
-        
-        
+
+        // 通知 gameCode 匹配的插件扩展点：实例配置已更新（ADR-0009），
+        // 实参为 update 后的完整新 configInfo；每次更新都触发，插件异常不影响更新
+        try {
+            pluginLifecycleHook.executeInstanceUpdateHooks(instance.getId(), instance.getGameCode(),
+                    instance.getConfigInfo() != null ? instance.getConfigInfo() : Map.of());
+        } catch (Exception e) {
+            log.warn("插件实例更新钩子执行异常，不影响实例更新: instanceId={}", instance.getId(), e);
+        }
+
         return convertToVO(instance);
     }
 
@@ -652,8 +678,15 @@ public class InstanceServiceImpl implements InstanceService {
         }
 
         // 2. 合并实例的 configInfo（用户配置，覆盖模板默认值）
+        // 注意：database 是部署/更新时按声明组装的产物（ADR-0009），此处跳过，
+        // 保留模板中的 database 声明（含 portVar/passwordVar），避免旧组装结果
+        // 覆盖声明导致后续重组装无法解析变量引用
         if (instance.getConfigInfo() != null) {
-            config.putAll(instance.getConfigInfo());
+            instance.getConfigInfo().forEach((k, v) -> {
+                if (!"database".equals(k)) {
+                    config.put(k, v);
+                }
+            });
         }
 
         // 3. 合并实例的 portConfig（端口配置）

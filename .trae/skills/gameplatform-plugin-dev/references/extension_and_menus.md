@@ -74,10 +74,11 @@ public List<PluginConfigField> getConfigFields() {
 @Override public void onLoad(PluginContext context) { /* 子容器就绪后初始化 */ }
 @Override public void onUnload()                    { /* 卸载前清理 */ }
 
-@Override public void onInstanceCreate(Long instanceId, Map<String, Object> config) { /* 实例创建 */ }
+@Override public void onInstanceCreate(Long instanceId, Map<String, Object> config) { /* 实例创建（部署前触发，configInfo 尚无 database 节） */ }
 @Override public void onInstanceStart(Long instanceId)  { /* 实例启动前 */ }
 @Override public void onInstanceStop(Long instanceId)   { /* 实例停止后 */ }
 @Override public void onInstanceDelete(Long instanceId) { /* 实例删除 */ }
+@Override public void onInstanceUpdate(Long instanceId, Map<String, Object> config) { /* 实例配置更新后（v3.7.0 ADR-0009）：实参为更新后的完整新 configInfo，每次更新都触发（无平台侧 diff）；典型消费：改密码/端口后失效重建连接池 */ }
 
 @Override public void onLoadError(PluginContext context, Throwable error) { /* 加载失败 */ }
 ```

@@ -14,6 +14,7 @@ import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
+import com.gameplatform.plugin.service.SshTunnelManager;
 import com.gameplatform.service.HostService;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
@@ -41,6 +42,7 @@ public class HostServiceImpl implements HostService {
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
     private final DeploymentAccess deployAccess;
+    private final SshTunnelManager sshTunnelManager;
 
     /**
      * 加密密钥(生产环境应从配置读取)
@@ -152,9 +154,16 @@ public class HostServiceImpl implements HostService {
         if (host == null) {
             throw new BusinessException("主机不存在");
         }
-        
+
+        // 联动关闭该主机开出的全部（平台凭据）SSH 隧道（ADR-0009）
+        try {
+            sshTunnelManager.closeAllForHost(id);
+        } catch (Exception e) {
+            log.warn("删除主机时关闭 SSH 隧道异常，不影响主机删除: hostId={}", id, e);
+        }
+
         hostMapper.deleteById(id);
-        
+
     }
 
     @Override

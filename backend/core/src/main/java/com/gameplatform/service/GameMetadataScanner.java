@@ -378,6 +378,11 @@ public class GameMetadataScanner {
             // 宿主机证书挂载选项（用于反向代理场景，前端用户可覆盖此默认值）
             composeConfig.put("mountHostCerts", dc.isMountHostCerts());
             composeConfig.put("hostCertPath", dc.getHostCertPath());
+            // 数据库连接声明（ADR-0009）：部署/更新时按此组装 configInfo.database
+            if (dc.getDatabase() != null) {
+                composeConfig.put("database",
+                        objectMapper.convertValue(dc.getDatabase(), new TypeReference<Map<String, Object>>() {}));
+            }
             deployConfig.put("docker-compose", composeConfig);
         }
 

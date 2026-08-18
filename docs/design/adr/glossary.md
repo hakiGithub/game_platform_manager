@@ -25,6 +25,12 @@
   - **内部接缝**：SshClient 工厂可注入，供测试使用假替身。
   - **引入**：架构评审 2026-08-13（候选 2）
 
+- **database 声明段（database declaration）**
+  - **定义**：游戏元数据 yml 部署节（如 `dockerCompose`）内的 `database` 子节，声明该部署产物自带的数据库连接档案：`type / host（字面量）/ portVar / user / passwordVar（部署变量名引用）/ databases[]（静态库名列表）`。部署完成时由 DockerComposeAdapter 按声明组装为 `configInfo.database = {type, host, port, user, password, databases[]}`（用户输入值 > 默认值，与 .env 生成同源同规则）；实例更新时走同一组装方法重算。
+  - **合并**：随部署节纳入 ADR-0008 整节替换合并体系（yml 基线，插件 `getDeployConfigs()` 覆盖时 variables + database 自洽替换）。
+  - **语义**：`host: 127.0.0.1` 指"实例所在主机的回环地址"，插件经 SshTunnelService 隧道访问。
+  - **引入**：ADR-0009
+
 ### E
 
 - **Extension Point（扩展点）**
@@ -43,8 +49,8 @@
 
 - **`GameEnhancementExtension`**
   - **定义**：游戏增强扩展点接口，每个插件恰好提供一个 `@Extension` 实现类。
-  - **方法**：`getGameCode() / getGameName() / getVersion() / getDescription() / getManifest() / getConfigFields() / onLoad() / onUnload() / onInstanceCreate() / onInstanceStart() / onInstanceStop() / onInstanceDelete() / onLoadError() / getIcon() / getFrontendEntry() / getBasePackage() / getDependencies()`。
-  - **演变**：ADR-0001 新增 `getMenus()` default 方法。
+  - **方法**：`getGameCode() / getGameName() / getVersion() / getDescription() / getManifest() / getConfigFields() / onLoad() / onUnload() / onInstanceCreate() / onInstanceStart() / onInstanceStop() / onInstanceDelete() / onInstanceUpdate() / onLoadError() / getIcon() / getFrontendEntry() / getBasePackage() / getDependencies() / getDeployConfigs()`。
+  - **演变**：ADR-0001 新增 `getMenus()`；ADR-0008 新增 `getDeployConfigs()`；ADR-0009 新增 `onInstanceUpdate()`（实参为 update 后完整 configInfo，DB 更新后触发、吞异常、不做平台侧 diff）。
   - **引入**：项目初始（v2.0.0 重构）
 
 ### L
@@ -135,6 +141,24 @@
   - **前端消费**：`PluginTab.vue` 的 `currentMenuRequireInstance` 计算属性依据此字段决定是否弹出实例选择对话框。
   - **演变**：ADR-0001 前由 `buildDefaultMenus` 在主应用侧设置；ADR-0001 后改由插件在 `PluginMenuDeclaration` 中显式声明。
   - **引入**：项目初始（字段已存在）；**职责迁移于**：ADR-0001
+
+### S
+
+- **SshTunnelService（SSH 隧道服务）**
+  - **定义**：plugin SDK 宿主能力服务接口（core 委托实现，经 PluginSpringContextFactory 注入插件子容器）：`openByHost(hostId, remoteHost, remotePort)` 用平台已登记主机凭据开隧道；`openWithCredentials(ssh, remoteHost, remotePort)` 用插件自带凭据开隧道（宿主不落库、不写日志）；`close(handle)` 幂等关闭。
+  - **会话归属**：openByHost 复用 SshUtil 共享会话池并钉住会话；openWithCredentials 持有专用 ClientSession（不入池），随隧道关闭而关闭（共享池键不含凭据，混用会拿错会话）。
+  - **信任边界**：可信插件模型——任何已安装插件可对任意已登记主机开隧道，与 ExtensionClient 等现有 SDK 服务同信任级别。
+  - **引入**：ADR-0009
+
+- **TunnelHandle（隧道句柄）**
+  - **定义**：`SshTunnelService` 的嵌套 record：`id / localPort / remoteHost / remotePort / ownerPluginId`。本地转发端口仅绑 `127.0.0.1`（OS 随机分配）。
+  - **去重与计数**：去重键 = `(ownerPluginId, hostId, remoteHost, remotePort)`（插件凭据为 `(ownerPluginId, 凭据指纹, remoteHost, remotePort)`）；同插件重复 open 同目标返回同一 handle 并 +1 引用，跨插件不共享。
+  - **关闭兜底（三层）**：close() 引用计数归零；插件 stop/unload 时宿主按 ownerPluginId 强制关闭（插件 onUnload 主动 close 仅是加速路径）；宿主删除主机时关闭该 hostId 的全部平台凭据隧道。
+  - **引入**：ADR-0009
+
+- **会话钉住（session pinning）**
+  - **定义**：TunnelHandle 引用 SshUtil 会话池中的 CachedSession 并计数，reaper 跳过被钉住的会话。取代早期"隧道句柄纳入 reaper 空闲回收周期"的表述——隧道转发流量不刷新 CachedSession.lastUsed，字面空闲回收会误杀活跃隧道。
+  - **引入**：ADR-0009
 
 ### W
 

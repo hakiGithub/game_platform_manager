@@ -239,6 +239,19 @@ public class PluginLifecycleHook {
     }
 
     /**
+     * 执行实例配置更新钩子（ADR-0009）：通知 gameCode 匹配的插件扩展点。
+     * 实参为 update 后的完整新 configInfo；每次更新都触发，插件异常不影响实例更新。
+     *
+     * @param instanceId 实例ID
+     * @param gameCode   实例所属游戏编码
+     * @param config     更新后的完整 configInfo
+     */
+    public void executeInstanceUpdateHooks(Long instanceId, String gameCode, Map<String, Object> config) {
+        executeInstanceHooks(gameCode, ext -> ext.onInstanceUpdate(instanceId, config),
+                "更新", instanceId);
+    }
+
+    /**
      * 执行实例启动钩子：通知 gameCode 匹配的插件扩展点。
      *
      * @param instanceId 实例ID

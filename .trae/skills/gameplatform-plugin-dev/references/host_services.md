@@ -1,6 +1,6 @@
 # 宿主服务面（Host Services）
 
-> 对齐版本：v3.4.0（ADR-0001/ADR-0006）｜ 权威源：`backend/plugin/` 源码
+> 对齐版本：v3.7.0（ADR-0001/ADR-0006/ADR-0009）｜ 权威源：`backend/plugin/` 源码
 
 除持久化外，宿主还通过以下 SPI 向插件暴露主机/实例/文件能力。实现由宿主核心模块提供，通过插件 Spring 子容器注入。
 
@@ -136,7 +136,100 @@ public interface FileAccessService {
 }
 ```
 
-## 5. 注入示例
+## 5. SshTunnelService — SSH 本地端口转发隧道（v3.7.0，ADR-0009）
+
+插件经宿主 SSH 会话建立本地端口转发：平台本地绑定回环端口，经隧道转发到 SSH 主机可达的远端目标（如实例容器内/宿主机映射的 MySQL）。典型场景——平台与目标主机仅 SSH 可达，插件需直连实例数据库。
+
+```java
+public interface SshTunnelService {
+    /** 用平台已登记主机的凭据开隧道（复用 SshUtil 会话池）；hostId 不存在或 SSH 失败抛 BusinessException */
+    TunnelHandle openByHost(Long hostId, String remoteHost, int remotePort);
+    /** 用调用方自带凭据开隧道（专用会话，宿主不落库、不写日志——插件连接档案场景） */
+    TunnelHandle openWithCredentials(SshEndpoint ssh, String remoteHost, int remotePort);
+    /** 幂等关闭：引用计数减 1，减至 0 才真正关闭隧道 */
+    void close(TunnelHandle handle);
+
+    /** SSH 端点凭据（port 缺省 22 有便捷构造；toString 已脱敏禁止凭据进日志） */
+    record SshEndpoint(String host, int port, String user, String password, String privateKey) {}
+    /** 隧道句柄：连接 127.0.0.1:localPort 即等于连接 remoteHost:remotePort */
+    record TunnelHandle(String id, int localPort, String remoteHost, int remotePort,
+                        String ownerPluginId) {}
+}
+```
+
+### 5.1 生命周期规则（必读）
+
+- **去重与引用计数**：去重键 = `(ownerPluginId, 凭据来源, remoteHost, remotePort)`。同插件对同一目标重复 open 返回**同一句柄**并叠加引用计数；**跨插件不共享**（即使目标相同）。`close()` 幂等，引用计数归零才真正关闭转发。
+- **本地端口安全默认**：仅绑定 `127.0.0.1`（不暴露网络），端口由 OS 随机分配（bind `:0` 取实际端口）。
+- **会话钉住**：`openByHost` 复用宿主 `SshUtil` 连接池会话并钉住（空闲回收器跳过），隧道流量不算会话活跃——隧道不会因"空闲"被误杀，也**不做空闲回收**。
+- **三层关闭兜底**：① `close()` 引用计数归零；② 插件 stop/unload 时宿主强制关闭该插件全部句柄（`onUnload()` 主动 close 是加速路径，忘关也有兜底）；③ 宿主删除主机时联动关闭该 hostId 开出的全部（平台凭据）隧道。
+- **信任边界**：可信插件模型——任何已安装插件可对任意已登记主机开隧道（转发到该主机可达的任意 remoteHost:remotePort），与 ExtensionClient 等现有 SDK 服务同信任级别。
+
+### 5.2 注入与典型用法（连接实例 MySQL）
+
+```java
+@Service
+@RequiredArgsConstructor
+public class MyDbConnectionFactory {
+    private final SshTunnelService sshTunnelService;   // 子容器自动注入（绑定本插件）
+    private final InstanceQueryService instanceQueryService;
+
+    public DataSource buildDataSource(Long instanceId) {
+        InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
+        // configInfo.database 由宿主按 yml database 声明组装（见 §6）
+        Map<String, Object> db = (Map<String, Object>) instance.getConfigInfo().get("database");
+
+        // remoteHost=127.0.0.1 语义：实例所在主机的回环地址（MYSQL_PORT 已映射到宿主机）
+        TunnelHandle handle = sshTunnelService.openByHost(
+                instance.getHostId(), "127.0.0.1", ((Number) db.get("port")).intValue());
+
+        // 连接 127.0.0.1:handle.localPort() 即连到远端 MySQL
+        String url = "jdbc:mysql://127.0.0.1:" + handle.localPort() + "/" + dbName;
+        // ... 建连接池并缓存 handle，实例删除/插件卸载时 close
+    }
+}
+```
+
+> ⚠️ 句柄应随实例生命周期缓存与释放：`onInstanceDelete` 关闭对应池+隧道；插件 `onUnload()` 主动 close 全部句柄（宿主兜底之外的自清理）。
+
+## 6. configInfo.database 组装（v3.7.0，ADR-0009）
+
+带数据库的 docker-compose 游戏（如 dnf_tw）无需插件手工解析 compose 变量——宿主在**部署与更新时**按游戏元数据 yml 声明组装数据库连接信息，写入实例 `configInfo.database`（`InstanceVO` 已透出，经 `InstanceQueryService.getInstanceById` 读取）。
+
+### 6.1 yml 声明（`games/{gameCode}.yml` 的 dockerCompose 节内，主应用维护）
+
+```yaml
+game:
+  dockerCompose:
+    # ... 既有 composeTemplate / variables
+    database:
+      type: mysql
+      host: 127.0.0.1            # 语义：实例所在主机的回环地址（经 SSH 隧道访问）
+      portVar: MYSQL_PORT        # 端口变量名引用：取部署变量最终值（用户输入 > 默认值）
+      user: root
+      passwordVar: DNF_DB_ROOT_PASSWORD   # 密码变量名引用
+      databases: [cain, siroco]  # 库名列表
+```
+
+- 字段为**变量名引用式**（`portVar`/`passwordVar` 引用部署变量名，另有 `port`/`password` 字面量兜底），变量解析与 .env 生成同源同规则：**用户输入值 > variables 默认值 > 字面量兜底**。
+- database 子节随部署节纳入 ADR-0008 合并体系（插件 `getDeployConfigs()` 覆盖部署节时 variables + database 一起自洽替换）。
+
+### 6.2 组装时机与结果
+
+`DockerComposeAdapter.deploy` 完成时与 `InstanceServiceImpl.updateInstance` 写回时走**同一条组装路径**，结果：
+
+```json
+configInfo.database = { "type": "mysql", "host": "127.0.0.1", "port": 3000,
+                        "user": "root", "password": "88888888", "databases": ["cain", "siroco"] }
+```
+
+### 6.3 时序与回退（陷阱）
+
+- **`onInstanceCreate` 在部署前触发**，收到的 configInfo **尚无 database 节**——插件按"懒建"模型在首次连接时经 `getInstanceById` 读取，勿在 Create 钩子里预读 database。
+- **改密码/端口后**：消费 `onInstanceUpdate` 钩子（实参为更新后的完整新 configInfo，每次更新都触发、无平台侧 diff——配置是否真变由插件自行比对）主动失效并重建对应连接池/隧道。
+- **组装机制上线前部署的老实例** configInfo 无 database 节，插件侧用裸 compose 变量回退解析（`configInfo.MYSQL_PORT` / `configInfo.DNF_DB_ROOT_PASSWORD`），无需重部署。
+
+## 7. 注入示例
 
 ```java
 @Service
@@ -153,7 +246,7 @@ public class MyMapService {
 
 ---
 
-## 6. 控制器开发规范
+## 8. 控制器开发规范
 
 ```java
 @RestController

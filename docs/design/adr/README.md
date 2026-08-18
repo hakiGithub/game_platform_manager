@@ -16,6 +16,8 @@
 | [0005](0005-run-status-vocabulary-unification.md) | run_status 状态词汇表统一（InstanceStatus 唯一权威） | Accepted | 2026-08-13 |
 | [0006](0006-patch-install-decision-tree.md) | 补丁安装（PatchInstallService）决策树与执行模型 | Accepted | 2026-08-13 |
 | [0007](0007-plugin-frontend-nightops-token-isolation.md) | 插件前端 Night Operations token 隔离（复制而非共享） | Accepted | 2026-08-16 |
+| [0008](0008-plugin-deploy-config-extension.md) | 插件部署方式配置扩展 | Accepted | 2026-08-16 |
+| [0009](0009-platform-capability-requirements.md) | 平台侧能力需求（dnf-tw 多实例依赖） | Accepted | 2026-08-18 |
 
 ## 术语表
 

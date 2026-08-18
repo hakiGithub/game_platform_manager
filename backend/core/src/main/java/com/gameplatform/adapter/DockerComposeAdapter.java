@@ -325,6 +325,11 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             Map<String, Object> configInfo = instance.getConfigInfo() != null
                     ? new HashMap<>(instance.getConfigInfo())
                     : new HashMap<>();
+            // 组装 configInfo.database（ADR-0009）：按 yml database 声明 + 变量最终值
+            Map<String, Object> databaseInfo = assembleDatabaseConfig(config);
+            if (databaseInfo != null) {
+                configInfo.put("database", databaseInfo);
+            }
             configInfo.put("containerWorkDir", getConfigString(config, "workingDir", "/"));
             if (!configInfo.containsKey("serviceName")) {
                 String primaryServiceName = getConfigString(config, "serviceName", "");
@@ -963,6 +968,87 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
     }
 
     // ========== 私有方法 ==========
+
+    /**
+     * 按 yml dockerCompose.database 声明组装 configInfo.database（ADR-0009）。
+     * <p>
+     * 变量解析与 .env 生成同源同规则：用户输入值 &gt; variables 元信息默认值 &gt; 字面量兜底。
+     * 部署（{@link #deploy}）与实例更新（InstanceServiceImpl.updateInstance）共用本方法，
+     * 确保两条路径产出的 database 节一致。
+     *
+     * @param config 部署配置（须含 database 声明节与变量最终值，即 buildDeployConfig 产物）
+     * @return {type, host, port, user, password, databases[]}；无 database 声明返回 null
+     */
+    public static Map<String, Object> assembleDatabaseConfig(Map<String, Object> config) {
+        if (config == null) {
+            return null;
+        }
+        Object declObj = config.get("database");
+        if (!(declObj instanceof Map)) {
+            return null;
+        }
+        Map<?, ?> decl = (Map<?, ?>) declObj;
+        if (decl.get("type") == null && decl.get("host") == null) {
+            return null;
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", decl.get("type"));
+        result.put("host", decl.get("host"));
+        result.put("port", resolveDatabaseVar(decl, "portVar", "port", config));
+        result.put("user", decl.get("user"));
+        result.put("password", resolveDatabaseVar(decl, "passwordVar", "password", config));
+        Object databases = decl.get("databases");
+        if (databases instanceof List) {
+            result.put("databases", databases);
+        }
+        return result;
+    }
+
+    /**
+     * 解析 database 声明中的变量名引用字段：用户输入值 &gt; variables 默认值 &gt; 同名字面量兜底。
+     */
+    private static Object resolveDatabaseVar(Map<?, ?> decl, String varKey, String literalKey,
+                                             Map<String, Object> config) {
+        Object varName = decl.get(varKey);
+        if (varName != null && !varName.toString().isEmpty()) {
+            Object userValue = config.get(varName.toString());
+            if (userValue != null && !userValue.toString().isEmpty()) {
+                return userValue;
+            }
+            Object defaultValue = findVariableDefault(config, varName.toString());
+            if (defaultValue != null && !defaultValue.toString().isEmpty()) {
+                return defaultValue;
+            }
+        }
+        return decl.get(literalKey);
+    }
+
+    /**
+     * 从 variables 元信息中查找指定变量的默认值。
+     * 兼容 List 形态与 JsonTypeHandler 反序列化后的 Map 形态（key 为 "0"/"1"/...）。
+     */
+    private static Object findVariableDefault(Map<String, Object> config, String varName) {
+        Object varsObj = config.get("variables");
+        Iterable<?> vars = null;
+        if (varsObj instanceof List) {
+            vars = (List<?>) varsObj;
+        } else if (varsObj instanceof Map) {
+            vars = ((Map<?, ?>) varsObj).values();
+        }
+        if (vars == null) {
+            return null;
+        }
+        for (Object varObj : vars) {
+            if (varObj instanceof Map) {
+                Map<?, ?> var = (Map<?, ?>) varObj;
+                if (varName.equals(var.get("name"))) {
+                    return var.get("defaultValue");
+                }
+            }
+        }
+        return null;
+    }
 
     /**
      * 获取项目名

@@ -1,7 +1,7 @@
 # SDK 接口签名速查
 
 > 权威来源：`backend/plugin/src/main/java/com/gameplatform/plugin/`。本文件为速查摘要，完整说明见本 SKILL 目录其他 `references/` 文件。
-> 当前对齐版本：v3.1.0（ADR-0001 菜单归属权迁移）
+> 当前对齐版本：v3.7.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展）
 
 ## 扩展点
 
@@ -20,6 +20,7 @@ default void onInstanceCreate(Long instanceId, Map<String,Object> config);
 default void onInstanceStart(Long instanceId);
 default void onInstanceStop(Long instanceId);
 default void onInstanceDelete(Long instanceId);
+default void onInstanceUpdate(Long instanceId, Map<String,Object> config);  // v3.7.0 ADR-0009：update 后完整新 configInfo，每次更新都触发
 default void onLoadError(PluginContext ctx, Throwable error);
 default String getIcon();              // 相对 ui/，默认 assets/icon.png
 default String getFrontendEntry();     // 默认 index.html
@@ -163,6 +164,20 @@ CommandResult executeCommand(Long hostId, String command, long timeoutMs);
 default CommandResult executeCommand(Long hostId, String command);
 // 内部类：FileInfo{name,path,directory,size,lastModified,permissions,owner}
 //         CommandResult{success,exitCode,output,error}
+```
+
+### SshTunnelService（v3.7.0 ADR-0009，SSH 本地端口转发）
+```java
+TunnelHandle openByHost(Long hostId, String remoteHost, int remotePort);          // 平台主机凭据
+TunnelHandle openWithCredentials(SshEndpoint ssh, String remoteHost, int remotePort); // 插件自带凭据
+void close(TunnelHandle handle);   // 幂等：引用计数减至 0 才真正关闭
+// record SshEndpoint(String host, int port, String user, String password, String privateKey)
+//     便捷构造 SshEndpoint(host, user, password) → port=22；toString 已脱敏
+// record TunnelHandle(String id, int localPort, String remoteHost, int remotePort, String ownerPluginId)
+//     连 127.0.0.1:localPort 即连 remoteHost:remotePort；本地端口仅绑回环、OS 随机分配
+// 去重键 (ownerPluginId, 凭据来源, remoteHost, remotePort)：同插件同目标复用句柄+计数，跨插件不共享
+// 三层兜底关闭：close 归零 → 插件卸载强制清理 → 宿主删主机联动（仅平台凭据隧道）
+// 详见 references/host_services.md §5；配套 configInfo.database 组装见 §6
 ```
 
 ## PluginManifestVO

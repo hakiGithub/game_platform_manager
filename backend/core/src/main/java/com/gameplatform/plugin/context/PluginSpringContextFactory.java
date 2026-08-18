@@ -7,6 +7,8 @@ import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.HostQueryService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.service.SshTunnelManager;
+import com.gameplatform.plugin.service.SshTunnelService;
 import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskHandlerExtension;
 import com.gameplatform.plugin.task.TaskService;
@@ -66,6 +68,7 @@ public class PluginSpringContextFactory {
     private final ObjectMapper objectMapper;
     private final TaskHandlerRegistry taskHandlerRegistry;
     private final TaskAdminService taskAdminService;
+    private final SshTunnelManager sshTunnelManager;
 
     /** 已加载的插件上下文信息 */
     private final Map<String, PluginContextInfo> loadedPlugins = new ConcurrentHashMap<>();
@@ -119,7 +122,10 @@ public class PluginSpringContextFactory {
         // 注入 TaskService（ADR-025）：插件通过此接口提交/查询/取消任务
         TaskService taskService = mainContext.getBean(TaskService.class);
         childContext.getBeanFactory().registerSingleton("taskService", taskService);
-        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService");
+        // 注入 SshTunnelService（ADR-0009）：绑定 pluginId 的 SSH 隧道能力
+        SshTunnelService sshTunnelService = sshTunnelManager.forPlugin(pluginId);
+        childContext.getBeanFactory().registerSingleton("sshTunnelService", sshTunnelService);
+        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService");
 
         // 5. 扫描插件包路径
         childContext.scan(basePackage);
@@ -267,6 +273,14 @@ public class PluginSpringContextFactory {
             } catch (Exception e) {
                 log.error("插件 [{}] onUnload 钩子执行失败", pluginId, e);
             }
+        }
+
+        // 2.5 强制关闭该插件的全部 SSH 隧道（ADR-0009 兜底；
+        // 插件在 onUnload 中主动 close 自己的句柄是加速路径）
+        try {
+            sshTunnelManager.closeAllForPlugin(pluginId);
+        } catch (Exception e) {
+            log.warn("[SshTunnel] 插件 [{}] 卸载时关闭隧道异常: {}", pluginId, e.getMessage());
         }
 
         // 3. 注销所有控制器映射

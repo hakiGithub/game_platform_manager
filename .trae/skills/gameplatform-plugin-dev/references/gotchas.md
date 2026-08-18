@@ -156,3 +156,13 @@ DST 等游戏**没有 RCON**，游戏内命令唯一注入通道是进程 stdin�
 - **需要输出的命令**（玩家列表等）：注入带唯一标记的 `print` 包裹命令，轮询 `tail` 分片日志，截取两个标记之间的行作为输出；封装为 TaskHandler（超时/取消/互斥白拿），同实例互斥避免输出交叉。
 - **长命令不走适配器**：`InstanceQueryService.executeCommand` 经适配器内嵌 **60s 超时**，LGSM `update`（steamcmd，1~5 分钟）会超时；自拼 `timeout N docker exec --user linuxgsm -w /app <容器> ./<shortname> <命令>` 走 `FileAccessService` 带长超时。
 - 容器名解析对齐 `LinuxGsmDockerAdapter.getContainerName`：`configInfo.containerName` → `runtimeMetadata.containerName`。
+
+## 19. SSH 隧道与 configInfo.database（v3.7.0，ADR-0009）
+
+- **`onInstanceCreate` 的 configInfo 没有 database 节**：该钩子在部署前触发，database 由部署完成时才组装进 configInfo。插件应懒建——首次连接时经 `getInstanceById` 读取，勿在 Create 钩子预读（NPE 高发点）。
+- **老实例无 database 节**：组装机制上线前部署的实例需裸 compose 变量回退（`configInfo.MYSQL_PORT` / `configInfo.DNF_DB_ROOT_PASSWORD`），勿假设 database 节必然存在。
+- **隧道连接地址是 `127.0.0.1:handle.localPort()`**，不是 `remoteHost:remotePort`——localPort 由 OS 随机分配，每次开隧道都不同，不能缓存"端口号"而要缓存 handle。
+- **隧道跨插件不共享**：同插件重复 open 同目标返回同一句柄（引用计数 +1），close 也要与之配对；引用计数不归零隧道不关闭。
+- **忘 close 有宿主兜底但仍应主动清理**：插件 stop/unload 时宿主强制关闭该插件全部句柄；`onUnload()` 主动 close 是加速路径，`onInstanceDelete` 应关闭对应实例的池+隧道。
+- **`onInstanceUpdate` 每次更新都触发**（无平台侧 diff）：插件收到完整新 configInfo 后自行比对是否真变，再决定是否重建连接池；频繁无效重建是自己代码的问题，不是平台的。
+- **`openWithCredentials` 的凭据宿主不落库不写日志**：`SshEndpoint` toString 已脱敏，插件侧也不要把该对象写进自己的日志/持久层。

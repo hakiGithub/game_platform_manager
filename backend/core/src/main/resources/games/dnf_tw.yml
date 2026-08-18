@@ -127,3 +127,16 @@ game:
         defaultValue: "127.0.0.1"
         required: true
         description: 客户端连接用的宿主机对外 IP（内网部署填宿主机内网 IP）
+
+    # 数据库连接声明（ADR-0009）：部署/更新时按此组装 configInfo.database，
+    # 变量解析与 .env 生成同源同规则（用户输入值 > variables 默认值）
+    database:
+      type: mysql
+      host: 127.0.0.1            # 语义：实例所在主机的回环地址（经 SSH 隧道访问）
+      portVar: MYSQL_PORT        # 宿主机 MySQL 映射端口（容器内固定 4000）
+      user: root
+      passwordVar: DNF_DB_ROOT_PASSWORD
+      # 库名列表（占位，实施时由 dnf-tw 插件侧确认后补全）
+      databases:
+        - cain
+        - siroco
