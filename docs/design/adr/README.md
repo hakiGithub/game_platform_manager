@@ -18,6 +18,8 @@
 | [0007](0007-plugin-frontend-nightops-token-isolation.md) | 插件前端 Night Operations token 隔离（复制而非共享） | Accepted | 2026-08-16 |
 | [0008](0008-plugin-deploy-config-extension.md) | 插件部署方式配置扩展 | Accepted | 2026-08-16 |
 | [0009](0009-platform-capability-requirements.md) | 平台侧能力需求（dnf-tw 多实例依赖） | Accepted | 2026-08-18 |
+| [0010](0010-deploy-resource-limit-override.md) | 部署资源限制生效链路（override 文件方案） | Accepted | 2026-08-18 |
+| [0011](0011-scheduled-task-management.md) | 定时任务管理（Schedule）独立模型 | Accepted | 2026-08-22 |
 
 ## 术语表
 

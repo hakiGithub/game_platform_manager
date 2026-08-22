@@ -31,6 +31,18 @@
   - **语义**：`host: 127.0.0.1` 指"实例所在主机的回环地址"，插件经 SshTunnelService 隧道访问。
   - **引入**：ADR-0009
 
+- **定时计划（Schedule）**
+  - **定义**：以 cron 表达式周期性触发指定 ScheduledTaskHandler 的可重复执行定义（cron + handler key + payload 模板 + enabled 开关）。独立于任务中心 task_record 模型——不向执行队列提交任务，到点直接调用 Handler。
+  - **存储**：宿主 `scheduled_task` 表（镜像 task_record 的来源隔离模式，带 source / plugin_id 字段）；插件声明的默认计划按稳定键（pluginId:key）upsert，用户的修改（cron / enabled）不被插件重启覆盖，用户删除的计划不复活。
+  - **重叠语义**：上一轮仍在执行时跳过本次触发，记一条 SKIPPED 触发记录；停机期间错过的触发不补跑。
+  - **关系**：与 Task（一次性执行入队）相对——计划回答"什么时候做"，Task 记录"做了什么"。
+  - **引入**：ADR-0011
+
+- **定时触发记录（Schedule Run）**
+  - **定义**：定时计划每次到点（或手动触发）产生的一次执行记录，存 `scheduled_task_run` 表。状态机：RUNNING → SUCCEEDED / FAILED / CANCELLED / SKIPPED（终态不可变）。
+  - **配套**：`scheduled_task_run_log` 存 Handler 执行日志（每 run 上限 500 条，保留 30 天）；run 落 payload 快照；手动触发标记 MANUAL 来源。
+  - **引入**：ADR-0011
+
 ### E
 
 - **Extension Point（扩展点）**
@@ -135,6 +147,20 @@
 
 ### R
 
+- **resources（部署资源限制）**
+  - **定义**：部署向导收集的用户资源选择，`configInfo.resources = { cpuLimit: Number(核), memoryLimit: Number(GB), diskLimit: Number(GB) }`。
+  - **生效链路（ADR-0010）**：compose 类部署（docker-compose / linuxgsm-docker）经 `docker-compose.override.yml` 自动合并烙入容器；docker 部署经 `--memory {n}g` / `--cpus {n}` 启动参数；`diskLimit` 仅作部署前磁盘水位校验（预估），非容器硬限制；native（linuxgsm）部署不生效。
+  - **默认值来源**：游戏 yml `dependencies`（cpu/memory/disk），解析失败回退 2 核 / 4GB / 10GB。
+  - **_Avoid_**: 顶层 `memoryLimit`/`cpuLimit` 字符串配置（历史死代码路径，ADR-0010 已移除）
+  - **引入**：ADR-0010
+
+- **资源覆盖文件（resource override file）**
+  - **定义**：平台在实例 workDir 生成的 `docker-compose.override.yml`，仅含按服务应用的 `mem_limit`/`cpus`，文件头注释声明"平台生成，手动修改会被下次部署/更新覆盖"。
+  - **合并语义**：Compose 未显式传 `-f` 时自动加载主文件 + override，标量以 override 为准（用户选择覆盖模板硬编码，如 dnf_tw 的 1g/1.0）。
+  - **同步时机**：preDeploy 与 update 均重新同步；cpu/memory 均未设置时主动 `rm -f` 远端 override（支持"取消限制后更新"）；模板解析失败跳过并 warn（fail-open）。
+  - **生效点**：容器创建（`up -d` / `up -d --force-recreate`）；start/stop/restart 不重建容器、无需重读 override。
+  - **引入**：ADR-0010
+
 - **`requireInstance`**
   - **定义**：菜单项是否要求选中实例后才渲染子应用。
   - **取值**：`true`（默认）—— 必须携带 instanceId 才能进入页面，如 RCON、地图管理；`false` —— 纯资源浏览页，无需实例即可访问，如地图中心。
@@ -143,6 +169,10 @@
   - **引入**：项目初始（字段已存在）；**职责迁移于**：ADR-0001
 
 ### S
+
+- **ScheduledTaskHandler（定时任务处理器）**
+  - **定义**：定时任务体系的独立执行契约（plugin 模块扩展点），按 (source, key) 注册。与任务中心 TaskHandler 完全分离——不复用其注册表、状态机与互斥键；无自动重试（下一轮 cron 即天然重试，失败后仅支持手动重跑）。
+  - **引入**：ADR-0011
 
 - **SshTunnelService（SSH 隧道服务）**
   - **定义**：plugin SDK 宿主能力服务接口（core 委托实现，经 PluginSpringContextFactory 注入插件子容器）：`openByHost(hostId, remoteHost, remotePort)` 用平台已登记主机凭据开隧道；`openWithCredentials(ssh, remoteHost, remotePort)` 用插件自带凭据开隧道（宿主不落库、不写日志）；`close(handle)` 幂等关闭。
