@@ -757,15 +757,15 @@ public class DockerAdapter extends AbstractDeployAdapter {
             cmd.append(" --network ").append(networkMode);
         }
 
-        // 资源限制
-        String memoryLimit = getConfigString(config, "memoryLimit", "");
-        if (!memoryLimit.isEmpty()) {
-            cmd.append(" --memory ").append(memoryLimit);
+        // 资源限制（ADR-0010）：前端提交 configInfo.resources.{memoryLimit(GB),cpuLimit(核)}
+        Double memoryLimit = getResourceLimit(config, "memoryLimit");
+        if (memoryLimit != null) {
+            cmd.append(" --memory ").append(formatMemoryG(memoryLimit));
         }
 
-        String cpuLimit = getConfigString(config, "cpuLimit", "");
-        if (!cpuLimit.isEmpty()) {
-            cmd.append(" --cpus ").append(cpuLimit);
+        Double cpuLimit = getResourceLimit(config, "cpuLimit");
+        if (cpuLimit != null) {
+            cmd.append(" --cpus ").append(formatCpu(cpuLimit));
         }
 
         // 工作目录

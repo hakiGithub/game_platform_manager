@@ -362,6 +362,171 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
         }
     }
 
+    // ==================== 资源限制 override（ADR-0010）====================
+
+    /** compose 资源限制覆盖文件名：Compose 未显式传 -f 时自动与主文件合并，标量以本文件为准 */
+    protected static final String RESOURCE_OVERRIDE_FILE = "docker-compose.override.yml";
+
+    /**
+     * 同步资源限制覆盖文件（ADR-0010）。
+     * <p>
+     * configInfo.resources 中 cpuLimit / memoryLimit 任一有效（>0）时，在 workDir 生成
+     * {@code docker-compose.override.yml}（仅含 mem_limit/cpus，应用到模板全部服务），
+     * 由 Compose 自动合并使向导选择的资源限制生效（覆盖模板硬编码值，如 dnf_tw 的 1g/1.0）。
+     * 两者均未设置时主动删除远端 override，保证"取消限制后更新"回到模板原生行为。
+     * <p>
+     * 容器限制仅在创建时烙入（up -d / up -d --force-recreate）；start/stop/restart
+     * 不重建容器，无需调用本方法。解析失败 fail-open（跳过并 warn，不阻塞部署）。
+     *
+     * @param host           目标主机
+     * @param workDir        compose 工作目录
+     * @param config         部署配置（含 configInfo.resources）
+     * @param composeContent 主 compose 文件内容（用于解析服务名；null 时仅执行删除逻辑）
+     * @return override 是否处于期望状态（fail-open 场景恒 true）
+     */
+    protected boolean syncResourceOverride(Host host, String workDir, Map<String, Object> config, String composeContent) {
+        try {
+            Double memoryLimit = getResourceLimit(config, "memoryLimit");
+            Double cpuLimit = getResourceLimit(config, "cpuLimit");
+
+            // 均未设置：删除远端 override，回到模板原生行为（支持"取消限制后更新"）
+            if (memoryLimit == null && cpuLimit == null) {
+                executeCommand(host, String.format("rm -f %s/%s", workDir, RESOURCE_OVERRIDE_FILE), 10000);
+                return true;
+            }
+
+            if (composeContent == null || composeContent.isBlank()) {
+                log.warn("未提供 compose 内容，无法生成资源限制 override（跳过，本次部署资源限制不生效）");
+                return true;
+            }
+
+            // 只读解析模板提取服务名（不回写主文件，模板注释完整保留）
+            List<String> serviceNames = extractComposeServiceNames(composeContent);
+            if (serviceNames.isEmpty()) {
+                log.warn("compose 模板未解析出服务名，跳过资源限制 override（本次部署资源限制不生效）");
+                return true;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("# 平台自动生成（ADR-0010 资源限制覆盖文件）——手动修改会在下次部署/更新时被覆盖\n");
+            sb.append("services:\n");
+            for (String name : serviceNames) {
+                sb.append("  ").append(name).append(":\n");
+                if (memoryLimit != null) {
+                    sb.append("    mem_limit: ").append(formatMemoryG(memoryLimit)).append("\n");
+                }
+                if (cpuLimit != null) {
+                    sb.append("    cpus: '").append(formatCpu(cpuLimit)).append("'\n");
+                }
+            }
+
+            boolean uploaded = uploadStringFile(host, workDir + "/" + RESOURCE_OVERRIDE_FILE, sb.toString());
+            if (uploaded) {
+                log.info("资源限制 override 已同步: workDir={}, services={}, mem={}, cpus={}",
+                        workDir, serviceNames, memoryLimit, cpuLimit);
+            }
+            return uploaded;
+        } catch (Exception e) {
+            // fail-open：override 失败不阻塞部署，仅记录
+            log.warn("同步资源限制 override 失败（跳过，不影响部署）: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * 读取 configInfo.resources 下的资源限制值（ADR-0010）。
+     *
+     * @return 值 > 0 时返回 Double；缺省 / 非数字 / 非正数返回 null（null 表示"未设置"）
+     */
+    protected Double getResourceLimit(Map<String, Object> config, String key) {
+        if (config == null) {
+            return null;
+        }
+        Object resources = config.get("resources");
+        if (!(resources instanceof Map)) {
+            return null;
+        }
+        Object value = ((Map<?, ?>) resources).get(key);
+        if (value instanceof Number) {
+            double d = ((Number) value).doubleValue();
+            return d > 0 ? d : null;
+        }
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                double d = Double.parseDouble(s.trim());
+                return d > 0 ? d : null;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 只读解析 compose 内容提取顶层服务名（snakeyaml 解析为 Map 后取 services 键，
+     * 不回写文件；${VAR} 占位符按字面量标量解析，与 Compose 自身解析行为一致）。
+     */
+    protected List<String> extractComposeServiceNames(String composeContent) {
+        try {
+            org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
+            Object root = yaml.load(composeContent);
+            if (root instanceof Map) {
+                Object services = ((Map<?, ?>) root).get("services");
+                if (services instanceof Map) {
+                    List<String> names = new ArrayList<>();
+                    for (Object k : ((Map<?, ?>) services).keySet()) {
+                        if (k != null) {
+                            names.add(k.toString());
+                        }
+                    }
+                    return names;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("compose 模板 YAML 解析失败: {}", e.getMessage());
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * 将字符串内容写入本地临时文件后 SFTP 上传（跨平台临时目录，用后即删）。
+     */
+    protected boolean uploadStringFile(Host host, String remotePath, String content) {
+        try {
+            String tmpDir = System.getProperty("java.io.tmpdir");
+            java.io.File tempFile = new java.io.File(tmpDir, "gpm-upload-" + System.currentTimeMillis() + ".tmp");
+            java.nio.file.Files.write(tempFile.toPath(), content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            boolean uploaded = uploadFile(host, tempFile.getAbsolutePath(), remotePath);
+            java.nio.file.Files.deleteIfExists(tempFile.toPath());
+            return uploaded;
+        } catch (Exception e) {
+            log.error("上传文件失败 {}: {}", remotePath, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 内存限制格式化：GB 数字 → compose/docker 通用值（4 → "4g"，0.5 → "512m"）。
+     */
+    protected String formatMemoryG(double gb) {
+        if (gb < 1) {
+            return Math.round(gb * 1024) + "m";
+        }
+        if (gb == Math.floor(gb)) {
+            return (long) gb + "g";
+        }
+        return gb + "g";
+    }
+
+    /**
+     * CPU 限制格式化：核数 → 无多余小数位的字符串（2.0 → "2"，1.5 → "1.5"）。
+     */
+    protected String formatCpu(double cores) {
+        if (cores == Math.floor(cores)) {
+            return String.valueOf((long) cores);
+        }
+        return String.valueOf(cores);
+    }
+
     /**
      * 检查 compose 文件引用的所有镜像是否都已存在于本地 Docker。
      * <p>

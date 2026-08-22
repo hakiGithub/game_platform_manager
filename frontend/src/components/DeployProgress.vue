@@ -7,7 +7,6 @@ import {
   nextTick,
   watch,
 } from "vue";
-import { ElMessage } from "element-plus";
 import { getDeployProgress, getInstanceLogs } from "@/api/instance";
 
 const props = defineProps({
@@ -62,11 +61,6 @@ const dialogTitle = computed(() => {
 // 是否已完成
 const isCompleted = computed(() => {
   return ["completed", "failed", "cancelled"].includes(status.value);
-});
-
-// 是否允许关闭（runtime 模式随时可关闭，deploy 模式需完成后或强制关闭）
-const canClose = computed(() => {
-  return props.mode === "runtime" || isCompleted.value;
 });
 
 // 是否成功
@@ -273,15 +267,12 @@ function handleRetry() {
 }
 
 // 关闭弹窗
+// DeployProgress 是只读日志观察窗，不是任务控制器：用户点 X / 按 ESC 收起弹框时，
+// 仅停止前端轮询、服务端部署任务继续在后台运行、状态仍可在实例列表看到。
+// 任务控制（取消/重试）由实例列表或任务中心负责，不在本组件职责内。
 function handleClose() {
   if (props.mode === "runtime") {
     stopProgressPolling();
-    emit("update:visible", false);
-    return;
-  }
-  if (!isCompleted.value) {
-    ElMessage.warning("部署正在进行中，请等待完成或取消部署");
-    return;
   }
   emit("update:visible", false);
 }
@@ -348,8 +339,6 @@ onBeforeUnmount(() => {
     :title="dialogTitle"
     width="700px"
     :close-on-click-modal="false"
-    :close-on-press-escape="false"
-    :show-close="canClose"
     class="deploy-progress-dialog"
     @close="handleClose"
   >
@@ -489,12 +478,7 @@ onBeforeUnmount(() => {
             {{ isSuccess ? "完成" : "关闭" }}
           </el-button>
         </template>
-        <template v-else>
-          <el-button disabled>
-            <el-icon class="is-loading"><Loading /></el-icon>
-            部署中...
-          </el-button>
-        </template>
+        <!-- 进行中：DeployProgress 仅作只读日志观察窗，无控制按钮；关闭走顶部 X / ESC -->
       </div>
     </template>
   </el-dialog>

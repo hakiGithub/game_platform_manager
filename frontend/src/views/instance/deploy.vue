@@ -64,6 +64,11 @@ const filteredGameList = computed(() => {
 const selectedGame = ref(null);
 const selectedDeployMethod = ref("docker");
 
+// 资源限制仅对 Docker 类部署生效（ADR-0010 D6）：native/linuxgsm 进程部署不消费 resources
+const isDockerLikeDeploy = computed(() =>
+  ["docker", "docker-compose", "linuxgsm-docker"].includes(selectedDeployMethod.value)
+);
+
 // 表单数据
 const deployForm = reactive({
   name: "",
@@ -304,6 +309,30 @@ function selectGame(game) {
       console.error("Failed to parse config schema:", e);
     }
   }
+
+  // 资源限制默认值（ADR-0010）：优先取游戏 dependencies 声明（environmentDeps），
+  // 解析失败回退全局默认（2 核 / 4GB / 10GB）
+  const deps = game.environmentDeps || {};
+  deployForm.resources.cpuLimit = parseResourceValue(deps.cpu, 2);
+  deployForm.resources.memoryLimit = parseResourceValue(deps.memory, 4);
+  deployForm.resources.diskLimit = parseResourceValue(deps.disk, 10);
+}
+
+// 解析 dependencies 资源声明为数字（ADR-0010）：
+// "1核" → 1，"2G"/"2GB" → 2，"512M" → 0.5；数字原样返回；解析失败返回 fallback
+function parseResourceValue(value, fallback) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return fallback;
+  const m = value.trim().match(/^(\d+(?:\.\d+)?)\s*(核|G|GB|g|gb|M|MB|m|mb)?$/);
+  if (!m) return fallback;
+  const num = parseFloat(m[1]);
+  const unit = (m[2] || "").toLowerCase();
+  if (unit === "m" || unit === "mb") {
+    return Math.round((num / 1024) * 10) / 10; // MB → GB（保留 1 位小数）
+  }
+  return num;
 }
 
 // 从游戏的 deployConfig.defaultPorts 提取多端口 Map
@@ -1219,6 +1248,15 @@ onMounted(() => {
                 <el-icon><Cpu /></el-icon>
                 资源限制
               </div>
+              <el-alert
+                v-if="!isDockerLikeDeploy"
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 12px"
+                title="资源限制仅对 Docker 类部署生效"
+                description="当前为进程（LinuxGSM）部署，CPU / 内存限制不会应用于游戏进程；磁盘占用预估仍用于部署前环境校验。"
+              />
               <el-form-item label="CPU限制">
                 <el-slider
                   v-model="deployForm.resources.cpuLimit"
@@ -1243,7 +1281,7 @@ onMounted(() => {
                   >{{ deployForm.resources.memoryLimit }} GB</span
                 >
               </el-form-item>
-              <el-form-item label="磁盘限制">
+              <el-form-item label="磁盘占用预估">
                 <el-slider
                   v-model="deployForm.resources.diskLimit"
                   :max="100"
@@ -1254,6 +1292,9 @@ onMounted(() => {
                 <span class="resource-value"
                   >{{ deployForm.resources.diskLimit }} GB</span
                 >
+                <div class="form-tip">
+                  用于部署前磁盘水位校验，非容器硬限制（ADR-0010）
+                </div>
               </el-form-item>
             </div>
 
@@ -1548,7 +1589,7 @@ onMounted(() => {
               <el-descriptions-item label="内存限制"
                 >{{ deployForm.resources.memoryLimit }} GB</el-descriptions-item
               >
-              <el-descriptions-item label="磁盘限制"
+              <el-descriptions-item label="磁盘占用预估"
                 >{{ deployForm.resources.diskLimit }} GB</el-descriptions-item
               >
               <el-descriptions-item

@@ -177,6 +177,9 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
                 }
             }
 
+            // 资源限制 override（ADR-0010）：fail-open，失败不阻塞部署
+            syncResourceOverride(host, workDir, config, composeToUpload);
+
             // 模板驱动模式下，生成并上传 .env 文件
             if (!composeTemplate.isEmpty()) {
                 notifyProgress(callback, 45, "PRE_DEPLOY", "生成 .env 文件");
@@ -463,6 +466,15 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
         try {
             String composeCmd = getComposeCommand(host);
+
+            // 资源限制 override 重新同步（ADR-0010）：--force-recreate 重建容器是
+            // 限制生效点，更新前须按最新 resources 状态生成/删除 override
+            String overrideSource = getConfigString(config, "composeTemplate", "");
+            if (overrideSource.isEmpty()) {
+                overrideSource = getConfigString(config, "composeContent", "");
+            }
+            syncResourceOverride(host, workDir, config, overrideSource);
+
             notifyProgress(callback, 30, "UPDATE", "拉取最新镜像");
             // 拉取最新镜像
             SshUtil.CommandResult pullResult = executeCommand(host,

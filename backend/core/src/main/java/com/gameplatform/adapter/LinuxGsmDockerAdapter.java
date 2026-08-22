@@ -145,6 +145,9 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
                 return false;
             }
 
+            // 资源限制 override（ADR-0010）：fail-open，失败不阻塞部署
+            syncResourceOverride(host, workDir, config, composeTemplate);
+
             notifyProgress(callback, 50, "PRE_DEPLOY", "生成 .env 文件");
             try {
                 String envContent = generateEnvFileContent(config);
