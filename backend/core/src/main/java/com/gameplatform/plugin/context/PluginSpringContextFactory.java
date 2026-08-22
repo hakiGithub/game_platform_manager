@@ -3,6 +3,10 @@ package com.gameplatform.plugin.context;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.plugin.exception.PluginPathConflictException;
 import com.gameplatform.plugin.extension.*;
+import com.gameplatform.plugin.schedule.ScheduleDeclaration;
+import com.gameplatform.plugin.schedule.ScheduleService;
+import com.gameplatform.plugin.schedule.ScheduledTaskDeclarationExtension;
+import com.gameplatform.plugin.schedule.ScheduledTaskHandler;
 import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.HostQueryService;
 import com.gameplatform.plugin.service.InstanceFileService;
@@ -13,6 +17,9 @@ import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskHandlerExtension;
 import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.plugin.util.PluginUtils;
+import com.gameplatform.schedule.PluginScheduleServiceAdapter;
+import com.gameplatform.schedule.ScheduleManagementService;
+import com.gameplatform.schedule.ScheduledTaskHandlerRegistry;
 import com.gameplatform.service.TaskAdminService;
 import com.gameplatform.task.TaskHandlerRegistry;
 import lombok.Data;
@@ -69,6 +76,8 @@ public class PluginSpringContextFactory {
     private final TaskHandlerRegistry taskHandlerRegistry;
     private final TaskAdminService taskAdminService;
     private final SshTunnelManager sshTunnelManager;
+    private final ScheduledTaskHandlerRegistry scheduleHandlerRegistry;
+    private final ScheduleManagementService scheduleManagementService;
 
     /** 已加载的插件上下文信息 */
     private final Map<String, PluginContextInfo> loadedPlugins = new ConcurrentHashMap<>();
@@ -125,7 +134,12 @@ public class PluginSpringContextFactory {
         // 注入 SshTunnelService（ADR-0009）：绑定 pluginId 的 SSH 隧道能力
         SshTunnelService sshTunnelService = sshTunnelManager.forPlugin(pluginId);
         childContext.getBeanFactory().registerSingleton("sshTunnelService", sshTunnelService);
-        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService");
+        // 注入 ScheduleService（ADR-0011）：绑定 pluginId+source 的定时计划能力（来源隔离）
+        String scheduleSource = extension.getGameCode().toUpperCase();
+        ScheduleService scheduleService = new PluginScheduleServiceAdapter(
+                scheduleManagementService, pluginId, scheduleSource);
+        childContext.getBeanFactory().registerSingleton("scheduleService", scheduleService);
+        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService");
 
         // 5. 扫描插件包路径
         childContext.scan(basePackage);
@@ -149,6 +163,11 @@ public class PluginSpringContextFactory {
         String taskSource = extension.getGameCode().toUpperCase();
         int registeredHandlers = scanAndRegisterTaskHandlers(childContext, taskSource);
 
+        // 7.5 定时计划联动（ADR-0011 D5/D8）：注册 Handler → upsert 声明式默认计划 → 恢复停用前的暂停
+        int scheduleHandlers = scanAndRegisterScheduleHandlers(childContext, scheduleSource);
+        upsertScheduleDeclarations(pluginId, scheduleSource, childContext);
+        resumeSchedulesByPlugin(pluginId);
+
         // 8. 构建并注册 PluginContext
         DefaultPluginContext pluginContext = DefaultPluginContext.builder()
                 .pluginId(pluginId)
@@ -169,7 +188,8 @@ public class PluginSpringContextFactory {
         // 10. 缓存以进行生命周期管理
         loadedPlugins.put(pluginId, new PluginContextInfo(wrapper, childContext, controllers.keySet(), registeredInfos, taskSource));
 
-        log.info("  共注册 {} 个端点, {} 个任务处理器", registeredEndpoints.size(), registeredHandlers);
+        log.info("  共注册 {} 个端点, {} 个任务处理器, {} 个定时任务处理器",
+                registeredEndpoints.size(), registeredHandlers, scheduleHandlers);
         log.info("======== 插件 [{}] Spring 子容器创建完成 ========", pluginId);
     }
 
@@ -226,6 +246,84 @@ public class PluginSpringContextFactory {
     }
 
     /**
+     * 扫描插件子容器中的 {@link ScheduledTaskHandler} Bean，按 {@code (source, key)}
+     * 注册到 {@link ScheduledTaskHandlerRegistry}（ADR-0011 D3）。
+     *
+     * <p>插件子容器内一个 {@code @Component} 即一个 Handler；重复注册抛
+     * IllegalStateException（热重载残留由 unload 时 unregisterBySource 清理，
+     * 正常流程不会触发）。
+     *
+     * @param childContext 插件子容器
+     * @param source       来源（gameCode 大写）
+     * @return 已注册的 Handler 数量
+     */
+    private int scanAndRegisterScheduleHandlers(AnnotationConfigApplicationContext childContext, String source) {
+        Map<String, ScheduledTaskHandler> handlerBeans = childContext.getBeansOfType(ScheduledTaskHandler.class);
+        if (handlerBeans.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (ScheduledTaskHandler handler : handlerBeans.values()) {
+            String key = handler.getKey();
+            if (key == null || key.isBlank()) {
+                log.warn("[Schedule] 插件来源 [{}] 跳过 key 为空的定时任务处理器 {}", source,
+                        handler.getClass().getSimpleName());
+                continue;
+            }
+            try {
+                scheduleHandlerRegistry.register(source, key, handler);
+                count++;
+            } catch (IllegalStateException e) {
+                log.error("[Schedule] 来源 [{}] 定时任务处理器 {} 注册失败: {}", source, key, e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 扫描 {@link ScheduledTaskDeclarationExtension}，将声明式默认计划按稳定键
+     * {@code pluginId:key} upsert（ADR-0011 D5：用户改过跳过、删过不复活）。
+     */
+    private void upsertScheduleDeclarations(String pluginId, String source,
+                                            AnnotationConfigApplicationContext childContext) {
+        Map<String, ScheduledTaskDeclarationExtension> extensionBeans =
+                childContext.getBeansOfType(ScheduledTaskDeclarationExtension.class);
+        if (extensionBeans.isEmpty()) {
+            return;
+        }
+        List<ScheduleDeclaration> declarations = new ArrayList<>();
+        for (ScheduledTaskDeclarationExtension ext : extensionBeans.values()) {
+            try {
+                List<ScheduleDeclaration> result = ext.getScheduleDeclarations();
+                if (result != null) {
+                    declarations.addAll(result);
+                }
+            } catch (Exception e) {
+                log.error("[Schedule] 插件 [{}] getScheduleDeclarations() 执行失败，跳过该扩展点", pluginId, e);
+            }
+        }
+        if (declarations.isEmpty()) {
+            return;
+        }
+        try {
+            scheduleManagementService.upsertDeclarations(pluginId, source, declarations);
+        } catch (Exception e) {
+            log.error("[Schedule] 插件 [{}] 声明式计划 upsert 失败（不影响插件加载）", pluginId, e);
+        }
+    }
+
+    /**
+     * 恢复插件停用/热重载前暂停的计划（ADR-0011 D8：enabled=1 的重新注册调度）。
+     */
+    private void resumeSchedulesByPlugin(String pluginId) {
+        try {
+            scheduleManagementService.resumeByPlugin(pluginId);
+        } catch (Exception e) {
+            log.error("[Schedule] 插件 [{}] 恢复定时计划失败（不影响插件加载）", pluginId, e);
+        }
+    }
+
+    /**
      * 卸载插件 Spring 上下文。
      *
      * <p>卸载流程（ADR-013）：
@@ -266,6 +364,10 @@ public class PluginSpringContextFactory {
         // 1. 任务中心清理：取消运行中任务 + 注销 Handler（purgeTasks 时物理删除记录，ADR-013）
         cleanupTasksForPlugin(pluginId, info.getTaskSource(), purgeTasks);
 
+        // 1.5 定时计划联动（ADR-0011 D8）：注销 Handler；
+        //     卸载移除 → 物理清理计划+记录；热重载/停用 → 暂停（重载后 resume 恢复）
+        cleanupSchedulesForPlugin(pluginId, info.getTaskSource(), purgeTasks);
+
         // 2. 调用扩展点的 onUnload 钩子
         if (extension != null) {
             try {
@@ -299,6 +401,41 @@ public class PluginSpringContextFactory {
         PluginUtils.invalidateCache(pluginId);
 
         log.info("插件 [{}] Spring 上下文已卸载", pluginId);
+    }
+
+    /**
+     * 插件卸载时的定时计划清理（ADR-0011 D8）。
+     *
+     * <p>步骤：
+     * <ol>
+     *   <li>注销该来源全部 ScheduledTaskHandler（旧 classloader 必须释放）</li>
+     *   <li>卸载移除（purgeTasks=true）→ 物理删除计划 + 触发记录 + 日志</li>
+     *   <li>热重载/停用（purgeTasks=false）→ 暂停计划（保留 enabled 用户意图，
+     *       重载后 resumeByPlugin 恢复）</li>
+     * </ol>
+     *
+     * @param pluginId   插件ID
+     * @param source     计划来源（gameCode 大写）
+     * @param purgeTasks 是否物理删除（与任务中心 purgeTasks 语义对齐）
+     */
+    private void cleanupSchedulesForPlugin(String pluginId, String source, boolean purgeTasks) {
+        if (source == null || source.isBlank()) {
+            return;
+        }
+        try {
+            scheduleHandlerRegistry.unregisterBySource(source);
+        } catch (Exception e) {
+            log.warn("[Schedule] 插件 [{}] 卸载时注销定时任务处理器异常: {}", pluginId, e.getMessage());
+        }
+        try {
+            if (purgeTasks) {
+                scheduleManagementService.purgeByPlugin(pluginId);
+            } else {
+                scheduleManagementService.pauseByPlugin(pluginId, "插件停用或热重载");
+            }
+        } catch (Exception e) {
+            log.warn("[Schedule] 插件 [{}] 卸载时清理定时计划异常: {}", pluginId, e.getMessage());
+        }
     }
 
     /**

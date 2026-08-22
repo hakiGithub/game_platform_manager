@@ -404,9 +404,8 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
             registry.cancel(scheduleId);
         }
         // 2. 物理删除触发记录 + 日志（先查 runId 级联删日志）
-        List<String> runIds = scheduleIds.stream()
-                .flatMap(sid -> runMapper.selectList(new LambdaQueryWrapper<ScheduledTaskRun>()
-                                .eq(ScheduledTaskRun::getScheduleId, sid)).stream())
+        List<String> runIds = runMapper.selectList(new LambdaQueryWrapper<ScheduledTaskRun>()
+                        .in(ScheduledTaskRun::getScheduleId, scheduleIds)).stream()
                 .map(ScheduledTaskRun::getId)
                 .toList();
         if (!runIds.isEmpty()) {

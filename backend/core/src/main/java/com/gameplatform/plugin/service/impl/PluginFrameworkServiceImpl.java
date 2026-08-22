@@ -8,6 +8,7 @@ import com.gameplatform.plugin.service.PluginFrameworkService;
 import com.gameplatform.plugin.util.PluginUtils;
 import com.gameplatform.plugin.vo.PluginManifestVO;
 import com.gameplatform.plugin.vo.PluginStatusVO;
+import com.gameplatform.schedule.ScheduleManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.pf4j.PluginState;
@@ -35,6 +36,7 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
     private final PluginManager pluginManager;
     private final ObjectMapper objectMapper;
     private final PluginSpringContextFactory springContextFactory;
+    private final ScheduleManagementService scheduleManagementService;
 
     /** 清单缓存（线程安全） */
     private final Map<String, PluginManifestVO> manifestCache = new ConcurrentHashMap<>();
@@ -106,6 +108,12 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
             boolean success = state == PluginState.STARTED;
             if (success) {
                 log.info("插件 {} 启动成功", pluginId);
+                // 定时计划联动（ADR-0011 D8）：恢复停用前暂停的计划（幂等，不影响启动结果）
+                try {
+                    scheduleManagementService.resumeByPlugin(pluginId);
+                } catch (Exception e) {
+                    log.warn("[Schedule] 插件 {} 启动时恢复定时计划异常: {}", pluginId, e.getMessage());
+                }
             } else {
                 log.warn("插件 {} 启动失败，当前状态: {}", pluginId, state);
             }
@@ -124,6 +132,12 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
             if (success) {
                 log.info("插件 {} 停止成功", pluginId);
                 manifestCache.remove(pluginId);
+                // 定时计划联动（ADR-0011 D8）：暂停该插件全部计划（不影响停止结果）
+                try {
+                    scheduleManagementService.pauseByPlugin(pluginId, "插件已停用");
+                } catch (Exception e) {
+                    log.warn("[Schedule] 插件 {} 停止时暂停定时计划异常: {}", pluginId, e.getMessage());
+                }
             } else {
                 log.warn("插件 {} 停止失败，当前状态: {}", pluginId, state);
             }

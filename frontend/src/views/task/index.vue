@@ -10,8 +10,13 @@ import {
   retryTask,
   deleteTask,
 } from "@/api/task";
+import SchedulePanel from "./SchedulePanel.vue";
 
 const router = useRouter();
+
+// ==================== Tab 切换 ====================
+
+const activeTab = ref("queue");
 
 // ==================== 状态 ====================
 
@@ -338,6 +343,9 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <el-tabs v-model="activeTab" class="task-center-tabs">
+      <el-tab-pane label="执行队列" name="queue">
+
     <section class="task-rail" aria-label="任务执行态势">
       <div class="rail-intro">
         <span class="section-kicker">QUEUE TELEMETRY</span>
@@ -584,6 +592,12 @@ onUnmounted(() => {
         />
       </div>
     </el-card>
+
+      </el-tab-pane>
+      <el-tab-pane label="定时计划" name="schedules" lazy>
+        <SchedulePanel />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -644,6 +658,38 @@ onUnmounted(() => {
 .task-console-panel {
   border: 1px solid var(--platform-line);
   background: var(--platform-surface-1);
+}
+
+.task-center-tabs {
+  margin-top: var(--task-gap);
+
+  :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background: var(--platform-line);
+  }
+
+  :deep(.el-tabs__item) {
+    height: 40px;
+    color: var(--platform-text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+
+    &.is-active {
+      color: var(--task-accent);
+    }
+
+    &:hover {
+      color: var(--platform-text-primary);
+    }
+  }
+
+  :deep(.el-tabs__active-bar) {
+    background: var(--task-accent);
+  }
+
+  :deep(.el-tab-pane) {
+    outline: none;
+  }
 }
 
 .task-hero {
