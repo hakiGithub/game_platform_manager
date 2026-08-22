@@ -50,6 +50,18 @@ export function getPluginManifest(gameCode) {
     method: "get",
   });
 }
+/**
+ * 获取插件清单（通过插件ID）
+ * 不依赖 pluginId -> gameCode 推导（如 plugin-dnf-tw != dnf_tw，连字符/下划线不一致）
+ * @param {string} pluginId - 插件ID
+ * @returns {Promise<Object>} PluginManifestVO
+ */
+export function getPluginManifestByPluginId(pluginId) {
+  return request({
+    url: `/pf4j/plugins/${pluginId}/manifest`,
+    method: "get",
+  });
+}
 
 /**
  * 启动插件

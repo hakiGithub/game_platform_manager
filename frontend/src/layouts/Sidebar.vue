@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getPluginList, getPluginManifest } from "@/api/plugin";
+import { getPluginList, getPluginManifestByPluginId } from "@/api/plugin";
 
 defineProps({
   collapsed: {
@@ -127,10 +127,6 @@ const defaultOpeneds = computed(() => {
   return [...new Set(matchedPaths)];
 });
 
-function extractGameCode(pluginId) {
-  if (!pluginId || !pluginId.startsWith("plugin-")) return "";
-  return pluginId.substring("plugin-".length);
-}
 
 /**
  * 插件菜单建树：扁平声明（含 parent 引用）→ 二级嵌套（组 → 叶子）。
@@ -178,11 +174,12 @@ async function loadPluginMenus() {
     const menus = [];
 
     for (const plugin of runningPlugins) {
-      const gameCode = extractGameCode(plugin.pluginId);
-      if (!gameCode) continue;
-
       try {
-        const manifest = await getPluginManifest(gameCode);
+        // 按 pluginId 查询（gameCode 与 pluginId 可能不一致，如 dnf_tw / plugin-dnf-tw）
+        const manifest = await getPluginManifestByPluginId(plugin.pluginId);
+        const gameCode = manifest?.gameCode;
+        if (!gameCode) continue;
+
         const backendMenus = manifest?.frontend?.menus || [];
         // 按 parent 建树（插件菜单声明支持二级分组，parent 指向分组父节点 path）
         const children = buildMenuTree(backendMenus, gameCode);
@@ -196,7 +193,7 @@ async function loadPluginMenus() {
             : [{ index: `/extensions/app/${gameCode}/dashboard`, title: "仪表盘" }],
         });
       } catch (error) {
-        console.error(`Failed to load manifest for ${gameCode}:`, error);
+        console.error(`Failed to load manifest for ${plugin.pluginId}:`, error);
       }
     }
 
@@ -208,7 +205,16 @@ async function loadPluginMenus() {
 
 function handleSelect(index) {
   if (index.startsWith("/extensions/app/") && route.path.startsWith("/extensions/app/")) {
-    router.push({ path: index, query: route.query });
+    // 路径结构 /extensions/app/{gameCode}/...，第 4 段为 gameCode
+    const currentGameCode = route.path.split("/")[3];
+    const targetGameCode = index.split("/")[3];
+    // 同插件内切换菜单：保留已选实例（instanceId 等 query）
+    // 跨插件切换：实例按 gameCode 隔离，不携带旧 instanceId（由目标插件自行选择实例）
+    if (currentGameCode && targetGameCode && currentGameCode === targetGameCode) {
+      router.push({ path: index, query: route.query });
+    } else {
+      router.push(index);
+    }
     return;
   }
   router.push(index);

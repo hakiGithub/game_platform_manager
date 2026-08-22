@@ -98,6 +98,9 @@ const currentMenuRequireInstance = computed(() => {
 // 反查补全的当前实例信息（按 instanceId 从实例列表匹配）
 // （instanceList 已在实例选择对话框声明，兼作切换下拉数据源）
 const resolvedInstance = ref<any>(null);
+// instanceId 已被实例列表确认无效（跨插件携带 / 实例已删除）：
+// 置 true 后 currentInstance 不再回退 props，避免用旧 ID 渲染一拍
+const invalidInstanceId = ref(false);
 
 // 当前实例信息：优先反查补全（仅 query 传 instanceId），回退旧版 props 字段
 // 对于 requireInstance=false 的菜单，即便没有实例也允许渲染子应用
@@ -113,8 +116,10 @@ const currentInstance = computed(() => {
       portConfig: inst.portConfig || {},
     };
   }
-  if (props.instanceId) {
-    // 反查未命中（实例可能已被删除）或列表未加载：回退 props 兼容旧 query
+  if (props.instanceId && !invalidInstanceId.value) {
+    // 反查未命中（列表未加载或确认无效前的过渡态）：回退 props 兼容旧 query
+    // 已确认无效（invalidInstanceId）时不回退，避免 router.replace 生效前
+    // 用旧实例 ID 渲染子应用
     return {
       id: props.instanceId,
       instanceName: props.instanceName || "",
@@ -206,10 +211,19 @@ async function ensureInstanceOrPrompt() {
     instanceList.value = data?.records || [];
 
     if (props.instanceId) {
-      // 已选：反查补全（instanceId 可能已失效，未命中时回退 props）
-      resolvedInstance.value =
-        instanceList.value.find((i) => i.id === props.instanceId) || null;
-      return;
+      // 已选：反查补全
+      const hit = instanceList.value.find((i) => i.id === props.instanceId) || null;
+      if (hit) {
+        resolvedInstance.value = hit;
+        invalidInstanceId.value = false;
+        return;
+      }
+      // 反查未命中：instanceId 不属于当前 gameCode 的实例（如跨插件导航携带了
+      // 其他插件的实例、或实例已被删除）——视为未选择，清除 URL 中的无效
+      // instanceId 后继续走正常选择流程（0 个提示 / 1 个默认选中 / 多个弹窗）
+      resolvedInstance.value = null;
+      invalidInstanceId.value = true;
+      router.replace({ path: route.path, query: {} });
     }
 
     if (instanceList.value.length === 0) {
@@ -269,6 +283,9 @@ watch(
   () => props.gameCode,
   async (g) => {
     if (!g) return;
+    // 切换插件：上一插件的失效判定与反查结果不再适用，复位后重新检查
+    resolvedInstance.value = null;
+    invalidInstanceId.value = false;
     const manifest = await pluginStore.loadManifest(g);
     // 清单加载失败（如插件未安装）时不再拉取实例，直接展示降级空态
     if (manifest) {
