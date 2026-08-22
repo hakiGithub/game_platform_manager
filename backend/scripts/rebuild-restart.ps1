@@ -63,7 +63,8 @@ $script:PID_FILE = Join-Path $LOG_DIR "$APP_NAME.pid"
 # 插件目录
 $script:PLUGINS_DIR = Join-Path $BACKEND_DIR "plugins"
 $script:PLUGIN_L4D2_DIR = Join-Path $BACKEND_DIR "plugin-l4d2\plugin-l4d2-core"
-$script:PLUGIN_L4D2_JAR = Join-Path $PLUGIN_L4D2_DIR "target\plugin-l4d2-core-1.0.0.jar"
+# 插件 JAR 名带版本，随父 POM 版本变化（当前 SNAPSHOT），用通配符动态匹配
+$script:PLUGIN_L4D2_JAR_GLOB = Join-Path $PLUGIN_L4D2_DIR "target\plugin-l4d2-core*.jar"
 
 # 数据库路径（默认：项目目录下，绕过 TRAE 沙箱限制）
 if ([string]::IsNullOrEmpty($DbPath)) {
@@ -241,11 +242,15 @@ function Build-Plugins {
         exit 1
     }
 
-    # 检查 JAR 是否生成
-    if (-not (Test-Path $PLUGIN_L4D2_JAR)) {
-        Write-LogError "插件 JAR 未生成: $PLUGIN_L4D2_JAR"
+    # 检查 JAR 是否生成（动态匹配版本文件名）
+    $builtJar = Get-ChildItem $PLUGIN_L4D2_JAR_GLOB -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike "*-sources.jar" -and $_.Name -notlike "*-exec.jar" -and -not $_.Name.EndsWith("-original.jar") } |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $builtJar) {
+        Write-LogError "插件 JAR 未生成: $PLUGIN_L4D2_JAR_GLOB"
         exit 1
     }
+    $PLUGIN_L4D2_JAR = $builtJar.FullName
 
     $jarInfo = Get-Item $PLUGIN_L4D2_JAR
     Write-LogInfo "插件 JAR 已生成: $($jarInfo.Name), 大小: $([math]::Round($jarInfo.Length / 1MB, 2)) MB"
@@ -263,8 +268,8 @@ function Build-Plugins {
             Remove-Item $_.FullName -Force
         }
 
-    # 复制新 JAR 到 plugins 目录
-    $destJar = Join-Path $PLUGINS_DIR "plugin-l4d2-core-1.0.0.jar"
+    # 复制新 JAR 到 plugins 目录（保留构建版本文件名；PF4J 从 manifest 读 plugin.id，不依赖文件名）
+    $destJar = Join-Path $PLUGINS_DIR $jarInfo.Name
     Copy-Item -Path $PLUGIN_L4D2_JAR -Destination $destJar -Force
     Write-LogInfo "插件 JAR 已部署: $destJar"
     Write-LogInfo "========== 插件打包完成 =========="

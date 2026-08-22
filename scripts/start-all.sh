@@ -96,7 +96,7 @@ if [[ ${FRONTEND_ONLY} -eq 0 ]]; then
       log "打包插件 JAR 并部署..."
       mvn -pl plugin-l4d2/plugin-l4d2-core -am install -DskipTests -q
       mkdir -p "${BACKEND_DIR}/plugins"
-      cp "${PLUGIN_DIR}/target/plugin-l4d2-core-1.0.0.jar" "${BACKEND_DIR}/plugins/"
+      cp "${PLUGIN_DIR}/target/plugin-l4d2-core-1.0.0-SNAPSHOT.jar" "${BACKEND_DIR}/plugins/"
     else
       log "插件源码目录不存在，跳过插件打包"
     fi
