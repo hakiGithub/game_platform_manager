@@ -1,7 +1,7 @@
 # 版本与维护约定 / Changelog
 
-> 对齐主应用: `backend/` @ 2026-08-18
-> 关联 ADR: [ADR-0001 插件菜单归属与 getMenus() 扩展点](../../../../docs/design/adr/0001-plugin-menu-ownership.md)、[ADR-0006 补丁安装决策树](../../../../docs/design/adr/0006-patch-install-decision-tree.md)、[ADR-0007 插件前端 Night Operations token 隔离](../../../../docs/design/adr/0007-plugin-frontend-nightops-token-isolation.md)、[ADR-0009 平台侧能力需求](../../../../docs/design/adr/0009-platform-capability-requirements.md)
+> 对齐主应用: `backend/` @ 2026-08-22
+> 关联 ADR: [ADR-0001 插件菜单归属与 getMenus() 扩展点](../../../../docs/design/adr/0001-plugin-menu-ownership.md)、[ADR-0006 补丁安装决策树](../../../../docs/design/adr/0006-patch-install-decision-tree.md)、[ADR-0007 插件前端 Night Operations token 隔离](../../../../docs/design/adr/0007-plugin-frontend-nightops-token-isolation.md)、[ADR-0009 平台侧能力需求](../../../../docs/design/adr/0009-platform-capability-requirements.md)、[ADR-0011 定时任务管理](../../../../docs/design/adr/0011-scheduled-task-management.md)
 
 ## 1. 版本与维护约定
 
@@ -22,6 +22,7 @@
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| 3.8.0 | 2026-08-22 | ADR-0011 定时任务体系（独立于任务中心，已实施并提交）：插件新增三个接入点——`ScheduledTaskHandler`（`@Component` 一个 Handler 一个 key）、`ScheduledTaskDeclarationExtension`（声明式默认计划，宿主按 pluginId:key upsert）、`ScheduleService`（编程式 CRUD 服务，注入子容器自动绑定本插件 source，强制来源隔离）。关键语义：无自动重试（下一轮 cron 即天然重试）、不互斥、创建时不校验 handlerKey 触发才解析（未注册记 FAILED）、同一计划同时刻只允许一个 run（重叠记 SKIPPED）、停机不补跑、payload 快照传 Handler、run 日志 500 条上限 + 30 天清理。插件生命周期联动：停用/热重载（purgeTasks=false）暂停、重载恢复、卸载移除（purgeTasks=true）物理清理。主界面「任务中心 → 定时计划」统一管理。新增陷阱：声明式计划被用户改过（userModified）会被 upsert 跳过、删过不复活；热部署勿用 purgeTasks=true（会删计划）。详见 `references/scheduled_task.md` 与 [ADR-0011](../../../../docs/design/adr/0011-scheduled-task-management.md) |
 | 3.7.0 | 2026-08-18 | ADR-0009 平台能力三项扩展（已实施并重启验证）：新增 `SshTunnelService` SPI（SSH 本地端口转发：openByHost 平台凭据复用会话池+钉住 / openWithCredentials 插件凭据专用会话不落库；去重键含 ownerPluginId 跨插件不共享；引用计数 + 三层兜底关闭；本地端口仅绑 127.0.0.1）；新增 `configInfo.database` 组装（yml dockerCompose.database 变量名引用式声明，部署与更新同路径组装，用户输入 > 默认值 > 字面量）；新增 `onInstanceUpdate` 钩子（update 后完整新 configInfo，每次更新都触发，diff 插件自理）；新增陷阱：onInstanceCreate 时 configInfo 尚无 database 节（懒建）、老实例裸变量回退、隧道连接地址为 127.0.0.1:localPort |
 | 3.6.0 | 2026-08-16 | 部署方式配置扩展（ADR-0008）：`GameEnhancementExtension.getDeployConfigs()` 返回 `DeployConfigDeclaration`（deployType + 与 yml deployConfig 同构的配置节）；主应用读取时合并——部署选项 = yml supportedDeployTypes ∪ 插件声明类型（仅主应用支持的 code，未知忽略告警）、同一类型插件节整节替换（插件优先）；执行仍走 DeployAdapter 体系；插件热部署即生效，不落库。另：plugin-dst 实战经验回填（独立仓库构建插件四坑——先 `mvn -pl api,plugin install`、独立 pom 必须显式 `-parameters`（Spring 6.1 无 LVT 回退 + 子容器/主容器双候选 bean 靠参数名消歧）、lombok 自带、改 pom 后须 `clean package`；子容器 bean 创建失败静默继续的症状与排查（STARTED+manifest 正常但控制器未注册 → "No static resource plugin/..."）；子容器 `@Scheduled` 疑似不生效（未 @EnableScheduling，自管 ScheduledExecutorService 规避）；无 RCON 游戏控制台通道模式（tmux send-keys + 日志标记截取 + 长命令绕过适配器 60s 超时）；mygame 前端示例缺失文件补齐（tsconfig.json / env.d.ts）；deploy-plugin.sh 部署外部仓库 jar 用法） |
 | 3.5.0 | 2026-08-16 | 插件热部署工作流：新增 `scripts/deploy-plugin.sh`（构建 → unload 释放 Windows jar 锁 → 覆盖 → load，后端免重启）与宿主 `POST /api/pf4j/plugins/load?jarName=` 端点（限定插件目录防穿越）；卸载接口新增 `purgeTasks` 参数（热部署传 false 保留任务中心历史）；修复热加载扩展点丢失 bug（PF4J per-plugin 扩展查找仅对 STARTED 生效 → loadPlugin 先启动再发现）；ADR-0007 插件前端 Night Operations token 隔离（复制 variables.scss 副本、暗色单主题、sass `$--` 私有成员陷阱、html.dark 特异性）；新增 Wujie popper 定位漂移陷阱与 wujiePopperFix 运行时修正方案 |

@@ -1,7 +1,7 @@
 # SDK 接口签名速查
 
 > 权威来源：`backend/plugin/src/main/java/com/gameplatform/plugin/`。本文件为速查摘要，完整说明见本 SKILL 目录其他 `references/` 文件。
-> 当前对齐版本：v3.7.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展）
+> 当前对齐版本：v3.8.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
 
 ## 扩展点
 
@@ -178,6 +178,49 @@ void close(TunnelHandle handle);   // 幂等：引用计数减至 0 才真正关
 // 去重键 (ownerPluginId, 凭据来源, remoteHost, remotePort)：同插件同目标复用句柄+计数，跨插件不共享
 // 三层兜底关闭：close 归零 → 插件卸载强制清理 → 宿主删主机联动（仅平台凭据隧道）
 // 详见 references/host_services.md §5；配套 configInfo.database 组装见 §6
+```
+
+### ScheduleService（v3.8.0 ADR-0011，定时计划编程式服务，注入子容器）
+```java
+String create(ScheduleCreateRequest request);          // 返回计划ID，source/pluginId自动绑定本插件
+void   update(String id, ScheduleUpdateRequest req);   // name/cron/payload
+void   enable(String id);  void disable(String id);    // disable 只停未来触发，进行中的 run 跑完
+void   delete(String id);                              // 逻辑删除（声明式计划重载后不复活）
+String trigger(String id);                             // 立即触发一次 → MANUAL run，遇重叠记 SKIPPED
+ScheduleVO                       get(String id);
+PageResult<ScheduleVO>           list(ScheduleQuery query);
+PageResult<ScheduleRunVO>        listRuns(ScheduleRunQuery query);
+List<TaskLog>                    getRunLogs(String runId);   // 时间正序，最多 500 条
+// 所有操作强制本插件来源隔离（无法操作其他来源计划）
+```
+
+### ScheduledTaskHandler（v3.8.0 ADR-0011，定时任务处理器，@Component 注册，独立于 TaskHandler）
+```java
+String getKey();                       // 同 source 内唯一，计划经此引用
+String getDisplayName();
+default long getDefaultTimeoutMs();    // 默认 30 分钟；0=不超时
+TaskResult execute(TaskContext ctx, TaskPayload payload) throws Exception;
+// 复用任务中心 TaskContext：ctx.log(...) 写 run 日志；循环中检 isCancelled()/isTimeout()；reportProgress 已节流
+// 无 isRetryable/getMaxRetryCount/getMutexKey/onSubmit：不重试、不互斥、无生命周期钩子
+```
+
+### ScheduledTaskDeclarationExtension（v3.8.0 ADR-0011，声明式默认计划，@Component）
+```java
+List<ScheduleDeclaration> getScheduleDeclarations();   // 宿主按 pluginId:key upsert；同插件内 key 唯一
+// ScheduleDeclaration{key,name,handlerKey,cron,payload,enabled(default true)}
+// upsert：用户改过(userModified=1)跳过、删过(is_deleted 墓碑)不复活、未改过随声明演进
+```
+
+### 计划/触发记录 DTO
+```java
+// ScheduleCreateRequest{name, handlerKey, cron, payload(Map), enabled}
+// ScheduleUpdateRequest{name, cron, payload}   // enabled 走启停接口，handlerKey 创建后不可变
+// ScheduleQuery{source, handlerKey, keyword, enabled, page, size}
+// ScheduleRunQuery{scheduleId(必填), status, page, size}
+// ScheduleVO{id,name,handlerKey,handlerName,cron,payload,enabled,paused,pauseReason,source,pluginId,
+//            declarationKey,nextFireTime,lastRunStatus,lastRunTime,userModified,createTime,updateTime}
+// ScheduleRunVO{id,scheduleId,scheduleName,triggerType(CRON/MANUAL),status(RUNNING/SUCCEEDED/FAILED/CANCELLED/SKIPPED),
+//               payload,result,errorMessage,progress,progressMessage,startedAt,completedAt,durationMs,createTime}
 ```
 
 ## PluginManifestVO
