@@ -1,0 +1,42 @@
+# 基础部署（SQLite）—— ADR-0012
+# 用法：cd docker && docker compose up -d --build
+# 访问：http://localhost:8081（默认账号 admin/admin123）
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    image: game-platform-backend:latest
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # 数据库切换点（MySQL/PG 支持落地后按 docker/README.md 覆盖，见 ADR-0012）
+      SPRING_DATASOURCE_URL: jdbc:sqlite:/app/data/game_platform.db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.sqlite.JDBC
+      # 容器内 docker-java 客户端走宿主 Docker socket（管理游戏服务器容器）
+      GAME_PLATFORM_DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      # 运行时目录全部挂载到宿主 backend/ 下，便于直接复用/调试本机数据
+      - ../backend/data:/app/data          # SQLite 数据库文件
+      - ../backend/plugins:/app/plugins    # 插件目录（hot-reload 30s 扫描）
+      - ../backend/backups:/app/backups    # 实例备份
+      - ../backend/storage:/app/storage    # 文件存储
+      - ../backend/temp:/app/temp          # 临时文件
+      - ../backend/games:/app/games        # 外部游戏元数据（可选）
+      - ../backend/logs:/app/logs          # 应用日志
+      - /var/run/docker.sock:/var/run/docker.sock
+    # 仅内网暴露，不直接对外
+    expose:
+      - "8080"
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    image: game-platform-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8081:80"

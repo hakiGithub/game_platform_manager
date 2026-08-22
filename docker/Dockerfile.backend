@@ -1,0 +1,35 @@
+# 后端镜像：多阶段构建（Maven 编译 → JRE 运行）
+# 构建上下文必须为仓库根目录：docker build -f docker/Dockerfile.backend .
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /build
+
+# 先拷贝 pom 利用 Docker 层缓存下载依赖
+COPY pom.xml ./
+COPY api/pom.xml api/
+COPY plugin/pom.xml plugin/
+COPY core/pom.xml core/
+COPY plugin-l4d2/pom.xml plugin-l4d2/
+COPY plugin-l4d2/plugin-l4d2-core/pom.xml plugin-l4d2/plugin-l4d2-core/
+RUN mvn -B -q dependency:go-offline || true
+
+COPY api/ api/
+COPY plugin/ plugin/
+COPY core/ core/
+RUN mvn -B -pl core -am package -DskipTests
+
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+
+# fat jar 带 -exec 分类器（构建产物唯一，通配匹配避免硬编码版本号）
+COPY --from=build /build/core/target/*-exec.jar /app/app.jar
+
+ENV TZ=Asia/Shanghai \
+    JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
+
+EXPOSE 8080
+
+# 容器无 curl/wget，用 bash 内建 /dev/tcp 探测端口
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

@@ -20,6 +20,8 @@
 | [0009](0009-platform-capability-requirements.md) | 平台侧能力需求（dnf-tw 多实例依赖） | Accepted | 2026-08-18 |
 | [0010](0010-deploy-resource-limit-override.md) | 部署资源限制生效链路（override 文件方案） | Accepted | 2026-08-18 |
 | [0011](0011-scheduled-task-management.md) | 定时任务管理（Schedule）独立模型 | Accepted | 2026-08-22 |
+| [0012](0012-app-containerization-and-db-reserve.md) | 应用容器化部署与多数据库预留 | Accepted | 2026-08-22 |
+| [0013](0013-ci-image-build-workflow.md) | CI 镜像构建工作流（GitHub Actions + GitLab CI） | Accepted | 2026-08-22 |
 
 ## 术语表
 
