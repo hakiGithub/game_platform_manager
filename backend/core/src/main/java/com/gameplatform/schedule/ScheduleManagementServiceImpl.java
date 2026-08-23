@@ -143,7 +143,9 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
                 .eq(hasText(query.getSource()), ScheduledTask::getSource, normalizeSource(query.getSource()))
                 .eq(hasText(query.getHandlerKey()), ScheduledTask::getHandlerKey, query.getHandlerKey())
                 .like(hasText(query.getKeyword()), ScheduledTask::getName, query.getKeyword())
-                .eq(query.getEnabled() != null, ScheduledTask::getEnabled, query.getEnabled() ? 1 : 0)
+                // 注意：eq 的 value 参数无论 condition 与否都会先求值，enabled 为 null 时
+                // `query.getEnabled() ? 1 : 0` 直接 NPE —— 必须 Boolean.TRUE.equals 防拆箱
+                .eq(query.getEnabled() != null, ScheduledTask::getEnabled, Boolean.TRUE.equals(query.getEnabled()) ? 1 : 0)
                 .orderByDesc(ScheduledTask::getCreateTime);
 
         Page<ScheduledTask> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);
