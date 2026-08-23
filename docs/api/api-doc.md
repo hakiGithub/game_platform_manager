@@ -886,7 +886,7 @@
 | gameName | String | 游戏名称 |
 | gameIcon | String | 游戏图标URL |
 | gameDesc | String | 游戏描述 |
-| supportDeployType | String | 支持的部署方式(JSON数组)：1-LinuxGSM，2-Docker，3-Docker Compose |
+| supportDeployType | String | 支持的部署方式(JSON数组，字符串编码)：linuxgsm(LinuxGSM)、docker(Docker)、docker-compose(Docker Compose)、linuxgsm-docker(LinuxGSM Docker) |
 | defaultPort | Integer | 默认端口 |
 | defaultDependences | String | 环境依赖列表(JSON数组) |
 | configSchema | String | 配置表单Schema(JSON格式) |
@@ -1060,7 +1060,7 @@
 | name | String | 否 | 实例名称（模糊查询） |
 | hostId | Long | 否 | 主机ID |
 | gameCode | String | 否 | 游戏编码 |
-| status | Integer | 否 | 运行状态：0-已停止，1-运行中，2-异常 |
+| status | Integer | 否 | 运行状态：0-已停止，1-运行中，2-启动中，3-停止中，4-异常，5-安装中，6-更新中，7-未安装 |
 
 **响应参数**:
 
@@ -1075,7 +1075,7 @@
 | records[].hostName | String | 主机名称 |
 | records[].deployPath | String | 部署路径 |
 | records[].port | Integer | 端口号 |
-| records[].status | Integer | 运行状态：0-已停止，1-运行中，2-异常 |
+| records[].status | Integer | 运行状态：0-已停止，1-运行中，2-启动中，3-停止中，4-异常，5-安装中，6-更新中，7-未安装 |
 | records[].processId | Integer | 进程ID |
 | records[].autoRestart | Integer | 自动重启：0-否，1-是 |
 | records[].lastStartTime | DateTime | 最后启动时间 |
@@ -1142,7 +1142,7 @@
 | hostInfo | Object | 主机信息 |
 | deployPath | String | 部署路径 |
 | port | Integer | 端口号 |
-| status | Integer | 运行状态：0-已停止，1-运行中，2-异常 |
+| status | Integer | 运行状态：0-已停止，1-运行中，2-启动中，3-停止中，4-异常，5-安装中，6-更新中，7-未安装 |
 | processId | Integer | 进程ID |
 | startArgs | String | 启动参数 |
 | configPath | String | 配置文件路径 |
@@ -2167,12 +2167,15 @@ Content-Disposition: attachment; filename="PalWorldSettings.ini"
 - 0: 离线
 - 1: 在线
 
-**实例运行状态**:
-- 0: 已停止
-- 1: 运行中
-- 2: 异常
-- 3: 部署中
-- 4: 卸载中
+**实例运行状态** (对应 `DeployAdapter.InstanceStatus`):
+- 0: 已停止 (STOPPED)
+- 1: 运行中 (RUNNING)
+- 2: 启动中 (STARTING)
+- 3: 停止中 (STOPPING)
+- 4: 异常 (ERROR)
+- 5: 安装中 (INSTALLING)
+- 6: 更新中 (UPDATING)
+- 7: 未安装 (NOT_INSTALLED)
 
 **用户状态**:
 - 0: 禁用
@@ -3660,7 +3663,7 @@ Content-Disposition: attachment; filename="PalWorldSettings.ini"
 
 #### 10.6.1 容器 Exec 终端
 
-**端点**: `/ws/docker/exec`
+**端点**: `/ws/docker/{hostId}/containers/{containerId}/exec`
 
 **描述**: 通过 WebSocket 在容器内启动新进程执行命令
 
@@ -3677,7 +3680,7 @@ Content-Disposition: attachment; filename="PalWorldSettings.ini"
 **连接URL示例**:
 
 ```
-ws://localhost:8080/ws/docker/exec?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
+ws://localhost:8080/ws/docker/1/containers/a1b2c3d4e5f6/exec?token=xxx
 ```
 
 **消息格式**:
@@ -3729,7 +3732,7 @@ ws://localhost:8080/ws/docker/exec?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
 
 #### 10.6.2 容器 Attach 终端
 
-**端点**: `/ws/docker/attach`
+**端点**: `/ws/docker/{hostId}/containers/{containerId}/attach`
 
 **描述**: 通过 WebSocket 连接到容器主进程
 
@@ -3746,7 +3749,7 @@ ws://localhost:8080/ws/docker/exec?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
 **连接URL示例**:
 
 ```
-ws://localhost:8080/ws/docker/attach?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
+ws://localhost:8080/ws/docker/1/containers/a1b2c3d4e5f6/attach?token=xxx
 ```
 
 **消息格式**: 同 Exec 终端
@@ -3755,7 +3758,7 @@ ws://localhost:8080/ws/docker/attach?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
 
 #### 10.6.3 实时日志流
 
-**端点**: `/ws/docker/logs`
+**端点**: `/ws/docker/{hostId}/containers/{containerId}/logs`（亦支持 `/ws/docker/{hostId}/containers/{containerId}/logs/{tail}` 直接取末尾 N 行）
 
 **描述**: 通过 WebSocket 实时获取容器日志流
 
@@ -3774,7 +3777,7 @@ ws://localhost:8080/ws/docker/attach?hostId=1&containerId=a1b2c3d4e5f6&token=xxx
 **连接URL示例**:
 
 ```
-ws://localhost:8080/ws/docker/logs?hostId=1&containerId=a1b2c3d4e5f6&token=xxx&tail=100
+ws://localhost:8080/ws/docker/1/containers/a1b2c3d4e5f6/logs?token=xxx&tail=100
 ```
 
 **消息格式**:
@@ -3794,6 +3797,50 @@ ws://localhost:8080/ws/docker/logs?hostId=1&containerId=a1b2c3d4e5f6&token=xxx&t
   "type": "error",
   "data": "Container stopped"
 }
+```
+
+---
+
+#### 10.6.4 实例控制台
+
+**端点**: `/ws/instance/{instanceId}/console`
+
+**描述**: 通过 WebSocket 实时推送指定游戏实例的控制台输出
+
+**认证**: 需要JWT令牌（URL参数或请求头）
+
+**连接URL示例**:
+
+```
+ws://localhost:8080/ws/instance/1/console?token=xxx
+```
+
+---
+
+#### 10.6.5 实例日志流
+
+**端点**: `/ws/instance/{instanceId}/logs`
+
+**描述**: 通过 WebSocket 实时获取指定游戏实例的日志流
+
+**连接URL示例**:
+
+```
+ws://localhost:8080/ws/instance/1/logs?token=xxx
+```
+
+---
+
+#### 10.6.6 主机 SSH 终端
+
+**端点**: `/ws/ssh/{hostId}`
+
+**描述**: 通过 WebSocket 连接到指定主机的 SSH 终端
+
+**连接URL示例**:
+
+```
+ws://localhost:8080/ws/ssh/1?token=xxx
 ```
 
 ---
@@ -3841,12 +3888,15 @@ ws://localhost:8080/ws/docker/logs?hostId=1&containerId=a1b2c3d4e5f6&token=xxx&t
 - 0: 离线
 - 1: 在线
 
-**实例运行状态**:
-- 0: 已停止
-- 1: 运行中
-- 2: 异常
-- 3: 部署中
-- 4: 卸载中
+**实例运行状态** (对应 `DeployAdapter.InstanceStatus`):
+- 0: 已停止 (STOPPED)
+- 1: 运行中 (RUNNING)
+- 2: 启动中 (STARTING)
+- 3: 停止中 (STOPPING)
+- 4: 异常 (ERROR)
+- 5: 安装中 (INSTALLING)
+- 6: 更新中 (UPDATING)
+- 7: 未安装 (NOT_INSTALLED)
 
 **用户状态**:
 - 0: 禁用

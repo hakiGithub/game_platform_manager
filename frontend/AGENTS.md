@@ -351,7 +351,12 @@ const statusType = computed(() => {
 const statusText = computed(() => {
   switch (props.instance.status) {
     case 1: return '运行中'
-    case 2: return '异常'
+    case 2: return '启动中'
+    case 3: return '停止中'
+    case 4: return '异常'
+    case 5: return '安装中'
+    case 6: return '更新中'
+    case 7: return '未安装'
     default: return '已停止'
   }
 })
@@ -465,8 +470,13 @@ function handleDetail() {
         <el-form-item label="状态">
           <el-select v-model="queryParams.status" placeholder="请选择" clearable>
             <el-option label="运行中" :value="1" />
+            <el-option label="启动中" :value="2" />
+            <el-option label="停止中" :value="3" />
+            <el-option label="异常" :value="4" />
             <el-option label="已停止" :value="0" />
-            <el-option label="异常" :value="2" />
+            <el-option label="安装中" :value="5" />
+            <el-option label="更新中" :value="6" />
+            <el-option label="未安装" :value="7" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -622,7 +632,8 @@ async function handleStop(row) {
 function getStatusType(status) {
   switch (status) {
     case 1: return 'success'
-    case 2: return 'danger'
+    case 2: return 'warning'
+    case 4: return 'danger'
     default: return 'info'
   }
 }
@@ -630,7 +641,12 @@ function getStatusType(status) {
 function getStatusText(status) {
   switch (status) {
     case 1: return '运行中'
-    case 2: return '异常'
+    case 2: return '启动中'
+    case 3: return '停止中'
+    case 4: return '异常'
+    case 5: return '安装中'
+    case 6: return '更新中'
+    case 7: return '未安装'
     default: return '已停止'
   }
 }

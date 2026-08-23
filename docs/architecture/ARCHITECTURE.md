@@ -2,7 +2,7 @@
 
 > 版本: 2.2.0 | 更新日期: 2026-08-03
 >
-> 本文聚焦插件框架架构（PF4J + Wujie 微前端 + ExtensionClient 持久化）。任务中心、实例状态同步、部署适配器等子系统设计参见 [docs/design/specs/](../design/specs/) 与 [ADR](../design/adr/)。
+> 本文聚焦插件框架架构（PF4J + Wujie 微前端 + ExtensionClient 持久化）。任务中心、实例状态同步、部署适配器等子系统的技术决策已沉淀于 [ADR](../design/adr/)（如 ADR-0005 运行状态词典、ADR-0006 补丁安装决策树、ADR-0011 定时任务管理等）。早期按日期命名的设计 spec 已归档至 `docs/archive/design-specs/`，不在主文档树引用。
 
 ---
 
@@ -461,4 +461,4 @@ GET /api/pf4j/plugin/{gameCode}/manifest
     └── api.basePath, api.endpoints (API 信息)
 ```
 
-> 菜单声明机制详见 [ADR-0001](../design/adr/0001-plugin-menu-ownership.md)，插件开发完整指南参见 [SKILL.md](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)。
+> 菜单声明机制详见 [ADR-0001](../design/adr/0001-plugin-menu-ownership.md)，插件开发完整指南参见 [插件开发文档](../../plugin-development/README.md)。

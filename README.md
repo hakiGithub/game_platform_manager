@@ -7,7 +7,7 @@
 ## 核心特性
 
 - **主机纳管** — SSH 连接管理、资源监控、Web 终端
-- **游戏部署** — 支持 LinuxGSM / Docker / Docker Compose 三种部署方式
+- **游戏部署** — 支持 LinuxGSM / Docker / Docker Compose / LinuxGSM Docker 四种部署方式
 - **实例管理** — 全生命周期、配置管理、文件管理、状态同步
 - **插件扩展** — 基于 PF4J 的插件框架，支持游戏增强扩展点与 Wujie 微前端集成
 - **RCON 控制台** — 游戏服务器远程命令控制
@@ -92,8 +92,9 @@ game_platform_manager/
 │   └── plugin-l4d2/   # L4D2 插件及其前端
 ├── frontend/          # Vue 3 + Vite 主前端
 ├── docs/              # 项目文档（分层组织）
+│   └── plugin-development/  # 插件开发指南（开源标准文档：README + reference + examples）
 ├── scripts/           # 全栈启动与重启脚本
-├── .trae/skills/      # AI Skill 文档（插件开发等）
+├── .trae/skills/      # AI 辅助技能副本（插件开发等，权威文档见 docs/plugin-development/）
 └── AGENTS.md          # AI Agent 协作指南
 ```
 
@@ -104,7 +105,7 @@ game_platform_manager/
 | [AI Agent 协作指南](AGENTS.md) | 项目总览、工程约定、安全规范（开发者必读） |
 | [架构文档](docs/architecture/ARCHITECTURE.md) | 系统架构、模块职责、数据流 |
 | [API 接口文档](docs/api/api-doc.md) | REST API 规范与端点说明 |
-| [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md) | PF4J 插件开发完整指南 |
+| [插件开发指南](docs/plugin-development/README.md) | PF4J 插件开发完整指南（含示例与参考实现） |
 | [UI/UE 设计规范](docs/design/ui-design-spec.md) | 界面设计与交互规范 |
 | [ADR 决策记录](docs/design/adr/README.md) | 架构决策记录 |
 | [测试文档](docs/testing/) | UI 测试策略、用例模板、E2E 清单 |
@@ -113,7 +114,7 @@ game_platform_manager/
 
 ## 插件开发
 
-本平台采用 PF4J 插件框架，支持为不同游戏开发独立的增强插件。完整的插件开发指南位于 [.trae/skills/gameplatform-plugin-dev/](.trae/skills/gameplatform-plugin-dev/SKILL.md)，包含：
+本平台采用 PF4J 插件框架，支持为不同游戏开发独立的增强插件。完整的插件开发指南位于 [docs/plugin-development/](docs/plugin-development/README.md)，包含：
 
 - 快速开始与项目结构规范
 - 扩展点（`GameEnhancementExtension`）与菜单声明（ADR-0001）

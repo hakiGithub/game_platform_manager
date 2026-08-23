@@ -1,5 +1,7 @@
 # L4D2 Server Next 功能移植设计
 
+> ⚫️ **已废弃**：本文档中描述的 `plugin-l4d2-standalone` 独立运行模式、「PF4J + standalone 双模式打包」、「Wujie / Standalone / Vite 三模式」等内容，已由 [ADR-0003](../../design/adr/0003-deprecate-plugin-l4d2-standalone.md) 物理删除 standalone 模块；前端仅保留 **Wujie + Vite(dev)** 两种模式。阅读时请以 ADR 与最新代码为准。
+
 > 将 `D:\program\open_source\l4d2-server-next-master`（Go + Vue 3 项目）的全部 L4D2 服务器管理功能照搬到现有 Java 实现的 `plugin-l4d2` 插件，后端用 Java 实现并通过 PF4J 插件框架提供给主应用使用。
 
 - **创建日期**：2026-07-19
@@ -1878,11 +1880,11 @@ export const usePluginStore = defineStore('plugin', () => {
 
 | 文档 | 内容 |
 |------|------|
-| `docs/superpowers/specs/2026-07-14-plugin-extension-storage-design.md` | 扩展存储设计 |
-| `docs/superpowers/specs/2026-07-14-extension-snowflake-id-design.md` | 雪花 ID 设计 |
-| `docs/superpowers/specs/2026-07-14-plugin-l4d2-decouple-core-design.md` | 解耦 core 设计 |
-| `docs/superpowers/specs/2026-07-14-plugin-l4d2-dual-packaging-design.md` | 双模式打包设计 |
-| `docs/superpowers/specs/2026-07-15-standalone-default-ui-design.md` | standalone 默认 UI 设计 |
+| `2026-07-14-plugin-extension-storage-design.md`（同目录，已归档） | 扩展存储设计 |
+| `2026-07-14-extension-snowflake-id-design.md`（同目录，已归档） | 雪花 ID 设计 |
+| `2026-07-14-plugin-l4d2-decouple-core-design.md`（同目录，已归档） | 解耦 core 设计 |
+| `2026-07-14-plugin-l4d2-dual-packaging-design.md`（历史路径，未纳入仓库，standalone 双模式已被 ADR-0003 删除） | 双模式打包设计 |
+| `2026-07-15-standalone-default-ui-design.md`（历史路径，未纳入仓库，standalone 模式已被 ADR-0003 删除） | standalone 默认 UI 设计 |
 
 ---
 

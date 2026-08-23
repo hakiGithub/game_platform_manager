@@ -8,25 +8,24 @@
 docs/
 ├── architecture/       # 架构文档（系统设计、模块职责、数据流）
 │   └── ARCHITECTURE.md
+├── plugin-development/ # 插件开发指南（开源标准文档：README + reference + examples）
 ├── api/                # API 参考文档
 │   └── api-doc.md
 ├── design/             # 设计文档
-│   ├── adr/            # 架构决策记录（ADR）
+│   ├── adr/            # 架构决策记录（ADR）— 唯一保留的过程决策文档
 │   │   ├── README.md
 │   │   ├── glossary.md
 │   │   └── 0001-plugin-menu-ownership.md
-│   ├── specs/          # 设计 spec（功能设计文档）
-│   ├── docker/         # Docker 模块设计
-│   │   ├── requirement.md
-│   │   ├── database.md
-│   │   └── ui-design.md
 │   └── ui-design-spec.md  # UI/UE 设计规范
 ├── testing/            # 测试文档
 │   ├── ui-testing/     # UI 测试策略、用例、E2E 清单
 │   ├── deploy-task-status-machine-issues.md
 │   └── deploy-task-status-machine-ui-test-cases.md
-└── archive/            # 归档文档（历史计划，不再维护）
-    └── plans/          # 迭代实施计划（已实现或废弃）
+└── archive/            # 归档文档（历史过程文档，仅作溯源，核心文档不引用）
+    ├── implementation-plans/  # 历史实现 / 续接计划（内部引用路径已失效）
+    ├── design-specs/          # 历史设计 spec（2026-07-* 日期文档）
+    ├── design-docker/         # 历史 Docker 模块设计（database/requirement/ui-design）
+    └── issues-archive.json    # 早期缺陷跟踪记录（v1.0.0）
 ```
 
 ## 文档分层说明
@@ -35,9 +34,9 @@ docs/
 |------|------|------|------|
 | 架构 | `architecture/` | 全体开发者 | 系统整体架构、模块划分、数据流 |
 | API 参考 | `api/` | 前后端开发者 | REST API 端点、请求/响应格式 |
-| 设计决策 | `design/adr/` | 架构维护者 | 具有长期影响的技术决策记录 |
-| 设计文档 | `design/specs/` | 功能开发者 | 具体功能的设计方案 |
+| 设计决策 | `design/adr/` | 架构维护者 | 具有长期影响的技术决策记录（唯一保留的过程决策文档） |
 | UI 设计 | `design/` | 前端开发者 | 界面设计规范与交互稿 |
+| 历史设计 | `archive/design-specs/`、`archive/design-docker/` | 溯源 | 早期按日期命名的 spec 与 Docker 设计，已归档不纳入主文档树 |
 | 测试 | `testing/` | QA / 开发者 | 测试策略、用例模板、验收清单 |
 | 归档 | `archive/` | — | 历史实施计划，仅作参考 |
 
@@ -49,7 +48,7 @@ docs/
 2. [AGENTS.md](../AGENTS.md) — AI Agent 协作指南、工程约定
 3. [架构文档](architecture/ARCHITECTURE.md) — 系统架构
 4. [API 文档](api/api-doc.md) — 接口规范
-5. [插件开发指南](../.trae/skills/gameplatform-plugin-dev/SKILL.md) — 如需开发插件
+5. [插件开发指南](plugin-development/README.md) — 如需开发插件
 
 ## 维护约定
 

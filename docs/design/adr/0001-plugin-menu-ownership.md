@@ -5,7 +5,7 @@
 | 状态 | Accepted |
 | 日期 | 2026-08-02 |
 | 决策者 | User (grilling session) |
-| 相关 spec | [2026-08-02-plugin-menu-decoupling-design.md](../specs/2026-08-02-plugin-menu-decoupling-design.md) |
+| 相关 spec | 无（本 ADR 自包含决策完整记录，早期草稿 spec 未纳入主文档树） |
 | Supersedes | 无 |
 
 ## 背景（Context）
@@ -39,7 +39,7 @@
 
 7. **`capabilities` 字段填充**：`manifest.frontend.capabilities` 从 `features.keys()` 改为从 `getMenus()` 返回的菜单 path 集合推导：`capabilities = menus.stream().map(PluginMenuDeclaration::getPath).toList()`。
 
-8. **Standalone 同步修复**：`plugin-l4d2-standalone` 模式同样从 `L4D2Extension.getMenus()` 读取菜单，保证 Wujie / Standalone / Vite 三种模式菜单一致。
+8. **Standalone 同步修复**：`plugin-l4d2-standalone` 模式同样从 `L4D2Extension.getMenus()` 读取菜单，保证 Wujie / Standalone / Vite 三种模式菜单一致。（注：standalone 模式后续已由 [ADR-0003](../design/adr/0003-deprecate-plugin-l4d2-standalone.md) 废弃并物理删除，当前仅 Wujie + Vite 两种模式。）
 
 9. **`loadManifestFromFile` 机制**：删除从 JAR 内读取静态 `manifest.json` 文件的双路径机制。manifest 仅从扩展点 `getManifest()` + `getMenus()` 构建，路径单一，调试简单。
 

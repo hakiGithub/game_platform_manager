@@ -319,7 +319,9 @@ public class CustomAdapter extends AbstractDeployAdapter {
 
     @Override
     public DeployType getType() {
-        return DeployType.CUSTOM;
+        // 返回已有枚举值；若需全新部署类型，先在 DeployAdapter.DeployType 枚举新增
+        // （当前支持：linuxgsm / docker / docker-compose / linuxgsm-docker）
+        return DeployType.LINUX_GSM_DOCKER;
     }
 
     @Override
@@ -385,10 +387,10 @@ game:
   version: "1.20.1"                  # 版本
   icon: /icons/minecraft.png         # 图标
 
-  deployTypes:                       # 支持的部署方式
-    - docker
+  deployTypes:                       # 支持的部署方式(字符串编码，对应 DeployAdapter.DeployType)
     - linuxgsm
-    - native
+    - docker
+    - docker-compose
 
   defaultPorts:                      # 默认端口
     game: 25565
@@ -609,15 +611,12 @@ public class L4D2Extension implements GameEnhancementExtension {
 
     @Override
     public Map<String, Object> getManifest() {
+        // 仅返回基础元信息；菜单与能力由 getMenus() 扩展点提供（见 ADR-0001）
+        // 不要在此声明 features / frontend.menus —— manifest.features 字段已废弃
         return Map.of(
             "gameCode", getGameCode(),
             "gameName", getGameName(),
-            "version", getVersion(),
-            "features", Map.of(
-                "rconSupport", true,
-                "mapManagement", true,
-                "pluginManagement", true
-            )
+            "version", getVersion()
         );
     }
 
@@ -649,7 +648,11 @@ plugin.description=L4D2 游戏服务器增强插件
 plugin.gameCode=l4d2
 ```
 
-### 插件清单 (manifest.json)
+### 插件清单（由框架动态构建，无需静态 manifest.json）
+
+> ADR-0001：清单不再从 JAR 内静态 `manifest.json` 读取（`loadManifestFromFile` 已删除）。
+> 主应用通过 `GameEnhancementExtension#getManifest()` + `getMenus()` 动态拼装清单，
+> 其中 **菜单由 `getMenus()` 返回**（强类型 `PluginMenuDeclaration`），`manifest.features` 字段已废弃。
 
 ```json
 {
@@ -661,18 +664,30 @@ plugin.gameCode=l4d2
   "icon": "/plugin/l4d2/ui/assets/icon.png",
   "frontend": {
     "entry": "/plugin/l4d2/ui/index.html",
-    "routes": [
-      { "path": "/dashboard", "name": "仪表盘", "icon": "Odometer", "order": 1 },
-      { "path": "/maps", "name": "地图管理", "icon": "Map", "order": 2 },
-      { "path": "/plugins", "name": "插件管理", "icon": "Box", "order": 3 },
-      { "path": "/rcon", "name": "控制台", "icon": "Monitor", "order": 4 },
-      { "path": "/monitor", "name": "性能监控", "icon": "TrendCharts", "order": 5 },
-      { "path": "/admins", "name": "管理员", "icon": "User", "order": 6 }
+    "menus": [
+      { "path": "/dashboard", "name": "仪表盘", "icon": "Odometer", "order": 1, "requireInstance": true },
+      { "path": "/maps", "name": "地图管理", "icon": "Map", "order": 2, "requireInstance": true },
+      { "path": "/rcon", "name": "控制台", "icon": "Monitor", "order": 4, "requireInstance": true },
+      { "path": "/monitor", "name": "性能监控", "icon": "TrendCharts", "order": 5, "requireInstance": true }
     ]
   },
   "api": {
     "basePath": "/api/plugin/l4d2"
   }
+}
+```
+
+菜单声明的正确位置是扩展点的 `getMenus()` 方法（而非 manifest）：
+
+```java
+@Override
+public List<PluginMenuDeclaration> getMenus() {
+    return List.of(
+        PluginMenuDeclaration.builder()
+            .path("/dashboard").title("仪表盘").icon("Odometer").order(1).requireInstance(true).build(),
+        PluginMenuDeclaration.builder()
+            .path("/maps").title("地图管理").icon("Map").order(2).requireInstance(true).build()
+    );
 }
 ```
 
@@ -753,7 +768,7 @@ const response = await fetch(`${apiBase}/rcon/status`, {
 ```
 1. 主应用扫描 plugins 目录下的插件 JAR
    ↓
-2. 读取 manifest.json 获取菜单配置
+2. 插件框架调用各插件的 getMenus() 拼装菜单（ADR-0001），不再读取静态 manifest.json
    ↓
 3. 用户点击插件菜单，主应用通过 Wujie 创建子应用
    ↓

@@ -36,6 +36,6 @@
 
 ## 相关文档
 
-- [插件开发指南](../../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
+- [插件开发指南](../../plugin-development/README.md)
 - [架构文档](../../architecture/ARCHITECTURE.md)
 - [设计 spec 文档目录](../specs/)

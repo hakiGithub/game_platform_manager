@@ -10,7 +10,7 @@
 
 ### 核心功能
 - **主机纳管**: SSH连接管理、资源监控、Web终端
-- **游戏部署**: 支持 LinuxGSM/Docker/Docker Compose 三种部署方式
+- **游戏部署**: 支持 LinuxGSM/Docker/Docker Compose/LinuxGSM Docker 四种部署方式
 - **实例管理**: 游戏实例生命周期管理、配置管理、文件管理、状态同步
 - **插件扩展**: PF4J插件框架，支持游戏增强扩展点与微前端集成
 - **RCON 控制台**: 游戏服务器远程命令控制
@@ -84,7 +84,7 @@ game_platform_manger/
 ├── docs/                             # 文档（分层组织）
 │   ├── architecture/                 # 架构文档
 │   ├── api/                          # API 接口文档
-│   ├── design/                       # 设计文档（adr/ specs/ docker/ ui-design-spec）
+│   ├── design/                       # 设计文档（adr/ 架构决策记录 + ui-design-spec UI规范）
 │   ├── testing/                      # 测试文档（ui-testing/ + 用例）
 │   └── archive/                      # 归档文档（历史实施计划）
 ├── .trae/skills/                     # SKILL 文档（插件开发等）
@@ -166,10 +166,12 @@ game_platform_manger/
 
 | 端点 | 用途 |
 |------|------|
-| `/ws/ssh` | Web SSH 终端 |
-| `/ws/instance/console` | 实例控制台 |
-| `/ws/instance/log` | 实例日志流 |
-| `/ws/docker/{hostId}/containers/{containerId}/exec` | Docker 容器终端 |
+| `/ws/ssh/{hostId}` | Web SSH 终端 |
+| `/ws/instance/{instanceId}/console` | 实例控制台 |
+| `/ws/instance/{instanceId}/logs` | 实例日志流 |
+| `/ws/docker/{hostId}/containers/{containerId}/exec` | Docker 容器 Exec 终端 |
+| `/ws/docker/{hostId}/containers/{containerId}/attach` | Docker 容器 Attach 终端 |
+| `/ws/docker/{hostId}/containers/{containerId}/logs` | Docker 容器日志流（支持 `/{tail}`） |
 
 ---
 

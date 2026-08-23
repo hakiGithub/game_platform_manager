@@ -4,6 +4,8 @@
 > 状态: 已批准
 > 范围: 主应用 core 模块 + 前端主应用
 
+> ⚠️ **状态码以现行枚举为准**：本文档批准于 [ADR-0005](adr/0005-run-status-vocabulary-unification.md)（run_status 词汇统一）之前，正文与状态转换图沿用旧约定（如 `error`=2、`starting`=6、实例 runStatus=5 文案「部署中」）。现状见 ADR-0005 与 [api-doc.md](../../api/api-doc.md)：`InstanceStatus` 共 8 态 —— `0` 已停止 / `1` 运行中 / `2` 启动中 / `3` 停止中 / `4` 异常(`ERROR`) / `5` 安装中(`INSTALLING`) / `6` 更新中(`UPDATING`) / `7` 未安装。本章 §3.1 状态表已按现行枚举更新；但状态转换图中的 `rs=2` 等旧标注、以及正文「部署中」措辞，请以 ADR-0005 为准（实例 runStatus=5 现行用户文案为「安装中」）。
+
 ---
 
 ## 1. 背景与问题
@@ -95,10 +97,12 @@
 |---|---|---|---|
 | 0 | `stopped` | 已停止 | 部署成功且未自动启动 / 手动停止成功 |
 | 1 | `running` | 运行中 | 健康检查通过 + 容器/进程存活 |
-| 2 | `error` | 异常 | 部署失败 / 健康检查失败 / 启动失败 |
+| 2 | `starting` | 启动中 | 部署完成自动启动中 / 手动启动中（过渡态） |
 | 3 | `stopping` | 停止中 | 手动停止中（过渡态） |
-| 5 | `deploying` | 部署中 | 创建实例后，部署任务运行中 |
-| 6 | `starting` | 启动中 | 部署完成自动启动中 / 手动启动中（过渡态） |
+| 4 | `error` | 异常 | 部署失败 / 健康检查失败 / 启动失败 |
+| 5 | `installing` | 安装中 | 创建实例后，部署任务运行中（旧文档称「部署中」） |
+| 6 | `updating` | 更新中 | 实例更新中（过渡态） |
+| 7 | `not_installed` | 未安装 | 实例尚未部署 |
 
 ### 3.2 状态转换图
 
@@ -108,7 +112,7 @@
                           └──────┬──────┘
                                  ↓
                     ┌────────────────────────┐
-                    │   deploying (runStatus=5) │ ◄── 创建实例
+                    │   installing (runStatus=5, 安装中) │ ◄── 创建实例
                     └────────────┬───────────┘
                                  │
                   ┌──────────────┼──────────────┐
@@ -119,7 +123,7 @@
                   ↓              ↓              ↓
             ┌─────────┐  ┌──────────────┐  ┌─────────┐
             │  error  │  │  starting    │  │  error  │
-            │ (rs=2)  │  │  (runStatus=6) │  │ (rs=2)  │
+            │ (rs=4)  │  │  (runStatus=6) │  │ (rs=4)  │
             └─────────┘  └──────┬───────┘  └─────────┘
                                 │
                     ┌───────────┴───────────┐
@@ -131,7 +135,7 @@
                     ↓                       ↓
               ┌──────────┐            ┌─────────┐
               │ running  │            │  error  │
-              │ (rs=1)   │            │ (rs=2)  │
+              │ (rs=1)   │            │ (rs=4)  │
               └────┬─────┘            └─────────┘
                    │
             手动停止 / 重启
@@ -139,7 +143,7 @@
                    ↓
               ┌──────────┐
               │ stopping │ ──停止成功──→ stopped (rs=0)
-              │ (rs=3)   │ ──停止失败──→ error (rs=2)
+              │ (rs=3)   │ ──停止失败──→ error (rs=4)
               └──────────┘
 ```
 
@@ -153,17 +157,17 @@
 **健康检查判定（DeployService.deploy 自动启动阶段）：**
 ```java
 if (context.isAutoStart()) {
-    updateRunStatus(instanceId, 6); // starting
+    updateRunStatus(instanceId, 2); // starting
     if (adapter.start(instanceId, config)) {
         Thread.sleep(5000); // 等待服务启动
         boolean healthy = retryHealthCheck(adapter, instanceId, config, 3, 5000);
         if (healthy) {
             updateRunStatus(instanceId, 1); // running
         } else {
-            updateRunStatus(instanceId, 2); // error
+            updateRunStatus(instanceId, 4); // error
         }
     } else {
-        updateRunStatus(instanceId, 2); // error
+        updateRunStatus(instanceId, 4); // error
     }
 }
 ```
@@ -177,7 +181,7 @@ if (context.isAutoStart()) {
 **状态持久化：**
 - 每次 `runStatus` 变更，立即 `instanceMapper.updateRunStatus(id, newStatus)`
 - 部署任务状态（含日志）存 `DeployService.taskStatusMap`（内存）
-- 应用重启后：`runStatus=5`（部署中）的实例，启动时检测，若部署任务不存在 → 标记为 `error`（rs=2）
+- 应用重启后：`runStatus=5`（部署中）的实例，启动时检测，若部署任务不存在 → 标记为 `error`（rs=4）
 
 ### 3.4 前端列表状态显示
 
@@ -294,10 +298,12 @@ private String mapRunStatusToString(int runStatus) {
     return switch (runStatus) {
         case 0 -> "stopped";
         case 1 -> "running";
-        case 2 -> "error";
+        case 2 -> "starting";
         case 3 -> "stopping";
-        case 5 -> "deploying";
-        case 6 -> "starting";
+        case 4 -> "error";
+        case 5 -> "installing";
+        case 6 -> "updating";
+        case 7 -> "not_installed";
         default -> "unknown";
     };
 }
@@ -597,14 +603,14 @@ export function retryDeploy(id) {
 **并发与重复：**
 - 同一实例重复点击"部署" → `createInstance` 前检查 `runStatus=5`，若已部署中则拒绝：`throw new BusinessException("实例正在部署中")`
 - 部署中用户点击"删除" → 前端禁用删除按钮（`deploying` 状态不显示删除）；后端 `deleteInstance` 检查 `runStatus=5` 拒绝
-- 部署中应用重启 → 启动恢复机制标记为 `error`（rs=2）
+- 部署中应用重启 → 启动恢复机制标记为 `error`（rs=4）
 
 **资源清理：**
 - 部署失败但容器已创建 → `autoRollback=false`（默认），保留容器供排查；日志记录容器 ID，用户可手动清理或重试部署时先清理
 - 重试部署 → `POST /instances/{id}/retry-deploy` 先调用 `adapter.uninstall()` 清理旧容器，再重新 `deployAsync()`
 
 **状态一致性：**
-- `DeployService.taskStatusMap` 内存存储，应用重启丢失 → 已通过启动恢复机制处理（`runStatus=5` → `2`）
+- `DeployService.taskStatusMap` 内存存储，应用重启丢失 → 已通过启动恢复机制处理（`runStatus=5` → `4`）
 - 前端列表自动刷新检测到 `deploying` 实例消失（变为 `error`）→ 停止自动刷新，显示最新状态
 
 **Docker 容器日志边界：**

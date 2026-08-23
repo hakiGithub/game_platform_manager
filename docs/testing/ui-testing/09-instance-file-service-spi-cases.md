@@ -555,8 +555,8 @@
 
 ## 7. 关联文档
 
-- [InstanceFileService SPI 设计](../superpowers/specs/2026-07-24-instance-file-service-spi-design.md)
-- [InstanceFileService SPI 实现计划](../superpowers/plans/2026-07-24-instance-file-service-spi.md)
 - [E2E 验证清单](07-e2e-checklist.md)
 - [插件子应用测试用例](05-plugin-subapp-cases.md)
 - [Wujie 集成测试用例](06-wujie-integration-cases.md)
+
+> 注：InstanceFileService SPI 的早期设计 spec 与实现计划已归档至 `docs/archive/`（不在主文档树引用），本测试用例文档为权威执行依据。

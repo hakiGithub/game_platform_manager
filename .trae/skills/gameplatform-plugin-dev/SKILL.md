@@ -6,7 +6,7 @@ agent_created: true
 
 # GamePlatform 插件开发
 
-> **用户级副本说明**：本 SKILL 复制自平台仓库 `D:\program\ai\game_platform_manger\.trae\skills\gameplatform-plugin-dev\`（v3.8.0）。文档内的相对路径链接（如 `backend/plugin/`、`docs/design/adr/...`、`scripts/deploy-plugin.sh`）均以**平台仓库根目录**为基准解析，在其它项目中使用时请对照该仓库。平台仓库更新后应重新同步本副本（含 `references/` 与 `examples/`）。
+> **权威文档**：插件开发公开文档已迁移至 `docs/plugin-development/README.md`（开源标准结构：README + reference + examples）。本 SKILL 作为 AI 辅助副本保留，内容与之保持一致；平台仓库更新后请同步本副本（含 `references/` 与 `examples/`）。
 
 ## 概述
 

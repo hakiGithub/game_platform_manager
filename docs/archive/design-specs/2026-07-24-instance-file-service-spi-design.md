@@ -4,6 +4,8 @@
 > **主题**: 实例感知的文件管理 SPI（屏蔽部署类型差异）
 > **状态**: 待审查
 
+> ⚠️ **部分章节已失效**：本文档写作时尚存在 `plugin-l4d2-standalone` 独立运行模式，下文 §7.1 `StandaloneInstanceFileService`、§7.2「注入到 standalone 插件容器」、§8 实施步骤第 6 项、§9 风险登记中 standalone 相关条目均依赖该模块。该模块已由 [ADR-0003](../adr/0003-deprecate-plugin-l4d2-standalone.md) 于 2026-08-03 **物理删除**，前端仅保留 Wujie + Vite(dev) 两种模式，上述章节已不再适用。核心 SPI 设计（§1–§6，非 standalone 部分）仍然有效，请以最新代码与 ADR 为准。
+
 ---
 
 ## 1. 背景与目标

@@ -42,9 +42,9 @@ public class InstanceCreateDTO implements Serializable {
     private Long gameId;
 
     /**
-     * 部署类型 docker/native
+     * 部署类型 linuxgsm/docker/docker-compose/linuxgsm-docker（字符串编码，对应 DeployAdapter.DeployType）
      */
-    @Schema(description = "部署类型", required = true, example = "docker", allowableValues = {"docker", "native"})
+    @Schema(description = "部署类型", required = true, example = "docker", allowableValues = {"linuxgsm", "docker", "docker-compose", "linuxgsm-docker"})
     @NotBlank(message = "部署类型不能为空")
     private String deployType;
 
