@@ -159,7 +159,7 @@ public class MyGamePlugin extends Plugin {
 
 ### 6.1 独立仓库构建（可选路径，v3.6.0）
 
-插件也可以放在平台仓库之外的独立仓库，用无 parent 的独立 pom（参考 `examples/plugin-mygame/pom.xml` 或 `backend/plugin-template/pom.xml`）。除上表规则外，额外要求（**四个坑详见 `gotchas.md` §15**）：
+插件也可以放在平台仓库之外的独立仓库，用无 parent 的独立 pom 构建（平台仓库内可参考 `backend/plugin-template/pom.xml`）。除上表规则外，额外要求（**四个坑详见 `gotchas.md` §15**）：
 
 1. 先在平台仓库 `backend/` 下 `mvn -pl api,plugin install -DskipTests` 安装 provided 依赖到本地仓库；
 2. maven-compiler-plugin 必须加 `<parameters>true</parameters>`（否则子容器注入宿主服务报双候选 bean 二义性）；

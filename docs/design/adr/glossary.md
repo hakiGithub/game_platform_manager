@@ -31,6 +31,11 @@
   - **语义**：`host: 127.0.0.1` 指"实例所在主机的回环地址"，插件经 SshTunnelService 隧道访问。
   - **引入**：ADR-0009
 
+- **文档三副本（Plugin Dev Docs Copies）**
+  - **定义**：插件开发知识的三份物理副本——`docs/plugin-development/`（面向人的权威文档）、工作区 `.trae/skills/gameplatform-plugin-dev/`（AI skill 编辑源）、用户级 `~/.agents/skills/gameplatform-plugin-dev/`（AI skill 跨项目副本）。接口签名的权威始终是 `backend/plugin/` 源码。
+  - **规则**：skill 允许与 docs 形态分化（概念一致即可，不逐字一致）；两处 skill 副本必须逐字同步，漂移时以工作区为准整目录复制。
+  - **引入**：ADR-0014
+
 - **定时计划（Schedule）**
   - **定义**：以 cron 表达式周期性触发指定 ScheduledTaskHandler 的可重复执行定义（cron + handler key + payload 模板 + enabled 开关）。独立于任务中心 task_record 模型——不向执行队列提交任务，到点直接调用 Handler。
   - **存储**：宿主 `scheduled_task` 表（镜像 task_record 的来源隔离模式，带 source / plugin_id 字段）；插件声明的默认计划按稳定键（pluginId:key）upsert，用户的修改（cron / enabled）不被插件重启覆盖，用户删除的计划不复活。
@@ -209,5 +214,6 @@
 
 - [ADR 索引](README.md)
 - [ADR-0001: 插件菜单归属与 getMenus() 扩展点](0001-plugin-menu-ownership.md)
-- [插件开发指南](../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
+- [插件开发指南（面向人）](../../plugin-development/README.md)
+- [插件开发 AI Skill（ADR-0014 副本分工）](../../../.trae/skills/gameplatform-plugin-dev/SKILL.md)
 - [架构文档](../../architecture/ARCHITECTURE.md)

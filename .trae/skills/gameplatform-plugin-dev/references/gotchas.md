@@ -55,7 +55,7 @@ v3.0+ 起 `PluginContext` 仅持元数据（`getPluginId`/`getGameCode`/`getGame
 
 - `relativePath` 相对实例"游戏数据根目录"，用正斜杠。
 - Native/LinuxGSM：根目录 = `instance.installPath`
-- Docker 类：根目录 = 容器内工作目录（解析链：`configInfo.containerWorkDir` → `workDir` → 类型默认值 → 游戏元数据 `deployConfig.<deployType>.workingDir` 回退，见 `host_services.md` §3.1）
+- Docker 类：根目录 = 容器内工作目录（解析链：`configInfo.containerWorkDir` → `workDir` → 类型默认值 → 游戏元数据 `deployConfig.<deployType>.workingDir` 回退，见 `host-services.md` §3.1）
 - **禁止 `..`**，越界抛 `IllegalArgumentException`。
 - **Docker 类文件操作坑**：
   - `docker cp` 的目标/源**必须在宿主机**（`/tmp/.gp-*`）。传本地（Windows）路径会被 docker CLI 解析成容器引用，报 `copying between containers is not supported`——下载用 `downloadFileToMemory`（内部已处理），不要自写 docker cp 到本地
@@ -95,7 +95,7 @@ ExtensionStoreException (扩展资源存储基类)
 
 ## 11. standalone 模式（ADR-0003，v3.3.0 起废弃）
 
-`plugin-l4d2-standalone` 已物理删除。新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。需要独立部署的用户可部署完整主应用。详见 [ADR-0003](../../../../docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
+`plugin-l4d2-standalone` 已物理删除。新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。需要独立部署的用户可部署完整主应用。详见 ADR-0003。
 
 ## 12. 范围隔离（ADR-0002，v3.2.0 起变更）
 
@@ -106,7 +106,7 @@ ExtensionStoreException (扩展资源存储基类)
 - **代码**：主应用 `core/` 不得 `import com.gameplatform.plugin.{gameCode}.*`。
 - **例外**：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入），不属于插件业务。
 
-详见 [ADR-0002](../../../../docs/design/adr/0002-main-app-plugin-scope-isolation.md)。
+详见 ADR-0002。
 
 ## 13. 部署与热加载陷阱（v3.5.0）
 
@@ -118,14 +118,14 @@ ExtensionStoreException (扩展资源存储基类)
 
 ## 14. 版本与维护
 
-- 本 SKILL 目录（`references/`）为插件开发文档唯一权威源（v3.1.0 起）。
+- 文档分工见 ADR-0014：`backend/plugin/` 源码为 API 权威；`docs/plugin-development/` 为面向人的权威文档；本 skill 为 AI 自包含副本（工作区与用户级两处逐字同步，与 docs 概念对齐、不逐字一致）。
 - 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。
 - minor 变更只更 changelog。
-- 接口签名以 `backend/plugin/` 源码为权威，新增即补登记到对应 `references/` 文件。
+- 接口签名、路径常量、异常类变更 → 先改代码，再登记到对应 `references/` 文件。
 
 ## 15. 独立仓库构建插件（v3.6.0，源自 plugin-dst 实战）
 
-插件可以不放在平台仓库 `backend/` 下，用 `examples/plugin-mygame/pom.xml` 那样的**独立 pom**（无 parent）构建。这条路有四个坑：
+插件可以不放在平台仓库 `backend/` 下，用**无 parent 的独立 pom** 构建（规范见 `getting-started.md` §6.1）。这条路有四个坑：
 
 1. **provided 依赖需先安装**：`game-platform-plugin` / `game-platform-api` 不在中央仓库，先在平台仓库 `backend/` 下执行 `mvn -pl api,plugin install -DskipTests`（注意 settings.xml 可能配置了非默认 localRepository，如 `D:\dev\maven_repo`）。
 2. **必须显式开 `-parameters`**（`<parameters>true</parameters>`）。根因：插件子容器注入宿主服务（如 `InstanceQueryService`）时存在两个候选 bean——子容器注册的 `instanceQueryService` 单例与主容器的 `instanceQueryServiceImpl`——Spring 依赖**构造参数名与 bean 名匹配**（`instanceQueryService`）消歧；Spring 6.1（Boot 3.2）移除了字节码 LVT 参数名回退，只有 `-parameters` 编译出的 `MethodParameters` 可用。平台仓库内的插件经 `spring-boot-starter-parent` 默认开启，独立 pom 无 parent 必须自带。缺失症状：子容器创建抛 `UnsatisfiedDependencyException: expected single matching bean but found 2`。

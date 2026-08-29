@@ -1,7 +1,7 @@
 # SDK 接口签名速查
 
-> 权威来源：`backend/plugin/src/main/java/com/gameplatform/plugin/`。本文件为速查摘要，完整说明见本 SKILL 目录其他 `references/` 文件。
-> 当前对齐版本：v3.8.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
+> **权威来源**：`backend/plugin/src/main/java/com/gameplatform/plugin/`。在平台仓库内编码时以源码为准，本文件是跨项目场景的离线快照，签名有疑义先对源码。本文件只回答"方法长什么样"；实现约束、语义与示例见各主题文件。
+> 当前对齐版本：v3.9.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
 
 ## 扩展点
 
@@ -43,11 +43,7 @@ public class PluginMenuDeclaration {
 }
 ```
 
-**宿主校验规则**（`PluginFrameworkServiceImpl.buildMenusFromDeclarations`）：
-- `path` 为空或空白 → 抛 `IllegalStateException`（提示插件 id + 菜单 title）
-- 同插件内 `path` 重复 → 抛 `IllegalStateException`（提示插件 id + 重复 path）
-- `requireInstance == null` → 框架补全为 `Boolean.TRUE`
-- 宿主**不预置任何默认菜单**，插件需显式声明完整菜单列表
+**宿主校验**：`path` 非空且同插件内唯一（违者抛 `IllegalStateException`）、`requireInstance` null 补全为 true；宿主**不预置任何默认菜单**。字段语义与完整加载链路见 `references/extension-and-menus.md` §6/§8。
 
 ### TaskHandlerExtension (extends ExtensionPoint)
 ```java
@@ -67,6 +63,7 @@ String getResultSummary(TaskResult result);
 default String getMutexKey(TaskPayload payload);  // null=默认规则，""=不互斥
 // 生命周期：onBeforeExecute / onAfterExecute / onSuccess / onFailure / onCancel / onRetry
 ```
+实现约束（无状态、取消/超时检查、互斥键语义、maxRetryCount 选取）见 `references/async-tasks.md`。
 
 ## ExtensionClient（持久化唯一入口，绑定 pluginId）
 
@@ -175,10 +172,8 @@ void close(TunnelHandle handle);   // 幂等：引用计数减至 0 才真正关
 //     便捷构造 SshEndpoint(host, user, password) → port=22；toString 已脱敏
 // record TunnelHandle(String id, int localPort, String remoteHost, int remotePort, String ownerPluginId)
 //     连 127.0.0.1:localPort 即连 remoteHost:remotePort；本地端口仅绑回环、OS 随机分配
-// 去重键 (ownerPluginId, 凭据来源, remoteHost, remotePort)：同插件同目标复用句柄+计数，跨插件不共享
-// 三层兜底关闭：close 归零 → 插件卸载强制清理 → 宿主删主机联动（仅平台凭据隧道）
-// 详见 references/host_services.md §5；配套 configInfo.database 组装见 §6
 ```
+去重键 / 引用计数 / 三层兜底关闭 / 会话钉住等生命周期规则与 configInfo.database 组装见 `references/host-services.md` §5-6。
 
 ### ScheduleService（v3.8.0 ADR-0011，定时计划编程式服务，注入子容器）
 ```java
@@ -193,6 +188,7 @@ PageResult<ScheduleRunVO>        listRuns(ScheduleRunQuery query);
 List<TaskLog>                    getRunLogs(String runId);   // 时间正序，最多 500 条
 // 所有操作强制本插件来源隔离（无法操作其他来源计划）
 ```
+重叠 SKIPPED / 停机不补跑 / 插件生命周期联动语义见 `references/scheduled-tasks.md` §5-7。
 
 ### ScheduledTaskHandler（v3.8.0 ADR-0011，定时任务处理器，@Component 注册，独立于 TaskHandler）
 ```java
@@ -246,9 +242,5 @@ plugin.properties keys: plugin.id / plugin.class / plugin.version / plugin.gameC
 ```
 
 ## 路径速查
-| 用途 | 路径 |
-|---|---|
-| 插件静态资源 | `/api/pf4j/plugin/{gameCode}/ui/**` |
-| 插件 API | `/api/plugin/{gameCode}/**` |
-| 插件清单 | `/api/pf4j/plugin/{gameCode}/manifest` |
-| 插件管理 | `/api/pf4j/plugins/**` |
+
+常用三条：插件 API `/api/plugin/{gameCode}/**`；插件静态资源 `/api/pf4j/plugin/{gameCode}/ui/**`；清单 `/api/pf4j/plugin/{gameCode}/manifest`。完整路径常量表与来源（`PluginConstants` 各字段）见 `references/checklist.md` §1。
