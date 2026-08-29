@@ -1,8 +1,9 @@
 -- =====================================================
 -- Game Platform Manager 数据库表结构
 -- 数据库: SQLite
--- 版本: 1.0.0
--- 创建时间: 2024
+-- 版本: 1.1.0（ADR-0015 多方言拆分：本文件含历次迁移累积的最新完整列结构，
+--       game_instance.game_code 与 plugin_info 扩展列原由迁移补齐，现并入建表；
+--       任务中心/定时计划表仍由 db/migration/V1.5、V1.7 负责）
 -- =====================================================
 
 -- =====================================================
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS game_instance (
     instance_name   VARCHAR(100) NOT NULL,
     host_id         INTEGER NOT NULL,
     game_id         INTEGER NOT NULL,
+    game_code       VARCHAR(64),            -- 游戏编码（原 V1.1 迁移补齐，现并入建表）
     deploy_type     VARCHAR(20) NOT NULL,  -- docker/native
     port_config     TEXT,                   -- JSON对象
     run_status      INTEGER DEFAULT 0,      -- 0-已停止 1-运行中 2-异常
@@ -131,6 +133,12 @@ CREATE TABLE IF NOT EXISTS plugin_info (
     description      TEXT,
     extension_points TEXT,              -- JSON对象
     config_schema    TEXT,              -- JSON对象
+    plugin_type      VARCHAR(50),        -- 插件类型（原迁移补齐，现并入建表）
+    game_code        VARCHAR(50),        -- 关联游戏编码（原迁移补齐，现并入建表）
+    file_path        VARCHAR(500),       -- 插件 JAR 路径（原迁移补齐，现并入建表）
+    runtime_state    VARCHAR(20),        -- 运行时状态（原迁移补齐，现并入建表）
+    load_time        DATETIME,           -- 加载时间（原迁移补齐，现并入建表）
+    start_time       DATETIME,           -- 启动时间（原迁移补齐，现并入建表）
     author           VARCHAR(100),
     create_time      DATETIME DEFAULT (datetime('now', 'localtime')),
     update_time      DATETIME DEFAULT (datetime('now', 'localtime')),

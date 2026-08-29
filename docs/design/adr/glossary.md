@@ -19,6 +19,15 @@
 
 ### D
 
+- **数据库方言（Database Dialect）**
+  - **定义**：平台支持的三种数据库方言 `SQLITE / MYSQL / POSTGRESQL`（`DatabaseDialect` 枚举）。由启动时连接元数据自动判定，MariaDB 归入 MySQL 方言；无显式配置开关，切换数据库 = 替换标准 `spring.datasource` 配置。
+  - **职责**：决定建表/种子脚本（`db/schema-{方言}.sql`、`db/data-{方言}.sql`）的选择、插件扩展存储 DDL 的索引语法（MySQL 内联 KEY，SQLite/PG 用 `CREATE INDEX IF NOT EXISTS`），以及 SQLite 专属迁移体系（`db/migration/`）是否执行。
+  - **引入**：ADR-0015
+
+- **核心库表（Core Schema）**
+  - **定义**：主应用自管的数据表（`sys_user`、`host_info`、`game_metadata`、`game_instance`、`plugin_info`、`backup_record`、任务中心与定时计划表），由 `DatabaseInitializer` 在启动时按方言脚本初始化。与插件扩展存储物理隔离（ADR-0002 范围隔离的数据面）。
+  - **引入**：ADR-0015
+
 - **DeploymentAccess（部署接入）**
   - **定义**：core 模块的部署接入深模块（`com.gameplatform.deploy`）。唯一权威负责 deployType 分类归一（null/空/"native" → LINUX_GSM，未知非空值抛 `BusinessException`）与 Host→SSH 凭据解析（解密私钥/密码、端口默认 22、建连认证、私钥优先密码回退）。
   - **方法**：`classify / isDockerDeploy / isNativeDeploy / credentials(Host|hostId) / connect(Host)`。

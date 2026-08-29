@@ -61,6 +61,19 @@
             <artifactId>sqlite-jdbc</artifactId>
         </dependency>
 
+        <!-- 多数据库支持（ADR-0015）：MySQL 与 PostgreSQL 驱动，版本由 Spring Boot BOM 管理。
+             方言由启动时连接元数据自动判定，切换数据库只需修改 spring.datasource 配置 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.pf4j</groupId>
             <artifactId>pf4j</artifactId>
@@ -188,6 +201,21 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- MySQL 方言 UT 验证（ADR-0015）：MariaDB4j 内嵌 MariaDB，零 Docker 依赖；
+             3.1.0 起自带 mariaDB4j-db-winx64（Windows 内嵌二进制）。
+             本机二进制不可用时测试回退外部 JDBC URL（MYSQL_UT_JDBC_URL）或自动跳过 -->
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.vorburger.mariaDB4j</groupId>
+            <artifactId>mariaDB4j</artifactId>
+            <version>3.1.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

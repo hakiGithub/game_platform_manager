@@ -1,10 +1,7 @@
-# MySQL 数据库部署（预留，后端暂不支持 MySQL —— 见 ADR-0012）
-# 本文件提供真实可启动的 MySQL 8.4 服务，可作为独立开发库使用。
-# 后端接入前置改造清单（见 docker/README.md）：
-#   1. backend/pom.xml 增加 com.mysql:mysql-connector-j
-#   2. db/schema.sql / data.sql 提供 MySQL 方言版本
-#   3. DatabaseInitializer 按方言路由初始化脚本
-# 完成后，在 base compose 之上叠加：
+# MySQL 数据库部署（ADR-0015 多方言支持已落地）
+# 本文件提供真实可启动的 MySQL 8.4 服务。叠加 base compose 后，
+# backend 通过 SPRING_DATASOURCE_* 环境变量切换到 MySQL，
+# 启动时若表不存在会自动执行 db/schema-mysql.sql + db/data-mysql.sql 初始化。
 #   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
 services:
   mysql:

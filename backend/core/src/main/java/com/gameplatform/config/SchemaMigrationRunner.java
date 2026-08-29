@@ -21,18 +21,27 @@ import java.util.List;
  * 在 Bean 初始化阶段完成迁移，早于 @Scheduled 定时任务的首次执行，
  * 避免「定时任务先于迁移运行」的启动竞态（如 HostMonitorTask 查询未迁移的新列）。</p>
  *
+ * <p>ADR-0015：迁移体系仅对 SQLite 生效——db/migration/ 下的脚本为 SQLite 方言，
+ * 且 MySQL/PostgreSQL 的全新库由 DatabaseInitializer 按 schema-{方言}.sql
+ * 一次性建立最新完整结构（含任务中心/定时计划表），无需重放迁移。</p>
+ *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SchemaMigrationRunner implements InitializingBean {
 
+    private final DatabaseDialectResolver dialectResolver;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
     public void afterPropertiesSet() {
+        if (dialectResolver.resolve() != DatabaseDialect.SQLITE) {
+            log.info("Schema迁移: 当前方言非 SQLite，跳过 SQLite 专属迁移体系");
+            return;
+        }
         ensureColumnExists("game_instance", "runtime_metadata", "TEXT");
         // V1.5: 任务中心模块建表（task_record + task_log）
         ensureSqlFileExecuted("task_record", "db/migration/V1.5__task_center.sql");

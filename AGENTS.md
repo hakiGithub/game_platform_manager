@@ -29,7 +29,9 @@
 | Spring Security | 6.x | 安全认证 |
 | Spring WebSocket | 6.x | 实时通信 |
 | MyBatis-Plus | 3.5.6 | ORM框架 |
-| SQLite | 3.45.2.0 | 嵌入式数据库 |
+| SQLite | 3.45.2.0 | 嵌入式数据库（默认） |
+| MySQL | 8.4（mysql-connector-j） | 可选数据库（MariaDB 兼容） |
+| PostgreSQL | 16（postgresql 驱动） | 可选数据库 |
 | Apache MINA SSHD | 2.12.1 | SSH连接 |
 | Docker Java | 3.3.4 | Docker API |
 | PF4J | 3.10.0 | 插件框架 |
@@ -269,6 +271,7 @@ bash scripts/deploy-plugin.sh --skip-build
 
 - **范围隔离（ADR-0002）**：主应用 `core/` 不得包含插件业务配置（`plugin.{gameCode}` 前缀）和插件专属表（`{gameCode}_*` 前缀）；插件配置由 `@ConfigurationProperties` 字段默认值自负，插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式自管。游戏元数据 `games/{gameCode}.yml` 是例外，由主应用维护。详见 [ADR-0002](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
 - **插件运行模式（ADR-0003）**：废弃 `plugin-l4d2-standalone` 独立运行模式，前端只保留 Wujie + dev 两种模式；新增插件不应实现 standalone 模式。详见 [ADR-0003](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
+- **多数据库方言（ADR-0015）**：数据源支持 SQLite / MySQL / PostgreSQL，方言由启动时连接元数据自动判定（MariaDB 归入 MySQL），无显式开关；切换数据库只需替换 `spring.datasource` 标准配置。建表/种子脚本按方言拆分（`db/schema-{方言}.sql`、`db/data-{方言}.sql`），表不存在时启动自动初始化；MySQL 索引一律内联 KEY 子句（不支持 `CREATE INDEX IF NOT EXISTS`）；`db/migration/` 迁移体系仅对 SQLite 生效。详见 [ADR-0015](docs/design/adr/0015-multi-database-dialect-support.md)
 - 扩展资源基类使用 Hutool 雪花 ID（String 类型 PRIMARY KEY），保留 name 作为 NOT NULL UNIQUE 业务标识
 - 游戏实例表使用 `host_id` + `instance_name` 联合唯一索引
 - Docker 类部署（docker / docker-compose / linuxgsm-docker）统一支持 `mountHostCerts` 选项，默认关闭
@@ -333,6 +336,7 @@ bash scripts/deploy-plugin.sh --skip-build
   - [ADR-0001 插件菜单归属](docs/design/adr/0001-plugin-menu-ownership.md)
   - [ADR-0002 主应用与插件范围隔离规约](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
   - [ADR-0003 废弃 plugin-l4d2-standalone](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
+  - [ADR-0015 多数据库方言支持](docs/design/adr/0015-multi-database-dialect-support.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---

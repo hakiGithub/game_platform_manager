@@ -13,7 +13,8 @@
 | Spring Security | 6.x | 安全认证 |
 | Spring WebSocket | 6.x | 实时通信 |
 | MyBatis-Plus | 3.5.6 | ORM框架 |
-| SQLite | 3.45.2.0 | 嵌入式数据库 |
+| SQLite | 3.45.2.0 | 嵌入式数据库（默认） |
+| MySQL / PostgreSQL | mysql-connector-j / postgresql | 可选数据库（ADR-0015 多方言） |
 | Apache MINA SSHD | 2.12.1 | SSH连接 |
 | Docker Java | 3.3.4 | Docker API |
 | PF4J | 3.10.0 | 插件框架 |
@@ -58,7 +59,7 @@ backend/
 │       ├── websocket/                # WebSocket处理器
 │       └── GamePlatformApplication.java     # 启动类
 │   └── src/main/resources/
-│       ├── db/                       # 数据库脚本
+│       ├── db/                       # 数据库脚本（schema/data 按方言拆分 + migration 增量，ADR-0015）
 │       ├── games/                    # 游戏元数据配置
 │       ├── mapper/                   # Mapper XML
 │       └── application.yml           # 主配置
@@ -922,6 +923,14 @@ POST /api/plugins/{pluginId}/stop
 
 ## 数据库设计
 
+### 多数据库方言初始化（ADR-0015）
+
+- 支持 SQLite（默认）/ MySQL / PostgreSQL，方言由启动时 `DatabaseDialectResolver` 读取连接元数据自动判定（MariaDB 归入 MySQL），**无显式配置开关**；切换数据库只需替换 `spring.datasource` 标准 url/驱动/凭证。
+- 建表脚本按方言拆分：`db/schema-{sqlite|mysql|postgresql}.sql` + `db/data-{sqlite|mysql|postgresql}.sql`，内容为**最新完整结构**（含任务中心/定时计划表与历次迁移累积列）。启动时核心表不存在则自动执行；种子数据 MySQL 用 `INSERT IGNORE`、PG 用 `ON CONFLICT DO NOTHING` 防重。
+- MySQL 索引一律内联在 `CREATE TABLE` 的 `KEY` 子句中（MySQL 不支持 `CREATE INDEX IF NOT EXISTS`），插件扩展存储宽表（`DdlTemplate`）同理按方言生成。
+- `db/migration/` 增量迁移与 `PRAGMA`/`sqlite_master` 检查**仅对 SQLite 生效**（`SchemaMigrationRunner` 非 SQLite 方言直接跳过）；MySQL/PG 存量库的结构升级暂无增量机制。
+- MySQL 方言由 MariaDB4j 内嵌 MariaDB 集成测试实测（`MysqlDialectInitializationTest`，可用环境变量 `MYSQL_UT_JDBC_URL` 指向外部库）；PG 脚本不进 UT。
+
 ### 核心表
 
 | 表名 | 说明 |
@@ -1144,7 +1153,7 @@ mvn versions:display-dependency-updates
 1. **SSH连接**: 使用 Apache MINA SSHD，支持密码和密钥认证
 2. **文件传输**: 使用 SFTP 协议
 3. **WebSocket**: 用于实时日志和终端
-4. **数据库**: SQLite 嵌入式数据库，无需额外安装
+4. **数据库**: 默认 SQLite 嵌入式数据库（零安装），可切换 MySQL/PostgreSQL（ADR-0015，启动自动建表）
 5. **插件热加载**: 支持插件动态加载和卸载
 6. **游戏配置**: 通过 YAML 元数据自动生成表单
 7. **敏感数据**: SSH密码等使用AES加密存储

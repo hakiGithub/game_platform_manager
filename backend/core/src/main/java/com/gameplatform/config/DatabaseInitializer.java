@@ -4,28 +4,34 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StreamUtils;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * 数据库初始化器
- * 应用启动时自动初始化数据库
+ * 数据库初始化器（ADR-0015 多方言版）
+ *
+ * <p>应用启动时按 {@link DatabaseDialect} 执行方言建表/种子脚本：
+ * <ul>
+ *   <li>核心表（sys_user 等）不存在 → 执行 db/schema-{方言}.sql + db/data-{方言}.sql</li>
+ *   <li>核心表已存在且方言为 SQLite → 执行历史迁移（runMigrations）</li>
+ *   <li>方言为 MySQL/PostgreSQL → 不执行 SQLite 专属迁移体系；
+ *       增量结构升级需另行提供方言迁移方案</li>
+ * </ul>
  *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DatabaseInitializer implements CommandLineRunner {
 
+    private final DatabaseDialectResolver dialectResolver;
+    private final DatabaseScriptExecutor scriptExecutor;
     private final JdbcTemplate jdbcTemplate;
 
     @Value("${spring.datasource.url}")
@@ -33,22 +39,27 @@ public class DatabaseInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        log.info("开始初始化数据库...");
-        
+        DatabaseDialect dialect = dialectResolver.resolve();
+        log.info("开始初始化数据库（方言: {}）...", dialect);
+
         try {
-            // 确保数据库目录存在
-            ensureDatabaseDirectory();
-            
-            // 检查表是否存在
-            if (!isTableExists("sys_user")) {
-                log.info("数据库表不存在，开始创建表结构...");
-                executeSchemaSql();
-                executeDataSql();
+            if (dialect == DatabaseDialect.SQLITE) {
+                // SQLite 为嵌入式文件库，确保数据库目录存在
+                ensureDatabaseDirectory();
+            }
+
+            // 检查核心表是否存在
+            if (!scriptExecutor.tableExists("sys_user")) {
+                log.info("数据库表不存在，执行 {} 建表与种子数据...", dialect.schemaLocation());
+                scriptExecutor.executeScript(dialect.schemaLocation());
+                scriptExecutor.executeScript(dialect.dataLocation());
                 log.info("数据库初始化完成");
-            } else {
+            } else if (dialect == DatabaseDialect.SQLITE) {
                 log.info("数据库表已存在，检查并执行数据库迁移...");
                 runMigrations();
                 log.info("数据库迁移检查完成");
+            } else {
+                log.info("数据库表已存在，{} 模式不执行 SQLite 专属迁移体系", dialect);
             }
         } catch (Exception e) {
             log.error("数据库初始化失败: {}", e.getMessage(), e);
@@ -57,7 +68,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     /**
-     * 确保数据库目录存在
+     * 确保 SQLite 数据库文件所在目录存在
      */
     private void ensureDatabaseDirectory() throws Exception {
         // 从JDBC URL中提取数据库文件路径
@@ -70,56 +81,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     /**
-     * 检查表是否存在
-     */
-    private boolean isTableExists(String tableName) {
-        try {
-            String sql = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-            String result = jdbcTemplate.queryForObject(sql, String.class, tableName);
-            return result != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * 执行建表SQL
-     */
-    private void executeSchemaSql() throws Exception {
-        ClassPathResource resource = new ClassPathResource("db/schema.sql");
-        String sql = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-        
-        // SQLite不支持一次执行多条语句，需要逐条执行
-        String[] statements = sql.split(";");
-        for (String statement : statements) {
-            String trimmed = statement.trim();
-            if (!trimmed.isEmpty()) {
-                jdbcTemplate.execute(trimmed);
-            }
-        }
-        log.info("表结构创建完成");
-    }
-
-    /**
-     * 执行初始化数据SQL
-     */
-    private void executeDataSql() throws Exception {
-        ClassPathResource resource = new ClassPathResource("db/data.sql");
-        String sql = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-        
-        // SQLite不支持一次执行多条语句，需要逐条执行
-        String[] statements = sql.split(";");
-        for (String statement : statements) {
-            String trimmed = statement.trim();
-            if (!trimmed.isEmpty() && !trimmed.startsWith("--")) {
-                jdbcTemplate.execute(trimmed);
-            }
-        }
-        log.info("初始数据导入完成");
-    }
-
-    /**
-     * 执行数据库迁移
+     * 执行数据库迁移（仅 SQLite：历史库结构升级）
      */
     private void runMigrations() {
         // V1.1: 添加缺失的列

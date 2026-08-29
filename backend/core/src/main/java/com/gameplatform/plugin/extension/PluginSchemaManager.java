@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.extension;
 
 import com.gameplatform.api.extension.AbstractExtension;
+import com.gameplatform.config.DatabaseDialectResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +28,7 @@ public class PluginSchemaManager {
     private final JdbcTemplate jdbcTemplate;
     private final ExtensionRouter router;
     private final ExtensionScanner scanner;
+    private final DatabaseDialectResolver dialectResolver;
 
     /** pluginId → 该插件拥有的物理表名集合 */
     private final ConcurrentHashMap<String, Set<String>> ownership = new ConcurrentHashMap<>();
@@ -47,13 +49,25 @@ public class PluginSchemaManager {
             if (route.strategy() == Strategy.SHARED) {
                 continue;
             }
-            jdbcTemplate.execute(DdlTemplate.generate(route.table()));
+            createTable(DdlTemplate.generate(route.table(), dialectResolver.resolve()));
             owned.add(route.table());
             log.info("[PluginSchema] 插件 [{}] 建表: {} (kind={}, strategy={})",
                     pluginId, route.table(), route.kind(), route.strategy());
         }
         ownership.put(pluginId, owned);
         return owned;
+    }
+
+    /**
+     * 执行建表 DDL（模板可能含多条语句，逐条执行保证方言兼容）。
+     */
+    private void createTable(String ddl) {
+        for (String statement : ddl.split(";")) {
+            String trimmed = statement.trim();
+            if (!trimmed.isEmpty()) {
+                jdbcTemplate.execute(trimmed);
+            }
+        }
     }
 
     /**

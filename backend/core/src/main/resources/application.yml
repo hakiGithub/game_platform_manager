@@ -28,12 +28,25 @@ spring:
       max-file-size: 100MB
       max-request-size: 100MB
   
-  # SQLite数据源配置
+  # 数据源配置（ADR-0015 多数据库支持）
+  # 方言由启动时连接元数据自动判定（SQLite / MySQL / PostgreSQL，MariaDB 归入 MySQL 方言），
+  # 切换数据库只需替换 driver-class-name + url + username/password，无需其他开关。
+  # 建表与种子数据在启动时自动执行：表不存在 → db/schema-{方言}.sql + db/data-{方言}.sql
   datasource:
     driver-class-name: org.sqlite.JDBC
     # 数据库路径：项目目录下的 data 子目录（避免沙箱限制）
     # 运行目录为 backend/，使用相对路径 ./data/game_platform.db
     url: jdbc:sqlite:./data/game_platform.db
+    # ===== MySQL 示例（默认库需预先 CREATE DATABASE，建议 utf8mb4）=====
+    # driver-class-name: com.mysql.cj.jdbc.Driver
+    # url: jdbc:mysql://localhost:3306/game_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # username: gameplatform
+    # password: changeMe
+    # ===== PostgreSQL 示例 =====
+    # driver-class-name: org.postgresql.Driver
+    # url: jdbc:postgresql://localhost:5432/game_platform
+    # username: gameplatform
+    # password: changeMe
     # SQLite连接池配置
     hikari:
       minimum-idle: 1
@@ -42,13 +55,11 @@ spring:
       pool-name: GamePlatformHikariCP
       max-lifetime: 1800000
       connection-timeout: 30000
-  
-  # SQL初始化配置
+
+  # SQL初始化配置（mode=never：建表由 DatabaseInitializer 方言感知执行，不走 Spring sql.init）
   sql:
     init:
       mode: never
-      schema-locations: classpath:db/schema.sql
-      data-locations: classpath:db/data.sql
 
 # MyBatis-Plus配置
 mybatis-plus:

@@ -3,6 +3,7 @@ package com.gameplatform.plugin.extension;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.api.extension.AbstractExtension;
 import com.gameplatform.api.extension.ExtensionMetadata;
+import com.gameplatform.config.DatabaseDialect;
 import com.gameplatform.plugin.extension.exception.DuplicateExtensionException;
 import com.gameplatform.plugin.extension.exception.ExtensionNotFoundException;
 import com.gameplatform.plugin.extension.exception.OptimisticLockException;
@@ -95,10 +96,10 @@ class ExtensionClientImplTest {
     @BeforeEach
     void setUp() {
         // 建全局 SHARED 表
-        jdbcTemplate.execute(DdlTemplate.generate("extensions"));
+        jdbcTemplate.execute(DdlTemplate.generate("extensions", DatabaseDialect.SQLITE));
         // 建插件 A/B 的 MODEL_ISOLATED 表
-        jdbcTemplate.execute(DdlTemplate.generate("ext_plugin_a_isolatedresource"));
-        jdbcTemplate.execute(DdlTemplate.generate("ext_plugin_b_isolatedresource"));
+        jdbcTemplate.execute(DdlTemplate.generate("ext_plugin_a_isolatedresource", DatabaseDialect.SQLITE));
+        jdbcTemplate.execute(DdlTemplate.generate("ext_plugin_b_isolatedresource", DatabaseDialect.SQLITE));
 
         pluginAClient = new ExtensionClientImpl(jdbcTemplate, router, "plugin-a",
                 queryDialect, objectMapper, java.util.Set.of(), () -> "id-" + System.nanoTime());

@@ -22,6 +22,8 @@
 | [0011](0011-scheduled-task-management.md) | 定时任务管理（Schedule）独立模型 | Accepted | 2026-08-22 |
 | [0012](0012-app-containerization-and-db-reserve.md) | 应用容器化部署与多数据库预留 | Accepted | 2026-08-22 |
 | [0013](0013-ci-image-build-workflow.md) | CI 镜像构建工作流（GitHub Actions + GitLab CI） | Accepted | 2026-08-22 |
+| [0014](0014-plugin-dev-docs-copies-roles.md) | 插件开发文档三副本职责分工 | Accepted | 2026-08-29 |
+| [0015](0015-multi-database-dialect-support.md) | 多数据库方言支持（SQLite / MySQL / PostgreSQL） | Accepted | 2026-08-29 |
 
 ## 术语表
 

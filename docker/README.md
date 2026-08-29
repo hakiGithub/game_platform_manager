@@ -48,18 +48,13 @@ docker compose up -d --build
    - 等待 hot-reload 自动扫描（默认 30s）；或
    - 调 PF4J API：先 `DELETE /api/pf4j/plugins/{id}`（`purgeTasks=false`）卸载旧版，再 `POST /api/pf4j/plugins/load?jarName=xxx.jar`。
 
-## 数据库切换点（MySQL / PostgreSQL）
+## 数据库切换点（MySQL / PostgreSQL，ADR-0015 已支持）
 
-**当前后端仅支持 SQLite**（无 MySQL/PG 驱动，`db/schema.sql` 为 SQLite 方言）。compose 中已预留标准环境变量切换点：
+后端已支持 SQLite / MySQL / PostgreSQL 三方言（ADR-0015）：方言由启动时连接元数据自动判定，切换只需标准环境变量，无需其他开关：
 
 - `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_DRIVER_CLASS_NAME` / `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`
 
-启用 MySQL/PG 需先完成后端改造：
-
-1. `backend/pom.xml` 增加 `com.mysql:mysql-connector-j` 或 `org.postgresql:postgresql` 驱动；
-2. 将 `core/src/main/resources/db/schema.sql`、`data.sql` 拆分为各方言版本（注意 SQLite 的 `AUTOINCREMENT`/动态类型与 MySQL/PG 的差异，以及 MyBatis-Plus 主键策略 `id-type: AUTO` 的兼容性）；
-3. `DatabaseInitializer` 按 `spring.datasource.url` 方言路由初始化脚本；
-4. 改造完成后叠加启动：
+启动时若表不存在，自动执行对应方言脚本 `db/schema-{方言}.sql` + `db/data-{方言}.sql` 建表并导入种子数据（首次启动自动完成，MySQL 库需已 `CREATE DATABASE`）。注意：MySQL/PG 模式下 SQLite 专属迁移体系（`db/migration/`）不执行；MySQL 索引内联 KEY 子句规避 `CREATE INDEX IF NOT EXISTS` 不支持的问题。叠加启动：
 
 ```bash
 # MySQL
