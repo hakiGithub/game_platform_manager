@@ -208,7 +208,7 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 
 ### 完整参考实现（`backend/plugin-l4d2/`）
 
-`backend/plugin-l4d2/` 是完整双端参考实现（core / frontend 两件套），含 17 项菜单、爬虫、RCON、地图、SourceMod 插件管理等完整能力。开发新插件时对照其 `L4D2Extension`、`L4D2Plugin`、`plugin.properties`、`extension/` 资源类、`frontend/src/router/index.ts`。完整剖析见 [reference/walkthrough-l4d2.md](reference/walkthrough-l4d2.md)。
+`backend/plugin-l4d2/` 是完整双端参考实现（core / frontend 两件套），含 20 项菜单、爬虫、RCON、地图、SourceMod 插件管理等完整能力。开发新插件时对照其 `L4D2Extension`、`L4D2Plugin`、`plugin.properties`、`extension/` 资源类、`frontend/src/router/index.ts`。完整剖析见 [reference/walkthrough-l4d2.md](reference/walkthrough-l4d2.md)。
 
 > 外部项目无法读取 `backend/plugin-l4d2/` 源码时，以 `examples/plugin-mygame/` 为起点，按需参考 [reference/](reference/) 文档扩展能力。
 

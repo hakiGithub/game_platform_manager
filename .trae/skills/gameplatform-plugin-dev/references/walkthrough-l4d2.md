@@ -19,7 +19,7 @@ plugin-l4d2/
 **L4D2Extension**（`GameEnhancementExtension` 实现）：
 - `getGameCode()` = `"l4d2"`，`getGameName()` = `"求生之路2"`
 - `getManifest()` 返回 `apiEndpoints` map + 元数据（**ADR-0001 已删除 `features` 与 `frontend.menus` 字段**）
-- `getMenus()` 返回 17 项 `PluginMenuDeclaration`（仪表盘、地图管理、地图中心[requireInstance=false]、控制台、系统监控、玩家统计、游玩时长、管理员、服务器信息、服务器配置、重启管理、版本信息、日志、备份还原、插件管理、预设场景、下载管理）
+- `getMenus()` 返回 20 项 `PluginMenuDeclaration`（仪表盘、配置管理组[服务器配置、服务器信息、预设场景]、运维控制组[控制台、系统监控、日志、重启管理]、地图管理组[地图管理、地图中心 requireInstance=false]、玩家管理组[玩家统计、管理员]、扩展与数据组[插件管理、备份还原、下载管理]）
 - 实现全部生命周期钩子：`onInstanceCreate`（懒初始化插件库）、`onInstanceStart/Stop/Delete`
 - `getIcon()` = `"assets/l4d2-icon.png"`，`getBasePackage()` = `"com.gameplatform.plugin.l4d2"`
 

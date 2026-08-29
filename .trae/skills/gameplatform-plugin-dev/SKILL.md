@@ -102,7 +102,7 @@ curl http://localhost:8080/api/pf4j/plugin/mygame/manifest
 
 ## 参考实现
 
-- **平台仓库内的 `plugin-l4d2` 插件**：完整双端参考实现（17 项菜单、爬虫、RCON、地图、SourceMod 插件管理），剖析见 `references/walkthrough-l4d2.md`；平台仓库内可直接对照源码。
+- **平台仓库内的 `plugin-l4d2` 插件**：完整双端参考实现（20 项菜单、爬虫、RCON、地图、SourceMod 插件管理），剖析见 `references/walkthrough-l4d2.md`；平台仓库内可直接对照源码。
 - 平台仓库外：以 `references/` 分主题文档 + `references/sdk-reference.md` 离线签名快照为参照，从 `references/getting-started.md` §2 骨架起步。
 
 ## 文档定位与维护（ADR-0014）

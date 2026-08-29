@@ -8,7 +8,7 @@
 
 - 插件通过 `GameEnhancementExtension.getMenus()` 返回 `List<PluginMenuDeclaration>` 声明菜单清单。
 - 宿主 `PluginFrameworkServiceImpl.buildMenusFromDeclarations()` 校验 path 唯一性、补全 `requireInstance` 默认值（null→true），序列化为 `PluginManifestVO.MenuConfig`。
-- 宿主**不预置任何默认菜单**（不再有仪表盘/系统监控/服务器信息等固定菜单），插件需显式声明完整菜单列表（参考 plugin-l4d2 的 17 项菜单）。
+- 宿主**不预置任何默认菜单**（不再有仪表盘/系统监控/服务器信息等固定菜单），插件需显式声明完整菜单列表（参考 plugin-l4d2 的 20 项菜单）。
 
 **ADR-0001 废弃项（v3.1.0）**：
 - `getManifest()` 的 `features` 字段（`rcon`/`mapManagement`/`playerManagement`）已废弃，宿主不再读取。

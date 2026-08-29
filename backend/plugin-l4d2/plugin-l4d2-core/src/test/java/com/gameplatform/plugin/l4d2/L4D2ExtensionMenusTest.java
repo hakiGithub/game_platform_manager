@@ -8,7 +8,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,10 +28,10 @@ class L4D2ExtensionMenusTest {
     private final L4D2Extension extension = new L4D2Extension();
 
     @Test
-    @DisplayName("getMenus 返回 17 项菜单")
-    void getMenus_returns17Items() {
+    @DisplayName("getMenus 返回 20 项菜单")
+    void getMenus_returns20Items() {
         List<PluginMenuDeclaration> menus = extension.getMenus();
-        assertEquals(17, menus.size());
+        assertEquals(20, menus.size());
     }
 
     @Test
@@ -70,16 +69,45 @@ class L4D2ExtensionMenusTest {
     }
 
     @Test
-    @DisplayName("order 从 1 递增到 17 无缺漏")
-    void getMenus_ordersAreSequential() {
+    @DisplayName("order 唯一、为正，且按声明顺序严格递增（声明序 = 侧边栏展示序）")
+    void getMenus_ordersStrictlyIncreasing() {
         List<PluginMenuDeclaration> menus = extension.getMenus();
-        List<Integer> orders = menus.stream()
-                .map(PluginMenuDeclaration::getOrder)
-                .sorted()
-                .collect(Collectors.toList());
-        for (int i = 0; i < orders.size(); i++) {
-            assertEquals(i + 1, orders.get(i),
-                    "order 第 " + (i + 1) + " 位应为 " + (i + 1) + "，实际 " + orders.get(i));
+        Integer previous = null;
+        for (PluginMenuDeclaration m : menus) {
+            assertNotNull(m.getOrder(), "菜单 " + m.getPath() + " order 不应为 null");
+            assertTrue(m.getOrder() > 0, "菜单 " + m.getPath() + " order 应为正数");
+            if (previous != null) {
+                assertTrue(m.getOrder() > previous,
+                        "菜单 " + m.getPath() + " order=" + m.getOrder()
+                                + " 未严格大于前一菜单 order=" + previous + "（声明序应与展示序一致）");
+            }
+            previous = m.getOrder();
+        }
+        // order 值总数与菜单数一致（无重复）
+        long distinctCount = menus.stream().map(PluginMenuDeclaration::getOrder).distinct().count();
+        assertEquals(menus.size(), distinctCount, "order 不应重复");
+    }
+
+    @Test
+    @DisplayName("分组父节点声明于其子菜单之前")
+    void getMenus_parentsDeclaredBeforeChildren() {
+        List<PluginMenuDeclaration> menus = extension.getMenus();
+        for (int i = 0; i < menus.size(); i++) {
+            PluginMenuDeclaration m = menus.get(i);
+            if (m.getParent() == null) {
+                continue;
+            }
+            int parentIndex = -1;
+            for (int j = 0; j < menus.size(); j++) {
+                if (m.getParent().equals(menus.get(j).getPath())) {
+                    parentIndex = j;
+                    break;
+                }
+            }
+            assertTrue(parentIndex >= 0, "菜单 " + m.getPath()
+                    + " 的父节点 " + m.getParent() + " 未声明");
+            assertTrue(parentIndex < i, "菜单 " + m.getPath()
+                    + " 应声明在其父节点 " + m.getParent() + " 之后");
         }
     }
 

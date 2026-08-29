@@ -140,7 +140,7 @@ public List<PluginMenuDeclaration> getMenus() {
 | 同插件内 `path` 重复 | 抛 `IllegalStateException`（提示插件 id + 重复 path） |
 | `requireInstance` 为 `null` | 框架补全为 `Boolean.TRUE` |
 
-> 宿主**不预置任何默认菜单**（不再有"仪表盘/系统监控/服务器信息"等固定菜单），插件需要显式声明完整菜单列表（参考 `plugin-l4d2` 的 17 项菜单声明）。
+> 宿主**不预置任何默认菜单**（不再有"仪表盘/系统监控/服务器信息"等固定菜单），插件需要显式声明完整菜单列表（参考 `plugin-l4d2` 的 20 项菜单声明（分组父节点按十年段编 order，子节点连续递增））。
 
 ### 6.4 路径对齐强约束
 
