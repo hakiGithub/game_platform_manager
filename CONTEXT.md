@@ -35,7 +35,7 @@
 插件实现的扩展点：按实例查询动态信息（当前玩家数等）。插件以 `@Component` 声明即被主应用按游戏编码注册；未实现提供者的游戏走降级默认值。
 
 ### 实例动态信息（InstanceDynamicInfo）
-提供者返回的类型化结果：`playerCount`（当前玩家数，主应用消费的契约字段）+ `extras`（开放扩展袋，主应用不解释、透传给详情展示）。返回 null 表示"本次不可知"。
+提供者返回的类型化结果：`playerCount`（当前玩家数）与 `maxPlayerCount`（人数上限，可为 null 表示无法提供）是主应用消费的契约字段；`extras`（开放扩展袋，主应用不解释、透传给详情展示）。返回 null 表示"本次不可知"。字段按"extras 先行、按需升级为类型化"的路径演进。
 
 ### 降级默认值（Fallback Value）
 提供者未实现、返回 null 或查询超时/超预算时展示的玩家数：RUNNING 实例用 `game_instance.online_players` 存量值，非 RUNNING 实例固定 0。降级不覆盖已落库的上次真实值。

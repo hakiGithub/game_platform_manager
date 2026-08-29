@@ -238,6 +238,10 @@ public class InstanceInfoService {
                 log.warn("[InstanceInfo] 回写玩家数失败 instanceId={}: {}", vo.getId(), e.getMessage());
             }
         }
+        // maxPlayerCount 允许为 null（该游戏无法提供），不落库（无对应列），降级也不覆盖
+        if (info.maxPlayerCount() != null) {
+            vo.setMaxPlayerCount(info.maxPlayerCount());
+        }
         if (info.extras() != null && !info.extras().isEmpty()) {
             vo.setInfoExtras(info.extras());
         }

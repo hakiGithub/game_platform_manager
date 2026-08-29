@@ -68,7 +68,14 @@ class L4D2InstanceInfoProviderTest {
 
         assertNotNull(info);
         assertEquals(3, info.playerCount());
+        assertEquals(8, info.maxPlayerCount());
         assertTrue(info.extras().isEmpty());
+    }
+
+    @Test
+    void extractMaxPlayerCount_fromStatus() {
+        assertEquals(8, l4d2RconService.extractMaxPlayerCount(STATUS_OUTPUT));
+        assertNull(l4d2RconService.extractMaxPlayerCount("Server not running"));
     }
 
     @Test

@@ -179,7 +179,7 @@ class InstanceInfoServiceTest {
     @Test
     void extras_passthrough_evenWhenPlayerCountNull() throws Exception {
         when(provider.getInstanceInfo(1L))
-                .thenReturn(new InstanceDynamicInfo(null, Map.of("mapName", "c1m1_hotel")));
+                .thenReturn(new InstanceDynamicInfo(null, null, Map.of("mapName", "c1m1_hotel")));
         InstanceVO vo = runningVo(1L, "l4d2", 3);
 
         service.enrichInstances(List.of(vo));
@@ -188,6 +188,24 @@ class InstanceInfoServiceTest {
         assertNotNull(vo.getInfoExtras());
         assertEquals("c1m1_hotel", vo.getInfoExtras().get("mapName"));
         verify(instanceMapper, never()).updateOnlinePlayers(anyLong(), anyInt());
+    }
+
+    @Test
+    void maxPlayerCount_passthrough_andNullKeepsOld() {
+        InstanceVO vo = runningVo(1L, "l4d2", 3);
+        vo.setMaxPlayerCount(8);
+        when(provider.getInstanceInfo(1L))
+                .thenReturn(new InstanceDynamicInfo(3, 16, Map.of()))
+                .thenReturn(new InstanceDynamicInfo(4, null, Map.of()));
+
+        service.enrichInstances(List.of(vo));
+        assertEquals(16, vo.getMaxPlayerCount());
+
+        // max 为 null 的后续结果不覆盖（降级不覆盖语义对 max 同样适用）；先失效缓存拿到新结果
+        service.invalidate(1L);
+        service.enrichInstances(List.of(vo));
+        assertEquals(16, vo.getMaxPlayerCount());
+        assertEquals(4, vo.getOnlinePlayers());
     }
 
     @Test

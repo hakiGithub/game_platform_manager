@@ -29,8 +29,8 @@ public record InstanceDynamicInfo(Integer playerCount, Map<String, Object> extra
 ```
 
 - 插件 `@Component` 实现，主应用 `getBeansOfType` 扫描，按 gameCode(source) 注册进 Registry；插件卸载/热重载时 `unregisterBySource` 清理（复用 `TaskHandlerRegistry` 模式）
-- `playerCount` 是主应用消费的类型化契约字段；`extras` 开放扩展袋，主应用不解释、透传到实例详情 VO
-- 字段演进路径：extras 透传先行，主应用按需升级为类型化字段（如未来 `mapName`、`version`）
+- `playerCount` 与 `maxPlayerCount` 是主应用消费的类型化契约字段（maxPlayerCount 允许 null 表示无法提供，不落库、降级不覆盖）；`extras` 开放扩展袋，主应用不解释、透传到实例详情 VO
+- 字段演进路径：extras 透传先行，主应用按需升级为类型化字段——`maxPlayerCount` 已于 2026-08-29 按此路径升级（L4D2 status 的 "N max"），未来候选：`mapName`、`version`
 - 不提供批量查询签名——并发调度是主应用的事，插件只管单实例
 
 ### 决策 2：实时查询 + 15 秒实例维度缓存
@@ -86,5 +86,5 @@ plugin-l4d2 实装 `InstanceInfoProvider`（内部经宿主 `RconService` 执行
 
 ## 未来方向
 
-- extras 出现稳定消费需求后升级为类型化字段（附契约测试）
+- extras 出现稳定消费需求后升级为类型化字段（附契约测试，参考 maxPlayerCount 先例）
 - 前端列表页对"降级值"做可视化标记（如灰色/上标"缓存"），需先在 VO 中暴露数据新鲜度

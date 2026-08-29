@@ -29,6 +29,6 @@ public class L4D2InstanceInfoProvider implements InstanceInfoProvider {
         if (playerCount == null) {
             return null;
         }
-        return InstanceDynamicInfo.ofPlayerCount(playerCount);
+        return InstanceDynamicInfo.ofPlayers(playerCount, rconService.extractMaxPlayerCount(statusText));
     }
 }

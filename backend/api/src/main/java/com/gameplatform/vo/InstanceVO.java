@@ -110,6 +110,12 @@ public class InstanceVO implements Serializable {
     private Map<String, Object> infoExtras;
 
     /**
+     * 玩家数上限（ADR-0017：由 InstanceInfoProvider 提供；无实现/未提供为 null）
+     */
+    @Schema(description = "玩家数上限（插件提供者提供，可能为空）")
+    private Integer maxPlayerCount;
+
+    /**
      * 配置信息
      */
     @Schema(description = "配置信息")
