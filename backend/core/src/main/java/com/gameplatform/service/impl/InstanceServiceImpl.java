@@ -16,6 +16,7 @@ import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.GameMetadataMapper;
+import com.gameplatform.instanceinfo.InstanceInfoService;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.listener.PluginLifecycleHook;
 import com.gameplatform.rcon.RconConnectionManager;
@@ -54,6 +55,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final SshUtil sshUtil;
     private final PluginLifecycleHook pluginLifecycleHook;
     private final RconConnectionManager rconConnectionManager;
+    private final InstanceInfoService instanceInfoService;
     private final DeploymentAccess deployAccess;
 
     @Override
@@ -237,6 +239,8 @@ public class InstanceServiceImpl implements InstanceService {
 
         // RCON 连接池联动失效（ADR-0016 决策 5）
         rconConnectionManager.invalidate(id);
+        // 实例信息缓存失效（ADR-0017）
+        instanceInfoService.invalidate(id);
 
     }
 
@@ -248,7 +252,10 @@ public class InstanceServiceImpl implements InstanceService {
         }
         // 仅返回静态数据，不调用适配器 getDetails（避免 SSH/Docker 调用导致响应缓慢）
         // 动态资源数据（CPU/内存/运行时长）请通过 getInstanceMetrics 接口异步拉取
-        return convertToVO(instance);
+        InstanceVO vo = convertToVO(instance);
+        // 玩家数经实例信息提供者实时查询（ADR-0017，15s 缓存内复用）
+        instanceInfoService.enrichInstance(vo);
+        return vo;
     }
 
     @Override
@@ -292,10 +299,9 @@ public class InstanceServiceImpl implements InstanceService {
                 if (uptime instanceof Number) {
                     metrics.put("uptime", ((Number) uptime).longValue());
                 }
-                Object players = details.get("onlinePlayers");
-                if (players instanceof Number) {
-                    metrics.put("onlinePlayers", ((Number) players).intValue());
-                }
+                // 玩家数唯一事实源是 game_instance.online_players（ADR-0017 决策 5），
+                // 不再采用部署适配器统计口径
+                metrics.put("onlinePlayers", instance.getOnlinePlayers() == null ? 0 : instance.getOnlinePlayers());
             }
         } catch (Exception e) {
             log.warn("获取实例 {} 动态资源数据失败: {}", id, e.getMessage());
@@ -328,7 +334,9 @@ public class InstanceServiceImpl implements InstanceService {
         List<InstanceVO> voList = result.getRecords().stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
-        
+        // 玩家数经实例信息提供者并发实时查询（ADR-0017，整体预算 3s）
+        instanceInfoService.enrichInstances(voList);
+
         return new PageResult<>(voList, result.getTotal(), queryDTO.getCurrent(), queryDTO.getSize());
     }
 
@@ -429,6 +437,8 @@ public class InstanceServiceImpl implements InstanceService {
                 instanceMapper.updateOnlinePlayers(id, 0);
                 // RCON 连接池联动失效（ADR-0016 决策 5：实例停止后连接必然失效）
                 rconConnectionManager.invalidate(id);
+                // 实例信息缓存失效（ADR-0017：停止后玩家数清零）
+                instanceInfoService.invalidate(id);
                 log.info("实例停止成功: {}", instance.getInstanceName());
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStopHooks(id, instance.getGameCode());

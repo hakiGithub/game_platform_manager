@@ -45,6 +45,7 @@
         <lombok.version>1.18.30</lombok.version>
         <springdoc.version>2.3.0</springdoc.version>
         <jacoco.version>0.8.11</jacoco.version>
+        <guava.version>33.2.1-jre</guava.version>
     </properties>
 
     <dependencyManagement>
@@ -137,6 +138,12 @@
                 <groupId>cn.hutool</groupId>
                 <artifactId>hutool-all</artifactId>
                 <version>${hutool.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
             </dependency>
 
             <dependency>

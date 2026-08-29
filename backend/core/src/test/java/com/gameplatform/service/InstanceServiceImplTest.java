@@ -70,6 +70,9 @@ class InstanceServiceImplTest {
     @Mock
     private com.gameplatform.rcon.RconConnectionManager rconConnectionManager;
 
+    @Mock
+    private com.gameplatform.instanceinfo.InstanceInfoService instanceInfoService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 

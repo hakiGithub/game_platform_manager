@@ -29,6 +29,28 @@
 
 ---
 
+## 实例动态信息领域
+
+### 实例信息提供者（InstanceInfoProvider）
+插件实现的扩展点：按实例查询动态信息（当前玩家数等）。插件以 `@Component` 声明即被主应用按游戏编码注册；未实现提供者的游戏走降级默认值。
+
+### 实例动态信息（InstanceDynamicInfo）
+提供者返回的类型化结果：`playerCount`（当前玩家数，主应用消费的契约字段）+ `extras`（开放扩展袋，主应用不解释、透传给详情展示）。返回 null 表示"本次不可知"。
+
+### 降级默认值（Fallback Value）
+提供者未实现、返回 null 或查询超时/超预算时展示的玩家数：RUNNING 实例用 `game_instance.online_players` 存量值，非 RUNNING 实例固定 0。降级不覆盖已落库的上次真实值。
+
+### 信息缓存（Instance Info Cache）
+主应用持有的实例维度 TTL 缓存（15 秒，Guava Cache）。实时查询先过缓存，命中即复用；插件卸载、实例停止/删除时失效对应条目。缓存窗口内不提供强制穿透。
+
+### 查询预算（Query Budget）
+列表页并发查询的整体时间上限（3 秒）。单实例查询超时 5 秒，但被整体预算截断；预算内未完成的实例本次用降级默认值，已发起查询的结果仍会落库并进缓存。
+
+### 玩家数唯一事实源（Player Count Source of Truth）
+`game_instance.online_players` 列。提供者查询成功且值变化时回写；列表、详情、导出等所有读方都读这一列，不再从部署适配器统计口径取玩家数。
+
+---
+
 ## 平台通用
 
 ### 宿主能力服务（Host Capability Service）

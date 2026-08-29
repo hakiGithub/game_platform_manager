@@ -136,6 +136,17 @@ public class L4D2RconService {
     }
 
     /**
+     * 从 status 输出解析当前人类玩家数；无法解析返回 null（ADR-0017）。
+     */
+    public Integer extractPlayerCount(String statusText) {
+        if (statusText == null || statusText.isBlank()) {
+            return null;
+        }
+        Matcher m = PLAYERS_PATTERN.matcher(statusText);
+        return m.find() ? Integer.valueOf(m.group(1)) : null;
+    }
+
+    /**
      * 设置最大玩家数
      */
     public void setMaxPlayers(long instanceId, int maxPlayers) {

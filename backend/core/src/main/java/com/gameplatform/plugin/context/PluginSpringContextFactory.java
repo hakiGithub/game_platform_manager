@@ -2,6 +2,8 @@ package com.gameplatform.plugin.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.plugin.exception.PluginPathConflictException;
+import com.gameplatform.instanceinfo.InstanceInfoProviderRegistry;
+import com.gameplatform.instanceinfo.InstanceInfoService;
 import com.gameplatform.plugin.extension.*;
 import com.gameplatform.plugin.schedule.ScheduleDeclaration;
 import com.gameplatform.plugin.schedule.ScheduleService;
@@ -80,6 +82,8 @@ public class PluginSpringContextFactory {
     private final ScheduledTaskHandlerRegistry scheduleHandlerRegistry;
     private final ScheduleManagementService scheduleManagementService;
     private final com.gameplatform.rcon.RconServiceFactory rconServiceFactory;
+    private final InstanceInfoProviderRegistry instanceInfoProviderRegistry;
+    private final InstanceInfoService instanceInfoService;
 
     /** 已加载的插件上下文信息 */
     private final Map<String, PluginContextInfo> loadedPlugins = new ConcurrentHashMap<>();
@@ -168,6 +172,9 @@ public class PluginSpringContextFactory {
         String taskSource = extension.getGameCode().toUpperCase();
         int registeredHandlers = scanAndRegisterTaskHandlers(childContext, taskSource);
 
+        // 7.4 实例信息提供者注册（ADR-0017）：按 source 注册，卸载时注销
+        scanAndRegisterInstanceInfoProviders(childContext, taskSource);
+
         // 7.5 定时计划联动（ADR-0011 D5/D8）：注册 Handler → upsert 声明式默认计划 → 恢复停用前的暂停
         int scheduleHandlers = scanAndRegisterScheduleHandlers(childContext, scheduleSource);
         upsertScheduleDeclarations(pluginId, scheduleSource, childContext);
@@ -248,6 +255,24 @@ public class PluginSpringContextFactory {
             log.info("[TaskCenter] 来源 [{}] 已注册 {} 个任务处理器", source, count);
         }
         return count;
+    }
+
+    /**
+     * 扫描插件子容器中的 {@link com.gameplatform.plugin.extension.InstanceInfoProvider} Bean，
+     * 按 source（gameCode 大写）注册到 {@link InstanceInfoProviderRegistry}（ADR-0017）。
+     */
+    private void scanAndRegisterInstanceInfoProviders(AnnotationConfigApplicationContext childContext, String source) {
+        Map<String, InstanceInfoProvider> providerBeans = childContext.getBeansOfType(InstanceInfoProvider.class);
+        if (providerBeans.isEmpty()) {
+            return;
+        }
+        for (InstanceInfoProvider provider : providerBeans.values()) {
+            try {
+                instanceInfoProviderRegistry.register(source, provider);
+            } catch (IllegalStateException e) {
+                log.error("[InstanceInfo] 插件 [{}] 实例信息提供者注册失败（重复注册）: {}", source, e.getMessage());
+            }
+        }
     }
 
     /**
@@ -368,6 +393,14 @@ public class PluginSpringContextFactory {
 
         // 1. 任务中心清理：取消运行中任务 + 注销 Handler（purgeTasks 时物理删除记录，ADR-013）
         cleanupTasksForPlugin(pluginId, info.getTaskSource(), purgeTasks);
+
+        // 1.4 实例信息提供者注销 + 实例信息缓存超集失效（ADR-0017）
+        try {
+            instanceInfoProviderRegistry.unregisterBySource(info.getTaskSource());
+            instanceInfoService.invalidateAll();
+        } catch (Exception e) {
+            log.warn("[InstanceInfo] 插件 [{}] 卸载时清理实例信息提供者异常: {}", pluginId, e.getMessage());
+        }
 
         // 1.5 定时计划联动（ADR-0011 D8）：注销 Handler；
         //     卸载移除 → 物理清理计划+记录；热重载/停用 → 暂停（重载后 resume 恢复）

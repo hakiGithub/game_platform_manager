@@ -104,6 +104,12 @@ public class InstanceVO implements Serializable {
     private Integer onlinePlayers;
 
     /**
+     * 实例动态信息扩展袋（ADR-0017：由 InstanceInfoProvider 透传，主应用不解释）
+     */
+    @Schema(description = "实例动态信息扩展（插件提供者透传）")
+    private Map<String, Object> infoExtras;
+
+    /**
      * 配置信息
      */
     @Schema(description = "配置信息")
