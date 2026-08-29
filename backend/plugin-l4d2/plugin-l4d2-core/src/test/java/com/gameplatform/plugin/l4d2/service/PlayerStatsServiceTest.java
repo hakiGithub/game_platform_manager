@@ -56,7 +56,7 @@ import static org.mockito.Mockito.when;
 class PlayerStatsServiceTest {
 
     @Mock
-    private RconService rconService;
+    private L4D2RconService rconService;
 
     @Mock
     private GeoIpService geoIpService;

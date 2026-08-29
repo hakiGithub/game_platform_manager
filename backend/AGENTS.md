@@ -541,7 +541,7 @@ backend/
         │   │   ├── ServerConfigController.java # 服务器配置
         │   │   └── AdminController.java      # 管理员管理（v2.0 已迁移到 ExtensionClient）
         │   ├── service/                      # 业务服务
-        │   │   ├── RconService.java          # RCON服务
+        │   │   ├── L4D2RconService.java       # RCON 语义层（传输委托宿主 RconService，ADR-0016）
         │   │   └── VpkParserService.java     # VPK解析服务
         │   ├── dto/                          # 数据传输对象
         │   ├── vo/                           # 视图对象

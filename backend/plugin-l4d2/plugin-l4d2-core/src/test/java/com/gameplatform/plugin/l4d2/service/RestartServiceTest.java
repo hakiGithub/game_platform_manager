@@ -53,7 +53,7 @@ class RestartServiceTest {
     private FileAccessService fileAccessService;
 
     @Mock
-    private RconService rconService;
+    private L4D2RconService rconService;
 
     private L4D2Config config;
 
@@ -367,7 +367,7 @@ class RestartServiceTest {
         // 不设置 rconPassword
         instance.setConfigInfo(configInfo);
         when(instanceQueryService.getInstanceById(2L)).thenReturn(instance);
-        // 新签名下密码校验由 RconService 内部完成，模拟其抛出异常
+        // 新签名下密码校验由 L4D2RconService 内部完成，模拟其抛出异常
         when(rconService.executeCommand(eq(2L), eq("_restart")))
                 .thenThrow(new RuntimeException("RCON 密码未配置"));
 

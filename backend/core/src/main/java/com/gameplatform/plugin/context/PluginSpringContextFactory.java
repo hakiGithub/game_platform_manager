@@ -11,6 +11,7 @@ import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.HostQueryService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.service.RconService;
 import com.gameplatform.plugin.service.SshTunnelManager;
 import com.gameplatform.plugin.service.SshTunnelService;
 import com.gameplatform.plugin.task.TaskHandler;
@@ -78,6 +79,7 @@ public class PluginSpringContextFactory {
     private final SshTunnelManager sshTunnelManager;
     private final ScheduledTaskHandlerRegistry scheduleHandlerRegistry;
     private final ScheduleManagementService scheduleManagementService;
+    private final com.gameplatform.rcon.RconServiceFactory rconServiceFactory;
 
     /** 已加载的插件上下文信息 */
     private final Map<String, PluginContextInfo> loadedPlugins = new ConcurrentHashMap<>();
@@ -139,7 +141,10 @@ public class PluginSpringContextFactory {
         ScheduleService scheduleService = new PluginScheduleServiceAdapter(
                 scheduleManagementService, pluginId, scheduleSource);
         childContext.getBeanFactory().registerSingleton("scheduleService", scheduleService);
-        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService");
+        // 注入 RconService（ADR-0016）：绑定 pluginId 的 RCON 宿主能力（审计调用方标识）
+        RconService rconService = rconServiceFactory.forPlugin(pluginId);
+        childContext.getBeanFactory().registerSingleton("rconService", rconService);
+        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService, RconService");
 
         // 5. 扫描插件包路径
         childContext.scan(basePackage);

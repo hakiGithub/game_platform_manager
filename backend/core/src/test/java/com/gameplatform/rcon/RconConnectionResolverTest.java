@@ -1,4 +1,4 @@
-package com.gameplatform.plugin.l4d2.rcon;
+package com.gameplatform.rcon;
 
 import com.gameplatform.vo.HostVO;
 import com.gameplatform.vo.InstanceVO;
@@ -9,6 +9,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * RconConnectionResolver 契约测试（ADR-0016：主应用只认标准键）。
+ */
 class RconConnectionResolverTest {
 
     private final RconConnectionResolver resolver = new RconConnectionResolver();
@@ -59,33 +62,19 @@ class RconConnectionResolverTest {
     }
 
     @Test
-    void resolve_password_fallback_to_compose_variable() {
+    void resolve_ignores_game_specific_password_keys() {
+        // ADR-0016 决策 4：专属键（L4D2_RCON_PASSWORD / SRCDS_RCONPW）不归主应用契约，
+        // 由部署适配器归一化写入标准键
         InstanceVO instance = new InstanceVO();
         instance.setDeployType("docker-compose");
-        instance.setConfigInfo(Map.of("rconPort", 27015, "L4D2_RCON_PASSWORD", "compose-pwd"));
+        instance.setConfigInfo(Map.of("rconPort", 27015, "L4D2_RCON_PASSWORD", "compose-pwd", "SRCDS_RCONPW", "docker-pwd"));
         instance.setPortConfig(Map.of("rcon", 27015));
         HostVO host = new HostVO();
         host.setIp("10.0.0.1");
 
         Optional<RconEndpoint> result = resolver.resolve(instance, host);
 
-        assertTrue(result.isPresent());
-        assertEquals("compose-pwd", result.get().password());
-    }
-
-    @Test
-    void resolve_password_fallback_to_srcds_variable() {
-        InstanceVO instance = new InstanceVO();
-        instance.setDeployType("docker");
-        instance.setConfigInfo(Map.of("rconPort", 27015, "SRCDS_RCONPW", "docker-pwd"));
-        instance.setPortConfig(Map.of("rcon", 27015));
-        HostVO host = new HostVO();
-        host.setIp("10.0.0.1");
-
-        Optional<RconEndpoint> result = resolver.resolve(instance, host);
-
-        assertTrue(result.isPresent());
-        assertEquals("docker-pwd", result.get().password());
+        assertTrue(result.isEmpty());
     }
 
     @Test

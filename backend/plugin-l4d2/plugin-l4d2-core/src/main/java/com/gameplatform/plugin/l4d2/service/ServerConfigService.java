@@ -62,7 +62,7 @@ public class ServerConfigService {
     private final InstanceFileService instanceFileService;
     private final L4D2PathResolver pathResolver;
     private final L4D2Config config;
-    private final RconService rconService;
+    private final L4D2RconService rconService;
 
     /**
      * 获取服务器配置。

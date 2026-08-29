@@ -44,7 +44,7 @@ public class MapService {
     private final VpkTrimService vpkTrimService;
     private final InstanceQueryService instanceQueryService;
     private final InstanceFileService instanceFileService;
-    private final RconService rconService;
+    private final L4D2RconService rconService;
     private final L4D2Config config;
     private final L4D2PathResolver pathResolver;
 

@@ -104,6 +104,18 @@ jwt:
   # Token请求头名称
   header: Authorization
 
+# RCON 传输层配置（ADR-0016）
+rcon:
+  read-timeout-ms: 5000
+  connect-timeout-ms: 5000
+  auth-retry-count: 3
+  pool:
+    enabled: true
+    idle-timeout-seconds: 300
+    max-age-seconds: 1800
+    clean-interval-seconds: 60
+    borrow-timeout-seconds: 3
+
 # 日志配置
 logging:
   level:

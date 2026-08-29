@@ -1,4 +1,4 @@
-package com.gameplatform.plugin.l4d2.rcon;
+package com.gameplatform.rcon;
 
 /**
  * RCON 连接端点（host, port, password）。

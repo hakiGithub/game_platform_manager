@@ -18,6 +18,7 @@ import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.listener.PluginLifecycleHook;
+import com.gameplatform.rcon.RconConnectionManager;
 import com.gameplatform.service.DeployService;
 import com.gameplatform.service.InstanceService;
 import com.gameplatform.util.SshUtil;
@@ -52,6 +53,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final DeployService deployService;
     private final SshUtil sshUtil;
     private final PluginLifecycleHook pluginLifecycleHook;
+    private final RconConnectionManager rconConnectionManager;
     private final DeploymentAccess deployAccess;
 
     @Override
@@ -232,6 +234,9 @@ public class InstanceServiceImpl implements InstanceService {
             throw new BusinessException("删除实例失败，记录不存在或已被删除");
         }
         log.info("物理删除实例成功: id={}, name={}", id, instance.getInstanceName());
+
+        // RCON 连接池联动失效（ADR-0016 决策 5）
+        rconConnectionManager.invalidate(id);
 
     }
 
@@ -422,6 +427,8 @@ public class InstanceServiceImpl implements InstanceService {
             if (success) {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.STOPPED.getCode());
                 instanceMapper.updateOnlinePlayers(id, 0);
+                // RCON 连接池联动失效（ADR-0016 决策 5：实例停止后连接必然失效）
+                rconConnectionManager.invalidate(id);
                 log.info("实例停止成功: {}", instance.getInstanceName());
                 // 通知 gameCode 匹配的插件扩展点
                 pluginLifecycleHook.executeInstanceStopHooks(id, instance.getGameCode());
@@ -508,6 +515,8 @@ public class InstanceServiceImpl implements InstanceService {
             
             if (success) {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.RUNNING.getCode());
+                // RCON 连接池联动失效（ADR-0016 决策 5：重启后旧连接必然失效）
+                rconConnectionManager.invalidate(id);
                 log.info("实例重启成功: {}", instance.getInstanceName());
             } else {
                 instanceMapper.updateRunStatus(id, DeployAdapter.InstanceStatus.ERROR.getCode()); // 异常状态

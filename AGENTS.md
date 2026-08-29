@@ -279,7 +279,7 @@ bash scripts/deploy-plugin.sh --skip-build
 - `LinuxGsmDockerAdapter` 无条件注入 `/etc/ssl/certs/ca-certificates.crt` 只读挂载
 - SSH 认证优先使用解析后的私钥，其次解密密码，禁止将用户名作为密码
 - `SshUtil` 使用连接池模式（共享 SshClient + CachedSession 会话池），后台每 60s 清理空闲超时会话
-- RCON 连接采用 `RconConnectionResolver` → `RconConnectionManager` → `RconService` 三层架构
+- RCON 是主应用宿主能力（传输层：协议/连接池/端点解析归 core `com.gameplatform.rcon`，语义层归插件），SDK 暴露 `RconService`，端点解析只认标准键 `configInfo.rconPort`（缺省 27015）/`rconPassword`，命令执行统一带调用方审计。详见 [ADR-0016](docs/design/adr/0016-rcon-host-capability.md)
 - 实例详情拆分为静态接口 `GET /instances/{id}` 与动态接口 `GET /instances/{id}/metrics`
 - 插件 UI 资源路径需在 `SecurityConfig` 中放行 `/pf4j/plugin/*/ui/**` 和 `/pf4j/plugins/*/ui/**`
 - `PluginFrameworkController.getPluginResource` 对 `index.html` 返回 `Cache-Control: no-store`，其余带 hash 的 JS/CSS 保留 7 天缓存
@@ -337,6 +337,7 @@ bash scripts/deploy-plugin.sh --skip-build
   - [ADR-0002 主应用与插件范围隔离规约](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
   - [ADR-0003 废弃 plugin-l4d2-standalone](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
   - [ADR-0015 多数据库方言支持](docs/design/adr/0015-multi-database-dialect-support.md)
+  - [ADR-0016 RCON 能力上提](docs/design/adr/0016-rcon-host-capability.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---

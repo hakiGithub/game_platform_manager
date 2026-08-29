@@ -55,7 +55,7 @@ public class SourceModCfgService {
     private final ExtensionClient extensionClient;
     private final SourceModCfgParser cfgParser;
     private final L4D2PathResolver pathResolver;
-    private final RconService rconService;
+    private final L4D2RconService rconService;
     private final PluginConfigAuditService auditService;
     private final Charset gbk = GbkCodecUtil.gbk();
 

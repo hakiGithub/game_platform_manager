@@ -1,8 +1,6 @@
 package com.gameplatform.plugin.l4d2.service;
 
-import com.gameplatform.plugin.l4d2.config.L4D2Config;
-import com.gameplatform.plugin.l4d2.rcon.RconConnectionManager;
-import lombok.Data;
+import com.gameplatform.plugin.service.RconService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -11,22 +9,22 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.gameplatform.plugin.l4d2.rcon.RconProtocol.sendCommand;
-
 /**
- * RCON 远程连接服务
+ * L4D2 RCON 语义层（ADR-0016）。
  * <p>
- * 业务语义层：负责 status 输出解析、命令语义封装。
- * 连接管理委托 RconConnectionManager，协议层委托 RconProtocol。
+ * 传输（协议、连接池、端点解析）由宿主 {@link RconService}（按 pluginId 注入的
+ * 宿主能力服务）承担；本类只承载游戏语义：status 输出解析、地图/难度/模式切换、
+ * kick/ban 命令封装。
  *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Slf4j
 @Service
-public class RconService {
+public class L4D2RconService {
 
-    private final RconConnectionManager connectionManager;
+    /** 宿主 RCON 能力（按 pluginId 绑定审计调用方） */
+    private final RconService rcon;
 
     // 状态解析正则表达式
     private static final Pattern HOSTNAME_PATTERN = Pattern.compile("hostname:\\s*(.+)");
@@ -38,14 +36,13 @@ public class RconService {
     private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*=\\s*\"([^\"]+)\"");
     private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*=\\s*\"([^\"]+)\"");
 
-    // 新增：版本/系统/类型解析
+    // 版本/系统/类型解析
     private static final Pattern VERSION_PATTERN = Pattern.compile("version\\s*:\\s*(\\S+)");
     private static final Pattern OS_PATTERN = Pattern.compile("os\\s*:\\s*(\\S+)");
     private static final Pattern TYPE_PATTERN = Pattern.compile("type\\s*:\\s*(.+)");
 
-    public RconService(RconConnectionManager connectionManager, L4D2Config config) {
-        this.connectionManager = connectionManager;
-        // config 保留以备未来扩展，当前 ConnectionManager 已持有
+    public L4D2RconService(RconService rcon) {
+        this.rcon = rcon;
     }
 
     /**
@@ -56,45 +53,43 @@ public class RconService {
      * @return 命令执行结果
      */
     public String executeCommand(long instanceId, String command) {
-        return connectionManager.withConnection(instanceId, (in, out) -> sendCommand(in, out, command));
+        return rcon.executeCommand(instanceId, command);
     }
 
     /**
-     * 获取服务器状态。单连接内执行 status + z_difficulty + sm_cvar mp_gamemode 三条命令。
+     * 获取服务器状态。依次执行 status + z_difficulty + sm_cvar mp_gamemode。
      *
      * @param instanceId 实例 ID
      * @return 服务器状态信息
      */
     public ServerStatus getStatus(long instanceId) {
-        return connectionManager.withConnection(instanceId, (in, out) -> {
-            String statusText = sendCommand(in, out, "status");
-            ServerStatus status = parseStatus(statusText);
+        String statusText = rcon.executeCommand(instanceId, "status");
+        ServerStatus status = parseStatus(statusText);
 
-            // 获取难度
-            try {
-                String difficultyText = sendCommand(in, out, "z_difficulty");
-                status.setDifficulty(parseDifficulty(difficultyText));
-            } catch (Exception e) {
-                log.warn("获取游戏难度失败", e);
-                status.setDifficulty("未知");
-            }
+        // 获取难度
+        try {
+            String difficultyText = rcon.executeCommand(instanceId, "z_difficulty");
+            status.setDifficulty(parseDifficulty(difficultyText));
+        } catch (Exception e) {
+            log.warn("获取游戏难度失败", e);
+            status.setDifficulty("未知");
+        }
 
-            // 获取游戏模式
-            try {
-                String gameModeText = sendCommand(in, out, "sm_cvar mp_gamemode");
-                status.setGameMode(parseGameMode(gameModeText));
-            } catch (Exception e) {
-                log.warn("获取游戏模式失败", e);
-                status.setGameMode("未知");
-            }
+        // 获取游戏模式
+        try {
+            String gameModeText = rcon.executeCommand(instanceId, "sm_cvar mp_gamemode");
+            status.setGameMode(parseGameMode(gameModeText));
+        } catch (Exception e) {
+            log.warn("获取游戏模式失败", e);
+            status.setGameMode("未知");
+        }
 
-            // 版本/系统/类型（从 status 输出解析，无需额外命令）
-            status.setVersion(parseVersion(statusText));
-            status.setOsType(parseOsType(statusText));
-            status.setServerType(parseServerType(statusText));
+        // 版本/系统/类型（从 status 输出解析，无需额外命令）
+        status.setVersion(parseVersion(statusText));
+        status.setOsType(parseOsType(statusText));
+        status.setServerType(parseServerType(statusText));
 
-            return status;
-        });
+        return status;
     }
 
     /**
@@ -375,7 +370,7 @@ public class RconService {
     /**
      * 服务器状态
      */
-    @Data
+    @lombok.Data
     public static class ServerStatus {
         private String hostname;
         private String map;
@@ -398,7 +393,7 @@ public class RconService {
     /**
      * 玩家信息
      */
-    @Data
+    @lombok.Data
     public static class PlayerInfo {
         private int id;
         private String name;

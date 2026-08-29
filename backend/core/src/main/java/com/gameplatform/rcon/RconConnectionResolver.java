@@ -1,4 +1,4 @@
-package com.gameplatform.plugin.l4d2.rcon;
+package com.gameplatform.rcon;
 
 import com.gameplatform.vo.HostVO;
 import com.gameplatform.vo.InstanceVO;
@@ -8,15 +8,17 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * RCON 连接端点解析器。
+ * RCON 连接端点解析器（ADR-0016）。
  * <p>
  * 纯逻辑单元，从 InstanceVO + HostVO 解析出 (host, port, password)。
- * 兼容多部署类型与字段命名差异。无 I/O，无状态。
+ * 主应用契约只认标准键：{@code configInfo.rconPort}（缺省 27015，portConfig.rcon
+ * 为端口映射记录时可兜底）与 {@code configInfo.rconPassword}。游戏专属键名
+ * 由部署适配器在部署时归一化写入标准键。无 I/O，无状态。
  */
 @Component
 public class RconConnectionResolver {
 
-    /** 默认 RCON 端口（与 L4D2 docker-compose 实际部署一致） */
+    /** 默认 RCON 端口（ADR-0016 决策 4，统一缺省值） */
     private static final int DEFAULT_RCON_PORT = 27015;
 
     /**
@@ -50,7 +52,7 @@ public class RconConnectionResolver {
     }
 
     /**
-     * 三级回退解析端口：configInfo.rconPort → portConfig.rcon → 默认 27015
+     * 端口解析：configInfo.rconPort → portConfig.rcon（映射记录）→ 默认 27015
      */
     private int resolvePort(Map<String, Object> configInfo, Map<String, Object> portConfig) {
         if (configInfo != null) {
@@ -69,15 +71,11 @@ public class RconConnectionResolver {
     }
 
     /**
-     * 三级回退解析密码：configInfo.rconPassword → L4D2_RCON_PASSWORD → SRCDS_RCONPW
+     * 密码解析：只认标准键 configInfo.rconPassword（ADR-0016 决策 4）
      */
     private String resolvePassword(Map<String, Object> configInfo) {
         if (configInfo == null) return null;
         Object pwd = configInfo.get("rconPassword");
-        if (pwd != null && !pwd.toString().isBlank()) return pwd.toString();
-        pwd = configInfo.get("L4D2_RCON_PASSWORD");
-        if (pwd != null && !pwd.toString().isBlank()) return pwd.toString();
-        pwd = configInfo.get("SRCDS_RCONPW");
         if (pwd != null && !pwd.toString().isBlank()) return pwd.toString();
         return null;
     }

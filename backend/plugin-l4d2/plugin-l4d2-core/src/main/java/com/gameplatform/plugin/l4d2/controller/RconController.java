@@ -3,8 +3,7 @@ package com.gameplatform.plugin.l4d2.controller;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.*;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
-import com.gameplatform.plugin.l4d2.rcon.RconProtocol;
-import com.gameplatform.plugin.l4d2.service.RconService;
+import com.gameplatform.plugin.l4d2.service.L4D2RconService;
 import com.gameplatform.plugin.l4d2.vo.PlayerInfoVO;
 import com.gameplatform.plugin.l4d2.vo.RconResultVO;
 import com.gameplatform.plugin.l4d2.vo.ServerStatusVO;
@@ -17,14 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * RCON 远程连接控制器
@@ -41,7 +34,7 @@ import java.util.Map;
 @Validated
 public class RconController {
 
-    private final RconService rconService;
+    private final L4D2RconService rconService;
 
     /**
      * 获取服务器状态
@@ -55,7 +48,7 @@ public class RconController {
         vo.setOnline(false);
 
         try {
-            RconService.ServerStatus status = rconService.getStatus(dto.getInstanceId());
+            L4D2RconService.ServerStatus status = rconService.getStatus(dto.getInstanceId());
             vo = convertToServerStatusVO(status);
             vo.setOnline(true);
         } catch (L4D2PluginException e) {
@@ -177,166 +170,12 @@ public class RconController {
         return Result.success(maps);
     }
 
-    /**
-     * 诊断端点：在 Spring Boot 上下文中直接测试 RCON 连接。
-     * <p>
-     * 仅用于排查 RCON 连接失败问题，绕过 RconConnectionManager 和 RconConnectionResolver，
-     * 直接使用 RconProtocol.authenticate() 测试目标服务器。
-     * 验证 Spring Boot 环境下 Socket 行为是否与独立 Java 程序一致。
-     */
-    @Operation(summary = "RCON 诊断", description = "在 Spring Boot 上下文中直接测试 RCON 连接")
-    @PostMapping("/diag")
-    public Result<Map<String, Object>> diag(@RequestBody Map<String, Object> body) {
-        String host = (String) body.getOrDefault("host", "192.168.111.253");
-        int port = ((Number) body.getOrDefault("port", 27015)).intValue();
-        String password = (String) body.getOrDefault("password", "123456");
-        boolean useNewThread = Boolean.TRUE.equals(body.get("useNewThread"));
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("host", host);
-        result.put("port", port);
-        result.put("passwordLength", password.length());
-        result.put("callerThread", Thread.currentThread().getName());
-        result.put("useNewThread", useNewThread);
-        result.put("fileEncoding", System.getProperty("file.encoding"));
-        result.put("jvmName", System.getProperty("java.vm.name"));
-        result.put("jvmVersion", System.getProperty("java.version"));
-
-        Runnable diagTask = () -> runDiag(host, port, password, result);
-        if (useNewThread) {
-            Thread t = new Thread(diagTask, "rcon-diag-thread");
-            t.setDaemon(true);
-            t.start();
-            try {
-                t.join(15000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                result.put("error", "diag thread interrupted");
-            }
-        } else {
-            diagTask.run();
-        }
-        return Result.success(result);
-    }
-
-    private void runDiag(String host, int port, String password, Map<String, Object> result) {
-        result.put("execThread", Thread.currentThread().getName());
-        result.put("contextClassLoader", String.valueOf(Thread.currentThread().getContextClassLoader()));
-
-        byte[] authPacket = RconProtocol.buildPacket(1, RconProtocol.PACKET_TYPE_AUTH, password);
-        result.put("authPacketBytes", authPacket.length);
-        StringBuilder hex = new StringBuilder();
-        for (int i = 0; i < Math.min(authPacket.length, 20); i++) {
-            hex.append(String.format("%02x ", authPacket[i] & 0xff));
-        }
-        result.put("authPacketHexHead", hex.toString().trim());
-
-        // ========== 测试 1：传统 Socket ==========
-        long t1 = System.nanoTime();
-        try (Socket sock = new Socket()) {
-            sock.setSoTimeout(5000);
-            sock.setTcpNoDelay(true);
-            sock.connect(new InetSocketAddress(host, port), 5000);
-            long connectMs = (System.nanoTime() - t1) / 1_000_000;
-            result.put("tcpConnectMs", connectMs);
-            result.put("localAddress", String.valueOf(sock.getLocalSocketAddress()));
-            result.put("remoteAddress", String.valueOf(sock.getRemoteSocketAddress()));
-            result.put("tcpConnectSuccess", true);
-
-            long t2 = System.nanoTime();
-            InputStream in = sock.getInputStream();
-            OutputStream out = sock.getOutputStream();
-            out.write(authPacket);
-            out.flush();
-            long writeMs = (System.nanoTime() - t2) / 1_000_000;
-            result.put("writeMs", writeMs);
-
-            long t3 = System.nanoTime();
-            String authResult = "unknown";
-            int responsePackets = 0;
-            int lastType = -1;
-            int lastId = -99;
-            try {
-                for (int i = 0; i < 2; i++) {
-                    byte[] response = RconProtocol.readPacket(in);
-                    responsePackets++;
-                    lastType = RconProtocol.parseType(response);
-                    lastId = RconProtocol.parseId(response);
-                    if (lastType == RconProtocol.PACKET_TYPE_AUTH_RESPONSE) {
-                        authResult = (lastId == 1) ? "success" : "wrong_password";
-                        break;
-                    }
-                }
-            } catch (Exception e) {
-                authResult = "read_error: " + e.getClass().getSimpleName() + ": " + e.getMessage();
-            }
-            long readMs = (System.nanoTime() - t3) / 1_000_000;
-            result.put("authResult", authResult);
-            result.put("responsePackets", responsePackets);
-            result.put("lastType", lastType);
-            result.put("lastId", lastId);
-            result.put("readMs", readMs);
-        } catch (Exception e) {
-            result.put("tcpConnectSuccess", false);
-            result.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-
-        // ========== 测试 2：NIO SocketChannel ==========
-        try (java.nio.channels.SocketChannel channel = java.nio.channels.SocketChannel.open()) {
-            channel.configureBlocking(true);
-            channel.socket().setSoTimeout(5000);
-            channel.socket().setTcpNoDelay(true);
-            long t4 = System.nanoTime();
-            channel.connect(new java.net.InetSocketAddress(host, port));
-            long nioConnectMs = (System.nanoTime() - t4) / 1_000_000;
-            result.put("nioConnectMs", nioConnectMs);
-            result.put("nioConnectSuccess", true);
-
-            long t5 = System.nanoTime();
-            java.nio.ByteBuffer authBuffer = java.nio.ByteBuffer.wrap(authPacket);
-            int written = channel.write(authBuffer);
-            long nioWriteMs = (System.nanoTime() - t5) / 1_000_000;
-            result.put("nioWriteMs", nioWriteMs);
-            result.put("nioBytesWritten", written);
-
-            long t6 = System.nanoTime();
-            String nioAuthResult = "unknown";
-            int nioResponsePackets = 0;
-            int nioLastType = -1;
-            int nioLastId = -99;
-            try {
-                InputStream nioIn = channel.socket().getInputStream();
-                for (int i = 0; i < 2; i++) {
-                    byte[] response = RconProtocol.readPacket(nioIn);
-                    nioResponsePackets++;
-                    nioLastType = RconProtocol.parseType(response);
-                    nioLastId = RconProtocol.parseId(response);
-                    if (nioLastType == RconProtocol.PACKET_TYPE_AUTH_RESPONSE) {
-                        nioAuthResult = (nioLastId == 1) ? "success" : "wrong_password";
-                        break;
-                    }
-                }
-            } catch (Exception e) {
-                nioAuthResult = "read_error: " + e.getClass().getSimpleName() + ": " + e.getMessage();
-            }
-            long nioReadMs = (System.nanoTime() - t6) / 1_000_000;
-            result.put("nioAuthResult", nioAuthResult);
-            result.put("nioResponsePackets", nioResponsePackets);
-            result.put("nioLastType", nioLastType);
-            result.put("nioLastId", nioLastId);
-            result.put("nioReadMs", nioReadMs);
-        } catch (Exception e) {
-            result.put("nioConnectSuccess", false);
-            result.put("nioError", e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-    }
-
     // ========== 私有方法 ==========
 
     /**
      * 转换服务器状态
      */
-    private ServerStatusVO convertToServerStatusVO(RconService.ServerStatus status) {
+    private ServerStatusVO convertToServerStatusVO(L4D2RconService.ServerStatus status) {
         ServerStatusVO vo = new ServerStatusVO();
         vo.setHostname(status.getHostname());
         vo.setMap(status.getMap());
@@ -368,7 +207,7 @@ public class RconController {
         // 转换玩家列表
         List<PlayerInfoVO> players = new ArrayList<>();
         if (status.getUsers() != null) {
-            for (RconService.PlayerInfo player : status.getUsers()) {
+            for (L4D2RconService.PlayerInfo player : status.getUsers()) {
                 PlayerInfoVO playerVO = new PlayerInfoVO();
                 playerVO.setId(player.getId());
                 playerVO.setName(player.getName());

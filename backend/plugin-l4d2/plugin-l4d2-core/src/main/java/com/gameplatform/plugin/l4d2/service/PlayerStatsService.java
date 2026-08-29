@@ -68,7 +68,7 @@ public class PlayerStatsService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private final RconService rconService;
+    private final L4D2RconService rconService;
     private final GeoIpService geoIpService;
     private final ExtensionClient extensionClient;
     private final InstanceQueryService instanceQueryService;

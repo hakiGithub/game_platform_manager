@@ -1,7 +1,6 @@
-package com.gameplatform.plugin.l4d2.rcon;
+package com.gameplatform.rcon;
 
-import com.gameplatform.plugin.l4d2.config.L4D2Config;
-import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
+import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.service.HostQueryService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.HostVO;
@@ -14,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -21,13 +21,14 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static com.gameplatform.plugin.l4d2.rcon.RconProtocol.*;
+import static com.gameplatform.rcon.RconProtocol.*;
 
 /**
- * RCON 连接缓存管理器。
+ * RCON 连接缓存管理器（ADR-0016，主应用传输层）。
  * <p>
  * 按 instanceId 缓存已认证连接，支持借用/归还、心跳保活、空闲超时回收、失效重建。
- * 同一实例串行访问（ReentrantLock），不同实例并行。
+ * 同一实例串行访问（ReentrantLock），不同实例并行。实例删除/状态变化时由
+ * {@link #invalidate(long)} 失效对应连接。
  */
 @Slf4j
 @Service
@@ -36,7 +37,7 @@ public class RconConnectionManager {
     private final RconConnectionResolver resolver;
     private final InstanceQueryService instanceQueryService;
     private final HostQueryService hostQueryService;
-    private final L4D2Config config;
+    private final RconProperties properties;
 
     private final ConcurrentHashMap<Long, CachedConnection> pool = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleaner;
@@ -44,21 +45,21 @@ public class RconConnectionManager {
     public RconConnectionManager(RconConnectionResolver resolver,
                                   InstanceQueryService instanceQueryService,
                                   HostQueryService hostQueryService,
-                                  L4D2Config config) {
+                                  RconProperties properties) {
         this.resolver = resolver;
         this.instanceQueryService = instanceQueryService;
         this.hostQueryService = hostQueryService;
-        this.config = config;
+        this.properties = properties;
 
-        L4D2Config.Rcon rconCfg = config.getRcon();
+        RconProperties.Pool poolCfg = properties.getPool();
         this.cleaner = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "rcon-connection-cleaner");
             t.setDaemon(true);
             return t;
         });
         this.cleaner.scheduleAtFixedRate(this::cleanIdleConnections,
-                rconCfg.getCleanIntervalSeconds(),
-                rconCfg.getCleanIntervalSeconds(),
+                poolCfg.getCleanIntervalSeconds(),
+                poolCfg.getCleanIntervalSeconds(),
                 TimeUnit.SECONDS);
     }
 
@@ -66,13 +67,20 @@ public class RconConnectionManager {
      * 借用实例连接执行操作。
      */
     public <T> T withConnection(long instanceId, RconAction<T> action) {
-        if (!config.getRcon().isPoolEnabled()) {
-            return executeWithoutPool(instanceId, action);
+        return withConnection(instanceId, null, action);
+    }
+
+    /**
+     * 借用实例连接执行操作，可覆盖本次借用的读超时。
+     */
+    public <T> T withConnection(long instanceId, Duration timeout, RconAction<T> action) {
+        RconProperties.Pool poolCfg = properties.getPool();
+        if (!poolCfg.isEnabled()) {
+            return executeWithoutPool(instanceId, timeout, action);
         }
         CachedConnection cached = pool.computeIfAbsent(instanceId, this::createConnection);
-        if (!cached.tryBorrow(config.getRcon().getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
-            throw new L4D2PluginException(L4D2PluginException.RCON,
-                    "实例 " + instanceId + " 的 RCON 连接正忙");
+        if (!cached.tryBorrow(poolCfg.getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
+            throw new BusinessException("实例 " + instanceId + " 的 RCON 连接正忙");
         }
         CachedConnection active = cached;
         try {
@@ -81,26 +89,42 @@ public class RconConnectionManager {
                 active = createConnection(instanceId);
                 pool.put(instanceId, active);
             }
+            if (timeout != null) {
+                active.applySoTimeout(timeout.toMillis());
+            }
             return action.execute(active.in, active.out);
         } catch (IOException e) {
             active.markBroken();
-            throw new L4D2PluginException(L4D2PluginException.RCON,
-                    "RCON 通信失败: " + e.getMessage(), e);
+            throw new BusinessException("RCON 通信失败: " + e.getMessage(), e);
         } finally {
             active.release();
         }
     }
 
     /**
+     * 失效实例连接（实例删除/状态变化时联动，ADR-0016 决策 5）。
+     */
+    public void invalidate(long instanceId) {
+        CachedConnection cached = pool.remove(instanceId);
+        if (cached != null) {
+            cached.markBroken();
+            cached.close();
+            log.info("RCON 连接已失效 instanceId={}", instanceId);
+        }
+    }
+
+    /**
      * 缓存关闭时每次新建连接执行。
      */
-    private <T> T executeWithoutPool(long instanceId, RconAction<T> action) {
+    private <T> T executeWithoutPool(long instanceId, Duration timeout, RconAction<T> action) {
         CachedConnection conn = createConnection(instanceId);
         try {
+            if (timeout != null) {
+                conn.applySoTimeout(timeout.toMillis());
+            }
             return action.execute(conn.in, conn.out);
         } catch (IOException e) {
-            throw new L4D2PluginException(L4D2PluginException.RCON,
-                    "RCON 通信失败: " + e.getMessage(), e);
+            throw new BusinessException("RCON 通信失败: " + e.getMessage(), e);
         } finally {
             conn.close();
         }
@@ -112,15 +136,14 @@ public class RconConnectionManager {
     private CachedConnection createConnection(long instanceId) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
-            throw new L4D2PluginException(L4D2PluginException.RCON, "实例不存在: " + instanceId);
+            throw new BusinessException("实例不存在: " + instanceId);
         }
         HostVO host = hostQueryService.getHostById(instance.getHostId());
         Optional<RconEndpoint> endpointOpt = resolver.resolve(instance, host);
         if (endpointOpt.isEmpty() || !endpointOpt.get().isValid()) {
             log.warn("RCON 端点不可达 instanceId={}, host={}, endpoint={}",
                     instanceId, host == null ? null : host.getIp(), endpointOpt);
-            throw new L4D2PluginException(L4D2PluginException.RCON,
-                    "RCON 端点不可达：端口未映射或配置缺失");
+            throw new BusinessException("RCON 端点不可达：端口未映射或配置缺失");
         }
         RconEndpoint ep = endpointOpt.get();
         log.info("RCON 创建连接 instanceId={}, host={}, port={}, passwordLength={}, deployType={}",
@@ -133,7 +156,7 @@ public class RconConnectionManager {
         // connect 后必须立即发送 AUTH 包，任何延迟（getInputStream/getOutputStream/buildPacket）
         // 都可能导致服务器关闭连接。因此在 connect 前预构建 AUTH 包。
         final int requestId = 1;
-        int maxAttempts = 3;
+        int maxAttempts = properties.getAuthRetryCount();
         IOException lastException = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             long tStart = System.nanoTime();
@@ -142,18 +165,19 @@ public class RconConnectionManager {
                 byte[] authPacket = buildAuthPacket(requestId, ep.password());
 
                 Socket socket = new Socket();
-                socket.setSoTimeout(config.getRconTimeout());
+                socket.setSoTimeout(properties.getReadTimeoutMs());
                 // 关键：禁用 Nagle 算法（TCP_NODELAY=true），确保 20 字节的 AUTH 包立即发送。
                 // Source 引擎对空闲 TCP 连接有极短超时（约 20ms），Nagle 会缓冲小包等待 ACK，
-                // 导致 AUTH 包延迟到达，服务器关闭连接。Python 的 sendall 不受此影响。
+                // 导致 AUTH 包延迟到达，服务器关闭连接。
                 socket.setTcpNoDelay(true);
                 long tConnectStart = System.nanoTime();
-                socket.connect(new java.net.InetSocketAddress(ep.host(), ep.port()), 5000);
+                socket.connect(new java.net.InetSocketAddress(ep.host(), ep.port()),
+                        properties.getConnectTimeoutMs());
                 long tConnectEnd = System.nanoTime();
 
                 // 关键：connect 后等待 5ms，确保 TCP 握手完全完成。
-                // Python 的 connect 需要 16-21ms 返回（包含完整握手），而 Java 的 connect 0ms 返回。
-                // 0ms 返回可能导致 write 时服务器端尚未准备好接收数据，导致连接被关闭。
+                // Java 的 connect 可能 0ms 返回，write 时服务器端尚未准备好接收数据，
+                // 导致连接被关闭。
                 try {
                     Thread.sleep(5);
                 } catch (InterruptedException ie) {
@@ -203,8 +227,7 @@ public class RconConnectionManager {
 
         // 所有重试均失败
         String errMsg = lastException == null ? "未知错误" : lastException.getMessage();
-        throw new L4D2PluginException(L4D2PluginException.RCON,
-                "RCON 连接失败（重试 " + maxAttempts + " 次均失败）: " + errMsg, lastException);
+        throw new BusinessException("RCON 连接失败（重试 " + maxAttempts + " 次均失败）: " + errMsg, lastException);
     }
 
     /**
@@ -212,8 +235,9 @@ public class RconConnectionManager {
      */
     private void cleanIdleConnections() {
         long now = System.currentTimeMillis();
-        long idleTimeoutMs = config.getRcon().getIdleTimeoutSeconds() * 1000L;
-        long maxAgeMs = config.getRcon().getMaxAgeSeconds() * 1000L;
+        RconProperties.Pool poolCfg = properties.getPool();
+        long idleTimeoutMs = poolCfg.getIdleTimeoutSeconds() * 1000L;
+        long maxAgeMs = poolCfg.getMaxAgeSeconds() * 1000L;
 
         pool.entrySet().removeIf(entry -> {
             CachedConnection c = entry.getValue();
@@ -294,6 +318,10 @@ public class RconConnectionManager {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
+        }
+
+        void applySoTimeout(long timeoutMs) throws IOException {
+            socket.setSoTimeout((int) timeoutMs);
         }
 
         void markBroken() {

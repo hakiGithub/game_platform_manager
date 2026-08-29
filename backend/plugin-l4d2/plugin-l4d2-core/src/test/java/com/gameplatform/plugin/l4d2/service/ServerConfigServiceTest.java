@@ -54,7 +54,7 @@ class ServerConfigServiceTest {
     private InstanceFileService instanceFileService;
 
     @Mock
-    private RconService rconService;
+    private L4D2RconService rconService;
 
     private L4D2Config config;
 

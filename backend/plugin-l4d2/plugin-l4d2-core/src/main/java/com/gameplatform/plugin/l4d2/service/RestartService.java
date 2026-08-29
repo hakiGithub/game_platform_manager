@@ -41,7 +41,7 @@ public class RestartService {
 
     private final InstanceQueryService instanceQueryService;
     private final FileAccessService fileAccessService;
-    private final RconService rconService;
+    private final L4D2RconService rconService;
     private final L4D2Config config;
 
     /**

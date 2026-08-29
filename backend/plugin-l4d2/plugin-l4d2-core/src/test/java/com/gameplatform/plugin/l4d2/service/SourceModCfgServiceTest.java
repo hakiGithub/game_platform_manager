@@ -64,7 +64,7 @@ class SourceModCfgServiceTest {
     private ExtensionClient extensionClient;
 
     @Mock
-    private RconService rconService;
+    private L4D2RconService rconService;
 
     @Mock
     private PluginConfigAuditService auditService;
@@ -318,7 +318,7 @@ class SourceModCfgServiceTest {
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
     }
 
-    // ===== 8. applyTempConfig：委托给 RconService 并构造 sm_cvar 命令 =====
+    // ===== 8. applyTempConfig：委托给 L4D2RconService 并构造 sm_cvar 命令 =====
 
     @Test
     void applyTempConfig_shouldExecuteRconSmCvarCommand() {

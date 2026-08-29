@@ -16,21 +16,6 @@ import org.springframework.stereotype.Component;
 public class L4D2Config {
 
     /**
-     * RCON 连接超时时间（毫秒）
-     */
-    private int rconTimeout = 5000;
-
-    /**
-     * RCON 连接重试次数
-     */
-    private int rconRetryCount = 3;
-
-    /**
-     * RCON 连接重试间隔（毫秒）
-     */
-    private int rconRetryInterval = 1000;
-
-    /**
      * VPK 文件扫描路径
      */
     private String vpkScanPath = "addons";
@@ -44,24 +29,6 @@ public class L4D2Config {
      * VPK 缓存过期时间（秒）
      */
     private int vpkCacheExpire = 300;
-
-    // ===== RCON 增强 =====
-    private Rcon rcon = new Rcon();
-
-    @Data
-    public static class Rcon {
-        private int defaultPort = 27020;
-        /** 空闲超时（秒），超过后连接关闭回收 */
-        private int idleTimeoutSeconds = 300;
-        /** 最大寿命（秒），防止长期持有导致服务端断开 */
-        private int maxAgeSeconds = 1800;
-        /** 清理扫描间隔（秒） */
-        private int cleanIntervalSeconds = 60;
-        /** 借用等待超时（秒） */
-        private int borrowTimeoutSeconds = 3;
-        /** 缓存开关，false 时每次新建连接 */
-        private boolean poolEnabled = true;
-    }
 
     // ===== Steam Web API =====
     private Steam steam = new Steam();
