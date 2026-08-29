@@ -171,6 +171,15 @@
                     </archive>
                 </configuration>
             </plugin>
+            <!-- 插件 jar 内含 ui/ 与 builtin-plugins/ 等大体积资源（主 jar 本身 ~120MB），
+                 sources jar 仅保留 Java 源码，避免把资源重复打进源码包 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <configuration>
+                    <excludeResources>true</excludeResources>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

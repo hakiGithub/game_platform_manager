@@ -38,6 +38,8 @@ public class SchemaMigrationRunner implements InitializingBean {
         ensureSqlFileExecuted("task_record", "db/migration/V1.5__task_center.sql");
         // V1.6: 主机局域网标识 is_lan_host（ADR-0004，见 db/migration/V1.6__add_host_lan_flag.sql）
         ensureColumnExists("host_info", "is_lan_host", "BOOLEAN DEFAULT 0");
+        // V1.7: 定时计划模块建表（scheduled_task + scheduled_task_run + scheduled_task_run_log，ADR-0011）
+        ensureSqlFileExecuted("scheduled_task", "db/migration/V1.7__scheduled_task.sql");
     }
 
     /**
@@ -59,10 +61,15 @@ public class SchemaMigrationRunner implements InitializingBean {
             ClassPathResource resource = new ClassPathResource(sqlFile);
             String sql = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
             // SQLite 不支持一次执行多条语句，按分号拆分逐条执行
-            String[] statements = sql.split(";");
+            // 先剔除整行注释，避免建表语句因前置于注释块之后被整段跳过
+            String stripped = sql.lines()
+                    .filter(line -> !line.trim().startsWith("--"))
+                    .reduce((a, b) -> a + "\n" + b)
+                    .orElse("");
+            String[] statements = stripped.split(";");
             for (String statement : statements) {
                 String trimmed = statement.trim();
-                if (!trimmed.isEmpty() && !trimmed.startsWith("--")) {
+                if (!trimmed.isEmpty()) {
                     jdbcTemplate.execute(trimmed);
                 }
             }

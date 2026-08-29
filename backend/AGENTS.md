@@ -1104,6 +1104,9 @@ mvn test
 # 跳过测试打包
 mvn clean package -DskipTests
 
+# package 阶段同时产出 -sources.jar 与 -javadoc.jar（各 jar 模块通用，
+# 部署分发时源码与文档可随 jar 一起提供；plugin-l4d2-core 的 sources jar 已排除大体积资源）
+
 # 代码覆盖率
 mvn jacoco:report
 
