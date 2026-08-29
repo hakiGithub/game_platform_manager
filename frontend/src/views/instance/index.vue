@@ -355,7 +355,8 @@ function getAvailableActions(status) {
 function getPlayerLoad(row) {
   if (row.status !== "running") return 0;
   const online = Number(row.onlinePlayers || 0);
-  const max = Number(row.configInfo?.maxPlayers || 0);
+  // 优先用实例信息提供者的实时上限（ADR-0017），回退 configInfo 配置值
+  const max = Number(row.maxPlayerCount ?? row.configInfo?.maxPlayers ?? 0);
   return max > 0 ? Math.min(100, Math.round((online / max) * 100)) : 0;
 }
 
@@ -524,7 +525,7 @@ onBeforeUnmount(() => {
           <template #default="{ row }">
             <div v-if="row.status === 'running'" class="player-load" :class="`is-${getPlayerLoadTone(row)}`">
               <div class="player-load-heading">
-                <strong>{{ row.onlinePlayers || 0 }} / {{ row.configInfo?.maxPlayers || 0 }}</strong>
+                <strong>{{ row.onlinePlayers || 0 }} / {{ row.maxPlayerCount ?? row.configInfo?.maxPlayers ?? 0 }}</strong>
                 <span>{{ getPlayerLoad(row) }}%</span>
               </div>
               <el-progress :percentage="getPlayerLoad(row)" :stroke-width="5" :show-text="false" :color="statusColor(row.status)" />

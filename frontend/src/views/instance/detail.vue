@@ -103,9 +103,9 @@ async function fetchInstanceDetail() {
     // 提取主端口：优先 game 端口，其次第一个端口值
     const mainPort = portConfig.game || portConfig.gamePort || portConfig.port ||
                      (Object.keys(portConfig).length > 0 ? portConfig[Object.keys(portConfig)[0]] : '')
-    // 提取最大玩家数：从 configInfo 中查找
+    // 提取最大玩家数：优先用实例信息提供者的实时值（ADR-0017），回退 configInfo 配置值
     const configInfo = data.configInfo || {}
-    const maxPlayers = configInfo.maxPlayers || configInfo.MaxPlayers || configInfo.MAX_PLAYERS || 0
+    const maxPlayers = data.maxPlayerCount || configInfo.maxPlayers || configInfo.MaxPlayers || configInfo.MAX_PLAYERS || 0
     // 格式化创建时间
     const createTime = data.createTime || ''
     const formattedCreatedAt = createTime

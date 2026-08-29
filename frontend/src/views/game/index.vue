@@ -716,7 +716,7 @@ onMounted(() => {
                 </div>
                 <div class="drawer-instance-meta">
                   <span><b>ENDPOINT</b>{{ getInstanceEndpoint(instance) }}</span>
-                  <span><b>PLAYERS</b>{{ instance.onlinePlayers || 0 }} / {{ instance.configInfo?.maxPlayers || "—" }}</span>
+                  <span><b>PLAYERS</b>{{ instance.onlinePlayers || 0 }} / {{ instance.maxPlayerCount ?? instance.configInfo?.maxPlayers ?? "—" }}</span>
                 </div>
                 <div class="drawer-instance-actions">
                   <el-button v-if="instance.status === 'stopped' || instance.status === 'error'" type="success" link size="small" @click="handleStartInstance(instance, currentGame.id)">启动</el-button>
