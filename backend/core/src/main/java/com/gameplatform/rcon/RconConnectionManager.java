@@ -43,8 +43,8 @@ public class RconConnectionManager {
     private final ScheduledExecutorService cleaner;
 
     public RconConnectionManager(RconConnectionResolver resolver,
-                                  InstanceQueryService instanceQueryService,
-                                  HostQueryService hostQueryService,
+                                  @org.springframework.context.annotation.Lazy InstanceQueryService instanceQueryService,
+                                  @org.springframework.context.annotation.Lazy HostQueryService hostQueryService,
                                   RconProperties properties) {
         this.resolver = resolver;
         this.instanceQueryService = instanceQueryService;

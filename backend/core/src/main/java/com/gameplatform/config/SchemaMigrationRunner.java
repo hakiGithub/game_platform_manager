@@ -49,6 +49,33 @@ public class SchemaMigrationRunner implements InitializingBean {
         ensureColumnExists("host_info", "is_lan_host", "BOOLEAN DEFAULT 0");
         // V1.7: 定时计划模块建表（scheduled_task + scheduled_task_run + scheduled_task_run_log，ADR-0011）
         ensureSqlFileExecuted("scheduled_task", "db/migration/V1.7__scheduled_task.sql");
+        // V1.8: RCON 标准键归一化（ADR-0016 决策 4，数据迁移；UPDATE 的 WHERE 条件使其幂等可重放）
+        runDataMigration("db/migration/V1.8__normalize_rcon_config_keys.sql");
+    }
+
+    /**
+     * 执行数据迁移 SQL（无标志性表可查，靠语句自身的幂等 WHERE 条件保证可重放）。
+     */
+    private void runDataMigration(String sqlFile) {
+        try {
+            log.info("Schema迁移: 执行数据迁移 {}", sqlFile);
+            ClassPathResource resource = new ClassPathResource(sqlFile);
+            String sql = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+            String stripped = sql.lines()
+                    .filter(line -> !line.trim().startsWith("--"))
+                    .reduce((a, b) -> a + "\n" + b)
+                    .orElse("");
+            String[] statements = stripped.split(";");
+            for (String statement : statements) {
+                String trimmed = statement.trim();
+                if (!trimmed.isEmpty()) {
+                    jdbcTemplate.execute(trimmed);
+                }
+            }
+            log.info("Schema迁移: 数据迁移 {} 执行完成", sqlFile);
+        } catch (Exception e) {
+            log.error("Schema迁移: 执行数据迁移 {} 失败: {}", sqlFile, e.getMessage());
+        }
     }
 
     /**
