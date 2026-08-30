@@ -19,7 +19,7 @@
 一次 RCON 连接所需的三元组：主机地址、端口、密码。由端点解析器从实例与主机数据推导，不可由插件直接指定密码。
 
 ### 端点解析回退链（Endpoint Resolution Fallback）
-从实例数据推导 RconEndpoint 的规则。主应用只认**标准键**：`configInfo.rconPort`（缺省 27015）与 `configInfo.rconPassword`；游戏专属键名（如 `L4D2_RCON_PASSWORD`、`SRCDS_RCONPW`）由部署适配器在部署时归一化写入标准键，或由插件在调用前补齐。专属回退链不属于主应用契约。
+从实例数据推导 RconEndpoint 的规则。主应用只认**标准键**：`configInfo.rconPort`（缺省 27015）与 `configInfo.rconPassword`。专属键名归一化发生在游戏元数据层——`games/{gameCode}.yml` 的部署变量名直接采用标准键（容器 env 名保持容器契约，经占位符映射）；存量实例由启动时幂等迁移修复。专属回退链不属于主应用契约。
 
 ### 连接池借用（Connection Borrow）
 调用方通过主应用 RCON 服务借用一个已认证连接执行命令，用毕归还。同实例的借用是串行的；池参数（空闲回收、保活、借用超时）由主应用统一配置。

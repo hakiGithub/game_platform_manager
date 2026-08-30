@@ -99,7 +99,7 @@ game:
             - L4D2_TICK=${L4D2_TICK:-100}
             - L4D2_VAC=${L4D2_VAC:-false}
             - L4D2_PORT=${L4D2_PORT:-27015}
-            - L4D2_RCON_PASSWORD=${L4D2_RCON_PASSWORD}
+            - L4D2_RCON_PASSWORD=${rconPassword}
 
     variables:
       - name: L4D2_PORT
@@ -120,7 +120,9 @@ game:
         defaultValue: "false"
         required: false
         description: 是否启用Valve反作弊
-      - name: L4D2_RCON_PASSWORD
+      # 变量名即实例 configInfo 的平铺键名：使用主应用标准键 rconPassword（ADR-0016 决策 4），
+      # 容器 env 名 L4D2_RCON_PASSWORD 保持不变（容器契约），经 compose 占位符取值
+      - name: rconPassword
         label: RCON密码
         type: password
         required: true

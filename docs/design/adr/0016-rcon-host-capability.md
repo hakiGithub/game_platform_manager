@@ -41,7 +41,7 @@ boolean testConnection(long instanceId);
 
 ### 决策 4：端点解析只认标准键
 
-主应用的端点解析契约只认实例 `configInfo` 中的标准键：`rconPort`（缺省 **27015**）与 `rconPassword`。游戏专属键名（`L4D2_RCON_PASSWORD`、`SRCDS_RCONPW` 等）由部署适配器在部署时归一化写入标准键，或由插件在调用前补齐；专属回退链留在插件侧。`defaultPort` 统一为 27015，消除 27020/27015 双默认值。
+主应用的端点解析契约只认实例 `configInfo` 中的标准键：`rconPort`（缺省 **27015**）与 `rconPassword`。游戏专属键名的归一化采取两层机制：(1) **游戏元数据层（首选）**——`games/{gameCode}.yml` 的部署变量名直接采用标准键（如 l4d2 docker-compose 的 `rconPassword` 变量），向导平铺写入 configInfo 时即为标准键，compose 模板经 `${rconPassword}` 占位符映射到容器 env 名（容器契约不变）；`docker.env` 等容器环境变量名属容器契约不可改名。(2) **存量数据层**——`V1.8__normalize_rcon_config_keys.sql` 注册在 SchemaMigrationRunner 中随启动幂等执行，把仅存专属键的存量实例归一化。专属回退链（`L4D2_RCON_PASSWORD`/`SRCDS_RCONPW` 兜底）不复存在于任何代码层。`defaultPort` 统一为 27015，消除 27020/27015 双默认值。
 
 ### 决策 5：连接池归主应用，按实例生命周期失效
 
@@ -94,3 +94,4 @@ plugin-l4d2 的 `/api/plugin/l4d2/rcon/*` REST 路径保持不变，Controller �
 |------|------|------|
 | 2026-08-29 | 传输层四类上提 core `com.gameplatform.rcon`；SDK 新增 `RconService` 接口并注册进插件子容器；主应用 REST `/instances/{id}/rcon/execute|ping`；池参数迁 `rcon.*`；`L4D2Config.Rcon` 删除；插件改名 `L4D2RconService` 委托宿主服务；删除插件 `/rcon/diag` 调试端点（含硬编码默认密码，前端无引用） | 本提交 |
 | 2026-08-29 | 存量数据归一化：`V1.8__normalize_rcon_config_keys.sql` 把 `configInfo` 中仅存专属键（`L4D2_RCON_PASSWORD`/`SRCDS_RCONPW`）的实例密码写入标准键 `rconPassword`（经查实存量实例 56 仅存专属键，不做迁移会打断现有实例） | 本提交 |
+| 2026-08-30 | 归一化闭环：`games/l4d2.yml` docker-compose 变量 `L4D2_RCON_PASSWORD` 改名为标准键 `rconPassword`（compose 模板 env 行改 `${rconPassword}` 取值，容器 env 名不变），新部署实例天然写标准键；V1.8 幂等迁移修复改名前部署的实例（实修复实例 61）。修复 "RCON 端点不可达：端口未映射或配置缺失" 对新实例的误报 | 本提交 |
