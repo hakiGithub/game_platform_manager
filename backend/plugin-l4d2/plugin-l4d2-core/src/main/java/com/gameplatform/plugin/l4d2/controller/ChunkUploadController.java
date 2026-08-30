@@ -70,11 +70,13 @@ public class ChunkUploadController {
     /**
      * 完成上传。
      */
-    @Operation(summary = "完成上传", description = "合并分片并上传到远程主机")
+    @Operation(summary = "完成上传", description = "合并分片；压缩包转交执行队列解包提取，返回 map-upload 任务 ID")
     @PostMapping("/{uploadId}/complete")
-    public Result<Void> complete(@Parameter(description = "上传ID") @PathVariable String uploadId) {
-        chunkUploadService.complete(uploadId);
-        return Result.success(null);
+    public Result<java.util.Map<String, Object>> complete(@Parameter(description = "上传ID") @PathVariable String uploadId) {
+        String taskId = chunkUploadService.complete(uploadId);
+        return Result.success(taskId == null
+                ? java.util.Map.of()
+                : java.util.Map.of("taskId", taskId));
     }
 
     /**

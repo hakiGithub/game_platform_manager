@@ -46,7 +46,7 @@ const props = withDefaults(defineProps<{
   targetPath?: string
   accept?: string
 }>(), {
-  accept: '.vpk',
+  accept: '.vpk,.zip,.rar,.7z',
   targetPath: undefined,
 })
 
@@ -163,7 +163,7 @@ async function uploadByChunks(file: File) {
   }
 
   statusText.value = '合并分片中...'
-  await chunkUploadApi.complete(uploadId)
+  await chunkUploadApi.complete(uploadId) // 压缩包返回 {taskId}，由共享成功提示告知进入队列
   currentUploadId.value = null
 }
 

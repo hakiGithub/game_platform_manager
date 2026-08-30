@@ -4,7 +4,7 @@
       <div class="header-meta">
         <span class="section-kicker">L4D2 COMMAND / MAP LIBRARY</span>
         <h2>地图管理</h2>
-        <p>管理服务器地图 VPK 文件，支持批量裁剪与热重载</p>
+        <p>管理服务器地图 VPK 文件，支持 VPK / ZIP / RAR / 7Z 上传（自动解包提取 VPK）、批量裁剪与热重载</p>
       </div>
       <div class="header-actions">
         <el-button type="primary" @click="showUploadDialog = true">上传地图</el-button>

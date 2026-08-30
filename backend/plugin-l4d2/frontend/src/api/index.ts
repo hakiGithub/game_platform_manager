@@ -164,7 +164,7 @@ export const chunkUploadApi = {
     }>(`/chunk-upload/${uploadId}/status`),
 
   // 完成上传，触发合并
-  complete: (uploadId: string) => post<void>(`/chunk-upload/${uploadId}/complete`),
+  complete: (uploadId: string) => post<{ taskId?: string }>(`/chunk-upload/${uploadId}/complete`),
 
   // 取消上传，清理已上传分片
   cancel: (uploadId: string) => post<void>(`/chunk-upload/${uploadId}/cancel`),

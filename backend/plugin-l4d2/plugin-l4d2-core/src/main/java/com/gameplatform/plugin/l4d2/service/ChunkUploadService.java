@@ -10,6 +10,7 @@ import com.gameplatform.plugin.l4d2.extension.ChunkUploadSpec;
 import com.gameplatform.plugin.l4d2.vo.ChunkUploadInitVO;
 import com.gameplatform.plugin.l4d2.vo.ChunkUploadStatusVO;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.task.TaskSubmitRequest;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.Map;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -58,6 +60,7 @@ public class ChunkUploadService {
 
     private final ExtensionClient extensionClient;
     private final InstanceFileService instanceFileService;
+    private final com.gameplatform.plugin.task.TaskService taskService;
     private final InstanceQueryService instanceQueryService;
     private final L4D2Config config;
 
@@ -164,9 +167,12 @@ public class ChunkUploadService {
     }
 
     /**
-     * 完成上传：合并分片并上传到远程主机。
+     * 完成上传：合并分片；压缩包（zip/rar/7z）不直传，转交 map-upload 任务
+     * 解包提取（ADR-0018 决策 5），普通文件（含 .vpk）行为不变。
+     *
+     * @return map-upload 任务 ID（压缩包场景）；普通文件返回 null
      */
-    public void complete(String uploadId) {
+    public String complete(String uploadId) {
         ChunkUploadResource resource = getResource(uploadId);
         ChunkUploadSpec spec = resource.getSpec();
         if (spec.getReceivedChunks() != spec.getTotalChunks()) {
@@ -181,6 +187,36 @@ public class ChunkUploadService {
             extensionClient.update(resource);
             throw new L4D2PluginException(L4D2PluginException.FILE, "合并分片失败: " + uploadId, e);
         }
+
+        // 压缩包：把合并文件移出临时目录（避免被清理），提交 map-upload 任务解包提取
+        if (MapService.isArchiveFilename(spec.getOriginalFilename())) {
+            Path staged;
+            try {
+                staged = Files.move(mergedFile.toPath(),
+                        Files.createTempFile("l4d2_map_", MapService.extensionOf(spec.getOriginalFilename())));
+            } catch (IOException e) {
+                spec.setStatus(STATUS_FAILED);
+                extensionClient.update(resource);
+                throw new L4D2PluginException(L4D2PluginException.FILE, "暂存合并文件失败: " + uploadId, e);
+            }
+            String taskId = taskService.submit(TaskSubmitRequest.builder()
+                    .taskType("map-upload")
+                    .source("L4D2")
+                    .scopeKey(String.valueOf(spec.getInstanceId()))
+                    .payload(Map.of(
+                            "instanceId", spec.getInstanceId(),
+                            "filename", spec.getOriginalFilename(),
+                            "stagedPath", staged.toAbsolutePath().toString()))
+                    .build());
+            spec.setStatus(STATUS_COMPLETED);
+            spec.setCompletedAt(LocalDateTime.now());
+            extensionClient.update(resource);
+            deleteTempDirQuietly(spec.getTempDir());
+            log.info("分片上传压缩包已转交执行队列: uploadId={}, taskId={}, file={}",
+                    uploadId, taskId, spec.getOriginalFilename());
+            return taskId;
+        }
+
         try {
             instanceFileService.uploadLocalFile(spec.getInstanceId(), spec.getTargetPath(),
                     mergedFile.getAbsolutePath());
@@ -195,6 +231,7 @@ public class ChunkUploadService {
         spec.setCompletedAt(LocalDateTime.now());
         extensionClient.update(resource);
         deleteTempDirQuietly(spec.getTempDir());
+        return null;
     }
 
     /**

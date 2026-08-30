@@ -69,19 +69,37 @@ public class MapService {
      * 校验扩展名/文件名合法性后落盘暂存目录，返回暂存信息供任务提交。
      * 重活（VPK 解析/SSH 上传/自动裁剪）由 map-upload 任务异步执行。
      */
+    /** 支持的上传格式：VPK 直传，压缩包解包提取（ADR-0018） */
+    private static final java.util.Set<String> SUPPORTED_EXTENSIONS = java.util.Set.of(".vpk", ".zip", ".rar", ".7z");
+
+    /** 按文件名判断是否压缩包（Handler 据此分派解包提取） */
+    public static boolean isArchiveFilename(String filename) {
+        String ext = extensionOf(filename);
+        return ext.equals(".zip") || ext.equals(".rar") || ext.equals(".7z");
+    }
+
+    public static String extensionOf(String filename) {
+        if (filename == null) return "";
+        String name = filename.toLowerCase();
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(dot) : "";
+    }
+
     public StagedUpload stageUpload(Long instanceId, MultipartFile file) {
         log.info("暂存上传地图, instanceId: {}, fileName: {}", instanceId, file.getOriginalFilename());
 
         String filename = file.getOriginalFilename();
-        if (filename == null || !filename.toLowerCase().endsWith(".vpk")) {
-            throw new L4D2PluginException(L4D2PluginException.BUSINESS, "只支持 VPK 格式的地图文件");
+        String ext = extensionOf(filename);
+        if (!SUPPORTED_EXTENSIONS.contains(ext)) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "只支持 VPK / ZIP / RAR / 7Z 格式的地图文件");
         }
         validateMapName(filename);
         requireInstance(instanceId);
 
         Path stagedFile;
         try {
-            stagedFile = Files.createTempFile("l4d2_map_", ".vpk");
+            stagedFile = Files.createTempFile("l4d2_map_", ext);
             file.transferTo(stagedFile.toFile());
         } catch (IOException e) {
             throw new L4D2PluginException(L4D2PluginException.FILE, "上传文件暂存失败: " + e.getMessage(), e);

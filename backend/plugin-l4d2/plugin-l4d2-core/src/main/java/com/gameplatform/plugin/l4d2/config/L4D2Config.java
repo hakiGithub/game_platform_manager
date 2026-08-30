@@ -30,6 +30,17 @@ public class L4D2Config {
      */
     private int vpkCacheExpire = 300;
 
+    // ===== 压缩包解压（ADR-0018） =====
+    private Archive archive = new Archive();
+
+    @Data
+    public static class Archive {
+        /** 解压总字节数上限（默认 4GB，压缩比按 2:1 对齐 2GB 上传限额） */
+        private long maxExtractBytes = 4L * 1024 * 1024 * 1024;
+        /** 解压条目数上限 */
+        private int maxEntries = 10_000;
+    }
+
     // ===== Steam Web API =====
     private Steam steam = new Steam();
 

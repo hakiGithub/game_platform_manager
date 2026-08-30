@@ -26,6 +26,7 @@
 | [0015](0015-multi-database-dialect-support.md) | 多数据库方言支持（SQLite / MySQL / PostgreSQL） | Accepted | 2026-08-29 |
 | [0016](0016-rcon-host-capability.md) | RCON 能力上提为主应用宿主服务 | Accepted | 2026-08-29 |
 | [0017](0017-instance-info-provider.md) | 实例信息 Provider 扩展点（玩家数插件化查询） | Accepted | 2026-08-29 |
+| [0018](0018-map-upload-task-and-archives.md) | 地图上传任务化与压缩包支持 | Accepted | 2026-08-30 |
 
 ## 术语表
 

@@ -78,7 +78,7 @@ class ChunkUploadServiceTest {
         config.getChunkUpload().setExpireMs(6L * 3600 * 1000);
         config.getChunkUpload().setDiskUsageThreshold(0.9);
 
-        service = new ChunkUploadService(extensionClient, instanceFileService, instanceQueryService, config);
+        service = new ChunkUploadService(extensionClient, instanceFileService, org.mockito.Mockito.mock(com.gameplatform.plugin.task.TaskService.class), instanceQueryService, config);
 
         // 默认实例
         InstanceVO instance = new InstanceVO();
