@@ -1,17 +1,24 @@
 package com.gameplatform.plugin.l4d2.controller;
 
+import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.Result;
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.dto.BatchPluginOperationDTO;
 import com.gameplatform.plugin.l4d2.dto.BuiltinPluginInstallDTO;
 import com.gameplatform.plugin.l4d2.service.BuiltinPluginInstaller;
 import com.gameplatform.plugin.l4d2.service.PlatformPluginInstaller;
 import com.gameplatform.plugin.l4d2.service.PluginExportService;
 import com.gameplatform.plugin.l4d2.service.PluginInstallService;
+import com.gameplatform.plugin.l4d2.vo.BuiltinBatchInstallSubmitVO;
+import com.gameplatform.plugin.l4d2.vo.BuiltinInstallStatusVO;
+import com.gameplatform.plugin.l4d2.vo.BuiltinInstallSubmitVO;
 import com.gameplatform.plugin.l4d2.vo.BuiltinPluginVO;
-import com.gameplatform.plugin.l4d2.vo.InstallResult;
 import com.gameplatform.plugin.l4d2.vo.PluginExportTaskVO;
 import com.gameplatform.plugin.l4d2.vo.PluginListVO;
 import com.gameplatform.plugin.l4d2.vo.PluginReadmeVO;
+import com.gameplatform.plugin.task.TaskService;
+import com.gameplatform.plugin.task.TaskSubmitRequest;
+import com.gameplatform.plugin.task.TaskVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +46,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * L4D2 插件管理控制器：上传/启用/禁用/删除/批量操作/全量导出。
@@ -58,6 +66,10 @@ public class PluginManageController {
     private final PluginExportService pluginExportService;
     private final PlatformPluginInstaller platformPluginInstaller;
     private final BuiltinPluginInstaller builtinPluginInstaller;
+    private final TaskService taskService;
+
+    /** 最近一次安装任务提交时间记录，key = instanceId:pluginId / instanceId:batch（单人使用场景，内存级防重足够） */
+    private final Map<String, Long> recentInstallSubmits = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 获取插件列表。
@@ -114,40 +126,138 @@ public class PluginManageController {
     }
 
     /**
-     * 安装单个内置插件。
+     * 短时防重提交检查：同一 key 在 {@link L4D2Constants#INSTALL_SUBMIT_DEDUP_WINDOW_MS} 窗口内
+     * 重复提交直接拒绝。通过检查后记录本次提交时间；提交失败时调用方应
+     * 调用 {@link #clearSubmitDedup} 清除记录以允许立即重试。
      *
-     * <p>从 classpath 读取对应 ZIP，解压并上传到 plugins_store/&lt;id&gt;/left4dead2/...。
-     * 已安装则直接返回（幂等）。
+     * @param dedupKey  防重键（如 instanceId:pluginId）
+     * @param actionDesc 动作描述（拼入拒绝提示，如 "插件「X」的安装任务"）
      */
-    @Operation(summary = "安装单个内置插件",
-            description = "根据 pluginId 从内置 ZIP 安装到实例的 plugins_store")
-    @PostMapping("/builtin/{pluginId}/install")
-    public Result<String> installBuiltin(
-            @Parameter(description = "实例ID") @RequestParam Long instanceId,
-            @Parameter(description = "内置插件ID") @PathVariable String pluginId) {
-        log.info("安装内置插件, instanceId: {}, pluginId: {}", instanceId, pluginId);
-        String msg = builtinPluginInstaller.install(instanceId, pluginId);
-        return Result.success(msg, msg);
+    private void checkSubmitDedup(String dedupKey, String actionDesc) {
+        long now = System.currentTimeMillis();
+        Long prev = recentInstallSubmits.put(dedupKey, now);
+        if (prev != null && now - prev < L4D2Constants.INSTALL_SUBMIT_DEDUP_WINDOW_MS) {
+            // 恢复原时间戳，避免重复请求不断刷新窗口
+            recentInstallSubmits.put(dedupKey, prev);
+            long remainSec = (L4D2Constants.INSTALL_SUBMIT_DEDUP_WINDOW_MS - (now - prev)) / 1000 + 1;
+            throw new BusinessException(actionDesc + "已提交，请勿重复提交（约 " + remainSec + "s 后可重试）");
+        }
+    }
+
+    /** 清除防重记录（提交失败时调用，允许立即重试） */
+    private void clearSubmitDedup(String dedupKey) {
+        recentInstallSubmits.remove(dedupKey);
     }
 
     /**
-     * 批量安装内置插件（按清单顺序执行，单个失败不影响其他）。
+     * 安装单个内置插件（异步）。
      *
-     * <p>返回每个插件的安装结果（status=SUCCESS/FAILED），前端可据此展示部分失败详情。
+     * <p>同步阶段仅校验清单并提交内置插件安装任务到任务中心，
+     * ZIP 解压与 SSH 上传由任务异步执行；前端通过 {@link #installBuiltinStatus} 轮询进度。
+     * 防重：同一实例+插件在 30s 窗口内重复提交直接拒绝；
+     * 同实例同类型任务执行期间由任务中心互斥键兜底。
      */
-    @Operation(summary = "批量安装内置插件",
-            description = "按 pluginIds 列表顺序安装，单个失败不影响其他")
-    @PostMapping("/builtin/batch-install")
-    public Result<List<InstallResult>> batchInstallBuiltin(@Valid @RequestBody BuiltinPluginInstallDTO dto) {
-        log.info("批量安装内置插件, instanceId: {}, count: {}",
-                dto.getInstanceId(), dto.getPluginIds().size());
-        List<InstallResult> results = builtinPluginInstaller.installBatch(
-                dto.getInstanceId(), dto.getPluginIds());
-        long failed = results.stream().filter(r -> "FAILED".equals(r.getStatus())).count();
-        if (failed > 0) {
-            return Result.success("部分插件安装失败: " + failed + "/" + results.size(), results);
+    @Operation(summary = "安装单个内置插件（异步）",
+            description = "提交内置插件安装任务到执行队列，返回 taskId 供轮询进度；短时窗口内防重复提交")
+    @PostMapping("/builtin/{pluginId}/install")
+    public Result<BuiltinInstallSubmitVO> installBuiltin(
+            @Parameter(description = "实例ID") @RequestParam Long instanceId,
+            @Parameter(description = "内置插件ID") @PathVariable String pluginId) {
+        BuiltinPluginVO plugin = builtinPluginInstaller.findById(pluginId);
+        if (plugin == null) {
+            throw new BusinessException("内置插件不存在: " + pluginId);
         }
-        return Result.success("全部 " + results.size() + " 个插件安装成功", results);
+
+        // 短时防重提交：窗口内重复提交直接拒绝
+        String dedupKey = instanceId + ":" + pluginId;
+        checkSubmitDedup(dedupKey, "插件「" + plugin.getName() + "」的安装任务");
+
+        try {
+            log.info("提交内置插件安装任务, instanceId: {}, pluginId: {}", instanceId, pluginId);
+            String taskId = taskService.submit(TaskSubmitRequest.builder()
+                    .taskType(L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_INSTALL)
+                    .source(L4D2Constants.TASK_SOURCE)
+                    .scopeType(L4D2Constants.SCOPE_TYPE_INSTANCE)
+                    .scopeKey(String.valueOf(instanceId))
+                    .payload(Map.of(
+                            "instanceId", instanceId,
+                            "pluginId", pluginId,
+                            "pluginName", plugin.getName()))
+                    .build());
+            return Result.success("安装任务已提交",
+                    new BuiltinInstallSubmitVO(taskId, pluginId, plugin.getName()));
+        } catch (Exception e) {
+            // 提交失败时清除防重记录，允许立即重试
+            clearSubmitDedup(dedupKey);
+            throw e;
+        }
+    }
+
+    /**
+     * 查询内置插件安装任务状态（供前端轮询）。
+     */
+    @Operation(summary = "查询内置插件安装任务状态",
+            description = "返回指定任务的瘦身状态（状态/进度/错误信息），供前端轮询")
+    @GetMapping("/builtin/install-status")
+    public Result<BuiltinInstallStatusVO> installBuiltinStatus(
+            @Parameter(description = "任务ID") @RequestParam String taskId) {
+        TaskVO task = taskService.getTask(taskId);
+        if (task == null) {
+            return Result.fail("任务不存在: " + taskId);
+        }
+        BuiltinInstallStatusVO vo = new BuiltinInstallStatusVO();
+        vo.setTaskId(task.getId());
+        vo.setStatus(task.getStatus());
+        vo.setProgress(task.getProgress());
+        vo.setProgressMessage(task.getProgressMessage());
+        vo.setErrorMessage(task.getErrorMessage());
+        vo.setResultSummary(task.getResultSummary());
+        vo.setResult(task.getResult());
+        return Result.success(vo);
+    }
+
+    /**
+     * 批量安装内置插件（异步）。
+     *
+     * <p>同步阶段仅校验清单并提交 builtin-plugin-batch-install 任务到任务中心，
+     * 由任务按提交顺序逐个安装，单个失败不影响其他；前端通过 {@link #installBuiltinStatus}
+     * 轮询进度（进度按已处理数量均分，终态 result 携带每个插件的安装明细）。
+     * 防重：同一实例的批装任务在 30s 窗口内重复提交直接拒绝。
+     */
+    @Operation(summary = "批量安装内置插件（异步）",
+            description = "提交批量安装任务到执行队列，返回 taskId 供轮询；单个失败不影响其他")
+    @PostMapping("/builtin/batch-install")
+    public Result<BuiltinBatchInstallSubmitVO> batchInstallBuiltin(@Valid @RequestBody BuiltinPluginInstallDTO dto) {
+        log.info("提交批量安装内置插件任务, instanceId: {}, count: {}",
+                dto.getInstanceId(), dto.getPluginIds().size());
+
+        // 校验全部插件 ID 存在于清单，避免整批任务白跑
+        for (String id : dto.getPluginIds()) {
+            if (builtinPluginInstaller.findById(id) == null) {
+                throw new BusinessException("内置插件不存在: " + id);
+            }
+        }
+
+        // 短时防重提交：同一实例的批装在窗口内不允许重复提交
+        String dedupKey = dto.getInstanceId() + ":batch";
+        checkSubmitDedup(dedupKey, "批量安装任务");
+
+        try {
+            String taskId = taskService.submit(TaskSubmitRequest.builder()
+                    .taskType(L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL)
+                    .source(L4D2Constants.TASK_SOURCE)
+                    .scopeType(L4D2Constants.SCOPE_TYPE_INSTANCE)
+                    .scopeKey(String.valueOf(dto.getInstanceId()))
+                    .payload(Map.of(
+                            "instanceId", dto.getInstanceId(),
+                            "pluginIds", dto.getPluginIds()))
+                    .build());
+            return Result.success("批量安装任务已提交",
+                    new BuiltinBatchInstallSubmitVO(taskId, dto.getPluginIds().size()));
+        } catch (Exception e) {
+            clearSubmitDedup(dedupKey);
+            throw e;
+        }
     }
 
     /**

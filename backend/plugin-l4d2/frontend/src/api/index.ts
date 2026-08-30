@@ -533,6 +533,47 @@ export interface BuiltinInstallResultVO {
 }
 
 /**
+ * 内置插件安装任务提交结果（后端已改为异步任务，返回 taskId 供轮询）
+ */
+export interface BuiltinInstallSubmitVO {
+  taskId: string
+  pluginId: string
+  pluginName: string
+}
+
+/**
+ * 内置插件批量安装任务提交结果（后端已改为异步任务，返回 taskId 供轮询）
+ */
+export interface BuiltinBatchInstallSubmitVO {
+  taskId: string
+  total: number
+}
+
+/**
+ * 内置插件安装任务状态（与后端 BuiltinInstallStatusVO 对齐）
+ */
+export interface BuiltinInstallStatusVO {
+  taskId: string
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  progress?: number
+  progressMessage?: string
+  errorMessage?: string
+  resultSummary?: string
+  /** 任务结果（终态返回；TaskResult 序列化结构，data 内含批装明细） */
+  result?: {
+    data?: {
+      total?: number
+      processed?: number
+      success?: number
+      failed?: number
+      results?: BuiltinInstallResultVO[]
+    }
+    success?: boolean
+    message?: string
+  }
+}
+
+/**
  * 插件管理 API（Phase 2.8）
  */
 export const pluginManageApi = {
@@ -573,9 +614,12 @@ export const pluginManageApi = {
   listBuiltin: (instanceId: number) =>
     get<BuiltinPluginVO[]>('/plugins/builtin/list', { instanceId }),
   installBuiltin: (instanceId: number, pluginId: string) =>
-    post<string>(`/plugins/builtin/${encodeURIComponent(pluginId)}/install?instanceId=${instanceId}`),
+    post<BuiltinInstallSubmitVO>(`/plugins/builtin/${encodeURIComponent(pluginId)}/install?instanceId=${instanceId}`),
+  // 查询内置插件安装任务状态（轮询用）
+  installBuiltinStatus: (taskId: string) =>
+    get<BuiltinInstallStatusVO>('/plugins/builtin/install-status', { taskId }),
   batchInstallBuiltin: (data: { instanceId: number; pluginIds: string[] }) =>
-    post<BuiltinInstallResultVO[]>('/plugins/builtin/batch-install', data),
+    post<BuiltinBatchInstallSubmitVO>('/plugins/builtin/batch-install', data),
 }
 
 // === Phase 4: 下载管理 ===

@@ -27,4 +27,25 @@ public final class L4D2Constants {
 
     /** fileRefs 持久化文件名 */
     public static final String FILE_REFS_FILENAME = ".file_refs.json";
+
+    /** 任务中心：任务来源（插件 gameCode 大写） */
+    public static final String TASK_SOURCE = "L4D2";
+
+    /** 任务中心：任务作用域类型 - 实例 */
+    public static final String SCOPE_TYPE_INSTANCE = "INSTANCE";
+
+    /** 任务中心：任务类型 - 内置插件单个安装 */
+    public static final String TASK_TYPE_BUILTIN_PLUGIN_INSTALL = "builtin-plugin-install";
+
+    /** 任务中心：任务类型 - 内置插件批量安装 */
+    public static final String TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL = "builtin-plugin-batch-install";
+
+    /** 任务中心：任务类型 - 地图上传 */
+    public static final String TASK_TYPE_MAP_UPLOAD = "map-upload";
+
+    /** 任务中心：任务类型 - 地图爬取 */
+    public static final String TASK_TYPE_CRAWL = "crawl";
+
+    /** 内置插件安装任务短时防重提交窗口（毫秒） */
+    public static final long INSTALL_SUBMIT_DEDUP_WINDOW_MS = 30_000L;
 }

@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.plugin.extension.ListOptions;
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.dto.ChunkUploadInitDTO;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
@@ -200,8 +201,8 @@ public class ChunkUploadService {
                 throw new L4D2PluginException(L4D2PluginException.FILE, "暂存合并文件失败: " + uploadId, e);
             }
             String taskId = taskService.submit(TaskSubmitRequest.builder()
-                    .taskType("map-upload")
-                    .source("L4D2")
+                    .taskType(L4D2Constants.TASK_TYPE_MAP_UPLOAD)
+                    .source(L4D2Constants.TASK_SOURCE)
                     .scopeKey(String.valueOf(spec.getInstanceId()))
                     .payload(Map.of(
                             "instanceId", spec.getInstanceId(),

@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2.controller;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.Result;
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.dto.InstanceIdDTO;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.dto.MapTrimBatchDTO;
@@ -72,8 +73,8 @@ public class MapController {
         String taskId;
         try {
             taskId = taskService.submit(TaskSubmitRequest.builder()
-                    .taskType("map-upload")
-                    .source("L4D2")
+                    .taskType(L4D2Constants.TASK_TYPE_MAP_UPLOAD)
+                    .source(L4D2Constants.TASK_SOURCE)
                     .scopeKey(String.valueOf(instanceId))
                     .payload(Map.of(
                             "instanceId", instanceId,

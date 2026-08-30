@@ -433,6 +433,9 @@ const builtinInstallProgress = ref(0)
 /** 默认展开所有分类 */
 const activeCollapse = ref<string[]>(['platform', 'required', 'optional', 'custom'])
 
+/** 任务状态轮询间隔（毫秒），单装/批装共用 */
+const TASK_POLL_INTERVAL_MS = 2000
+
 /**
  * 当前实例的平台过滤标签：docker 类部署返回 'linux'，native 部署根据浏览器/后端 OS 推断
  * 注意：前端无法准确知道后端 OS，这里简单按 deployType 判断，windows-only 插件在 docker 场景下隐藏。
@@ -617,19 +620,60 @@ async function onInstallSingle(row: BuiltinPluginVO) {
   if (!instanceId.value) return
   installingSingle.value = row.id
   try {
-    const msg = await pluginManageApi.installBuiltin(instanceId.value, row.id)
-    ElMessage.success(msg || `${row.name} 安装成功`)
-    // 更新本地状态
-    row.installed = true
-    // 从选中列表中移除（已安装的不能再次选中）
-    selectedBuiltinRows.value = selectedBuiltinRows.value.filter(r => r.id !== row.id)
-    // 刷新主列表
-    refreshPlugins()
+    const submit = await pluginManageApi.installBuiltin(instanceId.value, row.id)
+    const taskId = submit?.taskId
+    if (!taskId) {
+      // 兼容：后端未返回 taskId 时直接视为成功
+      onSingleInstallDone(row, row.name + ' 安装成功')
+      return
+    }
+    ElMessage.success(`已提交安装任务，后台处理中：${row.name}`)
+    startInstallPolling(taskId, row)
   } catch (e: any) {
-    ElMessage.error(`${row.name} 安装失败：` + (e?.message || e))
-  } finally {
+    ElMessage.error(`${row.name} 提交安装任务失败：` + (e?.message || e))
     installingSingle.value = ''
   }
+}
+
+/** 单装任务轮询定时器 */
+let installPollTimer: ReturnType<typeof setInterval> | null = null
+
+function startInstallPolling(taskId: string, row: BuiltinPluginVO) {
+  stopInstallPolling()
+  installPollTimer = setInterval(async () => {
+    try {
+      const st = await pluginManageApi.installBuiltinStatus(taskId)
+      if (st.status === 'COMPLETED') {
+        stopInstallPolling()
+        onSingleInstallDone(row, st.resultSummary || `${row.name} 安装成功`)
+      } else if (st.status === 'FAILED' || st.status === 'CANCELLED') {
+        stopInstallPolling()
+        installingSingle.value = ''
+        ElMessage.error(`${row.name} 安装失败：` + (st.errorMessage || st.status))
+      }
+      // PENDING / RUNNING 继续轮询
+    } catch {
+      // 单次轮询失败忽略（网络抖动），等待下一次
+    }
+  }, TASK_POLL_INTERVAL_MS)
+}
+
+function stopInstallPolling() {
+  if (installPollTimer) {
+    clearInterval(installPollTimer)
+    installPollTimer = null
+  }
+}
+
+function onSingleInstallDone(row: BuiltinPluginVO, msg: string) {
+  ElMessage.success(msg)
+  installingSingle.value = ''
+  // 更新本地状态
+  row.installed = true
+  // 从选中列表中移除（已安装的不能再次选中）
+  selectedBuiltinRows.value = selectedBuiltinRows.value.filter(r => r.id !== row.id)
+  // 刷新主列表
+  refreshPlugins()
 }
 
 async function onBatchInstallBuiltin() {
@@ -638,7 +682,7 @@ async function onBatchInstallBuiltin() {
   try {
     await ElMessageBox.confirm(
       `确认安装选中的 ${ids.length} 个内置插件？总大小约 ${formatSize(selectedBuiltinSize.value)}。` +
-      `安装后请在插件列表中点"启用"或应用预设使其生效。`,
+      `安装任务将在后台执行，安装后请在插件列表中点"启用"或应用预设使其生效。`,
       '批量安装确认',
       { type: 'info', confirmButtonText: '安装', cancelButtonText: '取消' }
     )
@@ -650,34 +694,88 @@ async function onBatchInstallBuiltin() {
   builtinResults.value = []
   builtinInstallProgress.value = 0
   try {
-    // 调用批量安装接口（后端按顺序执行，单个失败不影响其他）
-    const results = await pluginManageApi.batchInstallBuiltin({
+    // 提交批量安装任务（后端按顺序逐个安装，单个失败不影响其他）
+    const submit = await pluginManageApi.batchInstallBuiltin({
       instanceId: instanceId.value,
       pluginIds: ids
     })
-    builtinResults.value = Array.isArray(results) ? results : []
-    // 模拟进度条满
-    builtinInstallProgress.value = 100
-
-    const successCount = builtinResults.value.filter(r => r.status === 'SUCCESS').length
-    const failedCount = builtinResults.value.length - successCount
-    if (failedCount === 0) {
-      ElMessage.success(`全部 ${successCount} 个插件安装成功`)
-    } else {
-      ElMessage.warning(`安装完成：${successCount} 成功，${failedCount} 失败，详见下方结果`)
+    const taskId = submit?.taskId
+    if (!taskId) {
+      // 兼容：后端未返回 taskId 时直接刷新状态
+      builtinInstallProgress.value = 100
+      await loadBuiltinList()
+      selectedBuiltinRows.value = []
+      refreshPlugins()
+      return
     }
-
-    // 刷新内置列表的 installed 状态
-    await loadBuiltinList()
-    // 清空选中（已安装的会被 selectable 过滤）
-    selectedBuiltinRows.value = []
-    // 刷新主插件列表
-    refreshPlugins()
+    ElMessage.success(`已提交批量安装任务（${ids.length} 个插件），后台执行中`)
+    startBatchInstallPolling(taskId, ids.length)
   } catch (e: any) {
-    ElMessage.error('批量安装失败：' + (e?.message || e))
-  } finally {
+    ElMessage.error('提交批量安装任务失败：' + (e?.message || e))
     installingBuiltin.value = false
   }
+}
+
+/** 批装任务轮询定时器 */
+let batchInstallPollTimer: ReturnType<typeof setInterval> | null = null
+
+function startBatchInstallPolling(taskId: string, total: number) {
+  stopBatchInstallPolling()
+  batchInstallPollTimer = setInterval(async () => {
+    try {
+      const st = await pluginManageApi.installBuiltinStatus(taskId)
+      // 执行中实时刷新进度条（后端按已处理数量均分）
+      if (typeof st.progress === 'number' && st.status === 'RUNNING') {
+        builtinInstallProgress.value = st.progress
+      }
+      if (st.status === 'COMPLETED') {
+        stopBatchInstallPolling()
+        onBatchInstallDone(st, total)
+      } else if (st.status === 'FAILED' || st.status === 'CANCELLED') {
+        stopBatchInstallPolling()
+        installingBuiltin.value = false
+        builtinInstallProgress.value = 100
+        // 失败/取消也尽量展示已处理明细
+        if (st.result?.data?.results?.length) {
+          builtinResults.value = st.result.data.results
+        }
+        ElMessage.error('批量安装' + (st.status === 'CANCELLED' ? '已取消' : '失败') +
+          '：' + (st.errorMessage || st.resultSummary || st.status))
+        await loadBuiltinList()
+        refreshPlugins()
+      }
+      // PENDING / RUNNING 继续轮询
+    } catch {
+      // 单次轮询失败忽略（网络抖动），等待下一次
+    }
+  }, TASK_POLL_INTERVAL_MS)
+}
+
+function stopBatchInstallPolling() {
+  if (batchInstallPollTimer) {
+    clearInterval(batchInstallPollTimer)
+    batchInstallPollTimer = null
+  }
+}
+
+async function onBatchInstallDone(st: { resultSummary?: string; result?: { data?: { total?: number; success?: number; failed?: number; results?: BuiltinInstallResultVO[] } } }, total: number) {
+  builtinInstallProgress.value = 100
+  const r = st.result?.data
+  builtinResults.value = Array.isArray(r?.results) ? r!.results! : []
+  const successCount = r?.success ?? total
+  const failedCount = r?.failed ?? 0
+  if (failedCount === 0) {
+    ElMessage.success(st.resultSummary || `全部 ${successCount} 个插件安装成功`)
+  } else {
+    ElMessage.warning(`安装完成：${successCount} 成功，${failedCount} 失败，详见下方结果`)
+  }
+  // 刷新内置列表的 installed 状态
+  await loadBuiltinList()
+  // 清空选中（已安装的会被 selectable 过滤）
+  selectedBuiltinRows.value = []
+  // 刷新主插件列表
+  refreshPlugins()
+  installingBuiltin.value = false
 }
 
 async function refreshPlugins() {
@@ -925,6 +1023,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopExportPolling()
+  stopInstallPolling()
+  stopBatchInstallPolling()
 })
 </script>
 

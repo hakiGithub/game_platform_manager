@@ -3,6 +3,7 @@ package com.gameplatform.plugin.l4d2.service;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.plugin.extension.ListOptions;
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.extension.MapResource;
 import com.gameplatform.plugin.l4d2.extension.MapSpec;
@@ -128,8 +129,8 @@ public class MapCenterService {
         }
 
         TaskSubmitRequest request = TaskSubmitRequest.builder()
-                .taskType("crawl")
-                .source("L4D2")
+                .taskType(L4D2Constants.TASK_TYPE_CRAWL)
+                .source(L4D2Constants.TASK_SOURCE)
                 .scopeType("GLOBAL")
                 .payload(Map.of("crawlType", crawlType))
                 .build();
@@ -157,8 +158,8 @@ public class MapCenterService {
      */
     public CrawlStatusVO getCrawlStatus() {
         TaskQuery query = TaskQuery.builder()
-                .source("L4D2")
-                .taskType("crawl")
+                .source(L4D2Constants.TASK_SOURCE)
+                .taskType(L4D2Constants.TASK_TYPE_CRAWL)
                 .page(1)
                 .size(1)
                 .build();

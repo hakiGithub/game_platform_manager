@@ -1,5 +1,6 @@
 package com.gameplatform.plugin.l4d2.task;
 
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskHandlerExtension;
 import lombok.extern.slf4j.Slf4j;
@@ -20,10 +21,11 @@ import java.util.Map;
  * <ul>
  *   <li>{@code crawl} → {@link CrawlTaskHandler}：地图爬取任务</li>
  *   <li>{@code map-upload} → {@link MapUploadTaskHandler}：地图上传任务（ADR-0018）</li>
+ *   <li>{@code builtin-plugin-install} → {@link BuiltinPluginInstallTaskHandler}：内置插件安装任务</li>
  * </ul>
  *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Slf4j
 @Component
@@ -32,12 +34,17 @@ public class L4D2TaskHandlerExtension implements TaskHandlerExtension {
     private final Map<String, TaskHandler> handlers;
 
     public L4D2TaskHandlerExtension(CrawlTaskHandler crawlTaskHandler,
-                                    MapUploadTaskHandler mapUploadTaskHandler) {
+                                    MapUploadTaskHandler mapUploadTaskHandler,
+                                    BuiltinPluginInstallTaskHandler builtinPluginInstallTaskHandler) {
+        // 单装与批装共用同一 Handler 实例，注册两个 taskType（Handler 内按 payload 区分）
         this.handlers = Map.of(
-                "crawl", crawlTaskHandler,
-                "map-upload", mapUploadTaskHandler);
-        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}",
-                crawlTaskHandler.getClass().getSimpleName(), mapUploadTaskHandler.getClass().getSimpleName());
+                L4D2Constants.TASK_TYPE_CRAWL, crawlTaskHandler,
+                L4D2Constants.TASK_TYPE_MAP_UPLOAD, mapUploadTaskHandler,
+                L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_INSTALL, builtinPluginInstallTaskHandler,
+                L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL, builtinPluginInstallTaskHandler);
+        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}, builtin-plugin-install -> {}",
+                crawlTaskHandler.getClass().getSimpleName(), mapUploadTaskHandler.getClass().getSimpleName(),
+                builtinPluginInstallTaskHandler.getClass().getSimpleName());
     }
 
     @Override
