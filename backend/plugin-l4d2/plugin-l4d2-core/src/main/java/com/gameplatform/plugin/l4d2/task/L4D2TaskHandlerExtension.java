@@ -19,6 +19,7 @@ import java.util.Map;
  * <p>已注册的处理器：
  * <ul>
  *   <li>{@code crawl} → {@link CrawlTaskHandler}：地图爬取任务</li>
+ *   <li>{@code map-upload} → {@link MapUploadTaskHandler}：地图上传任务（ADR-0018）</li>
  * </ul>
  *
  * @author GamePlatform
@@ -30,9 +31,13 @@ public class L4D2TaskHandlerExtension implements TaskHandlerExtension {
 
     private final Map<String, TaskHandler> handlers;
 
-    public L4D2TaskHandlerExtension(CrawlTaskHandler crawlTaskHandler) {
-        this.handlers = Map.of("crawl", crawlTaskHandler);
-        log.info("[L4D2] 任务处理器已注册: crawl -> {}", crawlTaskHandler.getClass().getSimpleName());
+    public L4D2TaskHandlerExtension(CrawlTaskHandler crawlTaskHandler,
+                                    MapUploadTaskHandler mapUploadTaskHandler) {
+        this.handlers = Map.of(
+                "crawl", crawlTaskHandler,
+                "map-upload", mapUploadTaskHandler);
+        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}",
+                crawlTaskHandler.getClass().getSimpleName(), mapUploadTaskHandler.getClass().getSimpleName());
     }
 
     @Override

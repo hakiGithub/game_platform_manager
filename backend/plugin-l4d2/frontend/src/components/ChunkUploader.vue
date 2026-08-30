@@ -39,7 +39,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { mapApi, chunkUploadApi } from '@/api'
+import { mapApi, MapUploadSubmit, chunkUploadApi } from '@/api'
 
 const props = withDefaults(defineProps<{
   instanceId: number
@@ -93,9 +93,10 @@ async function uploadFile(file: File) {
     }
     if (cancelled.value) return
     progress.value = 100
-    statusText.value = '上传完成'
-    ElMessage.success('上传成功')
-    emit('success', null)
+    statusText.value = '已提交到执行队列'
+    const submitted = directResult.value
+    ElMessage.success(`地图已提交到执行队列${submitted?.taskId ? `（任务 ${submitted.taskId.slice(0, 8)}）` : ''}，处理完成后可在地图列表查看`)
+    emit('success', submitted)
   } catch (e: any) {
     progress.value = -1
     statusText.value = '上传失败: ' + (e?.message || e)
@@ -111,9 +112,12 @@ async function uploadFile(file: File) {
   }
 }
 
+const directResult = ref<MapUploadSubmit | null>(null)
+
 async function uploadDirect(file: File) {
-  statusText.value = '直接上传中...'
-  await mapApi.upload(file, props.instanceId, (p: number) => {
+  statusText.value = '上传中...'
+  // 注意：HTTP 层完成 = 文件暂存并提交执行队列；VPK 解析/写入服务器由任务异步处理
+  directResult.value = await mapApi.upload(file, props.instanceId, (p: number) => {
     progress.value = Math.floor(p)
     emit('progress', p)
   })

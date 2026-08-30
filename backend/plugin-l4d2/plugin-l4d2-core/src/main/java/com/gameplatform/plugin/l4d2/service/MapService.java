@@ -65,35 +65,61 @@ public class MapService {
     }
 
     /**
-     * 上传地图：VPK magic 校验 → 上传到 addons/ → 清缓存 → 可选自动裁剪。
+     * 暂存上传文件（同步阶段，ADR-0018 异步化）：
+     * 校验扩展名/文件名合法性后落盘暂存目录，返回暂存信息供任务提交。
+     * 重活（VPK 解析/SSH 上传/自动裁剪）由 map-upload 任务异步执行。
      */
-    public MapListVO uploadMap(Long instanceId, MultipartFile file) {
-        log.info("上传地图, instanceId: {}, fileName: {}", instanceId, file.getOriginalFilename());
+    public StagedUpload stageUpload(Long instanceId, MultipartFile file) {
+        log.info("暂存上传地图, instanceId: {}, fileName: {}", instanceId, file.getOriginalFilename());
 
         String filename = file.getOriginalFilename();
         if (filename == null || !filename.toLowerCase().endsWith(".vpk")) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "只支持 VPK 格式的地图文件");
         }
         validateMapName(filename);
-
         requireInstance(instanceId);
+
+        Path stagedFile;
+        try {
+            stagedFile = Files.createTempFile("l4d2_map_", ".vpk");
+            file.transferTo(stagedFile.toFile());
+        } catch (IOException e) {
+            throw new L4D2PluginException(L4D2PluginException.FILE, "上传文件暂存失败: " + e.getMessage(), e);
+        }
+        return new StagedUpload(stagedFile, filename, file.getSize());
+    }
+
+    /**
+     * 暂存上传信息。
+     */
+    public record StagedUpload(Path stagedFile, String filename, long size) {
+    }
+
+    /**
+     * 执行上传（map-upload 任务调用，ADR-0018）：
+     * VPK magic 校验 → 上传到 addons/ → 清缓存 → 生成 VO → 可选自动裁剪。
+     * 暂存文件生命周期由调用方（任务 Handler）管理。
+     */
+    public MapListVO doUpload(Long instanceId, Path stagedFile, String filename) {
+        log.info("执行地图上传, instanceId: {}, fileName: {}", instanceId, filename);
         String addonsPath = pathResolver.getAddonsPath();
         String targetPath = addonsPath + "/" + filename;
 
-        // 先校验 VPK magic：临时保存文件并解析
-        Path tempFile = null;
         try {
-            tempFile = Files.createTempFile("l4d2_upload_", ".vpk");
-            file.transferTo(tempFile.toFile());
-
             VpkParser vpkParser = new VpkParser();
-            VpkParser.VpkArchive archive = vpkParser.parse(tempFile.toFile());
+            VpkParser.VpkArchive archive = vpkParser.parse(stagedFile.toFile());
             if (archive == null) {
                 throw new L4D2PluginException(L4D2PluginException.FILE, "VPK 文件格式无效或已损坏");
             }
+            // 内容防线：无 missions 的 VPK 不是有效的 L4D2 地图（解析器对无签名文件
+            // 走单文件 VPK 宽松分支，垃圾文件会在此被拦下而非污染 addons 目录）
+            if (archive.getMissionFiles().isEmpty()) {
+                throw new L4D2PluginException(L4D2PluginException.FILE,
+                        "VPK 中未找到有效的战役（missions）信息，不是有效的 L4D2 地图文件");
+            }
 
             // 上传到远程 addons 目录
-            instanceFileService.uploadLocalFile(instanceId, targetPath, tempFile.toAbsolutePath().toString());
+            instanceFileService.uploadLocalFile(instanceId, targetPath, stagedFile.toAbsolutePath().toString());
 
             // 清除缓存，使下次 listMaps 重新解析
             vpkParserService.clearCache(addonsPath);
@@ -116,8 +142,6 @@ public class MapService {
         } catch (Exception e) {
             log.error("上传地图失败, instanceId: {}, fileName: {}", instanceId, filename, e);
             throw new L4D2PluginException(L4D2PluginException.FILE, "上传地图失败: " + e.getMessage(), e);
-        } finally {
-            deleteTempFile(tempFile);
         }
     }
 

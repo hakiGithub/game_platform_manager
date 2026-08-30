@@ -1,9 +1,12 @@
 package com.gameplatform.plugin.l4d2.controller;
 
+import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.InstanceIdDTO;
+import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.dto.MapTrimBatchDTO;
 import com.gameplatform.plugin.l4d2.service.MapService;
+import com.gameplatform.plugin.l4d2.vo.MapUploadSubmitVO;
 import com.gameplatform.plugin.l4d2.vo.MapListVO;
 import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
@@ -17,7 +20,11 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.gameplatform.plugin.task.TaskSubmitRequest;
+import com.gameplatform.plugin.task.TaskService;
+
 import java.util.List;
+import java.util.Map;
 
 /**
  * 地图管理控制器
@@ -35,6 +42,7 @@ import java.util.List;
 public class MapController {
 
     private final MapService mapService;
+    private final TaskService taskService;
 
     /**
      * 获取地图列表
@@ -46,14 +54,44 @@ public class MapController {
     }
 
     /**
-     * 上传地图
+     * 上传地图（异步，ADR-0018）：同步阶段仅校验扩展名并暂存文件，
+     * 随后提交 map-upload 任务到执行队列；VPK 解析/SSH 上传/自动裁剪由任务执行。
      */
-    @Operation(summary = "上传地图", description = "上传 VPK 格式的地图文件")
+    @Operation(summary = "上传地图", description = "上传 VPK 格式的地图文件，提交到执行队列异步处理")
     @PostMapping("/upload")
-    public Result<MapListVO> uploadMap(
+    public Result<MapUploadSubmitVO> uploadMap(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
             @Parameter(description = "地图文件") @RequestParam("file") MultipartFile file) {
-        return Result.success(mapService.uploadMap(instanceId, file));
+        MapService.StagedUpload staged;
+        try {
+            staged = mapService.stageUpload(instanceId, file);
+        } catch (L4D2PluginException e) {
+            // 全局异常处理器不感知插件异常类，转 BusinessException 让前端拿到友好提示
+            throw new BusinessException(e.getMessage());
+        }
+        String taskId;
+        try {
+            taskId = taskService.submit(TaskSubmitRequest.builder()
+                    .taskType("map-upload")
+                    .source("L4D2")
+                    .scopeKey(String.valueOf(instanceId))
+                    .payload(Map.of(
+                            "instanceId", instanceId,
+                            "filename", staged.filename(),
+                            "stagedPath", staged.stagedFile().toAbsolutePath().toString()))
+                    .build());
+        } catch (Exception e) {
+            // 提交失败时回收暂存文件，避免泄漏
+            try {
+                java.nio.file.Files.deleteIfExists(staged.stagedFile());
+            } catch (Exception cleanupErr) {
+                log.warn("回收暂存文件失败: {}", staged.stagedFile(), cleanupErr);
+            }
+            throw e;
+        }
+        log.info("地图上传任务已提交, instanceId: {}, taskId: {}, file: {}",
+                instanceId, taskId, staged.filename());
+        return Result.success(new MapUploadSubmitVO(taskId, staged.filename(), staged.size()));
     }
 
     /**

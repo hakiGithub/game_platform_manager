@@ -104,9 +104,9 @@ export const mapApi = {
   // 获取地图列表
   list: (instanceId: number) => get<MapListVO[]>('/maps/list', { instanceId }),
 
-  // 上传地图（小文件直传）
+  // 上传地图（小文件直传；后端仅暂存并提交执行队列，异步处理，ADR-0018）
   upload: (file: File, instanceId: number, onProgress?: (p: number) => void) =>
-    upload<MapListVO>(`/maps/upload?instanceId=${instanceId}`, file, onProgress),
+    upload<MapUploadSubmit>(`/maps/upload?instanceId=${instanceId}`, file, onProgress),
 
   // 删除地图
   delete: (instanceId: number, mapName: string) =>
@@ -171,6 +171,13 @@ export const chunkUploadApi = {
 }
 
 // ============ Phase 3 类型定义 ============
+
+/** 地图上传提交结果（已进入执行队列，ADR-0018） */
+export interface MapUploadSubmit {
+  taskId: string
+  filename: string
+  size: number
+}
 
 export interface MapListVO {
   title?: string
