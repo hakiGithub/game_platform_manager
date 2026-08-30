@@ -225,6 +225,19 @@ public class MapService {
             // 裁剪（带备份）
             VpkTrimResultVO result = vpkTrimService.trim(tempFile.toFile(), true);
 
+            // 防呆（ADR-0018 实测教训）：裁剪产物不足原文件 1%，说明该 VPK 主要由客户端
+            // 资源构成（如 workshop 脚本/材质插件），残桩会被 srcds 加载时段错误导致
+            // 崩溃循环——放弃覆盖，保留远端原文件
+            if (result.getOriginalSize() > 0
+                    && result.getTrimmedSize() < result.getOriginalSize() / 100) {
+                log.warn("裁剪产物 {} 字节不足原文件 {} 的 1%（客户端资源型 VPK），保留原文件不覆盖",
+                        result.getTrimmedSize(), result.getOriginalSize());
+                result.setTrimmedSize(result.getOriginalSize());
+                result.setSavedBytes(0);
+                result.setTrimmedEntries(0);
+                return result;
+            }
+
             // 上传裁剪后文件覆盖原 VPK
             instanceFileService.uploadLocalFile(instanceId, remoteVpkPath,
                     tempFile.toAbsolutePath().toString());
