@@ -123,6 +123,7 @@ export async function upload<T>(url: string, file: File, onProgress?: (percent: 
     const formData = new FormData()
     formData.append('file', file)
 
+
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable && onProgress) {
         const percent = Math.round((e.loaded / e.total) * 100)
@@ -149,6 +150,11 @@ export async function upload<T>(url: string, file: File, onProgress?: (percent: 
 
     xhr.addEventListener('error', () => reject(new Error('Network error')))
     xhr.open('POST', `${API_BASE}${url}`)
+    const token = getAuthToken()
+    if (token) {
+      // 与 request() 保持一致：XHR 上传必须携带鉴权头，否则 Spring Security 403
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    }
     xhr.send(formData)
   })
 }

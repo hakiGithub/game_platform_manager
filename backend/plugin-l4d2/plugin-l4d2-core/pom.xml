@@ -101,11 +101,16 @@
             <artifactId>commons-compress</artifactId>
             <version>1.26.1</version>
         </dependency>
-        <!-- RAR 解压（纯 Java，RAR4 完整 + RAR5 常规压缩读取；加密/分卷不支持）-->
+        <!-- RAR5 解压（7-Zip JBinding，含全平台原生库；主应用 classpath 需同样声明）-->
         <dependency>
-            <groupId>com.github.junrar</groupId>
-            <artifactId>junrar</artifactId>
-            <version>7.5.5</version>
+            <groupId>net.sf.sevenzipjbinding</groupId>
+            <artifactId>sevenzipjbinding</artifactId>
+            <version>16.02-2.01</version>
+        </dependency>
+        <dependency>
+            <groupId>net.sf.sevenzipjbinding</groupId>
+            <artifactId>sevenzipjbinding-all-platforms</artifactId>
+            <version>16.02-2.01</version>
         </dependency>
         <!-- 模块直接使用 Lombok @Slf4j；显式声明避免传递依赖（pf4j 为 runtime）调解为不可编译 -->
         <dependency>

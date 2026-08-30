@@ -110,6 +110,19 @@
             <artifactId>commons-compress</artifactId>
             <version>1.26.1</version>
         </dependency>
+        <!-- PF4J 插件运行期第三方库经主应用 classpath 委托解析（如 l4d2 地图上传的 RAR 解压），
+             插件 pom 的 compile 依赖必须在主应用 classpath 可见。
+             RAR 用 7-Zip JBinding：junrar 不支持 RAR5（ workshop 包普遍为 RAR5） -->
+        <dependency>
+            <groupId>net.sf.sevenzipjbinding</groupId>
+            <artifactId>sevenzipjbinding</artifactId>
+            <version>16.02-2.01</version>
+        </dependency>
+        <dependency>
+            <groupId>net.sf.sevenzipjbinding</groupId>
+            <artifactId>sevenzipjbinding-all-platforms</artifactId>
+            <version>16.02-2.01</version>
+        </dependency>
         <!-- 显式升级 commons-io：commons-compress 1.26.1 需要 2.15+ 的 IOUtils.skip(InputStream, long, Supplier)，
              传递依赖仅 2.13.0，运行时报 NoSuchMethodError（补丁安装平台侧解压触发） -->
         <dependency>

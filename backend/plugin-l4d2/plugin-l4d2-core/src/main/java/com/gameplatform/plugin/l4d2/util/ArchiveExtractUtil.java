@@ -1,7 +1,12 @@
 package com.gameplatform.plugin.l4d2.util;
 
-import com.github.junrar.Archive;
-import com.github.junrar.rarfile.FileHeader;
+import net.sf.sevenzipjbinding.ExtractAskMode;
+import net.sf.sevenzipjbinding.ExtractOperationResult;
+import net.sf.sevenzipjbinding.IInArchive;
+import net.sf.sevenzipjbinding.ISequentialOutStream;
+import net.sf.sevenzipjbinding.PropID;
+import net.sf.sevenzipjbinding.SevenZip;
+import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream;
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZFile;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
@@ -128,46 +133,54 @@ public class ArchiveExtractUtil {
         return listRoots(destDir);
     }
 
-    /** 解压 RAR（junrar），带 slip 防护与默认上限；加密/分卷压缩包抛出明确异常 */
+    /** 解压 RAR（7-Zip JBinding，RAR4/5 均支持；加密包抛明确异常） */
     public static List<File> extractRar(File rarFile, File destDir) throws IOException {
         if (!destDir.exists()) destDir.mkdirs();
         ExtractBudget budget = new ExtractBudget(DEFAULT_MAX_EXTRACT_BYTES, DEFAULT_MAX_ENTRIES);
-        try (Archive archive = new Archive(rarFile)) {
-            if (archive.isEncrypted()) {
-                throw new IOException("RAR 压缩包已加密，暂不支持（请解压后上传）");
-            }
-            FileHeader header;
-            while ((header = archive.nextFileHeader()) != null) {
-                if (ZipSlipGuard.isMacOSJunk(header.getFileName())) continue;
-                File out = resolveEntryFile(destDir, header.getFileName());
-                budget.charge(header.getUnpSize());
-                if (header.isDirectory()) {
+        try (RandomAccessFile raf = new RandomAccessFile(rarFile, "r");
+             IInArchive archive = SevenZip.openInArchive(null, new RandomAccessFileInStream(raf))) {
+            int count = archive.getNumberOfItems();
+            for (int i = 0; i < count; i++) {
+                String entryName = (String) archive.getProperty(i, PropID.PATH);
+                if (ZipSlipGuard.isMacOSJunk(entryName)) continue;
+                File out = resolveEntryFile(destDir, entryName);
+                Object sizeObj = archive.getProperty(i, PropID.SIZE);
+                budget.charge(sizeObj instanceof Long ? (Long) sizeObj : 0L);
+                if (Boolean.TRUE.equals(archive.getProperty(i, PropID.IS_FOLDER))) {
                     out.mkdirs();
-                } else {
-                    out.getParentFile().mkdirs();
-                    try (OutputStream os = new FileOutputStream(out)) {
-                        archive.extractFile(header, os);
-                    } catch (Exception extractErr) {
-                        throw new IOException("RAR 条目解压失败（可能为加密或分卷压缩包）: " + header.getFileName(), extractErr);
-                    }
+                    continue;
                 }
+                out.getParentFile().mkdirs();
+                extractItem(archive, i, out, entryName);
             }
+        } catch (net.sf.sevenzipjbinding.SevenZipException e) {
+            throw new IOException("RAR 解压失败: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         } catch (IOException e) {
             throw e;
         } catch (Exception e) {
-            throw new IOException("RAR 解压失败（暂不支持加密/分卷/部分 RAR5 高级压缩）: " + e.getMessage(), e);
+            throw new IOException("RAR 解压失败: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
         return listRoots(destDir);
     }
 
-    /** 统一入口：根据扩展名分派 */
-    public static List<File> extract(File archiveFile, String originalFilename, File destDir) throws IOException {
-        String ext = extension(originalFilename);
-        switch (ext) {
-            case ".zip": return extractZip(archiveFile, destDir);
-            case ".7z":  return extract7z(archiveFile, destDir);
-            case ".rar": return extractRar(archiveFile, destDir);
-            default: throw new IOException("不支持的压缩格式: " + originalFilename);
+    /** 提取单个条目到文件（7-Zip JBinding extractSlow，逐条目） */
+    private static void extractItem(IInArchive archive, int index, File out, String entryName) throws IOException {
+        try (OutputStream os = new FileOutputStream(out)) {
+            ISequentialOutStream stream = data -> {
+                try {
+                    os.write(data);
+                    return data.length;
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            };
+            ExtractOperationResult result = archive.extractSlow(index, stream);
+            if (result == ExtractOperationResult.WRONG_PASSWORD) {
+                throw new IOException("压缩包已加密，暂不支持（请解压后上传）");
+            }
+            if (result != ExtractOperationResult.OK) {
+                throw new IOException("条目解压失败: " + entryName + " (" + result + ")");
+            }
         }
     }
 
@@ -224,27 +237,26 @@ public class ArchiveExtractUtil {
                 break;
             }
             case ".rar": {
-                try (Archive archive = new Archive(archiveFile)) {
-                    if (archive.isEncrypted()) {
-                        throw new IOException("RAR 压缩包已加密，暂不支持（请解压后上传）");
-                    }
-                    FileHeader header;
-                    while ((header = archive.nextFileHeader()) != null) {
-                        if (header.isDirectory() || ZipSlipGuard.isMacOSJunk(header.getFileName())) continue;
-                        if (!isVpkName(header.getFileName())) continue;
-                        File out = new File(destDir, baseName(header.getFileName()));
-                        budget.charge(header.getUnpSize());
-                        try (OutputStream os = new FileOutputStream(out)) {
-                            archive.extractFile(header, os);
-                        } catch (Exception extractErr) {
-                            throw new IOException("RAR 条目解压失败（可能为加密或分卷压缩包）: " + header.getFileName(), extractErr);
-                        }
+                try (RandomAccessFile raf = new RandomAccessFile(archiveFile, "r");
+                     IInArchive archive = SevenZip.openInArchive(null, new RandomAccessFileInStream(raf))) {
+                    int count = archive.getNumberOfItems();
+                    for (int i = 0; i < count; i++) {
+                        String entryName = (String) archive.getProperty(i, PropID.PATH);
+                        if ((Boolean.TRUE.equals(archive.getProperty(i, PropID.IS_FOLDER)))
+                                || ZipSlipGuard.isMacOSJunk(entryName)) continue;
+                        if (!isVpkName(entryName)) continue;
+                        File out = new File(destDir, baseName(entryName));
+                        Object sizeObj = archive.getProperty(i, PropID.SIZE);
+                        budget.charge(sizeObj instanceof Long ? (Long) sizeObj : 0L);
+                        extractItem(archive, i, out, entryName);
                         vpks.add(out);
                     }
+                } catch (net.sf.sevenzipjbinding.SevenZipException e) {
+                    throw new IOException("RAR 解压失败: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
                 } catch (IOException e) {
                     throw e;
                 } catch (Exception e) {
-                    throw new IOException("RAR 解压失败（暂不支持加密/分卷/部分 RAR5 高级压缩）: " + e.getMessage(), e);
+                    throw new IOException("RAR 解压失败: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
                 }
                 break;
             }

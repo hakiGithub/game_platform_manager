@@ -25,12 +25,14 @@
 
 - stageUpload 扩展名白名单放宽为 `.vpk/.zip/.rar/.7z`（对齐参考项目，tar 不做）
 - Handler 按扩展名分派：vpk 直接走 doUpload；压缩包先解压到临时目录，**只收集 `*.vpk`，其余 entry 丢弃**；解压时跳过 macOS 垃圾（`__MACOSX/`、`.DS_Store`），剥离目录结构
-- **RAR 解压用 junrar 7.5.5**（mucommander 维护，纯 Java，RAR4 完整 + RAR5 常规压缩读取）；加密与分卷压缩包不支持，解压失败给出明确报错
+- **RAR 解压用 net.sf.sevenzipjbinding 16.02-2.01（all-platforms，含全平台原生库）**。修正记录：初版选 junrar 7.5.5，实测 workshop 包普遍为 RAR5，junrar 直接抛 `UnsupportedRarV5Exception`（其并不支持 RAR5，ADR 初稿的假设有误）；7-Zip JBinding 同时覆盖 RAR4/5，且主应用已依赖其原生栈。加密压缩包解压时报 WRONG_PASSWORD，给出明确提示
 - zip 沿用现有 GBK 强制读取（中文文件名），7z 用现有 commons-compress 栈
 
 ### 决策 3：解压安全防护
 
 - **Zip-Slip**：所有 entry 落盘前过 `ZipSlipGuard.normalizeAndCheck`（补齐 ArchiveExtractUtil 的既有缺口，插件安装链路同步受益）
+- **插件运行期依赖规则（实测教训）**：PF4J 插件的第三方库在运行期经主应用 classpath 委托解析——插件 pom 的 compile 依赖若不在主应用 classpath，运行期抛 `NoClassDefFoundError` 且执行线程死亡、任务永久卡 RUNNING（`executeAsync` 只 `catch (Exception)` 接不住 Error）。junrar → sevenzipjbinding 已按此规则加入 core pom
+- **任务失败语义**：任务框架对"正常返回的 TaskResult"一律标 COMPLETED，只有 Handler 抛异常才 FAILED——map-upload 的"全部失败/无 vpk"路径必须抛异常而非返回 failure
 - **解压炸弹**：解压总字节数上限（默认 4GB）+ 条目数上限（默认 10000），超限立即中止并清理临时目录；参数在 `L4D2Config` 新增 `archive` 节（`maxExtractBytes`/`maxEntries`）
 - 嵌套压缩包不支持（包内的 zip/rar entry 不是 .vpk，自然丢弃）；密码压缩包不支持
 
