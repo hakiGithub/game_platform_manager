@@ -98,3 +98,4 @@ backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/builtin-plugins/
 # Vite 自动生成
 frontend/src/auto-imports.d.ts
 frontend/src/components.d.ts
+*.timestamp-*.mjs
