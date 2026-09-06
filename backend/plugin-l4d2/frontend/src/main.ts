@@ -1,4 +1,5 @@
 import { createApp, type App as VueApp } from 'vue'
+import type { Router } from 'vue-router'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
@@ -18,6 +19,42 @@ document.documentElement.classList.add('dark')
 let app: VueApp<Element> | null = null
 // 插件 store 实例，用于 Wujie 卸载时清理
 let pluginStore: ReturnType<typeof usePluginStore> | null = null
+// 路由联动清理器（Wujie 卸载时解绑 bus 监听）
+let detachRouteSync: (() => void) | null = null
+
+/**
+ * 挂接主应用 ⇄ 子应用双向路由联动：
+ * - 宿主 NAVIGATE_TO 下发 → 子应用内部 router.push（切页不重挂载子应用）
+ * - 子应用路由变化 afterEach → ROUTE_CHANGE 上报宿主（同步 URL 与侧边栏高亮）
+ */
+function attachRouteSync(router: Router, store: ReturnType<typeof usePluginStore>): void {
+  const wujie = (window as any).$wujie
+  const bus = wujie?.bus
+  const sdk = store.sdk
+  if (!bus || !sdk) {
+    return
+  }
+
+  const onNavigateTo = (payload: any) => {
+    const path = typeof payload === 'string' ? payload : payload?.path
+    if (typeof path === 'string' && path.startsWith('/')) {
+      router.push(path).catch(() => {
+        // 忽略重复导航
+      })
+    }
+  }
+  const navigateEvent = sdk.getEventName('NAVIGATE_TO')
+  bus.$on(navigateEvent, onNavigateTo)
+
+  const removeAfterEach = router.afterEach(to => {
+    bus.$emit(sdk.getEventName('ROUTE_CHANGE'), { path: to.path })
+  })
+
+  detachRouteSync = () => {
+    bus.$off(navigateEvent, onNavigateTo)
+    removeAfterEach()
+  }
+}
 
 /**
  * 渲染/挂载子应用
@@ -70,6 +107,11 @@ function render(props: Record<string, any> = {}): void {
     throw new Error('[L4D2 Plugin] 找不到挂载容器')
   }
 
+  // Wujie 模式挂接双向路由联动
+  if (mode === 'wujie') {
+    attachRouteSync(router, pluginStore)
+  }
+
   app.mount(container)
 }
 
@@ -77,6 +119,8 @@ function render(props: Record<string, any> = {}): void {
  * 卸载并清理应用
  */
 function destroyApp(): void {
+  detachRouteSync?.()
+  detachRouteSync = null
   pluginStore?.destroySDK()
   pluginStore = null
   app?.unmount()

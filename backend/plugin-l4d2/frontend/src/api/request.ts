@@ -4,6 +4,8 @@
 import type { ApiResponse } from '@/types'
 
 const API_BASE = '/api/plugin/l4d2'
+/** 主应用 API 基址（轮询主应用任务中心等宿主接口用） */
+const MAIN_API_BASE = '/api'
 
 /**
  * 获取鉴权 Token
@@ -31,7 +33,8 @@ function getAuthToken(): string | null {
  */
 async function request<T>(
   url: string,
-  options?: RequestInit
+  options?: RequestInit,
+  base: string = API_BASE
 ): Promise<T> {
   const token = getAuthToken()
   const headers: Record<string, string> = {
@@ -42,7 +45,7 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const fullUrl = `${API_BASE}${url}`
+  const fullUrl = `${base}${url}`
   console.log('[request] start', options?.method || 'GET', fullUrl)
   const response = await fetch(fullUrl, {
     headers,
@@ -69,6 +72,18 @@ async function request<T>(
  * 注意：undefined / null 值会被跳过，避免序列化为字符串 "undefined" 污染后端过滤条件
  */
 export function get<T>(url: string, params?: Record<string, any>): Promise<T> {
+  return getWithBase<T>(url, params, API_BASE)
+}
+
+/**
+ * GET 请求（主应用 /api 基址）
+ * 用于访问宿主主应用接口（如任务中心 /tasks/{taskId}），鉴权头与插件请求一致。
+ */
+export function getMain<T>(url: string, params?: Record<string, any>): Promise<T> {
+  return getWithBase<T>(url, params, MAIN_API_BASE)
+}
+
+function getWithBase<T>(url: string, params: Record<string, any> | undefined, base: string): Promise<T> {
   const queryString = params
     ? '?' + new URLSearchParams(
         Object.entries(params).reduce((acc, [key, value]) => {
@@ -81,7 +96,7 @@ export function get<T>(url: string, params?: Record<string, any>): Promise<T> {
       ).toString()
     : ''
 
-  return request<T>(`${url}${queryString}`)
+  return request<T>(`${url}${queryString}`, undefined, base)
 }
 
 /**

@@ -31,8 +31,52 @@ public interface InstanceFileService {
     byte[] getFileBytes(long instanceId, String relativePath, long offset, long length);
 
     // ===== 上传/下载 =====
-    void uploadLocalFile(long instanceId, String relativePath, String localPath);
-    void downloadFile(long instanceId, String relativePath, String localPath);
+
+    /**
+     * 上传本地文件到实例（无进度回调）。
+     * 等价于 {@code uploadLocalFile(instanceId, relativePath, localPath, null)}。
+     */
+    default void uploadLocalFile(long instanceId, String relativePath, String localPath) {
+        uploadLocalFile(instanceId, relativePath, localPath, null);
+    }
+
+    /**
+     * 下载实例文件到本地（无进度回调）。
+     * 等价于 {@code downloadFile(instanceId, relativePath, localPath, null)}。
+     */
+    default void downloadFile(long instanceId, String relativePath, String localPath) {
+        downloadFile(instanceId, relativePath, localPath, null);
+    }
+
+    /**
+     * 上传本地文件到实例，带传输进度回调。
+     *
+     * <p>全链路流式传输（本地文件按流读取，不整体载入内存）。
+     * 进度回调语义见 {@link FileTransferProgressCallback}；
+     * {@code callback} 允许为 {@code null}（等价于无进度回调）。
+     *
+     * @param instanceId  实例 ID
+     * @param relativePath 目标相对路径（相对实例游戏数据根目录，正斜杠）
+     * @param localPath   本地源文件路径
+     * @param callback    进度回调，可为 null
+     */
+    void uploadLocalFile(long instanceId, String relativePath, String localPath,
+                         FileTransferProgressCallback callback);
+
+    /**
+     * 下载实例文件到本地路径，带传输进度回调。
+     *
+     * <p>全链路流式传输（远端文件按流写出，不整体载入内存）。
+     * 进度回调语义见 {@link FileTransferProgressCallback}；
+     * {@code callback} 允许为 {@code null}（等价于无进度回调）。
+     *
+     * @param instanceId  实例 ID
+     * @param relativePath 源文件相对路径（相对实例游戏数据根目录，正斜杠）
+     * @param localPath   本地目标文件路径
+     * @param callback    进度回调，可为 null
+     */
+    void downloadFile(long instanceId, String relativePath, String localPath,
+                      FileTransferProgressCallback callback);
 
     // ===== 文件管理 =====
     void deleteFile(long instanceId, String relativePath);

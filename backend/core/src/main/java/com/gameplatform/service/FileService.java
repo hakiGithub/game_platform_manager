@@ -5,7 +5,9 @@ import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
+import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.util.SshUtil;
+import com.gameplatform.util.TransferProgress;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -171,13 +173,26 @@ public class FileService {
     }
 
     /**
-     * 上传本地文件
+     * 上传本地文件（无进度回调）。
+     * 等价于 {@code uploadLocalFile(hostId, remotePath, localPath, null)}。
+     */
+    public void uploadLocalFile(Long hostId, String remotePath, String localPath) {
+        uploadLocalFile(hostId, remotePath, localPath, null);
+    }
+
+    /**
+     * 上传本地文件，带传输进度回调。
+     *
+     * <p>流式上传：本地文件经 {@link java.io.InputStream} 按 SFTP 流写出，
+     * 进度计数仅按读取块累计，不缓冲整份文件。回调异常会中止上传。
      *
      * @param hostId      主机ID
      * @param remotePath  远程文件路径
      * @param localPath   本地文件路径
+     * @param callback    进度回调，可为 null
      */
-    public void uploadLocalFile(Long hostId, String remotePath, String localPath) {
+    public void uploadLocalFile(Long hostId, String remotePath, String localPath,
+                                FileTransferProgressCallback callback) {
         log.info("上传本地文件: hostId={}, remote={}, local={}", hostId, remotePath, localPath);
 
         DeploymentAccess.SshConnection conn = connectSftp(hostId);
@@ -192,28 +207,47 @@ public class FileService {
                         }
                     }
 
-                    // 上传文件
+                    // 上传文件（流式 + 进度计数）
                     Path localFile = Paths.get(localPath);
-                    try (InputStream is = Files.newInputStream(localFile);
+                    long totalBytes = Files.size(localFile);
+                    TransferProgress.fireStart(callback, totalBytes);
+                    try (InputStream is = TransferProgress.counting(
+                            Files.newInputStream(localFile), totalBytes, callback);
                          OutputStream os = sftp.write(remotePath)) {
                         is.transferTo(os);
                     }
 
+                    TransferProgress.fireComplete(callback);
                     log.info("文件上传成功: {} -> {}", localPath, remotePath);
         } catch (Exception e) {
             log.error("上传文件失败: {}", remotePath, e);
+            TransferProgress.fireError(callback, e);
             throw new BusinessException("上传文件失败: " + e.getMessage());
         }
     }
 
     /**
-     * 下载文件
+     * 下载文件（无进度回调）。
+     * 等价于 {@code downloadFile(hostId, remotePath, localPath, null)}。
+     */
+    public void downloadFile(Long hostId, String remotePath, String localPath) {
+        downloadFile(hostId, remotePath, localPath, null);
+    }
+
+    /**
+     * 下载文件，带传输进度回调。
+     *
+     * <p>流式下载：远端文件经 SFTP 流读取后写出到本地，进度计数仅按读取块累计，
+     * 不缓冲整份文件。totalBytes 通过 SFTP stat 获取，获取失败时回调中为 -1。
+     * 回调异常会中止下载。
      *
      * @param hostId     主机ID
      * @param remotePath 远程文件路径
      * @param localPath  本地文件路径
+     * @param callback   进度回调，可为 null
      */
-    public void downloadFile(Long hostId, String remotePath, String localPath) {
+    public void downloadFile(Long hostId, String remotePath, String localPath,
+                             FileTransferProgressCallback callback) {
         log.info("下载文件: hostId={}, remote={}, local={}", hostId, remotePath, localPath);
 
         DeploymentAccess.SshConnection conn = connectSftp(hostId);
@@ -224,16 +258,33 @@ public class FileService {
                         Files.createDirectories(localParent);
                     }
 
-                    // 下载文件
-                    try (InputStream is = sftp.read(remotePath);
+                    // 下载文件（流式 + 进度计数；远端大小 stat 失败时降级为未知）
+                    long totalBytes = statSizeQuietly(sftp, remotePath);
+                    TransferProgress.fireStart(callback, totalBytes);
+                    try (InputStream is = TransferProgress.counting(
+                            sftp.read(remotePath), totalBytes, callback);
                          OutputStream os = Files.newOutputStream(Paths.get(localPath))) {
                         is.transferTo(os);
                     }
 
+                    TransferProgress.fireComplete(callback);
                     log.info("文件下载成功: {} -> {}", remotePath, localPath);
         } catch (Exception e) {
             log.error("下载文件失败: {}", remotePath, e);
+            TransferProgress.fireError(callback, e);
             throw new BusinessException("下载文件失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询远端文件大小（SFTP stat），失败时返回 -1（表示未知，不影响传输）。
+     */
+    private long statSizeQuietly(SftpClient sftp, String remotePath) {
+        try {
+            return sftp.stat(remotePath).getSize();
+        } catch (Exception e) {
+            log.debug("获取远端文件大小失败（进度将按未知总量回调）: {}", remotePath);
+            return -1;
         }
     }
 

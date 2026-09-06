@@ -8,6 +8,7 @@ import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostsRefreshPreview;
 import com.gameplatform.vo.HostsRefreshResult;
+import com.gameplatform.vo.Steam302StatusVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,7 @@ public class HostsFileRefresher {
     private final HostMapper hostMapper;
     private final SshUtil sshUtil;
     private final DeploymentAccess deployAccess;
+    private final Steam302Service steam302Service;
 
     /**
      * 系统别名集合 - 这些域名不会被改为 LAN IP
@@ -67,6 +69,7 @@ public class HostsFileRefresher {
      * @return 预检结果（待改域名清单 + sudo 状态）
      */
     public HostsRefreshPreview previewRefresh(Long hostId) {
+        ensureNotSteam302Managed(hostId);
         Host host = loadHost(hostId);
         HostCredentials creds = deployAccess.credentials(host);
 
@@ -132,6 +135,7 @@ public class HostsFileRefresher {
      * @param selectedDomains 可选，null/空表示刷新全部候选域名；非空表示只刷新指定域名（用于跳过广告屏蔽条目）
      */
     public HostsRefreshResult refreshHosts(Long hostId, String sudoPassword, List<String> selectedDomains) {
+        ensureNotSteam302Managed(hostId);
         Host host = loadHost(hostId);
         HostCredentials creds = deployAccess.credentials(host);
         String hostLanIp = host.getIpAddress();
@@ -498,6 +502,26 @@ public class HostsFileRefresher {
             throw new RuntimeException("主机不存在: id=" + hostId);
         }
         return host;
+    }
+
+    /**
+     * 平台托管的 Steam302 运行中时拦截手动刷新：hosts 劫持条目由
+     * Steam302HostsSync 自动管理（安装/每次启动后重写），手动改写会被下一次同步覆盖。
+     * 容器共享加速请在「主机详情 → Steam302 加速」面板开启。
+     */
+    private void ensureNotSteam302Managed(Long hostId) {
+        Steam302StatusVO s302;
+        try {
+            s302 = steam302Service.status(hostId);
+        } catch (Exception e) {
+            // 状态查询失败（主机不可达等）不拦截原有流程
+            log.debug("Steam302 状态查询失败，跳过托管拦截: {}", e.getMessage());
+            return;
+        }
+        if (s302 != null && "RUNNING".equals(s302.getPhase())) {
+            throw new RuntimeException("Steam302 正由平台托管运行，hosts 由「主机详情 → Steam302 加速」面板"
+                    + "自动管理；容器共享加速请在该面板开启「容器共享加速」。如需手动管理请先停止 Steam302。");
+        }
     }
 
     /**

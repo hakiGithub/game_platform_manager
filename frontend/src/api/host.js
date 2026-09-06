@@ -102,6 +102,19 @@ export function testHostConnection(id) {
 }
 
 /**
+ * 用表单参数测试主机连接（新增主机保存前的强制连接测试）
+ * @param {{ip:string, sshPort:number, username:string, password?:string, privateKey?:string}} data - 连接参数
+ * @returns {Promise<{connected: boolean, message: string, testTime: number}>}
+ */
+export function testHostConnectionByParams(data) {
+  return request({
+    url: "/hosts/test-connection",
+    method: "post",
+    data,
+  });
+}
+
+/**
  * 获取主机状态
  * @param {number} id - 主机ID
  * @returns {Promise<{status: number, cpuUsage: number, memoryUsage: number, diskUsage: number, uptime: number, loadAverage: string}>}
@@ -165,5 +178,96 @@ export function refreshHosts(id, sudoPassword, selectedDomains = null) {
     url: `/hosts/${id}/hosts-refresh`,
     method: "post",
     data: { sudoPassword, selectedDomains },
+  });
+}
+
+// ==================== Steam302 主机加速 ====================
+
+/**
+ * 查询 Steam302 部署状态
+ * @param {number} id - 主机ID
+ * @returns {Promise<{phase: string, containerStatus: string, image: string, hostsEntries: number, proxiedDomains: number, certTrusted: boolean, message: string}>}
+ */
+export function getSteam302Status(id) {
+  return request({
+    url: `/hosts/${id}/steam302/status`,
+    method: "get",
+  });
+}
+
+/**
+ * 提交 Steam302 安装任务（异步）
+ * @param {number} id - 主机ID
+ * @returns {Promise<string>} 任务ID
+ */
+export function installSteam302(id) {
+  return request({
+    url: `/hosts/${id}/steam302/install`,
+    method: "post",
+  });
+}
+
+/**
+ * 启动 Steam302 容器
+ * @param {number} id - 主机ID
+ * @returns {Promise<null>}
+ */
+export function startSteam302(id) {
+  return request({
+    url: `/hosts/${id}/steam302/start`,
+    method: "post",
+  });
+}
+
+/**
+ * 停止 Steam302 容器
+ * @param {number} id - 主机ID
+ * @returns {Promise<null>}
+ */
+export function stopSteam302(id) {
+  return request({
+    url: `/hosts/${id}/steam302/stop`,
+    method: "post",
+  });
+}
+
+/**
+ * 读取 Steam302 服务开关配置（S302.ini [Setting]）
+ * @param {number} id - 主机ID
+ * @returns {Promise<Object<string, string>>} 有序键值表
+ */
+export function getSteam302Config(id) {
+  return request({
+    url: `/hosts/${id}/steam302/config`,
+    method: "get",
+  });
+}
+
+/**
+ * 保存 Steam302 服务开关配置（保存后需重启生效）
+ * @param {number} id - 主机ID
+ * @param {Object<string, string>} values - 待修改的键值子集
+ * @returns {Promise<null>}
+ */
+export function saveSteam302Config(id, values) {
+  return request({
+    url: `/hosts/${id}/steam302/config`,
+    method: "put",
+    data: values,
+  });
+}
+
+/**
+ * 切换 Steam302 容器共享加速
+ * 开启后 hosts 劫持条目指向宿主机 LAN IP（bridge 容器与宿主机均可走代理），立即重写生效
+ * @param {number} id - 主机ID
+ * @param {boolean} enabled - 是否开启
+ * @returns {Promise<null>}
+ */
+export function setSteam302ContainerShare(id, enabled) {
+  return request({
+    url: `/hosts/${id}/steam302/container-share`,
+    method: "put",
+    data: { enabled },
   });
 }

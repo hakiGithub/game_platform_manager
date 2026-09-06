@@ -6,11 +6,14 @@
  * 2. 根据当前菜单路径加载 Wujie 子应用对应页面
  * 不再渲染左侧菜单（避免与主应用侧边栏重复）
  */
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
+import WujieVue from "wujie-vue3";
 import PluginContainer from "./PluginContainer.vue";
 import { usePluginStore } from "../stores/pluginStore";
+import { sendPluginNavigate } from "../communication/pluginCommunication";
+import { generateWujieAppName } from "../wujie/apps.config";
 import { getInstanceList } from "@/api/instance";
 import { statusType } from "@/utils/instanceStatus";
 import type { PluginMenuItem, ReadyPayload } from "../types/messageTypes";
@@ -149,6 +152,17 @@ const currentInstanceStatus = computed(() => {
   return inst ? statusType(inst.status ?? inst.runStatus) : "";
 });
 
+// Wujie 子应用重载计数（切换实例等场景显式触发整应用重建）
+const reloadKey = ref(0);
+
+// 子应用首次挂载使用的菜单路径。切页改走 bus 内部导航（不重挂载子应用），
+// src 必须冻结，否则 PluginContainer 的 watch(src) 会触发整应用重载；
+// 仅 gameCode 变化或显式 reload（key 重建）时才跟随最新 menuPath
+const initialMenuPath = ref(props.menuPath);
+watch([() => props.gameCode, reloadKey], () => {
+  initialMenuPath.value = props.menuPath;
+});
+
 // Wujie 子应用 URL
 // 子应用在 Wujie 模式下使用 createWebHashHistory()，路由通过 hash 片段传递
 const pluginUrl = computed(() => {
@@ -157,7 +171,7 @@ const pluginUrl = computed(() => {
   }
   const entry = pluginStore.currentManifest.entry;
   // 规范化菜单路径：确保以 / 开头
-  const path = normalizeMenuPath(props.menuPath);
+  const path = normalizeMenuPath(initialMenuPath.value);
 
   // 如果 entry 是完整 URL，直接拼接 hash
   if (entry.startsWith("http://") || entry.startsWith("https://")) {
@@ -169,11 +183,60 @@ const pluginUrl = computed(() => {
   return `${entry}#${path}`;
 });
 
+// ===== 主应用 ⇄ 子应用路由联动（消除切页重挂载） =====
+const wujieBus = WujieVue.bus;
+// 子应用最近一次上报的内部路由，用于打断 URL 同步与导航下发之间的回环
+const lastReportedInternal = ref("");
+
+function wujieEventName(gameCode: string, type: string) {
+  return `${generateWujieAppName(gameCode)}:${type}`;
+}
+
+/** 下发内部导航：目标与子应用当前路由相同时跳过（回环守卫） */
+function navigateSubApp(subPath: string) {
+  if (!subPath || subPath === lastReportedInternal.value) return;
+  sendPluginNavigate(generateWujieAppName(props.gameCode), subPath);
+}
+
+/** 子应用内部路由上报：记录并同步主应用 URL（仅已声明菜单回写，保持侧边栏可解析） */
+function handleSubRouteChange(payload: { path: string } | string) {
+  const subPath = typeof payload === "string" ? payload : payload?.path || "";
+  if (!subPath.startsWith("/")) return;
+  lastReportedInternal.value = subPath;
+  if (!pluginStore.findMenuByPath(subPath)) return;
+  const target = `/extensions/app/${props.gameCode}${subPath}`;
+  if (route.path !== target) {
+    router.replace({ path: target, query: route.query }).catch(() => {});
+  }
+}
+
+// 同一路由组件在插件间复用，事件名随 gameCode 变化，需重挂监听
+watch(
+  () => props.gameCode,
+  (g, old) => {
+    if (old) {
+      wujieBus.$off(wujieEventName(old, "ROUTE_CHANGE"), handleSubRouteChange);
+    }
+    wujieBus.$on(wujieEventName(g, "ROUTE_CHANGE"), handleSubRouteChange);
+    lastReportedInternal.value = "";
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  wujieBus.$off(
+    wujieEventName(props.gameCode, "ROUTE_CHANGE"),
+    handleSubRouteChange
+  );
+});
+
 /**
- * 处理插件就绪
+ * 处理插件就绪：补发一次当前目标路由，
+ * 覆盖子应用挂载期间（监听未注册时）丢失的导航指令
  */
 function handleReady(payload: ReadyPayload) {
   emit("ready", payload);
+  navigateSubApp(normalizeMenuPath(props.menuPath));
 }
 
 /**
@@ -184,14 +247,11 @@ function handleError(error: Error) {
 }
 
 /**
- * 重新加载插件
+ * 重新加载插件（gameCode/menuPath 不变时 key 不变，需显式重建子应用）
  */
 function reloadPlugin() {
-  // 通过改变 key 触发重载（PluginContainer 内部 watch src 会重载）
   reloadKey.value++;
 }
-
-const reloadKey = ref(0);
 
 /**
  * 实例选择检查：
@@ -302,6 +362,8 @@ watch(
   async () => {
     if (!pluginStore.currentManifest) return;
     await ensureInstanceOrPrompt();
+    // 子应用存活时按需下发内部导航（替代旧的"改 key 重挂载"切页方式）
+    navigateSubApp(normalizeMenuPath(props.menuPath));
   }
 );
 
@@ -383,7 +445,7 @@ watch(
     <!-- Wujie 子应用 -->
     <div v-else class="plugin-container-wrapper">
       <PluginContainer
-        :key="`${gameCode}-${menuPath}-${reloadKey}`"
+        :key="`${gameCode}-${reloadKey}`"
         :src="pluginUrl"
         :instance-id="currentInstance.id"
         :game-code="gameCode"

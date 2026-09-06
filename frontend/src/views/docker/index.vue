@@ -67,6 +67,15 @@
           </el-select>
         </div>
         <div class="selector-right">
+          <el-alert
+            v-if="!hostList.length"
+            type="info"
+            :closable="false"
+            show-icon
+            title="暂无已纳管主机"
+            description="请先到「主机列表」新增并连通一台主机，再回到这里管理容器。"
+            style="padding: 6px 12px"
+          />
           <el-button :disabled="!selectedHostId" @click="handleRefresh">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -875,7 +884,7 @@ onMounted(async () => {
     const firstOnlineHost = (data.records || []).find((host) => host.status === 1);
     if (firstOnlineHost) selectedHostId.value = firstOnlineHost.id;
   } catch (error) {
-    ElMessage.error("获取 Docker 主机列表失败");
+    ElMessage.error("获取主机列表失败：" + (error?.message || "未知错误") + "，请确认后端服务正常后重试");
   }
   startRefreshTimer();
 });

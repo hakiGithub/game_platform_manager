@@ -48,7 +48,8 @@ const pagination = reactive({
   pageSize: 10,
   total: 0,
 });
-const lastRefreshAt = ref("等待编队同步");
+const lastRefreshAt = ref("等待同步");
+const syncPending = computed(() => lastRefreshAt.value.startsWith("等待"));
 
 const runningInstanceCount = computed(
   () => tableData.value.filter((row) => row.status === "running").length,
@@ -69,7 +70,12 @@ const onlinePlayerCount = computed(
 const lifecycleSegments = computed(() => [
   { key: "running", label: "运行中", value: runningInstanceCount.value, tone: "running" },
   { key: "transition", label: "过渡中", value: transitionInstanceCount.value, tone: "transition" },
-  { key: "error", label: "需处置", value: attentionInstanceCount.value, tone: "error" },
+  {
+    key: "error",
+    label: "需处置",
+    value: attentionInstanceCount.value,
+    tone: attentionInstanceCount.value > 0 ? "error" : "stopped",
+  },
   {
     key: "stopped",
     label: "已停止",
@@ -390,28 +396,24 @@ onBeforeUnmount(() => {
     <section class="instance-hero">
       <div class="hero-copy">
         <span class="section-kicker">INSTANCE COMMAND / SERVICE FLEET</span>
-        <h1>服务编队</h1>
-        <p>从实例生命周期、玩家负载和部署来源判断服务状态，再进入详情或执行运行编排。</p>
+        <h1>实例列表</h1>
+        <p>从实例生命周期、在线玩家和部署来源判断服务状态，再进入详情或执行运维操作。</p>
       </div>
       <div class="hero-actions">
         <div class="hero-status">
           <span class="fleet-pulse" aria-hidden="true"></span>
           <div>
-            <strong>编队监控中</strong>
-            <small>自动刷新 · 上次同步 {{ lastRefreshAt }}</small>
+            <strong>{{ syncPending ? "等待同步" : "实例监控中" }}</strong>
+            <small>自动刷新 · 上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
           </div>
         </div>
-        <el-button type="primary" @click="handleDeploy">
-          <el-icon><Plus /></el-icon>
-          部署实例
-        </el-button>
       </div>
     </section>
 
     <section class="lifecycle-rail" aria-label="实例生命周期态势">
       <div class="rail-intro">
         <span class="section-kicker">SERVICE FLEET</span>
-        <strong>运行编队</strong>
+        <strong>实例概览</strong>
         <small>实例正在经历什么</small>
       </div>
       <div v-for="segment in lifecycleSegments" :key="segment.key" class="life-segment" :class="`is-${segment.tone}`">
@@ -421,15 +423,15 @@ onBeforeUnmount(() => {
       <div class="player-segment">
         <span>玩家在线</span>
         <strong>{{ onlinePlayerCount }}</strong>
-        <small>活跃服务负载</small>
+        <small>活跃实例负载</small>
       </div>
     </section>
 
-    <section class="instance-filter-panel" aria-label="实例编队筛选">
+    <section class="instance-filter-panel" aria-label="实例筛选">
       <div class="panel-heading filter-heading">
         <div>
           <span class="section-kicker">FILTER / LIFECYCLE</span>
-          <h2>编队筛选</h2>
+          <h2>筛选实例</h2>
         </div>
         <span class="filter-hint">按服务、游戏类型、宿主机或生命周期定位实例</span>
       </div>
@@ -469,12 +471,12 @@ onBeforeUnmount(() => {
       </el-form>
     </section>
 
-    <section class="fleet-panel" aria-label="实例编队清单">
+    <section class="fleet-panel" aria-label="实例清单">
       <div class="panel-heading fleet-heading">
         <div>
           <span class="section-kicker">MANAGED SERVICES</span>
-          <h2>实例编队</h2>
-          <p>{{ pagination.total }} 个服务单元 · 活跃实例每 5 秒同步</p>
+          <h2>实例列表</h2>
+          <p>{{ pagination.total }} 个实例 · 活跃实例每 5 秒同步</p>
         </div>
         <div class="fleet-actions">
           <el-button @click="fetchData">
@@ -483,7 +485,7 @@ onBeforeUnmount(() => {
           </el-button>
           <el-button type="primary" @click="handleDeploy">
             <el-icon><Plus /></el-icon>
-            新增编队
+            新建实例
           </el-button>
         </div>
       </div>
@@ -503,7 +505,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="服务单元" min-width="230">
+        <el-table-column label="实例" min-width="230">
           <template #default="{ row }">
             <div class="service-cell">
               <span class="service-icon">
@@ -521,7 +523,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="玩家负载" min-width="180">
+        <el-table-column label="在线玩家" min-width="180">
           <template #default="{ row }">
             <div v-if="row.status === 'running'" class="player-load" :class="`is-${getPlayerLoadTone(row)}`">
               <div class="player-load-heading">
@@ -541,7 +543,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="部署来源" min-width="140">
+        <el-table-column label="部署方式" min-width="140">
           <template #default="{ row }">
             <div class="deployment-cell">
               <strong>{{ row.deployType || "未知" }}</strong>
@@ -549,7 +551,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="运行编排" width="258" fixed="right">
+        <el-table-column label="操作" width="258" fixed="right">
           <template #default="{ row }">
             <div class="service-actions">
               <template v-if="row.status === 'running'">
@@ -585,8 +587,8 @@ onBeforeUnmount(() => {
         <template #empty>
           <div class="fleet-empty-state">
             <el-icon><Grid /></el-icon>
-            <strong>暂无匹配服务</strong>
-            <span>调整编队条件或部署一个新的游戏实例</span>
+            <strong>暂无匹配实例</strong>
+            <span>调整筛选条件或部署一个新的游戏实例</span>
           </div>
         </template>
       </el-table>
@@ -594,6 +596,7 @@ onBeforeUnmount(() => {
       <div class="fleet-footer">
         <span class="fleet-footer-note"><i class="fleet-pulse" aria-hidden="true"></i> 生命周期监控已接入</span>
         <el-pagination
+          v-if="pagination.total > 0"
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.pageSize"
           :total="pagination.total"

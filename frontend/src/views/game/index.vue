@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { getGameList, getGamePage, getGameDetail, deleteGame } from "@/api/game";
+import { getGameList, getGamePage, getGameDetail, deleteGame, importGameYaml } from "@/api/game";
 import {
   getInstancesByGameId,
   startInstance,
@@ -30,6 +30,7 @@ const pagination = reactive({
   total: 0,
 });
 const lastRefreshAt = ref("等待目录同步");
+const syncPending = computed(() => lastRefreshAt.value.startsWith("等待"));
 
 const catalogGameCount = computed(() => pagination.total || gameList.value.length);
 const deployableGameCount = computed(
@@ -45,6 +46,45 @@ const templateReadyGameCount = computed(
         game.deployConfig && Object.keys(game.deployConfig).length > 0,
     ).length,
 );
+
+// 上传 YAML 导入游戏元数据
+const yamlDialogVisible = ref(false);
+const yamlFile = ref(null);
+const yamlFileList = ref([]);
+const yamlImporting = ref(false);
+const yamlImportResult = ref(null);
+
+function handleYamlChange(file) {
+  yamlFile.value = file.raw || null;
+  yamlFileList.value = file.raw ? [file] : [];
+  yamlImportResult.value = null;
+}
+
+async function handleYamlImport() {
+  if (!yamlFile.value) return;
+  if (!/\.(yml|yaml)$/i.test(yamlFile.value.name)) {
+    ElMessage.error("只支持 .yml / .yaml 文件");
+    return;
+  }
+  yamlImporting.value = true;
+  yamlImportResult.value = null;
+  try {
+    const result = await importGameYaml(yamlFile.value);
+    yamlImportResult.value = result;
+    if (result.success) {
+      ElMessage.success("游戏元数据导入成功");
+      yamlFile.value = null;
+      yamlFileList.value = [];
+      fetchGameList();
+    } else {
+      ElMessage.error("导入失败：" + (result.error || "格式校验未通过"));
+    }
+  } catch (error) {
+    yamlImportResult.value = { success: false, error: error.message || "上传失败" };
+  } finally {
+    yamlImporting.value = false;
+  }
+}
 
 // 详情抽屉
 const drawerVisible = ref(false);
@@ -334,16 +374,20 @@ onMounted(() => {
       <div class="hero-copy">
         <span class="section-kicker">RUNTIME CATALOG / GAME METADATA</span>
         <h1>游戏目录</h1>
-        <p>把游戏能力沉淀成可部署的运行时模板，查看支持的部署方式、端口契约和关联实例。</p>
+        <p>查看游戏支持的部署方式、默认端口与关联实例。</p>
       </div>
       <div class="hero-actions">
         <div class="hero-status">
           <span class="catalog-pulse" aria-hidden="true"></span>
           <div>
-            <strong>目录已就绪</strong>
-            <small>上次同步 {{ lastRefreshAt }}</small>
+            <strong>{{ syncPending ? "等待同步" : "目录已就绪" }}</strong>
+            <small>上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
           </div>
         </div>
+        <el-button @click="yamlDialogVisible = true">
+          <el-icon><Upload /></el-icon>
+          上传 YAML
+        </el-button>
         <el-button @click="fetchGameList">
           <el-icon><Refresh /></el-icon>
           同步目录
@@ -354,7 +398,7 @@ onMounted(() => {
     <section class="catalog-rail" aria-label="游戏目录概况">
       <div class="rail-intro">
         <span class="section-kicker">GAME CATALOG</span>
-        <strong>运行时资产</strong>
+        <strong>游戏概览</strong>
         <small>游戏能力与部署模板</small>
       </div>
       <div class="catalog-stat">
@@ -400,11 +444,11 @@ onMounted(() => {
       </el-form>
     </section>
 
-    <section class="catalog-panel" aria-label="运行时目录清单">
+    <section class="catalog-panel" aria-label="游戏元数据清单">
       <div class="panel-heading catalog-heading">
         <div>
           <span class="section-kicker">RUNTIME BLUEPRINTS</span>
-          <h2>运行时目录</h2>
+          <h2>游戏元数据</h2>
           <p>{{ pagination.total }} 个游戏条目 · 展开行查看关联实例</p>
         </div>
         <el-button @click="fetchGameList">
@@ -472,7 +516,7 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="目录条目" min-width="230">
+        <el-table-column label="游戏" min-width="230">
           <template #default="{ row }">
             <div class="catalog-name-cell">
               <span class="catalog-icon">
@@ -497,7 +541,7 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="端口契约" width="128">
+        <el-table-column label="默认端口" width="128">
           <template #default="{ row }">
             <div class="port-contract">
               <strong>{{ row.defaultPort || "—" }}</strong>
@@ -519,7 +563,7 @@ onMounted(() => {
               <span class="readiness-dot"></span>
               <div>
                 <strong>{{ getCatalogReadiness(row) }}</strong>
-                <span>{{ formatTime(row.updateTime) }}</span>
+                <span>元数据更新于 {{ formatTime(row.updateTime) }}</span>
               </div>
             </div>
           </template>
@@ -536,7 +580,7 @@ onMounted(() => {
         <template #empty>
           <div class="catalog-empty">
             <el-icon><Grid /></el-icon>
-            <strong>暂无游戏目录条目</strong>
+            <strong>暂无游戏元数据</strong>
             <span>调整关键词或检查后端游戏元数据</span>
           </div>
         </template>
@@ -545,6 +589,7 @@ onMounted(() => {
       <div class="catalog-footer">
         <span><i class="catalog-pulse" aria-hidden="true"></i> 目录能力已接入</span>
         <el-pagination
+          v-if="pagination.total > 0"
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.size"
           :page-sizes="[10, 20, 50, 100]"
@@ -625,7 +670,7 @@ onMounted(() => {
               <div>
                 <span>默认端口</span>
                 <strong>{{ getDefaultPortCount(currentGame) }}</strong>
-                <small>个端口契约</small>
+                <small>个默认端口</small>
               </div>
             </div>
           </section>
@@ -634,7 +679,7 @@ onMounted(() => {
             <div class="detail-section-heading">
               <div>
                 <span class="section-kicker">DEPLOYMENT CONTRACT</span>
-                <h3>部署契约</h3>
+                <h3>部署配置</h3>
               </div>
               <span class="detail-section-index">02</span>
             </div>
@@ -661,7 +706,7 @@ onMounted(() => {
                   <small>TCP / 默认暴露</small>
                 </div>
               </div>
-              <div v-else class="detail-muted">未配置附加端口契约</div>
+              <div v-else class="detail-muted">未配置附加端口</div>
             </div>
           </section>
 
@@ -740,6 +785,46 @@ onMounted(() => {
         </template>
       </div>
     </el-drawer>
+
+    <!-- 上传 YAML 导入游戏元数据（对齐 UI 规范 3.1.3：上传后自动校验格式，错误明确提示） -->
+    <el-dialog
+      v-model="yamlDialogVisible"
+      title="上传游戏元数据 YAML"
+      width="480px"
+      :close-on-click-modal="false"
+    >
+      <el-upload
+        drag
+        :auto-upload="false"
+        :limit="1"
+        accept=".yml,.yaml"
+        :on-change="handleYamlChange"
+        :on-remove="() => (yamlFile = null)"
+        :file-list="yamlFileList"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">拖拽 YAML 文件到此处，或<em>点击选择</em></div>
+        <template #tip>
+          <div class="el-upload__tip">支持 .yml / .yaml，上传后自动校验格式并导入</div>
+        </template>
+      </el-upload>
+      <el-alert
+        v-if="yamlImportResult"
+        :type="yamlImportResult.success ? 'success' : 'error'"
+        :title="yamlImportResult.success
+          ? '导入成功' + (yamlImportResult.gameName ? '：' + yamlImportResult.gameName + '（' + yamlImportResult.gameCode + '）' : '')
+          : '导入失败：' + (yamlImportResult.error || '未知错误')"
+        :closable="false"
+        show-icon
+        style="margin-top: 12px"
+      />
+      <template #footer>
+        <el-button @click="yamlDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="yamlImporting" :disabled="!yamlFile" @click="handleYamlImport">
+          校验并导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

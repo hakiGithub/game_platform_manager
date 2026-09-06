@@ -224,19 +224,20 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     // ===== 上传/下载 =====
 
     @Override
-    public void uploadLocalFile(long instanceId, String relativePath, String localPath) {
+    public void uploadLocalFile(long instanceId, String relativePath, String localPath,
+                                FileTransferProgressCallback callback) {
         FileRoute route = resolveRoute(instanceId, relativePath);
         if (route.isNative()) {
-            fileAccessService.uploadLocalFile(route.hostId, route.resolvedPath, localPath);
+            fileAccessService.uploadLocalFile(route.hostId, route.resolvedPath, localPath, callback);
             return;
         }
-        // Docker: 先 SFTP 上传到主机 temp，再 docker cp 进容器
+        // Docker: 先 SFTP 上传到主机 temp（进度覆盖此段），再 docker cp 进容器（无进度）
         HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-upload-" + UUID.randomUUID();
         try {
             boolean uploaded = sshUtil.uploadFile(
                 conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                localPath, tempHostPath);
+                localPath, tempHostPath, callback);
             if (!uploaded) {
                 throw new RuntimeException("SFTP 上传到主机临时路径失败: " + tempHostPath);
             }
@@ -261,13 +262,14 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     }
 
     @Override
-    public void downloadFile(long instanceId, String relativePath, String localPath) {
+    public void downloadFile(long instanceId, String relativePath, String localPath,
+                             FileTransferProgressCallback callback) {
         FileRoute route = resolveRoute(instanceId, relativePath);
         if (route.isNative()) {
-            fileAccessService.downloadFile(route.hostId, route.resolvedPath, localPath);
+            fileAccessService.downloadFile(route.hostId, route.resolvedPath, localPath, callback);
             return;
         }
-        // Docker: docker cp 到主机 temp，再 SFTP 下载到本地
+        // Docker: docker cp 到主机 temp（无进度），再 SFTP 下载到本地（进度覆盖此段）
         HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-download-" + UUID.randomUUID();
         try {
@@ -279,7 +281,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             }
             boolean downloaded = sshUtil.downloadFile(
                 conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                tempHostPath, localPath);
+                tempHostPath, localPath, callback);
             if (!downloaded) {
                 throw new RuntimeException("SFTP 下载主机临时文件失败: " + tempHostPath);
             }

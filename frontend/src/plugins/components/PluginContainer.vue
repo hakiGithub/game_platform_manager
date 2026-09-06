@@ -116,6 +116,8 @@ const wujieProps = computed(() => ({
   baseApi: import.meta.env.VITE_API_BASE_URL || "/api",
   // 运行模式，明确告知子应用当前处于 Wujie 环境
   mode: "wujie",
+  // 子应用 bus 事件名前缀（事件名约定 `${wujieName}:${type}`）
+  wujieName: wujieName.value,
 }));
 
 // 通信管理器

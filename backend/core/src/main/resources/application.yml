@@ -185,6 +185,15 @@ game-platform:
     # 临时文件目录
     temp-dir: ./temp
 
+  # Steam302 主机加速（Docker 化部署 Steamcommunity 302）
+  steam302:
+    # 容器镜像（阿里云深圳仓库，安装任务在目标主机上 docker pull）
+    image: registry.cn-shenzhen.aliyuncs.com/haki_hub/gfw-302:15.0.4
+    # 宿主机数据目录（挂载为容器 /data）
+    data-dir: /opt/steam302
+    # 容器名
+    container-name: steam302
+
   # 游戏元数据配置
   metadata:
     # 扫描路径 (classpath:games/ 表示扫描resources/games目录)

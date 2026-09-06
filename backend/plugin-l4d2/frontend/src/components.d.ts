@@ -59,6 +59,7 @@ declare module 'vue' {
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    TaskProgressDialog: typeof import('./components/TaskProgressDialog.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

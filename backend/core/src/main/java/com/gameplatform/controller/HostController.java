@@ -135,6 +135,41 @@ public class HostController {
     }
 
     /**
+     * 用表单参数测试 SSH 连接（新增主机保存前的强制连接测试）
+     */
+    @Operation(summary = "测试SSH连接(表单参数)", description = "新增主机保存前使用表单参数直接测试连接")
+    @PostMapping("/test-connection")
+    public Result<ConnectionTestResult> testConnectionByParams(
+            @Parameter(description = "连接参数") @RequestBody HostConnectionTestDTO dto) {
+        boolean connected = hostService.testConnectionByParams(
+                dto.getIp(), dto.getSshPort(), dto.getUsername(),
+                dto.getPassword(), dto.getPrivateKey());
+
+        ConnectionTestResult result = new ConnectionTestResult();
+        result.setConnected(connected);
+        result.setMessage(connected ? "连接成功" : "连接失败，请检查地址、端口与凭据");
+        result.setTestTime(System.currentTimeMillis());
+        return Result.success(result);
+    }
+
+    /**
+     * 主机连接测试请求参数
+     */
+    @Data
+    public static class HostConnectionTestDTO {
+        /** IP 地址 */
+        private String ip;
+        /** SSH 端口 */
+        private Integer sshPort;
+        /** 用户名 */
+        private String username;
+        /** 密码（明文） */
+        private String password;
+        /** 私钥（明文） */
+        private String privateKey;
+    }
+
+    /**
      * 获取主机在线状态
      */
     @Operation(summary = "获取主机在线状态", description = "获取主机在线状态")

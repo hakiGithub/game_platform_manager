@@ -131,7 +131,7 @@ const routes = [
             path: 'tasks',
             name: 'Tasks',
             redirect: '/services/tasks/list',
-            meta: { title: '执行队列', icon: 'List', navPath: '/services/tasks', requiresAuth: true },
+            meta: { title: '任务中心', icon: 'List', navPath: '/services/tasks', requiresAuth: true },
             children: [
               {
                 path: 'list',

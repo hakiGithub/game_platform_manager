@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -9,6 +9,7 @@ import {
   updateHost,
   deleteHost,
   testHostConnection,
+  testHostConnectionByParams,
   previewHostsRefresh,
   refreshHosts,
 } from "@/api/host";
@@ -18,6 +19,8 @@ const router = useRouter();
 // 加载状态
 const loading = ref(false);
 const testLoading = ref(false);
+// 新增模式下是否已通过连接测试（未通过不允许保存，对齐 UI 规范 3.2.1）
+const connectionTested = ref(false);
 
 // 搜索表单
 const searchForm = reactive({
@@ -34,6 +37,7 @@ const pagination = reactive({
   total: 0,
 });
 const lastRefreshAt = ref("等待同步");
+const syncPending = computed(() => lastRefreshAt.value.startsWith("等待"));
 const resourceMetrics = [
   { key: "cpu", label: "CPU" },
   { key: "memory", label: "内存" },
@@ -323,8 +327,17 @@ function handleEdit(row) {
   dialogVisible.value = true;
 }
 
+// 凭据/地址变化后需重新测试
+watch(
+  () => [hostForm.ip, hostForm.sshPort, hostForm.sshUsername, hostForm.sshPassword, hostForm.sshPrivateKey],
+  () => {
+    connectionTested.value = false;
+  }
+);
+
 // 重置表单
 function resetForm() {
+  connectionTested.value = false;
   Object.assign(hostForm, {
     id: null,
     name: "",
@@ -343,7 +356,8 @@ function resetForm() {
   }
 }
 
-// 测试连接
+// 测试连接：新增模式直接用表单参数测试（对齐 UI 规范 3.2.1：测试成功后方可保存）；
+// 编辑模式仍用已存主机测试并同步在线状态
 async function handleTestConnection() {
   if (!hostForm.ip || !hostForm.sshPort) {
     ElMessage.warning("请先填写IP地址和端口");
@@ -352,17 +366,29 @@ async function handleTestConnection() {
 
   testLoading.value = true;
   try {
-    // 如果是编辑模式且有ID，使用现有主机测试
     if (hostForm.id) {
       const result = await testHostConnection(hostForm.id);
       if (result.connected) {
+        connectionTested.value = true;
         ElMessage.success(`连接测试成功: ${result.message}`);
       } else {
         ElMessage.error(`连接测试失败: ${result.message}`);
       }
     } else {
-      // 新增模式，需要先保存才能测试
-      ElMessage.info("新增主机请先保存后再测试连接");
+      const result = await testHostConnectionByParams({
+        ip: hostForm.ip,
+        sshPort: hostForm.sshPort,
+        username: hostForm.sshUsername,
+        password: hostForm.authType === "password" ? hostForm.sshPassword : undefined,
+        privateKey: hostForm.authType === "key" ? hostForm.sshPrivateKey : undefined,
+      });
+      if (result.connected) {
+        connectionTested.value = true;
+        ElMessage.success("连接测试成功，可以保存");
+      } else {
+        connectionTested.value = false;
+        ElMessage.error("连接测试失败：" + result.message);
+      }
     }
   } catch (error) {
     ElMessage.error("连接测试失败：" + (error.message || "网络错误"));
@@ -377,6 +403,11 @@ async function handleSubmit() {
 
   await formRef.value.validate(async (valid) => {
     if (valid) {
+      // 新增主机强制连接测试通过后才允许保存（对齐 UI 规范 3.2.1）
+      if (dialogType.value === "add" && !connectionTested.value) {
+        ElMessage.warning("请先完成连接测试且测试成功后再保存");
+        return;
+      }
       submitLoading.value = true;
       try {
         const data = {
@@ -550,28 +581,24 @@ onMounted(() => {
     <section class="host-hero">
       <div class="hero-copy">
         <span class="section-kicker">HOST CONTROL / HOST INVENTORY</span>
-        <h1>主机工作台</h1>
+        <h1>主机列表</h1>
         <p>集中查看连接健康、资源水位和 SSH 运维入口，先确认主机状态，再进入具体处置。</p>
       </div>
       <div class="hero-actions">
         <div class="hero-status">
           <span class="live-pulse" aria-hidden="true"></span>
           <div>
-            <strong>连接面正常</strong>
-            <small>上次同步 {{ lastRefreshAt }}</small>
+            <strong>{{ syncPending ? "同步中" : "连接面正常" }}</strong>
+            <small>上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
           </div>
         </div>
-        <el-button type="primary" @click="handleAdd">
-          <el-icon><Plus /></el-icon>
-          纳管主机
-        </el-button>
       </div>
     </section>
 
     <section class="host-situation" aria-label="主机运行态势">
       <div class="situation-intro">
         <span class="section-kicker">HOST SITUATION</span>
-        <strong>当前纳管态势</strong>
+        <strong>当前主机态势</strong>
         <small>资源和连接状态来自最近一次同步</small>
       </div>
       <div class="situation-stat">
@@ -745,7 +772,7 @@ onMounted(() => {
           <div class="host-empty-state">
             <el-icon><Monitor /></el-icon>
             <strong>暂无匹配主机</strong>
-            <span>调整筛选条件或新增一台纳管主机</span>
+            <span>调整筛选条件，或点击“刷新”旁的“新增主机”按钮</span>
           </div>
         </template>
       </el-table>
@@ -753,6 +780,7 @@ onMounted(() => {
       <div class="table-footer">
         <span class="table-footer-note"><i class="live-pulse" aria-hidden="true"></i> 资源状态已接入</span>
         <el-pagination
+          v-if="pagination.total > 0"
           v-model:current-page="pagination.current"
           v-model:page-size="pagination.size"
           :total="pagination.total"
@@ -797,8 +825,7 @@ onMounted(() => {
           />
           <div class="form-tip">
             勾选后，平台可向该主机跨网代劳下载/解压/推送补丁（含容器场景）；
-            不勾选时，目标主机必须能自治（curl/wget
-            +解压工具齐全），否则补丁安装将报错。详见 ADR-0004。
+            不勾选时，目标主机必须能自行下载补丁（需 curl/wget 与解压工具齐全），否则补丁安装会失败。
           </div>
         </el-form-item>
         <el-form-item label="SSH端口" prop="sshPort">
@@ -862,6 +889,8 @@ onMounted(() => {
           <el-button
             type="primary"
             :loading="submitLoading"
+            :disabled="dialogType === 'add' && !connectionTested"
+            :title="dialogType === 'add' && !connectionTested ? '请先完成连接测试且测试成功' : ''"
             @click="handleSubmit"
           >
             确定

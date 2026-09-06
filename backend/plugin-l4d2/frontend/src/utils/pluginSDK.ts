@@ -60,6 +60,18 @@ export class PluginSDK {
   }
 
   /**
+   * 宿主总线事件名：主应用按 `${wujieName}:${type}` 约定收发
+   * （wujieName 由 PluginContainer 经 props 下发；缺失时退回裸事件名保持 dev 兼容）
+   */
+  getEventName(event: string): string {
+    if (!this.isWujie) {
+      return event
+    }
+    const name = (window.$wujie!.props as any)?.wujieName
+    return name ? `${name}:${event}` : event
+  }
+
+  /**
    * 初始化 SDK
    */
   init(): void {
@@ -121,7 +133,7 @@ export class PluginSDK {
   destroy(): void {
     if (this.isWujie) {
       this.busHandlers.forEach((handler, event) => {
-        this.wujieBus?.$off(event, handler)
+        this.wujieBus?.$off(this.getEventName(event), handler)
       })
       this.busHandlers.clear()
     }
@@ -240,14 +252,14 @@ export class PluginSDK {
     }
     this.listeners.get(event)!.push(listener)
 
-    // Wujie 环境下自动订阅 bus 对应事件
+    // Wujie 环境下自动订阅 bus 对应事件（带宿主事件名前缀）
     if (this.isWujie && !this.busHandlers.has(event)) {
       const busHandler = (...args: any[]) => {
         const payload = args.length > 1 ? args : args[0]
         this.handleBusEvent(event, payload)
       }
       this.busHandlers.set(event, busHandler)
-      this.wujieBus?.$on(event, busHandler)
+      this.wujieBus?.$on(this.getEventName(event), busHandler)
     }
   }
 
@@ -269,7 +281,7 @@ export class PluginSDK {
     if (listeners.length === 0 && this.isWujie) {
       const busHandler = this.busHandlers.get(event)
       if (busHandler) {
-        this.wujieBus?.$off(event, busHandler)
+        this.wujieBus?.$off(this.getEventName(event), busHandler)
         this.busHandlers.delete(event)
       }
     }
@@ -321,7 +333,7 @@ export class PluginSDK {
    */
   private sendMessage(type: string, payload: any): void {
     if (this.isWujie) {
-      this.wujieBus?.$emit(type, payload)
+      this.wujieBus?.$emit(this.getEventName(type), payload)
     } else {
       // dev 模式下没有宿主，仅做日志记录
       this.log('[Dev] sendMessage:', type, payload)

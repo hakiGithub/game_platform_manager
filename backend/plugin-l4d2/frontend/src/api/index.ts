@@ -1,7 +1,7 @@
 /**
  * L4D2 API 接口
  */
-import { get, post, put, del, upload } from './request'
+import { get, getMain, post, put, del, upload } from './request'
 import type {
   PluginInfo,
   AdminInfo,
@@ -172,6 +172,26 @@ export const chunkUploadApi = {
 
 // ============ Phase 3 类型定义 ============
 
+/** 主应用任务中心任务 VO（GET /api/tasks/{taskId}，用于轮询任务进度） */
+export interface MainTaskVO {
+  taskId?: string
+  taskType?: string
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  progress?: number
+  progressMessage?: string
+  errorMessage?: string
+  resultSummary?: string
+  result?: any
+}
+
+/**
+ * 主应用任务中心 API（宿主接口，非插件路由）
+ */
+export const mainTaskApi = {
+  // 任务详情（含 progress / progressMessage，轮询用）
+  detail: (taskId: string) => getMain<MainTaskVO>(`/tasks/${taskId}`),
+}
+
 /** 地图上传提交结果（已进入执行队列，ADR-0018） */
 export interface MapUploadSubmit {
   taskId: string
@@ -246,6 +266,10 @@ export const rconApi = {
       '/rcon/execute',
       { instanceId, command }
     ),
+
+  // 切换地图（RCON changelevel，对应后端 ChangeMapDTO）
+  changeMap: (instanceId: number, mapName: string) =>
+    post<void>('/rcon/change-map', { instanceId, mapName }),
 }
 
 /**

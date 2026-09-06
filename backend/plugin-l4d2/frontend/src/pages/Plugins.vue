@@ -373,6 +373,19 @@
           </el-button>
         </template>
       </el-dialog>
+
+      <!-- 安装进度弹窗（单装/批装共用，等待直到任务终态） -->
+      <TaskProgressDialog
+        v-model:visible="installTaskVisible"
+        :title="installTaskTitle"
+        :poll-fn="pluginManageApi.installBuiltinStatus"
+        :task-id="installTaskId"
+        phase="task"
+        :poll-interval-ms="TASK_POLL_INTERVAL_MS"
+        @status="onInstallTaskStatus"
+        @completed="onInstallTaskCompleted"
+        @failed="onInstallTaskFailed"
+      />
   </div>
 </template>
 
@@ -382,6 +395,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { pluginManageApi } from '@/api'
 import type { PluginListVO, BuiltinPluginVO, BuiltinInstallResultVO } from '@/api'
+import TaskProgressDialog from '@/components/TaskProgressDialog.vue'
+import type { TaskPollStatus } from '@/components/TaskProgressDialog.vue'
 import { usePluginStore } from '@/stores/plugin'
 
 const store = usePluginStore()
@@ -433,8 +448,17 @@ const builtinInstallProgress = ref(0)
 /** 默认展开所有分类 */
 const activeCollapse = ref<string[]>(['platform', 'required', 'optional', 'custom'])
 
-/** 任务状态轮询间隔（毫秒），单装/批装共用 */
+/** 任务状态轮询间隔（毫秒）——进度弹窗内部同样按此节奏轮询 */
 const TASK_POLL_INTERVAL_MS = 2000
+
+// ===== 安装进度弹窗（单装/批装共用，等待直到任务终态） =====
+const installTaskVisible = ref(false)
+const installTaskTitle = ref('')
+const installTaskId = ref('')
+/** 当前弹窗对应的安装模式：single = 单装，batch = 批装 */
+const installTaskMode = ref<'single' | 'batch'>('single')
+const installTaskRow = ref<BuiltinPluginVO | null>(null)
+const installTaskTotal = ref(0)
 
 /**
  * 当前实例的平台过滤标签：docker 类部署返回 'linux'，native 部署根据浏览器/后端 OS 推断
@@ -627,41 +651,52 @@ async function onInstallSingle(row: BuiltinPluginVO) {
       onSingleInstallDone(row, row.name + ' 安装成功')
       return
     }
-    ElMessage.success(`已提交安装任务，后台处理中：${row.name}`)
-    startInstallPolling(taskId, row)
+    // 打开进度弹窗，轮询 install-status 接口等待任务终态
+    installTaskMode.value = 'single'
+    installTaskRow.value = row
+    installTaskTitle.value = `安装插件：${row.name}`
+    installTaskId.value = taskId
+    installTaskVisible.value = true
   } catch (e: any) {
     ElMessage.error(`${row.name} 提交安装任务失败：` + (e?.message || e))
     installingSingle.value = ''
   }
 }
 
-/** 单装任务轮询定时器 */
-let installPollTimer: ReturnType<typeof setInterval> | null = null
-
-function startInstallPolling(taskId: string, row: BuiltinPluginVO) {
-  stopInstallPolling()
-  installPollTimer = setInterval(async () => {
-    try {
-      const st = await pluginManageApi.installBuiltinStatus(taskId)
-      if (st.status === 'COMPLETED') {
-        stopInstallPolling()
-        onSingleInstallDone(row, st.resultSummary || `${row.name} 安装成功`)
-      } else if (st.status === 'FAILED' || st.status === 'CANCELLED') {
-        stopInstallPolling()
-        installingSingle.value = ''
-        ElMessage.error(`${row.name} 安装失败：` + (st.errorMessage || st.status))
-      }
-      // PENDING / RUNNING 继续轮询
-    } catch {
-      // 单次轮询失败忽略（网络抖动），等待下一次
-    }
-  }, TASK_POLL_INTERVAL_MS)
+/** 进度弹窗轮询到的安装任务状态 */
+function onInstallTaskStatus(st: TaskPollStatus) {
+  // 批装时同步刷新市场弹窗内的进度条
+  if (installTaskMode.value === 'batch' && typeof st.progress === 'number') {
+    builtinInstallProgress.value = st.progress
+  }
 }
 
-function stopInstallPolling() {
-  if (installPollTimer) {
-    clearInterval(installPollTimer)
-    installPollTimer = null
+function onInstallTaskCompleted(st: TaskPollStatus) {
+  installTaskVisible.value = false
+  if (installTaskMode.value === 'single') {
+    const row = installTaskRow.value
+    if (row) onSingleInstallDone(row, st.resultSummary || `${row.name} 安装成功`)
+  } else {
+    onBatchInstallDone(st, installTaskTotal.value)
+  }
+}
+
+function onInstallTaskFailed(st: TaskPollStatus) {
+  installTaskVisible.value = false
+  const reason = st.errorMessage || st.resultSummary || st.status
+  if (installTaskMode.value === 'single') {
+    installingSingle.value = ''
+    ElMessage.error(`${installTaskRow.value?.name || '插件'} 安装失败：` + reason)
+  } else {
+    installingBuiltin.value = false
+    builtinInstallProgress.value = 100
+    // 失败/取消也尽量展示已处理明细
+    if (st.result?.data?.results?.length) {
+      builtinResults.value = st.result.data.results
+    }
+    ElMessage.error('批量安装' + (st.status === 'CANCELLED' ? '已取消' : '失败') + '：' + reason)
+    loadBuiltinList()
+    refreshPlugins()
   }
 }
 
@@ -709,52 +744,15 @@ async function onBatchInstallBuiltin() {
       return
     }
     ElMessage.success(`已提交批量安装任务（${ids.length} 个插件），后台执行中`)
-    startBatchInstallPolling(taskId, ids.length)
+    // 打开进度弹窗轮询；市场弹窗内进度条经 @status 同步刷新
+    installTaskMode.value = 'batch'
+    installTaskTotal.value = ids.length
+    installTaskTitle.value = `批量安装 ${ids.length} 个插件`
+    installTaskId.value = taskId
+    installTaskVisible.value = true
   } catch (e: any) {
     ElMessage.error('提交批量安装任务失败：' + (e?.message || e))
     installingBuiltin.value = false
-  }
-}
-
-/** 批装任务轮询定时器 */
-let batchInstallPollTimer: ReturnType<typeof setInterval> | null = null
-
-function startBatchInstallPolling(taskId: string, total: number) {
-  stopBatchInstallPolling()
-  batchInstallPollTimer = setInterval(async () => {
-    try {
-      const st = await pluginManageApi.installBuiltinStatus(taskId)
-      // 执行中实时刷新进度条（后端按已处理数量均分）
-      if (typeof st.progress === 'number' && st.status === 'RUNNING') {
-        builtinInstallProgress.value = st.progress
-      }
-      if (st.status === 'COMPLETED') {
-        stopBatchInstallPolling()
-        onBatchInstallDone(st, total)
-      } else if (st.status === 'FAILED' || st.status === 'CANCELLED') {
-        stopBatchInstallPolling()
-        installingBuiltin.value = false
-        builtinInstallProgress.value = 100
-        // 失败/取消也尽量展示已处理明细
-        if (st.result?.data?.results?.length) {
-          builtinResults.value = st.result.data.results
-        }
-        ElMessage.error('批量安装' + (st.status === 'CANCELLED' ? '已取消' : '失败') +
-          '：' + (st.errorMessage || st.resultSummary || st.status))
-        await loadBuiltinList()
-        refreshPlugins()
-      }
-      // PENDING / RUNNING 继续轮询
-    } catch {
-      // 单次轮询失败忽略（网络抖动），等待下一次
-    }
-  }, TASK_POLL_INTERVAL_MS)
-}
-
-function stopBatchInstallPolling() {
-  if (batchInstallPollTimer) {
-    clearInterval(batchInstallPollTimer)
-    batchInstallPollTimer = null
   }
 }
 
@@ -1023,8 +1021,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopExportPolling()
-  stopInstallPolling()
-  stopBatchInstallPolling()
 })
 </script>
 

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import router from "@/router";
 
@@ -29,6 +29,9 @@ service.interceptors.request.use(
     return Promise.reject(error);
   },
 );
+
+// 会话过期跳转去重标记：并发请求同时 401 时只处理一次
+let sessionExpiredHandling = false;
 
 // 响应拦截器
 service.interceptors.response.use(
@@ -62,16 +65,17 @@ service.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // 未授权，清除用户信息并跳转登录页
-          ElMessageBox.confirm("登录状态已过期，请重新登录", "提示", {
-            confirmButtonText: "重新登录",
-            cancelButtonText: "取消",
-            type: "warning",
-          }).then(() => {
+          // 会话过期/未登录：自动登出并跳转登录页（对齐 UI 规范 3.1.1），
+          // 并发多个 401 时只提示一次
+          if (!sessionExpiredHandling) {
+            sessionExpiredHandling = true;
             const userStore = useUserStore();
             userStore.logout();
-            router.push("/login");
-          });
+            ElMessage.warning("登录状态已过期，请重新登录");
+            router.push("/login").finally(() => {
+              sessionExpiredHandling = false;
+            });
+          }
           break;
         case 403:
           if (!silent) ElMessage.error("没有权限访问该资源");

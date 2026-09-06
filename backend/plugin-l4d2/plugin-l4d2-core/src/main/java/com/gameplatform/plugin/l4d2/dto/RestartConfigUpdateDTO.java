@@ -30,4 +30,12 @@ public class RestartConfigUpdateDTO implements Serializable {
     /** 自定义重启命令（覆盖默认 docker restart 命令） */
     @Schema(description = "自定义重启命令")
     private String customCmd;
+
+    /** 命令模式执行超时（毫秒） */
+    @Schema(description = "命令模式执行超时（毫秒）")
+    private Long commandTimeoutMs;
+
+    /** 是否启用重启功能 */
+    @Schema(description = "是否启用重启功能")
+    private Boolean enabled;
 }

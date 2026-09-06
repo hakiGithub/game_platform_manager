@@ -57,6 +57,7 @@
         <div class="metric-state">
           <span class="status-dot" :class="serverStatus?.map ? 'running' : 'stopped'"></span>
           <span>{{ serverStatus?.map ? '运行中地图' : '未获取' }}</span>
+          <span class="metric-link" @click="showMapSelector = true">切换地图</span>
           <span class="metric-link" @click="$router.push('/maps')">地图管理</span>
         </div>
       </div>
@@ -197,17 +198,21 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 切换地图选择器 -->
+    <MapSelectorModal v-model="showMapSelector" :instance-id="instanceId" @success="refreshRconStatus" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { serverApi, instanceApi } from '@/api'
+import { serverApi, instanceApi, restartApi } from '@/api'
 import type { InstanceStatusVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import { DIFFICULTIES, GAME_MODES } from '@/utils/gameConstants'
 import { formatUptime, parseMapName } from '@/utils/statusParser'
 import type { ServerStatus } from '@/types'
+import MapSelectorModal from '@/components/MapSelectorModal.vue'
 
 const pluginStore = usePluginStore()
 const loading = ref(false)
@@ -216,6 +221,9 @@ const serverStatus = ref<ServerStatus | null>(null)
 const instanceStatus = ref<InstanceStatusVO | null>(null)
 /** 实例不存在标志，触发自动跳转到实例选择页 */
 const instanceNotFound = ref(false)
+/** 切换地图选择器 */
+const showMapSelector = ref(false)
+const instanceId = computed(() => pluginStore.instanceInfo?.instanceId)
 
 const actionLoading = ref({
   start: false,
@@ -387,18 +395,22 @@ async function stopServer() {
 }
 
 async function restartServer() {
-  const instanceId = pluginStore.instanceInfo?.instanceId
-  if (!instanceId) {
+  const id = instanceId.value
+  if (!id) {
     pluginStore.notifyError('重启失败', '未获取到实例信息')
     return
   }
-  const confirmed = await pluginStore.confirm('确认重启', '确定要重启服务器吗？')
+  const confirmed = await pluginStore.confirm(
+    '确认重启',
+    '确定要重启服务器吗？将按「重启管理」中保存的重启方式（RCON/命令）执行。'
+  )
   if (!confirmed) return
 
   actionLoading.value.restart = true
   try {
-    await instanceApi.restart(instanceId)
-    pluginStore.notifySuccess('重启成功', '实例正在重启')
+    // AUTO：由后端按持久化重启偏好分流（ADR-0020）
+    await restartApi.restart({ instanceId: id, mode: 'AUTO' })
+    pluginStore.notifySuccess('重启成功', '重启指令已发送，实例正在重启')
     setTimeout(refreshStatus, 3000)
   } catch (error) {
     pluginStore.notifyError('重启失败', '实例重启失败')

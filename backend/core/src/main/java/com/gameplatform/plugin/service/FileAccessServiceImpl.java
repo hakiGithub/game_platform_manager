@@ -53,13 +53,15 @@ public class FileAccessServiceImpl implements FileAccessService {
     }
 
     @Override
-    public void uploadLocalFile(Long hostId, String remotePath, String localPath) {
-        fileService.uploadLocalFile(hostId, remotePath, localPath);
+    public void uploadLocalFile(Long hostId, String remotePath, String localPath,
+                                FileTransferProgressCallback callback) {
+        fileService.uploadLocalFile(hostId, remotePath, localPath, callback);
     }
 
     @Override
-    public void downloadFile(Long hostId, String remotePath, String localPath) {
-        fileService.downloadFile(hostId, remotePath, localPath);
+    public void downloadFile(Long hostId, String remotePath, String localPath,
+                             FileTransferProgressCallback callback) {
+        fileService.downloadFile(hostId, remotePath, localPath, callback);
     }
 
     @Override

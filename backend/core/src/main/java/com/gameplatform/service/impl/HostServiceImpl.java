@@ -200,6 +200,19 @@ public class HostServiceImpl implements HostService {
     }
 
     @Override
+    public boolean testConnectionByParams(String ip, Integer sshPort, String username,
+                                          String password, String privateKey) {
+        log.info("测试SSH连接(表单参数): {}@{}:{}", username, ip, sshPort);
+        try {
+            return sshUtil.testConnection(ip, sshPort == null ? 22 : sshPort,
+                    username, privateKey, password, SSH_TIMEOUT);
+        } catch (Exception e) {
+            log.error("SSH连接测试异常: {} - {}", ip, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
     public List<HostVO> getOnlineHosts() {
         List<Host> hosts = hostMapper.selectOnlineHosts();
         return hosts.stream().map(this::convertToVO).collect(Collectors.toList());

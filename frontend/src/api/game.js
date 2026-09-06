@@ -115,3 +115,35 @@ export function deleteGame(id) {
     method: "delete",
   });
 }
+
+/**
+ * 上传 YAML 导入游戏元数据（零代码新增游戏适配，对齐 UI 规范 3.1.3）
+ * @param {File} file - YAML 配置文件
+ * @returns {Promise<{success:boolean, gameCode?:string, gameName?:string, error?:string, errors?:Array<string>}>}
+ */
+export function importGameYaml(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request({
+    url: "/games/import",
+    method: "post",
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+}
+
+/**
+ * 校验 YAML 配置文件（不导入）
+ * @param {File} file - YAML 配置文件
+ * @returns {Promise<{valid:boolean, gameCode?:string, gameName?:string, error?:string}>}
+ */
+export function validateGameYaml(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request({
+    url: "/games/validate",
+    method: "post",
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+}

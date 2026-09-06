@@ -7,6 +7,7 @@
         <p>管理服务器地图 VPK 文件，支持 VPK / ZIP / RAR / 7Z 上传（自动解包提取 VPK）、批量裁剪与热重载</p>
       </div>
       <div class="header-actions">
+        <el-button type="success" @click="showMapSelector = true">切换地图</el-button>
         <el-button type="primary" @click="showUploadDialog = true">上传地图</el-button>
         <el-button :disabled="!selectedRows.length" @click="handleTrimBatch">
           批量裁剪（{{ selectedRows.length }}）
@@ -30,8 +31,9 @@
             {{ row.chapters?.length || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="330" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" type="success" @click="showMapSelector = true">换图</el-button>
             <el-button size="small" @click="handleTrim(row)">裁剪</el-button>
             <el-button size="small" @click="handleDetail(row)">详情</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
@@ -39,6 +41,9 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 切换地图选择器 -->
+    <MapSelectorModal v-model="showMapSelector" :instance-id="instanceId" />
 
     <!-- 上传对话框 -->
     <el-dialog v-model="showUploadDialog" title="上传地图" width="500">
@@ -103,6 +108,7 @@ import { mapApi } from '@/api'
 import type { MapListVO, VpkTrimResultVO, MissionInfoVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import ChunkUploader from '@/components/ChunkUploader.vue'
+import MapSelectorModal from '@/components/MapSelectorModal.vue'
 
 const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
@@ -111,6 +117,7 @@ const mapList = ref<MapListVO[]>([])
 const selectedRows = ref<MapListVO[]>([])
 const loading = ref(false)
 const showUploadDialog = ref(false)
+const showMapSelector = ref(false)
 const showTrimResult = ref(false)
 const showMissionDetail = ref(false)
 const trimResult = ref<VpkTrimResultVO | null>(null)

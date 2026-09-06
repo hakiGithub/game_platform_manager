@@ -175,8 +175,8 @@ function getStatStatusLabel(status) {
       success: "正常",
       warning: "注意",
       danger: "异常",
-      info: "待确认",
-    }[status] || "待确认"
+      info: "暂无",
+    }[status] || "正常"
   );
 }
 
@@ -293,14 +293,6 @@ onBeforeUnmount(stopAutoRefresh);
         <span class="section-kicker">CURRENT SITUATION</span>
         <strong>当前运行态势</strong>
         <small>上次同步 {{ lastRefreshAt }}</small>
-      </div>
-      <div class="strip-stat">
-        <span>在线主机</span>
-        <strong>{{ statistics[0].value }}</strong>
-      </div>
-      <div class="strip-stat">
-        <span>运行实例</span>
-        <strong>{{ statistics[1].value }}</strong>
       </div>
       <div class="strip-stat">
         <span>在线玩家</span>

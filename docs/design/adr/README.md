@@ -27,6 +27,7 @@
 | [0016](0016-rcon-host-capability.md) | RCON 能力上提为主应用宿主服务 | Accepted | 2026-08-29 |
 | [0017](0017-instance-info-provider.md) | 实例信息 Provider 扩展点（玩家数插件化查询） | Accepted | 2026-08-29 |
 | [0018](0018-map-upload-task-and-archives.md) | 地图上传任务化与压缩包支持 | Accepted | 2026-08-30 |
+| [0019](0019-steam302-headless-docker.md) | Steam302 主机加速——无头精简包 + Docker 化部署 | Accepted | 2026-09-06 |
 
 ## 术语表
 

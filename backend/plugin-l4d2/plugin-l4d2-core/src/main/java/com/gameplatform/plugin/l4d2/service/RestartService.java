@@ -1,9 +1,12 @@
 package com.gameplatform.plugin.l4d2.service;
 
+import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.dto.RestartConfigUpdateDTO;
 import com.gameplatform.plugin.l4d2.enums.RestartMode;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
+import com.gameplatform.plugin.l4d2.extension.RestartConfigResource;
+import com.gameplatform.plugin.l4d2.extension.RestartConfigSpec;
 import com.gameplatform.plugin.l4d2.vo.RestartConfigVO;
 import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.InstanceQueryService;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * L4D2 服务器重启服务。
@@ -26,10 +30,13 @@ import java.util.Map;
  *   <li>优先级：AUTO 模式按 {@code config.restart.byRcon} 决定；RCON/COMMAND 强制走对应模式</li>
  * </ul>
  *
+ * <p>重启偏好经 {@link ExtensionClient}（PLUGIN_ISOLATED，ADR-0020）持久化：
+ * 首次访问时加载，保存即落库，插件/主应用重启不丢失；RCON 失败不降级，直接报错。
+ *
  * <p>命令注入防护：使用单引号对自定义命令进行 shell 转义。
  *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Slf4j
 @Service
@@ -38,11 +45,17 @@ public class RestartService {
 
     private static final String RCON_RESTART_COMMAND = "_restart";
     private static final String DEFAULT_RCON_HOST = "127.0.0.1";
+    /** 持久化重启偏好的扩展资源 name（插件全局唯一一条） */
+    private static final String CONFIG_RESOURCE_NAME = "restart-config";
 
     private final InstanceQueryService instanceQueryService;
     private final FileAccessService fileAccessService;
     private final L4D2RconService rconService;
     private final L4D2Config config;
+    private final ExtensionClient extensionClient;
+
+    /** 持久化配置懒加载标记（扩展表就绪时机晚于 Bean 创建，避免 @PostConstruct 时序问题） */
+    private volatile boolean configLoaded = false;
 
     /**
      * 重启 L4D2 服务器。
@@ -51,6 +64,7 @@ public class RestartService {
      * @param mode       重启模式；AUTO 时按配置决定
      */
     public void restart(Long instanceId, RestartMode mode) {
+        ensureConfigLoaded();
         if (!isEnabled()) {
             throw new IllegalStateException("重启功能已禁用");
         }
@@ -76,6 +90,7 @@ public class RestartService {
      * 强制通过 RCON 协议重启。
      */
     public void restartByRcon(Long instanceId) {
+        ensureConfigLoaded();
         if (!isEnabled()) {
             throw new IllegalStateException("重启功能已禁用");
         }
@@ -93,6 +108,7 @@ public class RestartService {
      * 强制通过 shell 命令重启（在实例所属主机上通过 SSH 执行）。
      */
     public void restartByCommand(Long instanceId) {
+        ensureConfigLoaded();
         if (!isEnabled()) {
             throw new IllegalStateException("重启功能已禁用");
         }
@@ -116,20 +132,23 @@ public class RestartService {
      * 获取当前重启配置。
      */
     public RestartConfigVO getConfig() {
+        ensureConfigLoaded();
         L4D2Config.Restart restart = config.getRestart();
         RestartConfigVO vo = new RestartConfigVO();
         vo.setByRcon(restart.isByRcon());
         vo.setContainerName(restart.getContainerName());
         vo.setCustomCmd(restart.getCustomCmd());
+        vo.setCommandTimeoutMs(restart.getCommandTimeoutMs());
         vo.setEnabled(restart.isEnabled());
         vo.setAvailableModes(List.of(RestartMode.AUTO.name(), RestartMode.RCON.name(), RestartMode.COMMAND.name()));
         return vo;
     }
 
     /**
-     * 更新重启配置（null 字段保持原值）。
+     * 更新重启配置（null 字段保持原值），并持久化到扩展存储。
      */
     public void setConfig(RestartConfigUpdateDTO dto) {
+        ensureConfigLoaded();
         L4D2Config.Restart restart = config.getRestart();
         if (dto.getByRcon() != null) {
             restart.setByRcon(dto.getByRcon());
@@ -140,26 +159,114 @@ public class RestartService {
         if (dto.getCustomCmd() != null) {
             restart.setCustomCmd(dto.getCustomCmd());
         }
-        log.info("重启配置已更新: byRcon={}, containerName={}, customCmd={}",
-                restart.isByRcon(), restart.getContainerName(), restart.getCustomCmd());
+        if (dto.getCommandTimeoutMs() != null && dto.getCommandTimeoutMs() > 0) {
+            restart.setCommandTimeoutMs(dto.getCommandTimeoutMs());
+        }
+        if (dto.getEnabled() != null) {
+            restart.setEnabled(dto.getEnabled());
+        }
+        persistConfig();
+        log.info("重启配置已更新并持久化: byRcon={}, containerName={}, customCmd={}, commandTimeoutMs={}, enabled={}",
+                restart.isByRcon(), restart.getContainerName(), restart.getCustomCmd(),
+                restart.getCommandTimeoutMs(), restart.isEnabled());
     }
 
     /**
      * 当前是否启用重启功能。
      */
     public boolean isEnabled() {
+        ensureConfigLoaded();
         return config.getRestart().isEnabled();
     }
 
     /**
-     * 运行时启用/禁用重启功能。
+     * 运行时启用/禁用重启功能，并持久化。
      */
     public void setEnabled(boolean enabled) {
+        ensureConfigLoaded();
         config.getRestart().setEnabled(enabled);
+        persistConfig();
         log.info("重启功能已{}", enabled ? "启用" : "禁用");
     }
 
     // ===== 私有方法 =====
+
+    /**
+     * 首次访问时从扩展存储加载持久化重启偏好（ADR-0020）；
+     * 无记录或加载失败时沿用 @ConfigurationProperties 默认值。
+     */
+    private void ensureConfigLoaded() {
+        if (configLoaded) {
+            return;
+        }
+        synchronized (this) {
+            if (configLoaded) {
+                return;
+            }
+            try {
+                extensionClient.get(RestartConfigResource.class, CONFIG_RESOURCE_NAME)
+                        .map(RestartConfigResource::getSpec)
+                        .ifPresent(this::applyPersistedSpec);
+            } catch (Exception e) {
+                log.warn("加载持久化重启配置失败，使用默认配置: {}", e.getMessage());
+            } finally {
+                configLoaded = true;
+            }
+        }
+    }
+
+    private void applyPersistedSpec(RestartConfigSpec spec) {
+        L4D2Config.Restart restart = config.getRestart();
+        if (spec.getByRcon() != null) {
+            restart.setByRcon(spec.getByRcon());
+        }
+        if (spec.getContainerName() != null && !spec.getContainerName().isBlank()) {
+            restart.setContainerName(spec.getContainerName());
+        }
+        if (spec.getCustomCmd() != null) {
+            restart.setCustomCmd(spec.getCustomCmd());
+        }
+        if (spec.getCommandTimeoutMs() != null && spec.getCommandTimeoutMs() > 0) {
+            restart.setCommandTimeoutMs(spec.getCommandTimeoutMs());
+        }
+        if (spec.getEnabled() != null) {
+            restart.setEnabled(spec.getEnabled());
+        }
+        log.info("已加载持久化重启配置: byRcon={}, containerName={}, commandTimeoutMs={}, enabled={}",
+                restart.isByRcon(), restart.getContainerName(),
+                restart.getCommandTimeoutMs(), restart.isEnabled());
+    }
+
+    /**
+     * 将当前内存配置写入扩展存储（存在则乐观锁更新，否则创建）。
+     */
+    private void persistConfig() {
+        try {
+            L4D2Config.Restart restart = config.getRestart();
+            RestartConfigSpec spec = new RestartConfigSpec();
+            spec.setByRcon(restart.isByRcon());
+            spec.setContainerName(restart.getContainerName());
+            spec.setCustomCmd(restart.getCustomCmd());
+            spec.setCommandTimeoutMs(restart.getCommandTimeoutMs());
+            spec.setEnabled(restart.isEnabled());
+
+            Optional<RestartConfigResource> existing =
+                    extensionClient.get(RestartConfigResource.class, CONFIG_RESOURCE_NAME);
+            if (existing.isPresent()) {
+                RestartConfigResource resource = existing.get();
+                resource.setSpec(spec);
+                extensionClient.update(resource);
+            } else {
+                RestartConfigResource resource = new RestartConfigResource();
+                resource.setName(CONFIG_RESOURCE_NAME);
+                resource.setSpec(spec);
+                extensionClient.create(resource);
+            }
+        } catch (Exception e) {
+            // 落库失败不阻断本次操作，内存配置已生效；记录告警便于排查
+            log.error("持久化重启配置失败: {}", e.getMessage(), e);
+        }
+    }
 
     /**
      * 构建重启命令。

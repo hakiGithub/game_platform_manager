@@ -60,6 +60,32 @@
 
 ---
 
+## 地图领域
+
+### 切换地图（Change Map）
+经游戏协议命令让服务器立即加载指定地图，当前对局中断、玩家进入新图。改变的是"现在玩哪张图"。
+
+### 地图热重载（Map Hot Reload）
+不切换地图、不重启服务器，让服务器重新扫描已安装的地图资源（VPK 路径与 mission 定义）。改变的是"哪些图可用"。
+
+### 官方章节目录（Official Chapter Catalog）
+平台内置的官方战役章节清单（战役名 + 章节地图码）。用于把服务器实际可用的地图归类为官方或三方，并为官方图提供章节级换图目标。
+
+### 三方地图（Custom Map）
+以 VPK 形式安装在服务器 addons 目录、不在官方章节目录内的地图。
+
+---
+
+## 实例重启领域
+
+### 重启模式（Restart Mode）
+执行实例重启的语义方式：RCON（经游戏协议通道重启）、COMMAND（在主机上执行命令或容器重启）、AUTO（不显式指定，交由重启偏好分流）。调用方主动发起重启时显式选择 RCON 或 COMMAND；AUTO 只表达"按配置决定"，不是一种独立的重启手段。
+
+### 重启偏好（Restart Preference）
+AUTO 模式的分流依据：优先经 RCON 重启还是优先命令重启。插件全局一份，修改后持久保存，不随插件或主应用重启丢失。
+
+---
+
 ## 平台通用
 
 ### 宿主能力服务（Host Capability Service）
@@ -67,3 +93,41 @@
 
 ### 实例标准配置键（Instance Standard Config Keys）
 实例表 `configInfo` JSON 中由主应用契约约定的键。RCON 相关为 `rconPort`、`rconPassword`。游戏专属键不算标准键。
+
+---
+
+## UI 页面术语（对齐 docs/design/ui-design-spec.md）
+
+### 页面标准命名
+页面标题 = 菜单名 = 面包屑末级。标准名：主机列表、实例列表、任务中心、游戏元数据（页面 UI 可称"游戏目录"）、插件列表。
+
+### 实例（Instance）
+跑在主机上的游戏服务器。UI 中禁止使用"服务编队 / 编队 / 服务单元"等别称。
+
+### 任务（Task）
+任务中心的异步执行记录。页面、菜单、表格统一用"任务"词汇（任务列表 / 任务记录），不再使用"执行链 / 执行队列"作为用户可见标题。
+
+### 新增主机（Add Host）
+主机列表唯一的新建入口名。不再使用"纳管主机"作为按钮文案。
+
+### 连接测试门禁（Connection Test Gate）
+新增主机必须先"测试连接"成功才允许保存（表单参数直测，无需先落库）。
+
+### YAML 导入（Metadata Import）
+游戏元数据支持上传 YAML 文件零代码新增游戏（后端 `/games/import`，上传前自动校验格式）。
+
+---
+
+## Steam302 主机加速（ADR-0019）
+
+### Steam302 精简包（Steam302 Headless Bundle）
+无 GUI 的 Steamcommunity 302 分发形态：`steamcommunity_302.cli` + `steamcommunity_302.caddy` + `S302.ini` + `S302_rules.ini` + `S302.hosts` 五文件。官方 AppImage（GUI 形态）不用于纳管主机。
+
+### 服务开关（Service Switch）
+`S302.ini` `[Setting]` 区的布尔功能键（如 `github`、`Steam_store`），配置页唯一编辑对象。分组：Steam / EA / 其他服务。修改保存后需重启容器生效。
+
+### 服务域名映射（Service Domain Map）
+服务开关 → 该开关代理的域名清单。由离线脚本逐开关生成 Caddyfile 提取，静态快照随代码入库、与镜像版本绑定；运行时"生效域名数"以主机上真实 Caddyfile 为准。
+
+### 主机工具安装任务（Host Tool Install Task）
+主机级工具的异步安装任务（如 STEAM302_INSTALL）：scopeType=HOST、scopeKey=hostId 互斥，同一主机同时只跑一个。

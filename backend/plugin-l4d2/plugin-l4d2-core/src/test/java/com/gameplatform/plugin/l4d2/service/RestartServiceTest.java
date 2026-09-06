@@ -55,6 +55,9 @@ class RestartServiceTest {
     @Mock
     private L4D2RconService rconService;
 
+    @Mock
+    private com.gameplatform.plugin.extension.ExtensionClient extensionClient;
+
     private L4D2Config config;
 
     private RestartService service;
@@ -67,7 +70,7 @@ class RestartServiceTest {
         config.getRestart().setContainerName("l4d2");
         config.getRestart().setCustomCmd("");
         config.getRestart().setCommandTimeoutMs(30_000L);
-        service = new RestartService(instanceQueryService, fileAccessService, rconService, config);
+        service = new RestartService(instanceQueryService, fileAccessService, rconService, config, extensionClient);
 
         // 默认实例
         InstanceVO instance = new InstanceVO();

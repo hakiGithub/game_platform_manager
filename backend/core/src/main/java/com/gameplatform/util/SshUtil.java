@@ -2,6 +2,7 @@ package com.gameplatform.util;
 
 import cn.hutool.core.util.StrUtil;
 import com.gameplatform.config.GamePlatformConfig;
+import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.session.ClientSession;
@@ -414,6 +415,31 @@ public class SshUtil {
     public boolean uploadFile(String host, int port, String username,
                                String privateKey, String password,
                                String localPath, String remotePath) {
+        return uploadFile(host, port, username, privateKey, password,
+                localPath, remotePath, null);
+    }
+
+    /**
+     * 上传文件，带传输进度回调。
+     *
+     * <p>流式上传：本地文件经 {@link java.io.InputStream} 按 SFTP 流写出，
+     * 进度计数仅按读取块累计，不缓冲整份文件。回调异常会中止上传（本方法
+     * 捕获后返回 false，原始异常可经 {@code callback.onError} 获取）。
+     *
+     * @param host         主机地址
+     * @param port         SSH端口
+     * @param username     用户名
+     * @param privateKey   私钥
+     * @param password     密码
+     * @param localPath    本地文件路径
+     * @param remotePath   远程文件路径
+     * @param callback     进度回调，可为 null
+     * @return 是否成功
+     */
+    public boolean uploadFile(String host, int port, String username,
+                               String privateKey, String password,
+                               String localPath, String remotePath,
+                               FileTransferProgressCallback callback) {
         long timeoutMs = sshConfig != null ? sshConfig.getSessionTimeout() : DEFAULT_TIMEOUT;
         try {
             return executeSftpWithRetry(host, port, username, privateKey, password, timeoutMs, true, (sftp) -> {
@@ -428,18 +454,23 @@ public class SshUtil {
                     }
                 }
 
-                // 上传文件
+                // 上传文件（流式 + 进度计数）
                 Path localFile = Paths.get(localPath);
-                try (InputStream is = Files.newInputStream(localFile);
+                long totalBytes = Files.size(localFile);
+                TransferProgress.fireStart(callback, totalBytes);
+                try (InputStream is = TransferProgress.counting(
+                        Files.newInputStream(localFile), totalBytes, callback);
                      OutputStream os = sftp.write(remotePath)) {
                     is.transferTo(os);
                 }
 
+                TransferProgress.fireComplete(callback);
                 log.info("文件上传成功: {} -> {}", localPath, remotePath);
                 return true;
             });
         } catch (Exception e) {
             log.error("文件上传失败: {} -> {} - {}", localPath, remotePath, e.getMessage());
+            TransferProgress.fireError(callback, e);
             return false;
         }
     }
@@ -496,6 +527,32 @@ public class SshUtil {
     public boolean downloadFile(String host, int port, String username,
                                  String privateKey, String password,
                                  String remotePath, String localPath) {
+        return downloadFile(host, port, username, privateKey, password,
+                remotePath, localPath, null);
+    }
+
+    /**
+     * 下载文件，带传输进度回调。
+     *
+     * <p>流式下载：远端文件经 SFTP 流读取后写出到本地，进度计数仅按读取块累计，
+     * 不缓冲整份文件。totalBytes 通过 SFTP stat 获取，失败时回调中为 -1。
+     * 回调异常会中止下载（本方法捕获后返回 false，原始异常可经
+     * {@code callback.onError} 获取）。
+     *
+     * @param host         主机地址
+     * @param port         SSH端口
+     * @param username     用户名
+     * @param privateKey   私钥
+     * @param password     密码
+     * @param remotePath   远程文件路径
+     * @param localPath    本地文件路径
+     * @param callback     进度回调，可为 null
+     * @return 是否成功
+     */
+    public boolean downloadFile(String host, int port, String username,
+                                 String privateKey, String password,
+                                 String remotePath, String localPath,
+                                 FileTransferProgressCallback callback) {
         long timeoutMs = sshConfig != null ? sshConfig.getSessionTimeout() : DEFAULT_TIMEOUT;
         try {
             return executeSftpWithRetry(host, port, username, privateKey, password, timeoutMs, true, (sftp) -> {
@@ -505,19 +562,36 @@ public class SshUtil {
                     Files.createDirectories(localParent);
                 }
 
-                // 下载文件
-                try (InputStream is = sftp.read(remotePath);
+                // 下载文件（流式 + 进度计数；远端大小 stat 失败时降级为未知）
+                long totalBytes = statSizeQuietly(sftp, remotePath);
+                TransferProgress.fireStart(callback, totalBytes);
+                try (InputStream is = TransferProgress.counting(
+                        sftp.read(remotePath), totalBytes, callback);
                      OutputStream os = Files.newOutputStream(Paths.get(localPath),
                              StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
                     is.transferTo(os);
                 }
 
+                TransferProgress.fireComplete(callback);
                 log.info("文件下载成功: {} -> {}", remotePath, localPath);
                 return true;
             });
         } catch (Exception e) {
             log.error("文件下载失败: {} -> {} - {}", remotePath, localPath, e.getMessage());
+            TransferProgress.fireError(callback, e);
             return false;
+        }
+    }
+
+    /**
+     * 查询远端文件大小（SFTP stat），失败时返回 -1（表示未知，不影响传输）。
+     */
+    private long statSizeQuietly(SftpClient sftp, String remotePath) {
+        try {
+            return sftp.stat(remotePath).getSize();
+        } catch (Exception e) {
+            log.debug("获取远端文件大小失败（进度将按未知总量回调）: {}", remotePath);
+            return -1;
         }
     }
 

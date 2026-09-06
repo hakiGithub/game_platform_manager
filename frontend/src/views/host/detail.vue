@@ -8,6 +8,7 @@ import {
   getHostStatus,
   testHostConnection,
 } from "@/api/host";
+import Steam302Panel from "./components/Steam302Panel.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -360,6 +361,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </section>
+
+          <Steam302Panel :host-id="hostId" :is-online="isOnline" />
         </aside>
       </div>
     </template>

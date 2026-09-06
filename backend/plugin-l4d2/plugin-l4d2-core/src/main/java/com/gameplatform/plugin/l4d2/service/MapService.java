@@ -7,6 +7,7 @@ import com.gameplatform.plugin.l4d2.util.VpkParser;
 import com.gameplatform.plugin.l4d2.vo.MapListVO;
 import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
+import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
@@ -119,6 +120,19 @@ public class MapService {
      * 暂存文件生命周期由调用方（任务 Handler）管理。
      */
     public MapListVO doUpload(Long instanceId, Path stagedFile, String filename) {
+        return doUpload(instanceId, stagedFile, filename, null);
+    }
+
+    /**
+     * 执行上传（map-upload 任务调用，ADR-0018），带上传进度回调：
+     * VPK magic 校验 → 上传到 addons/（进度覆盖此段）→ 清缓存 → 生成 VO → 可选自动裁剪。
+     * 暂存文件生命周期由调用方（任务 Handler）管理。
+     *
+     * @param callback 上传到 addons 目录的传输进度回调，可为 null；
+     *                 自动裁剪阶段内部的下载/回传不纳入回调范围
+     */
+    public MapListVO doUpload(Long instanceId, Path stagedFile, String filename,
+                              FileTransferProgressCallback callback) {
         log.info("执行地图上传, instanceId: {}, fileName: {}", instanceId, filename);
         String addonsPath = pathResolver.getAddonsPath();
         String targetPath = addonsPath + "/" + filename;
@@ -136,8 +150,9 @@ public class MapService {
                         "VPK 中未找到有效的战役（missions）信息，不是有效的 L4D2 地图文件");
             }
 
-            // 上传到远程 addons 目录
-            instanceFileService.uploadLocalFile(instanceId, targetPath, stagedFile.toAbsolutePath().toString());
+            // 上传到远程 addons 目录（流式 + 进度回调）
+            instanceFileService.uploadLocalFile(instanceId, targetPath,
+                    stagedFile.toAbsolutePath().toString(), callback);
 
             // 清除缓存，使下次 listMaps 重新解析
             vpkParserService.clearCache(addonsPath);

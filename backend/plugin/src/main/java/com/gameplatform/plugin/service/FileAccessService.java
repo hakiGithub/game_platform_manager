@@ -59,22 +59,50 @@ public interface FileAccessService {
     void uploadFile(Long hostId, String remotePath, MultipartFile file);
 
     /**
-     * 上传本地文件到远程路径。
+     * 上传本地文件到远程路径（无进度回调）。
+     * 等价于 {@code uploadLocalFile(hostId, remotePath, localPath, null)}。
+     */
+    default void uploadLocalFile(Long hostId, String remotePath, String localPath) {
+        uploadLocalFile(hostId, remotePath, localPath, null);
+    }
+
+    /**
+     * 下载远程文件到本地路径（无进度回调）。
+     * 等价于 {@code downloadFile(hostId, remotePath, localPath, null)}。
+     */
+    default void downloadFile(Long hostId, String remotePath, String localPath) {
+        downloadFile(hostId, remotePath, localPath, null);
+    }
+
+    /**
+     * 上传本地文件到远程路径，带传输进度回调。
+     *
+     * <p>全链路流式传输（本地文件按流读取，不整体载入内存）。
+     * 进度回调语义见 {@link FileTransferProgressCallback}；
+     * {@code callback} 允许为 {@code null}。
      *
      * @param hostId     主机 ID
      * @param remotePath 远程目标路径
      * @param localPath  本地源文件路径
+     * @param callback   进度回调，可为 null
      */
-    void uploadLocalFile(Long hostId, String remotePath, String localPath);
+    void uploadLocalFile(Long hostId, String remotePath, String localPath,
+                         FileTransferProgressCallback callback);
 
     /**
-     * 下载远程文件到本地路径。
+     * 下载远程文件到本地路径，带传输进度回调。
+     *
+     * <p>全链路流式传输（远端文件按流写出，不整体载入内存）。
+     * 进度回调语义见 {@link FileTransferProgressCallback}；
+     * {@code callback} 允许为 {@code null}。
      *
      * @param hostId     主机 ID
      * @param remotePath 远程源文件路径
      * @param localPath  本地目标路径
+     * @param callback   进度回调，可为 null
      */
-    void downloadFile(Long hostId, String remotePath, String localPath);
+    void downloadFile(Long hostId, String remotePath, String localPath,
+                      FileTransferProgressCallback callback);
 
     /**
      * 删除远程文件。

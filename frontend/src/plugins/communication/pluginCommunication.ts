@@ -35,6 +35,14 @@ import request from '@/utils/request'
 const { bus } = WujieVue
 
 /**
+ * 向指定插件子应用下发内部路由导航（侧边栏 → 子应用跟随）
+ * 供 PluginTab 的 menuPath 联动与 Sidebar 重复点击兜底共用
+ */
+export function sendPluginNavigate(name: string, path: string): void {
+  bus.$emit(`${name}:${MessageTypes.NAVIGATE_TO}`, { path })
+}
+
+/**
  * 确认请求映射
  * 用于存储等待用户响应的确认请求
  */

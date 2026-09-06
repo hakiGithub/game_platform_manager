@@ -1,8 +1,13 @@
 package com.gameplatform.config;
 
+import com.gameplatform.common.result.Result;
+import com.gameplatform.common.result.ResultCode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -27,6 +32,7 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ObjectMapper objectMapper;
 
     /**
      * 密码编码器
@@ -86,6 +92,15 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 
+                // 未认证（含 JWT 过期/无效）统一返回 401 JSON，
+                // 前端据此自动跳转登录页（默认 EntryPoint 会返回 403，导致前端无法区分"未登录"与"无权限"）
+                .exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, ex) -> {
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding("UTF-8");
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.UNAUTHORIZED)));
+                }))
+
                 // 添加JWT过滤器
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         

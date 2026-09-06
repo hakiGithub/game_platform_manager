@@ -3,6 +3,7 @@ package com.gameplatform.plugin.l4d2.task;
 import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.service.MapService;
 import com.gameplatform.plugin.l4d2.util.ArchiveExtractUtil;
+import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskPayload;
@@ -96,7 +97,9 @@ public class MapUploadTaskHandler implements TaskHandler {
     private TaskResult processSingleVpk(TaskContext context, long instanceId,
                                         String filename, Path stagedFile) throws Exception {
         context.reportProgress(20, "解析 VPK 并上传到 addons 目录");
-        mapService.doUpload(instanceId, stagedFile, filename);
+        // SSH 传输进度映射到任务进度 20→95 区间
+        mapService.doUpload(instanceId, stagedFile, filename,
+                transferProgressCallback(context, 20, 95, "上传 " + filename));
         context.reportProgress(95, "上传完成");
         context.log("地图上传完成: " + filename);
         context.reportProgress(100, "地图上传完成");
@@ -127,10 +130,14 @@ public class MapUploadTaskHandler implements TaskHandler {
                     break;
                 }
                 File vpk = vpks.get(i);
-                int percent = 20 + (int) ((i + 1) * 70.0 / vpks.size());
-                context.reportProgress(percent, "上传 " + vpk.getName() + "（" + (i + 1) + "/" + vpks.size() + "）");
+                int startPercent = 20 + (int) (i * 70.0 / vpks.size());
+                int endPercent = 20 + (int) ((i + 1) * 70.0 / vpks.size());
+                String label = "上传 " + vpk.getName() + "（" + (i + 1) + "/" + vpks.size() + "）";
+                context.reportProgress(startPercent, label);
                 try {
-                    mapService.doUpload(instanceId, vpk.toPath(), vpk.getName());
+                    // SSH 传输进度映射到当前 VPK 分到的任务进度区间
+                    mapService.doUpload(instanceId, vpk.toPath(), vpk.getName(),
+                            transferProgressCallback(context, startPercent, endPercent, label));
                     success++;
                     context.log("上传成功: " + vpk.getName());
                 } catch (Exception e) {
@@ -154,6 +161,42 @@ public class MapUploadTaskHandler implements TaskHandler {
         } finally {
             cleanupDirQuietly(extractDir);
         }
+    }
+
+    /**
+     * 把 SSH 传输进度映射为任务进度：传输百分比 0→100 线性映射到
+     * [startPercent, endPercent] 区间，持续调用 {@code context.reportProgress}。
+     * 节流由两层保证：传输层（64KB / 1%）+ 任务框架内部 1s 节流（ADR-014）。
+     */
+    private FileTransferProgressCallback transferProgressCallback(TaskContext context,
+                                                                  int startPercent, int endPercent,
+                                                                  String label) {
+        return new FileTransferProgressCallback() {
+            @Override
+            public void onStart(long totalBytes) {
+                // 区间起点已由调用方 reportProgress 报告，此处无需重复
+            }
+
+            @Override
+            public void onProgress(long bytesTransferred, long totalBytes) {
+                if (totalBytes <= 0) {
+                    return;
+                }
+                int percent = startPercent + (int) ((endPercent - startPercent)
+                        * bytesTransferred / (double) totalBytes);
+                context.reportProgress(Math.min(percent, endPercent), label + " " + percent + "%");
+            }
+
+            @Override
+            public void onComplete() {
+                context.reportProgress(endPercent, label + " 100%");
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                // 失败详情由 doUpload 抛出的异常链路记录（context.log / 任务失败信息）
+            }
+        };
     }
 
     private void cleanupQuietly(Path file) {

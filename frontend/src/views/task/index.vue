@@ -26,6 +26,7 @@ const total = ref(0);
 const taskTypes = ref([]);
 const taskStats = ref({ statusCounts: {}, sourceCounts: {}, typeCounts: {}, total: 0 });
 const lastRefreshAt = ref("等待调度器同步");
+const syncPending = computed(() => lastRefreshAt.value.startsWith("等待"));
 
 // 查询参数
 const query = reactive({
@@ -332,8 +333,8 @@ onUnmounted(() => {
         <div class="hero-status">
           <span class="task-pulse" aria-hidden="true"></span>
           <div>
-            <strong>调度器在线</strong>
-            <small>上次同步 {{ lastRefreshAt }}</small>
+            <strong>{{ syncPending ? "等待同步" : "调度器在线" }}</strong>
+            <small>上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
           </div>
         </div>
         <el-button @click="fetchTaskList">
@@ -344,12 +345,12 @@ onUnmounted(() => {
     </section>
 
     <el-tabs v-model="activeTab" class="task-center-tabs">
-      <el-tab-pane label="执行队列" name="queue">
+      <el-tab-pane label="任务列表" name="queue">
 
     <section class="task-rail" aria-label="任务执行态势">
       <div class="rail-intro">
         <span class="section-kicker">QUEUE TELEMETRY</span>
-        <strong>执行队列</strong>
+        <strong>任务概览</strong>
         <small>任务状态实时分布</small>
       </div>
       <div class="task-stat">
@@ -374,13 +375,13 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="task-filter-panel" aria-label="任务执行记录筛选">
+    <section class="task-filter-panel" aria-label="任务筛选">
       <div class="panel-heading filter-heading">
         <div>
           <span class="section-kicker">ROUTE / SCOPE</span>
-          <h2>筛选执行记录</h2>
+          <h2>筛选任务</h2>
         </div>
-        <span class="filter-hint">按来源、任务类型、状态或作用域定位执行链</span>
+        <span class="filter-hint">按来源、任务类型、状态或作用域定位任务</span>
       </div>
       <el-form class="task-filter-form" :inline="true" :model="query" @submit.prevent>
         <el-form-item label="来源">
@@ -459,7 +460,7 @@ onUnmounted(() => {
       <div class="panel-heading console-heading">
         <div>
           <span class="section-kicker">EXECUTION STREAM</span>
-          <h2>执行记录</h2>
+          <h2>任务记录</h2>
           <p>{{ total }} 条任务轨迹 · 点击行查看完整执行上下文</p>
         </div>
         <div class="stream-legend">
@@ -572,7 +573,7 @@ onUnmounted(() => {
         <template #empty>
           <div class="task-empty">
             <el-icon><List /></el-icon>
-            <strong>暂无执行记录</strong>
+            <strong>暂无任务记录</strong>
             <span>调整筛选条件或等待新的异步任务进入队列</span>
           </div>
         </template>
@@ -582,6 +583,7 @@ onUnmounted(() => {
       <div class="pagination-wrapper task-console-footer">
         <span><i class="task-pulse" aria-hidden="true"></i> 调度轨迹已接入</span>
         <el-pagination
+          v-if="total > 0"
           v-model:current-page="query.page"
           v-model:page-size="query.size"
           :total="total"

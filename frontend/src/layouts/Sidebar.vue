@@ -1,7 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getPluginList, getPluginManifestByPluginId } from "@/api/plugin";
+import { sendPluginNavigate } from "@/plugins/communication/pluginCommunication";
+import { generateWujieAppName } from "@/plugins/wujie/apps.config";
 
 defineProps({
   collapsed: {
@@ -52,7 +54,7 @@ const serviceMenuItems = [
   {
     index: "/services/tasks",
     icon: "List",
-    title: "执行队列",
+    title: "任务中心",
     children: [{ index: "/services/tasks/list", title: "任务列表" }],
   },
 ];
@@ -60,7 +62,7 @@ const serviceMenuItems = [
 const staticExtensionMenuItems = [
   {
     index: "/extensions/plugins",
-    icon: "Connection",
+    icon: "MagicStick",
     title: "插件扩展",
     children: [{ index: "/extensions/plugins/list", title: "插件列表" }],
   },
@@ -94,35 +96,59 @@ const menuSections = computed(() => [
 
 const activeMenu = computed(() => {
   if (route.path.startsWith("/extensions/app/")) {
+    // 路径分段（去空段）：["extensions", "app", gameCode, ...menuPath]
+    const parts = route.path.split("/").filter(Boolean);
+    const gameCode = parts[2];
     // 返回叶子完整路径（如 /extensions/app/l4d2/server-config），
     // 菜单树按叶子 index 精确高亮；空 menuPath 时归一为 dashboard
-    const parts = route.path.split("/").filter(Boolean);
-    if (parts.length >= 3 && parts[2] === "app") {
-      const gameCode = parts[3];
-      return parts.length >= 5
-        ? route.path
-        : `/extensions/app/${gameCode}/dashboard`;
-    }
-    return route.path;
+    return parts.length >= 4
+      ? route.path
+      : `/extensions/app/${gameCode}/dashboard`;
   }
   return route.meta?.navPath || route.path;
 });
+
+// 菜单节点索引：index（el-menu index）→ 节点（含 parentIndex 祖先链）
+const menuNodeMap = ref(new Map());
+
+/**
+ * 由叶子 index 求其全部祖先 sub-menu index（组 → 插件根），
+ * 用于 default-openeds 与路由变化后的 open() 展开
+ */
+function ancestorIndexes(leafIndex) {
+  const chain = [];
+  let node = menuNodeMap.value.get(leafIndex);
+  while (node?.parentIndex) {
+    chain.push(node.parentIndex);
+    node = menuNodeMap.value.get(node.parentIndex);
+  }
+  return chain;
+}
+
+const menuRef = ref(null);
+
+// Element Plus 仅在挂载时读取 default-openeds；路由或菜单树变化后
+// 需改用 open() 展开当前激活叶子的祖先（深链进入/切插件时分组自动展开）
+watch(
+  [activeMenu, menuNodeMap],
+  ([idx]) => {
+    if (!idx || !idx.startsWith("/extensions/app/")) return;
+    nextTick(() => {
+      for (const ancestor of ancestorIndexes(idx)) {
+        menuRef.value?.open?.(ancestor);
+      }
+    });
+  },
+  { immediate: true }
+);
 
 const defaultOpeneds = computed(() => {
   const matchedPaths = route.matched
     .map((item) => item.path)
     .filter((path) => path && path !== route.path);
   if (route.path.startsWith("/extensions/app/")) {
-    const parts = route.path.split("/").filter(Boolean);
-    if (parts.length >= 3 && parts[2] === "app") {
-      const gameCode = parts[3];
-      // 游戏级 + 组级 sub-menu 展开（Element Plus 只对 sub-menu index 生效）
-      matchedPaths.push(`/extensions/app/${gameCode}`);
-      if (parts.length >= 5) {
-        matchedPaths.push(`/extensions/app/${gameCode}/${parts[4]}`);
-      }
-    }
-    matchedPaths.push(activeMenu.value);
+    // 游戏级 + 组级 sub-menu 展开（Element Plus 只对 sub-menu index 生效）
+    matchedPaths.push(...ancestorIndexes(activeMenu.value));
   }
   return [...new Set(matchedPaths)];
 });
@@ -134,10 +160,13 @@ const defaultOpeneds = computed(() => {
  * 每层按 order 升序排序；parent 指向不存在的 path 时防御性落到根并告警。
  */
 function buildMenuTree(backendMenus, gameCode) {
+  const gameRootIndex = `/extensions/app/${gameCode}`;
   const menuMap = new Map();
   for (const menu of backendMenus || []) {
     menuMap.set(menu.path, {
-      index: `/extensions/app/${gameCode}${menu.path}`,
+      index: `${gameRootIndex}${menu.path}`,
+      // 有 parent 的节点父级是对应组，无 parent 的顶层节点父级是插件根 sub-menu
+      parentIndex: menu.parent ? `${gameRootIndex}${menu.parent}` : gameRootIndex,
       title: menu.title,
       icon: menu.icon,
       order: menu.order || 0,
@@ -164,6 +193,14 @@ function buildMenuTree(backendMenus, gameCode) {
   for (const node of menuMap.values()) {
     if (node.children.length) sortByOrder(node.children);
   }
+
+  // 累积到全局节点索引（多插件并存），供祖先展开计算
+  const nextMap = new Map(menuNodeMap.value);
+  for (const node of menuMap.values()) {
+    nextMap.set(node.index, node);
+  }
+  menuNodeMap.value = nextMap;
+
   return roots;
 }
 
@@ -186,7 +223,7 @@ async function loadPluginMenus() {
 
         menus.push({
           index: `/extensions/app/${gameCode}`,
-          icon: "Aim",
+          icon: "Compass",
           title: plugin.pluginName || manifest?.gameName || gameCode,
           children: children.length
             ? children
@@ -204,20 +241,27 @@ async function loadPluginMenus() {
 }
 
 function handleSelect(index) {
-  if (index.startsWith("/extensions/app/") && route.path.startsWith("/extensions/app/")) {
+  if (index.startsWith("/extensions/app/")) {
     // 路径结构 /extensions/app/{gameCode}/...，第 4 段为 gameCode
-    const currentGameCode = route.path.split("/")[3];
+    const currentGameCode = route.path.startsWith("/extensions/app/")
+      ? route.path.split("/")[3]
+      : null;
     const targetGameCode = index.split("/")[3];
     // 同插件内切换菜单：保留已选实例（instanceId 等 query）
     // 跨插件切换：实例按 gameCode 隔离，不携带旧 instanceId（由目标插件自行选择实例）
     if (currentGameCode && targetGameCode && currentGameCode === targetGameCode) {
-      router.push({ path: index, query: route.query });
+      router.push({ path: index, query: route.query }).catch(() => {});
     } else {
-      router.push(index);
+      router.push(index).catch(() => {});
+    }
+    // 已存活的子应用跟随内部导航（URL 未变化/重复点击时 key 不触发，需兜底下发）
+    const subPath = index.slice(`/extensions/app/${targetGameCode}`.length);
+    if (subPath) {
+      sendPluginNavigate(generateWujieAppName(targetGameCode), subPath);
     }
     return;
   }
-  router.push(index);
+  router.push(index).catch(() => {});
 }
 
 onMounted(loadPluginMenus);
@@ -235,6 +279,7 @@ onMounted(loadPluginMenus);
 
     <el-scrollbar class="sidebar-menu-wrapper">
       <el-menu
+        ref="menuRef"
         class="sidebar-menu"
         :default-active="activeMenu"
         :default-openeds="defaultOpeneds"

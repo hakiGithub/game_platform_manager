@@ -73,6 +73,19 @@ public interface HostService {
     boolean testConnection(Long id);
 
     /**
+     * 用临时表单参数测试 SSH 连接（用于新增主机保存前的强制连接测试）。
+     *
+     * @param ip         主机地址
+     * @param sshPort    SSH 端口
+     * @param username   用户名
+     * @param password   密码（明文，可为 null）
+     * @param privateKey 私钥（明文，可为 null）
+     * @return 是否连接成功
+     */
+    boolean testConnectionByParams(String ip, Integer sshPort, String username,
+                                   String password, String privateKey);
+
+    /**
      * 刷新主机状态
      *
      * @param id 主机ID

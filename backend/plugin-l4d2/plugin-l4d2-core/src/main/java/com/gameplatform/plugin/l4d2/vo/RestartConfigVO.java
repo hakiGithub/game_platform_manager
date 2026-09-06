@@ -30,6 +30,10 @@ public class RestartConfigVO implements Serializable {
     @Schema(description = "自定义重启命令")
     private String customCmd;
 
+    /** 命令模式执行超时（毫秒） */
+    @Schema(description = "命令模式执行超时（毫秒）")
+    private Long commandTimeoutMs;
+
     /** 可用重启模式列表 */
     @Schema(description = "可用重启模式")
     private List<String> availableModes;

@@ -84,6 +84,19 @@ export interface ConfirmResultMessage extends BaseMessage<ConfirmResultPayload> 
 }
 
 /**
+ * NAVIGATE_TO - 路由下发（主应用 → 插件）
+ * 主应用侧边栏点击插件菜单后，通知已存活的插件子应用内部导航到对应页面，
+ * 避免通过重挂载子应用切页。payload.path 为插件内部路由（如 /server-config）
+ */
+export interface NavigateToPayload {
+  path: string
+}
+
+export interface NavigateToMessage extends BaseMessage<NavigateToPayload> {
+  type: 'NAVIGATE_TO'
+}
+
+/**
  * 主应用发送的所有消息类型
  */
 export type HostToPluginMessage =
@@ -91,6 +104,7 @@ export type HostToPluginMessage =
   | AuthMessage
   | ThemeChangeMessage
   | ConfirmResultMessage
+  | NavigateToMessage
 
 // ========== 插件 → 主应用 消息 ==========
 
@@ -119,6 +133,19 @@ export interface NavigatePayload {
 
 export interface NavigateMessage extends BaseMessage<NavigatePayload> {
   type: 'NAVIGATE'
+}
+
+/**
+ * ROUTE_CHANGE - 路由上报（插件 → 主应用）
+ * 插件子应用内部路由变化后上报当前路径（如 /server-info），
+ * 主应用据此同步 URL 与侧边栏选中态，实现双向路由跟随
+ */
+export interface RouteChangePayload {
+  path: string
+}
+
+export interface RouteChangeMessage extends BaseMessage<RouteChangePayload> {
+  type: 'ROUTE_CHANGE'
 }
 
 /**
@@ -196,6 +223,7 @@ export interface ApiResponseMessage extends BaseMessage<ApiResponsePayload> {
 export type PluginToHostMessage =
   | ReadyMessage
   | NavigateMessage
+  | RouteChangeMessage
   | NotifyMessage
   | ConfirmMessage
   | ApiRequestMessage
@@ -329,10 +357,12 @@ export const MessageTypes = {
   THEME_CHANGE: 'THEME_CHANGE',
   CONFIRM_RESULT: 'CONFIRM_RESULT',
   API_RESPONSE: 'API_RESPONSE',
+  NAVIGATE_TO: 'NAVIGATE_TO',
 
   // 插件 → 主应用
   READY: 'READY',
   NAVIGATE: 'NAVIGATE',
+  ROUTE_CHANGE: 'ROUTE_CHANGE',
   NOTIFY: 'NOTIFY',
   CONFIRM: 'CONFIRM',
   API_REQUEST: 'API_REQUEST'

@@ -12,26 +12,21 @@
       </el-button>
     </el-upload>
 
-    <el-progress
-      v-if="uploading || progress > 0"
-      :percentage="progress"
-      :status="progressStatus"
-      :stroke-width="20"
-      :text-inside="true"
+    <!-- 进度弹窗：HTTP 上传段（0-40%）+ 服务端任务处理段（40-100%），等待直到处理完成 -->
+    <TaskProgressDialog
+      v-model:visible="dialogVisible"
+      title="上传地图"
+      :phase="dialogPhase"
+      :poll-fn="mainTaskApi.detail"
+      :task-id="taskId"
+      :external-percent="externalPercent"
+      :external-message="externalMessage"
+      :task-range="[40, 100]"
+      :cancellable="canCancel"
+      @completed="onTaskCompleted"
+      @failed="onTaskFailed"
+      @cancel="onDialogCancel"
     />
-
-    <div v-if="uploading || statusText" class="upload-info">
-      <span>{{ statusText }}</span>
-      <el-button
-        v-if="uploading"
-        type="danger"
-        size="small"
-        @click="cancelUpload"
-        :disabled="!canCancel"
-      >
-        取消
-      </el-button>
-    </div>
   </div>
 </template>
 
@@ -39,7 +34,8 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { mapApi, MapUploadSubmit, chunkUploadApi } from '@/api'
+import { mapApi, MapUploadSubmit, chunkUploadApi, mainTaskApi } from '@/api'
+import TaskProgressDialog from '@/components/TaskProgressDialog.vue'
 
 const props = withDefaults(defineProps<{
   instanceId: number
@@ -61,18 +57,17 @@ const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB
 
 const uploadRef = ref()
 const uploading = ref(false)
-const progress = ref(0)
-const currentUploadId = ref<string | null>(null)
-const statusText = ref('')
 const cancelled = ref(false)
-
-const progressStatus = computed(() => {
-  if (progress.value >= 100) return 'success'
-  if (progress.value < 0) return 'exception'
-  return ''
-})
+const currentUploadId = ref<string | null>(null)
+const dialogVisible = ref(false)
+const dialogPhase = ref<'external' | 'task'>('external')
+const externalPercent = ref(0)
+const externalMessage = ref('')
+const taskId = ref('')
 
 const canCancel = computed(() => currentUploadId.value !== null)
+/** 已提交到执行队列的任务信息（弹窗成功事件透传给父组件） */
+const lastSubmitted = ref<MapUploadSubmit | null>(null)
 
 async function handleFileChange(file: UploadFile) {
   if (!file.raw) return
@@ -81,51 +76,53 @@ async function handleFileChange(file: UploadFile) {
 
 async function uploadFile(file: File) {
   uploading.value = true
-  progress.value = 0
   cancelled.value = false
-  statusText.value = '准备上传...'
+  dialogPhase.value = 'external'
+  externalPercent.value = 0
+  externalMessage.value = '准备上传...'
+  taskId.value = ''
+  dialogVisible.value = true
 
+  let submitted: MapUploadSubmit | null = null
   try {
     if (file.size > CHUNK_THRESHOLD) {
-      await uploadByChunks(file)
+      submitted = await uploadByChunks(file)
     } else {
-      await uploadDirect(file)
+      submitted = await uploadDirect(file)
     }
     if (cancelled.value) return
-    progress.value = 100
-    statusText.value = '已提交到执行队列'
-    const submitted = directResult.value
-    ElMessage.success(`地图已提交到执行队列${submitted?.taskId ? `（任务 ${submitted.taskId.slice(0, 8)}）` : ''}，处理完成后可在地图列表查看`)
-    emit('success', submitted)
-  } catch (e: any) {
-    progress.value = -1
-    statusText.value = '上传失败: ' + (e?.message || e)
-    ElMessage.error('上传失败: ' + (e?.message || e))
-    emit('error', e)
-  } finally {
-    uploading.value = false
-    currentUploadId.value = null
-    // 重置 upload 组件，允许再次选择同一文件
-    if (uploadRef.value) {
-      uploadRef.value.clearFiles()
+    if (!submitted?.taskId) {
+      // 兼容：后端未返回 taskId（无任务语义），直接按提交成功处理
+      finishSuccess()
+      return
     }
+    // HTTP 上传完成（0-40%），切换到任务轮询段（40-100%）
+    lastSubmitted.value = submitted
+    taskId.value = submitted.taskId
+    dialogPhase.value = 'task'
+  } catch (e: any) {
+    showError('上传失败: ' + (e?.message || e), e)
   }
 }
 
-const directResult = ref<MapUploadSubmit | null>(null)
+/** HTTP 传输进度映射到弹窗 0-40% 段 */
+function setExternalProgress(p: number, message: string) {
+  externalPercent.value = p * 0.4
+  externalMessage.value = message
+  emit('progress', p)
+}
 
-async function uploadDirect(file: File) {
-  statusText.value = '上传中...'
+async function uploadDirect(file: File): Promise<MapUploadSubmit> {
+  externalMessage.value = '上传中...'
   // 注意：HTTP 层完成 = 文件暂存并提交执行队列；VPK 解析/写入服务器由任务异步处理
-  directResult.value = await mapApi.upload(file, props.instanceId, (p: number) => {
-    progress.value = Math.floor(p)
-    emit('progress', p)
+  return await mapApi.upload(file, props.instanceId, (p: number) => {
+    setExternalProgress(p, `上传中 ${p}%...`)
   })
 }
 
-async function uploadByChunks(file: File) {
+async function uploadByChunks(file: File): Promise<MapUploadSubmit> {
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
-  statusText.value = `初始化分片上传（共 ${totalChunks} 片）...`
+  externalMessage.value = `初始化分片上传（共 ${totalChunks} 片）...`
 
   const initResp = await chunkUploadApi.init({
     instanceId: props.instanceId,
@@ -136,8 +133,6 @@ async function uploadByChunks(file: File) {
   })
   const uploadId = initResp.uploadId
   currentUploadId.value = uploadId
-
-  statusText.value = `上传分片中（0 / ${totalChunks}）...`
 
   // 串行上传每个分片
   for (let i = 0; i < totalChunks; i++) {
@@ -152,22 +147,52 @@ async function uploadByChunks(file: File) {
       type: 'application/octet-stream',
     })
 
-    statusText.value = `上传分片中（${i + 1} / ${totalChunks}）...`
+    setExternalProgress((i / totalChunks) * 100, `上传分片中（${i + 1} / ${totalChunks}）...`)
     await chunkUploadApi.uploadChunk(uploadId, i, chunkFile)
-    progress.value = Math.floor(((i + 1) / totalChunks) * 100)
-    emit('progress', progress.value)
+    setExternalProgress(((i + 1) / totalChunks) * 100, `上传分片中（${i + 1} / ${totalChunks}）...`)
   }
 
   if (currentUploadId.value === null) {
     throw new Error('上传已取消')
   }
 
-  statusText.value = '合并分片中...'
-  await chunkUploadApi.complete(uploadId) // 压缩包返回 {taskId}，由共享成功提示告知进入队列
+  externalMessage.value = '合并分片中...'
+  const completeResp = await chunkUploadApi.complete(uploadId)
   currentUploadId.value = null
+  // 压缩包合并后提交 map-upload 任务，后续进度走任务轮询段
+  return {
+    taskId: completeResp?.taskId || '',
+    filename: file.name,
+    size: file.size,
+  }
 }
 
-async function cancelUpload() {
+function finishSuccess() {
+  dialogVisible.value = false
+  uploading.value = false
+  ElMessage.success('地图上传完成')
+  emit('success', lastSubmitted.value)
+}
+
+function onTaskCompleted() {
+  finishSuccess()
+}
+
+function onTaskFailed(st: { status: string; errorMessage?: string; resultSummary?: string }) {
+  dialogVisible.value = false
+  uploading.value = false
+  ElMessage.error('地图处理失败：' + (st.errorMessage || st.resultSummary || st.status))
+  emit('error', new Error(st.errorMessage || st.status))
+}
+
+function showError(msg: string, e: any) {
+  dialogVisible.value = false
+  uploading.value = false
+  ElMessage.error(msg)
+  emit('error', e)
+}
+
+async function onDialogCancel() {
   if (!currentUploadId.value) return
   try {
     await ElMessageBox.confirm('确定取消上传？已上传的分片将被清理', '取消上传', {
@@ -177,8 +202,7 @@ async function cancelUpload() {
     currentUploadId.value = null
     cancelled.value = true
     uploading.value = false
-    progress.value = 0
-    statusText.value = '已取消'
+    dialogVisible.value = false
     ElMessage.info('上传已取消')
   } catch {
     // 用户点了取消按钮
@@ -191,12 +215,5 @@ async function cancelUpload() {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.upload-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
 }
 </style>

@@ -48,7 +48,7 @@
                 <el-radio :value="true">RCON 模式</el-radio>
                 <el-radio :value="false">命令模式</el-radio>
               </el-radio-group>
-              <span class="form-tip">AUTO 模式下按此选择</span>
+              <span class="form-tip">「重启服务器」将按此方式执行；AUTO 请求（仪表盘快捷重启）亦按此分流。保存后持久生效</span>
             </el-form-item>
 
             <el-form-item label="容器名">
@@ -234,9 +234,12 @@ async function handleRestart() {
     ElMessage.warning('请先选择实例')
     return
   }
+  // 显式按当前偏好发 RCON / COMMAND（ADR-0020：AUTO 不再从按钮发出）
+  const mode = config.value.byRcon ? 'RCON' : 'COMMAND'
+  const modeLabel = mode === 'RCON' ? 'RCON 模式（发送 _restart，需服务器在线）' : '命令模式（主机执行 docker restart）'
   try {
     await ElMessageBox.confirm(
-      '确认要重启服务器吗？将按当前配置（AUTO 模式）执行。',
+      `确认要重启服务器吗？将按「${modeLabel}」执行。`,
       '重启确认',
       { type: 'warning', confirmButtonText: '重启', cancelButtonText: '取消' }
     )
@@ -245,7 +248,7 @@ async function handleRestart() {
   }
   restarting.value = true
   try {
-    await restartApi.restart({ instanceId: id, mode: 'AUTO' })
+    await restartApi.restart({ instanceId: id, mode })
     ElMessage.success('重启命令已发送')
   } catch (e: any) {
     ElMessage.error('重启失败：' + (e?.message || e))
