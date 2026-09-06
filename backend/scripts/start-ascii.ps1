@@ -22,12 +22,13 @@ $cp = "core/target/classes;api/target/classes;plugin/target/classes;$depCp"
 $dbPathNormalized = $DB_PATH -replace '\\', '/'
 $dbUrl = "jdbc:sqlite:$dbPathNormalized"
 
-$javaExe = (Get-Command java -ErrorAction SilentlyContinue).Source
+$javaExe = "C:\Program Files\Java\jdk-21\bin\java.exe"
+if (-not (Test-Path $javaExe)) { $javaExe = (Get-Command java -ErrorAction SilentlyContinue).Source }
 if (-not $javaExe) { $javaExe = "java" }
 
 $jvmOpts = @(
-    "-Xms512m",
-    "-Xmx1024m",
+    "-Xms256m",
+    "-Xmx384m",
     "-XX:MaxMetaspaceSize=256m",
     "-XX:+UseG1GC",
     "-XX:+HeapDumpOnOutOfMemoryError",

@@ -252,7 +252,7 @@
                     <workingDirectory>${project.parent.basedir}</workingDirectory>
                     <!-- JVM 参数 -->
                     <jvmArguments>
-                        -Xms512m -Xmx1024m
+                        -Xms256m -Xmx384m -XX:MaxMetaspaceSize=256m
                         -Dspring.devtools.restart.enabled=false
                         -Dspring.devtools.livereload.enabled=false
                     </jvmArguments>

@@ -77,8 +77,8 @@ $script:STARTUP_TIMEOUT = 60
 # ============================================
 
 # 内存配置
-$script:JVM_XMS = "512m"
-$script:JVM_XMX = "1024m"
+$script:JVM_XMS = "256m"
+$script:JVM_XMX = "384m"
 $script:JVM_METASPACE = "256m"
 
 # GC配置 (G1GC - Java 17推荐)
@@ -410,7 +410,7 @@ function Start-Dev {
     
     $processInfo = New-Object System.Diagnostics.ProcessStartInfo
     $processInfo.FileName = "mvn"
-    $processInfo.Arguments = "spring-boot:run -D`"spring-boot.run.jvmArguments=-Xms256m -Xmx512m`" -D`"spring-boot.run.arguments=--server.port=$SERVER_PORT`""
+    $processInfo.Arguments = "spring-boot:run -D`"spring-boot.run.jvmArguments=-Xms256m -Xmx384m`" -D`"spring-boot.run.arguments=--server.port=$SERVER_PORT`""
     $processInfo.WorkingDirectory = $PROJECT_DIR
     $processInfo.UseShellExecute = $false
     $processInfo.RedirectStandardOutput = $true

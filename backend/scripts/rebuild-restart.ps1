@@ -75,8 +75,8 @@ if ([string]::IsNullOrEmpty($DbPath)) {
 
 # JVM 参数
 $script:JVM_OPTS = @(
-    "-Xms512m",
-    "-Xmx1024m",
+    "-Xms256m",
+    "-Xmx384m",
     "-XX:MaxMetaspaceSize=256m",
     "-XX:+UseG1GC",
     "-XX:+HeapDumpOnOutOfMemoryError",

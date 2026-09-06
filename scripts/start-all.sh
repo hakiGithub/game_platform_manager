@@ -32,9 +32,16 @@ FRONTEND_LOG="${LOG_DIR}/frontend.log"
 BACKEND_PID_FILE="${LOG_DIR}/backend.pid"
 FRONTEND_PID_FILE="${LOG_DIR}/frontend.pid"
 
+# 优先使用本机 JDK 21（G1 内存开销更低、支持虚拟线程），无则回退 PATH 上的默认 JDK
+JDK21_HOME="/c/Program Files/Java/jdk-21"
+if [[ -d "${JDK21_HOME}" ]]; then
+  export JAVA_HOME="$(cygpath -w "${JDK21_HOME}")"
+  export PATH="${JDK21_HOME}/bin:${PATH}"
+fi
+
 JVM_OPTS=(
-  "-Xms512m"
-  "-Xmx1024m"
+  "-Xms256m"
+  "-Xmx384m"
   "-XX:MaxMetaspaceSize=256m"
   "-XX:+UseG1GC"
   "-XX:+HeapDumpOnOutOfMemoryError"

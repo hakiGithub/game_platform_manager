@@ -61,8 +61,8 @@ STARTUP_TIMEOUT=60
 # ============================================
 
 # 内存配置
-JVM_XMS="512m"          # 初始堆内存
-JVM_XMX="1024m"         # 最大堆内存
+JVM_XMS="256m"          # 初始堆内存
+JVM_XMX="384m"          # 最大堆内存
 JVM_METASPACE="256m"    # 元空间大小
 
 # GC配置 (G1GC - Java 17推荐)
@@ -298,7 +298,7 @@ start_dev() {
     log_info "正在启动应用 (mvn spring-boot:run)..."
     
     nohup mvn spring-boot:run \
-        -Dspring-boot.run.jvmArguments="-Xms256m -Xmx512m" \
+        -Dspring-boot.run.jvmArguments="-Xms256m -Xmx384m" \
         -Dspring-boot.run.arguments="--server.port=${SERVER_PORT}" \
         >> "${APP_LOG_FILE}" 2>&1 &
     
