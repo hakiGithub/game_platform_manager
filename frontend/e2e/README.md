@@ -22,6 +22,19 @@ npm run e2e:report
 
 首次运行前：`npm install` + `npx playwright install chromium`。
 
+## 测试数据仓库（e2e/fixtures/）
+
+用例只从本目录取数，**运行时禁止临时外网下载资产**（红线）。
+
+| 资产 | 路径 | 格式契约 |
+|------|------|----------|
+| 最小 VPK 地图包 | `vpk/e2e-test-map.vpk` | 可被后端 VpkParser 解析：magic `0x55AA1234` v1 + 目录树含 `missions/e2e_test_mission.txt`（preload=0，与标准 VPK v1 布局一致） |
+| SourceMod 插件样例 | `sourcemod/e2e-sample-plugin.smx` | 平台上传通道只做扩展名/名称处理，样例为占位二进制（非真实插件，E2E 不依赖 SourceMod 加载它） |
+| 游戏元数据 YAML | `games/e2e-drill-game.yml` | 满足 `GameYamlConfig.isValid` 强校验（`game.code` + `game.name`），gameCode 固定 `e2edrill` |
+
+二进制资产由 `fixtures/build-fixtures.mjs` 合成并自检，重新生成：`node e2e/fixtures/build-fixtures.mjs`。
+生成脚本与本 README 一起维护；改格式契约（后端解析逻辑）时同步改合成器。
+
 ## 环境契约（凭据不入库）
 
 | 变量 | 缺省 | 说明 |
@@ -42,6 +55,8 @@ npm run e2e:report
 ```
 e2e/
 ├── support/            # 框架层：环境契约(env)、平台 API 断言客户端(api)、主机 SKIP(skip)
+├── fixtures/           # 测试数据仓库（VPK/插件样例/YAML，见上表；build-fixtures.mjs 再生成）
+├── infra/              # 基础设施自检用例（如凭据契约哑用例）
 ├── main-app/           # 主应用用例：按「页面/功能」建目录，如 auth/login.spec.js
 └── plugins/            # 插件用例包：每个插件一个子目录（见 plugins/README.md）
 ```

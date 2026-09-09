@@ -1,0 +1,16 @@
+game:
+  code: e2edrill
+  name: E2E 演练游戏（合成）
+  description: 测试数据仓库合成资产——仅用于 YAML 导入与游戏目录用例，禁止用于真实部署
+  version: "1.0.0"
+  icon: /icons/e2edrill.png
+
+  deployTypes:
+    - docker
+
+  defaultPorts:
+    game: 27015
+
+  docker:
+    imageRepo: e2e/nonexistent-image
+    imageTag: fixture

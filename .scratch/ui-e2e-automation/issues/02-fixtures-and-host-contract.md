@@ -4,9 +4,11 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 资产入库且可被用例引用，含合成 VPK、SourceMod 插件样例、YAML 元数据
-- [ ] 无主机凭据 → 主机类用例 SKIP 且报告注明原因
-- [ ] 有主机凭据 → 同一批用例正常执行
-- [ ] 环境契约与配置样例写入工程 README（含"凭据不入库"红线）
+- [x] 资产入库且可被用例引用，含合成 VPK、SourceMod 插件样例、YAML 元数据
+- [x] 无主机凭据 → 主机类用例 SKIP 且报告注明原因
+- [x] 有主机凭据 → 同一批用例正常执行
+- [x] 环境契约与配置样例写入工程 README（含"凭据不入库"红线）
+
+> 实施备注：资产格式按后端真实解析逻辑合成——VPK 对齐 `VpkParser`（magic 0x55AA1234 v1 + 目录树 missions/*.txt 条目，preload=0 时与标准 VPK v1 布局逐字节一致）；smx 平台侧只做扩展名/名称处理，样例为占位二进制；YAML 满足 `GameYamlConfig.isValid`（gameCode 固定 e2edrill）。SKIP 帮助器为 `skipWithoutTestHost()`（声明级 `test.skip(condition, description)`，注解进报告），哑用例在 `e2e/infra/host-contract.spec.js`。两态实测：无凭据 1 skipped（注解带原因）+2 passed；哑凭据 3 passed。
