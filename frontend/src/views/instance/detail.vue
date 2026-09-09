@@ -884,17 +884,18 @@ async function fetchBackups() {
 async function handleCreateBackup(formData) {
   creatingBackup.value = true
   try {
+    // 后端契约字段为 backupName/backupType（BackupController.DatabaseBackupRequest / FileBackupRequest）
     if (formData.type === 'database') {
       await backupStore.createDatabase(instanceId.value, {
-        name: formData.name,
+        backupName: formData.name,
+        backupType: 'database',
         description: formData.description
       })
     } else {
       await backupStore.createFiles(instanceId.value, {
-        name: formData.name,
-        description: formData.description,
-        includePaths: formData.includePaths,
-        excludePaths: formData.excludePaths
+        backupName: formData.name,
+        backupType: 'files',
+        description: formData.description
       })
     }
     ElMessage.success('备份任务已创建')

@@ -654,27 +654,70 @@ public class DockerAdapter extends AbstractDeployAdapter {
     }
 
     /**
-     * 获取端口映射列表
+     * 获取端口映射列表。兼容两种形式：Map（{hostPort, containerPort, protocol}）与
+     * 游戏元数据 docker.ports 的常规字符串形式（"host:container/proto"）。
      */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getPortMappings(Map<String, Object> config) {
         Object ports = config.get("ports");
+        List<Map<String, Object>> result = new ArrayList<>();
         if (ports instanceof List) {
-            return (List<Map<String, Object>>) ports;
+            for (Object entry : (List<?>) ports) {
+                if (entry instanceof Map) {
+                    result.add((Map<String, Object>) entry);
+                } else if (entry != null) {
+                    String spec = entry.toString().trim();
+                    String protocol = "tcp";
+                    String pair = spec;
+                    int slash = spec.indexOf('/');
+                    if (slash >= 0) {
+                        protocol = spec.substring(slash + 1).trim();
+                        pair = spec.substring(0, slash).trim();
+                    }
+                    String[] parts = pair.split(":");
+                    if (parts.length == 2) {
+                        Map<String, Object> mapping = new HashMap<>();
+                        mapping.put("hostPort", Integer.valueOf(parts[0].trim()));
+                        mapping.put("containerPort", Integer.valueOf(parts[1].trim()));
+                        mapping.put("protocol", protocol.isEmpty() ? "tcp" : protocol);
+                        result.add(mapping);
+                    }
+                }
+            }
         }
-        return new ArrayList<>();
+        return result;
     }
 
     /**
-     * 获取卷挂载列表
+     * 获取卷挂载列表。兼容两种形式：Map（{hostPath, containerPath, mode}）与
+     * 字符串（"containerPath" 匿名卷 / "host:container[:mode]"）。
      */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getVolumeMounts(Map<String, Object> config) {
         Object volumes = config.get("volumes");
+        List<Map<String, Object>> result = new ArrayList<>();
         if (volumes instanceof List) {
-            return (List<Map<String, Object>>) volumes;
+            for (Object entry : (List<?>) volumes) {
+                if (entry instanceof Map) {
+                    result.add((Map<String, Object>) entry);
+                } else if (entry != null) {
+                    String spec = entry.toString().trim();
+                    String[] parts = spec.split(":");
+                    Map<String, Object> volume = new HashMap<>();
+                    if (parts.length == 1) {
+                        volume.put("containerPath", parts[0]);
+                    } else {
+                        volume.put("hostPath", parts[0]);
+                        volume.put("containerPath", parts[1]);
+                        if (parts.length >= 3) {
+                            volume.put("mode", parts[2]);
+                        }
+                    }
+                    result.add(volume);
+                }
+            }
         }
-        return new ArrayList<>();
+        return result;
     }
 
     /**
@@ -726,6 +769,9 @@ public class DockerAdapter extends AbstractDeployAdapter {
 
             if (hostPath != null && containerPath != null) {
                 cmd.append(String.format(" -v %s:%s:%s", hostPath, containerPath, mode));
+            } else if (containerPath != null) {
+                // 匿名卷（元数据只给容器路径）
+                cmd.append(String.format(" -v %s", containerPath));
             }
         }
 
