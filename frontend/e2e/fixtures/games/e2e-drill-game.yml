@@ -12,5 +12,6 @@ game:
     game: 27015
 
   docker:
-    imageRepo: e2e/nonexistent-image
-    imageTag: fixture
+    image: e2e/nonexistent-image
+    tag: fixture
+    restartPolicy: unless-stopped

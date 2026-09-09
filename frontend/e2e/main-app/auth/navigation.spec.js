@@ -37,9 +37,10 @@ test("伪造 token 触发会话过期自动登出", async ({ page }) => {
   await page.goto("/workspace/overview");
 
   // 仪表盘并发多个接口都会 401，警告 toast 可能重叠多条，取其一断言即可
-  await expect(
-    page.locator(".el-message--warning").first(),
-  ).toContainText("登录状态已过期", { timeout: 15_000 });
+  await expect(page.locator(".el-message--warning").first()).toContainText(
+    "登录状态已过期",
+    { timeout: 15_000 },
+  );
   await expect(page).toHaveURL(/\/login/);
 });
 
