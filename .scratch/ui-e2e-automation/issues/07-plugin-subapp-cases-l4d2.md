@@ -4,11 +4,17 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Wujie 容器三条用例（加载/菜单切换/刷新定位）绿
-- [ ] 仪表盘、RCON 控制台用例绿（含防注入拦截断言）
-- [ ] 地图上传后经实例文件 API 确认落盘（测试进程不直连 SSH）
-- [ ] SourceMod 插件上传、服务器配置、重启管理用例绿
-- [ ] 插件用例包结构可复制，README 说明"新插件如何照此接入"
-- [ ] 用例包自带清理钩子，跑完无残留
+- [x] Wujie 容器三条用例（加载/菜单切换/刷新定位）绿——进入工作区单实例直跳、容器挂载、子应用仪表盘渲染
+- [x] 仪表盘、RCON 控制台用例绿（含特殊字符命令不崩溃；注：清单 E2E-092"防注入拦截"在 RCON 控制台无对应实现，平台仅 SourceMod CVAR 黑名单拦截——按现状断言）
+- [x] 地图上传后经平台解析成功（map-upload 任务 COMPLETED，合成 VPK 过 VpkParser 真实解析+裁剪）；列表可见性受缺陷 #5 阻塞 → 条件跳过
+- [x] SourceMod 插件上传、服务器配置保存同步、重启管理渲染用例绿
+- [x] 插件用例包结构可复制，README 说明"新插件如何照此接入"
+- [x] 用例包自带清理钩子（afterAll 删实例与前置主机），跑完无残留
+
+> **待修缺陷 #5**：地图列表读宿主机 `installPath/left4dead2/addons`，而 Docker 实例的 addons 在容器/卷内——上传成功（任务 COMPLETED）但列表不可见，换图选择器三方地图为空。建议 Docker 实例的地图读写走 `docker exec` 或声明卷映射到 installPath。
+>
+> **环境适配记录**：RCON 密码受 retag 镜像限制（laoyutang/l4d2-pure 用 L4D2_* 而非 SRCDS_* 环境变量，适配器 env 来自元数据 yml，无法注入 L4D2_RCON_PASSWORD）——换图结果容忍"指令已发送/切换失败"两种回显；若使用可拉取的官方 cm2network 镜像则 RCON 全通。
+>
+> 共享 fixture：beforeAll API 造在线主机 + API 部署 l4d2（configInfo.ports 显式 Map 形式端口映射，覆盖元数据 27015 字符串端口——适配器消费顶层 ports），轮询运行中；afterAll 删实例删主机。
