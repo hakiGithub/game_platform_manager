@@ -62,6 +62,11 @@ frontend/
 │   │   ├── setup.js                      # 测试配置
 │   │   ├── api/                          # API测试
 │   │   └── components/                   # 组件测试
+│   ├── e2e/                      # E2E 自动化用例（Playwright，见 e2e/README.md）
+│   │   ├── runner.mjs                     # 受管/附着模式编排器
+│   │   ├── support/                       # 框架层：环境契约/API 断言客户端/SKIP
+│   │   ├── main-app/                      # 主应用用例（页面/功能两级）
+│   │   └── plugins/                       # 插件用例包（每插件一个子目录）
 │   ├── utils/                    # 工具函数
 │   │   ├── request.js                    # Axios封装
 │   │   └── websocket.js                  # WebSocket封装
@@ -126,6 +131,7 @@ backend/plugin-l4d2/frontend/     # L4D2 插件前端
 | 工具 | camelCase | `request.js` |
 | 样式 | kebab-case | `index.scss` |
 | 测试 | 原文件名 + .test | `auth.test.js` |
+| E2E 用例 | 功能名 + .spec（Playwright 惯例，豁免 .test 规则） | `login.spec.js` |
 
 ### 组件规范
 
@@ -1080,6 +1086,15 @@ npm run test:run
 
 # 测试覆盖率
 npm run test:coverage
+
+# E2E 全量回归（受管模式：临时 SQLite 起前后端 → 跑用例 → 报告 → 清理）
+npm run e2e
+
+# E2E 附着模式（对已运行环境跑用例）
+npm run e2e:attach
+
+# 查看 E2E HTML 报告
+npm run e2e:report
 
 # 代码检查
 npm run lint

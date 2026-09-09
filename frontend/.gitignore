@@ -11,3 +11,9 @@ npm-debug.log*
 
 # PID files
 *.pid
+
+# E2E artifacts (playwright)
+e2e/.tmp/
+e2e/.report/
+e2e/.artifacts/
+test-results/
