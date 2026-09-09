@@ -17,3 +17,6 @@ e2e/.tmp/
 e2e/.report/
 e2e/.artifacts/
 test-results/
+
+# E2E local credentials (never commit)
+e2e/.env.local

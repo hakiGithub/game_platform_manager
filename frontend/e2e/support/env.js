@@ -1,5 +1,8 @@
 // E2E 环境契约：所有外部依赖（地址、凭据）只从环境变量读取，禁止写死进用例。
 // 缺省值仅覆盖"本地受管模式 + 初始种子账号"这一种情况。
+// .env.local（gitignored）在第一个 import 中先行装载，真实环境变量优先。
+import "./env-file.js";
+
 export const e2eEnv = {
   baseUrl: process.env.E2E_BASE_URL ?? "http://localhost:3000",
   backendUrl: process.env.E2E_BACKEND_URL ?? "http://localhost:8080",
