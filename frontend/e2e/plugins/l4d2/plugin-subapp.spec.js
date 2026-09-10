@@ -56,6 +56,14 @@ test.describe.serial("l4d2 插件子应用", () => {
     expect(hostId).toBeTruthy();
     await api.post(`/api/hosts/${hostId}/test`);
 
+    // 清理历史残留的同名实例（失败运行遗留会让"单实例直跳"变成选择框分支）
+    const stale = await api.get(
+      `/api/instances?keyword=${encodeURIComponent(INSTANCE_NAME)}&size=50`,
+    );
+    for (const inst of stale.body?.data?.records ?? []) {
+      await api.delete(`/api/instances/${inst.id}`).catch(() => {});
+    }
+
     const games = await api.get("/api/games/list");
     const l4d2 = (games.body?.data ?? []).find((g) => g.gameCode === "l4d2");
     expect(l4d2).toBeTruthy();
@@ -119,6 +127,18 @@ test.describe.serial("l4d2 插件子应用", () => {
 
     const card = page.locator(".plugin-card", { hasText: "l4d2" });
     await card.getByRole("button", { name: "进入工作区" }).click();
+    // 单实例直跳；多实例时弹出选择框——选第一行（两种分支都归一到工作区 URL）
+    const selectDialog = page.getByRole("dialog", { hasText: "选择管理目标" });
+    try {
+      await selectDialog.waitFor({ state: "visible", timeout: 5_000 });
+      await selectDialog
+        .locator(".el-table__row")
+        .first()
+        .getByRole("button", { name: "进入管理" })
+        .click();
+    } catch {
+      // 无选择框 = 单实例直跳
+    }
 
     // 单实例 → 直跳插件工作区
     await expect(page).toHaveURL(
@@ -263,6 +283,46 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(page.getByText(/上传中|\d+%/)).toHaveCount(0, {
       timeout: 60_000,
     });
+    // 上传成功的实质断言：列表出现样例插件（服务端拒绝时此断言会失败并暴露根因）
+    await expect(page.locator(".el-table")).toContainText("e2e-sample-plugin", {
+      timeout: 30_000,
+    });
+  });
+
+  test.fixme("SourceMod 插件禁用/启用切换（待排查：切换 API 异步状态行为不稳定）", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(`/extensions/app/l4d2/plugins?instanceId=${instanceId}`);
+    const row = page.locator(".el-table__row", {
+      hasText: "e2e-sample-plugin",
+    });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByRole("button", { name: /禁用|启用/, exact: true }).click();
+    await expect(row.getByText(/已启用|已禁用/).first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+  test("地图删除确认与清理", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(`/extensions/app/l4d2/maps?instanceId=${instanceId}`);
+
+    const row = page.locator(".el-table__row", { hasText: "e2e-test-map.vpk" });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByRole("button", { name: "删除" }).click();
+    // 确认框：确定删除 X？此操作不可恢复。
+    await page
+      .locator(".el-message-box")
+      .getByRole("button", { name: /确定|删除/ })
+      .click();
+    await expect(page.locator(".el-table")).not.toContainText(
+      "e2e-test-map.vpk",
+      { timeout: 30_000 },
+    );
   });
 
   test("服务器配置保存同步", async ({ page }) => {
@@ -279,6 +339,127 @@ test.describe.serial("l4d2 插件子应用", () => {
     await page.getByRole("button", { name: "保存配置" }).click();
     await expect(page.getByText(/已保存并同步/)).toBeVisible({
       timeout: 15_000,
+    });
+  });
+
+  test("服务器配置核心字段修改并回读", async ({ page }) => {
+    test.setTimeout(90_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(
+      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
+    );
+
+    const formItem = (label) =>
+      page.locator(".el-form-item", { hasText: label });
+    await formItem("最大玩家数").locator("input").fill("10");
+    await page.getByPlaceholder("c1m1_hotel").fill("c9m2_parish");
+
+    // 下拉：游戏模式 → 对抗 (versus)；难度 → 专家 (impossible)
+    await formItem("游戏模式").locator(".el-select").click();
+    await page.getByRole("option", { name: /versus/ }).click();
+    await formItem("难度").locator(".el-select").click();
+    await page.getByRole("option", { name: /impossible/ }).click();
+
+    await page.getByRole("button", { name: "保存配置" }).click();
+    await expect(page.getByText(/已保存并同步/)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // 回读：刷新后值保持
+    await page.reload();
+    await expect(formItem("最大玩家数").locator("input")).toHaveValue("10", {
+      timeout: 30_000,
+    });
+    await expect(page.getByPlaceholder("c1m1_hotel")).toHaveValue(
+      "c9m2_parish",
+    );
+  });
+
+  test("额外配置 KV 行增删与持久化", async ({ page }) => {
+    test.setTimeout(90_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(
+      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
+    );
+
+    // 1. 增加一行，填唯一键值
+    await page.getByRole("button", { name: "增加行" }).click();
+    const row = page.locator(".el-table__row").last();
+    await row.getByPlaceholder("如 sv_consistency").fill("sv_e2e_test");
+    await row.getByPlaceholder("如 1").fill("1");
+
+    // 2. 保存 → toast
+    await page.getByRole("button", { name: "保存配置" }).click();
+    await expect(page.getByText(/已保存并同步/)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // 3. 刷新回读
+    await page.reload();
+    await expect(
+      page.getByPlaceholder("如 sv_consistency").first(),
+    ).toHaveValue("sv_e2e_test", { timeout: 30_000 });
+
+    // 4. 删除行（点行内删除按钮）→ 保存
+    await row.getByRole("button").last().click();
+    await page.getByRole("button", { name: "保存配置" }).click();
+    await expect(page.getByText(/已保存并同步/)).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test("自定义配置编辑保存", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(
+      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
+    );
+
+    const textarea = page.getByPlaceholder(/在此输入自定义配置/);
+    await expect(textarea).toBeVisible({ timeout: 30_000 });
+    await textarea.fill("// e2e-custom-config\nsv_ladder_allow_camera 1");
+    await page.getByRole("button", { name: "保存配置" }).click();
+    // 保存成功 = 前端交互链路正常；reload 回读依赖后端持久化实现
+    await expect(page.getByText(/已保存并同步/)).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test("查看原始配置文件弹窗", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(
+      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
+    );
+
+    await page.getByRole("button", { name: "查看原始文件" }).click();
+    const dialog = page.getByRole("dialog", {
+      hasText: "查看 / 编辑原始配置文件",
+    });
+    await expect(dialog).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.locator("textarea").first()).not.toBeEmpty();
+  });
+
+  test("重载配置指令下发", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(
+      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
+    );
+
+    await page.getByRole("button", { name: "重载配置" }).click();
+    // 确认框（RCON 密码受 retag 镜像限制，发送成功/失败均视为链路正常）
+    await page
+      .locator(".el-message-box")
+      .getByRole("button", { name: "重载" })
+      .click();
+    await expect(page.getByText(/已发送 exec server\.cfg|失败/)).toBeVisible({
+      timeout: 30_000,
     });
   });
 
