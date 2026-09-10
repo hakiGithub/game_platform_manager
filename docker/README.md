@@ -86,3 +86,23 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
 - 后端 fat jar 以 `*-exec.jar` 通配匹配 COPY（ADR-0013），升级 `backend/pom.xml` 版本无需改 Dockerfile。
 - SQLite 数据库通过 bind mount 落在宿主 `backend/data/`，与本地开发共用同一文件时请勿同时启动本机后端与容器后端。
 - Windows Docker Desktop 下挂载 `/var/run/docker.sock` 需启用 WSL2 集成；docker-java 管理的游戏容器应部署在 Linux 宿主上。
+
+## 一键部署到指定主机（deploy-image.sh）
+
+`scripts/deploy-image.sh` 把平台镜像部署到指定主机（默认本机 WSL，已实测）：同步源码上下文 → 目标机构建版本化镜像 → 同步插件 jar 到挂载目录 → compose 启动 → 镜像保留策略 → 自动验证。
+
+```bash
+scripts/deploy-image.sh                                 # 目标 = 本机 WSL
+scripts/deploy-image.sh --host ssh://user@192.168.1.10  # 通用 SSH 主机
+scripts/deploy-image.sh --keep 2 --port 8081            # 可选项
+```
+
+| 项 | 说明 |
+|----|------|
+| 镜像 tag | `game-platform-{backend,frontend}:<时间戳>` + `latest` 指针 |
+| 保留策略 | 目标机每组只保留最近 `--keep`（默认 2）个版本镜像，更早的 rmi |
+| 插件挂载 | 本机 `backend/plugins/*.jar` 同步到目标机挂载目录，热部署 30s 生效 |
+| 数据 | 目标机独立目录 `~/gpm-deploy/`，全新 SQLite（不背开发数据） |
+| 自动验证 | 容器 healthy / 前端可达 / 登录 API / 插件 STARTED，失败项逐条列出 |
+| compose 形态 | 自动探测 v2 插件或 v1 独立二进制（v1 需 down→up 规避 ContainerConfig） |
+| 小内存主机 | 部署编排内置 `JAVA_OPTS=-Xms256m -Xmx384m`（防 OOM Kill） |
