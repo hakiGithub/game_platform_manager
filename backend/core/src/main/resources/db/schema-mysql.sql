@@ -292,3 +292,9 @@ CREATE TABLE IF NOT EXISTS scheduled_task_run_log (
     KEY idx_scheduled_task_run_log_run_id (run_id),
     KEY idx_scheduled_task_run_log_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 系统设置表（SystemController 设置持久化，按 platform/ssh/docker 分组存储 JSON）
+CREATE TABLE IF NOT EXISTS sys_setting (
+  setting_group VARCHAR(50) PRIMARY KEY,
+  setting_value TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
