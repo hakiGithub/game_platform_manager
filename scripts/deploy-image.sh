@@ -30,6 +30,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) TARGET="$2"; shift 2 ;;
     --keep) KEEP="$2"; shift 2 ;;
+    --db) DB_MODE="$2"; shift 2 ;;
     --port) FRONTEND_PORT="$2"; shift 2 ;;
     --deploy-dir) DEPLOY_DIR_NAME="$2"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
@@ -42,6 +43,8 @@ if [[ "$TARGET" == "wsl" ]]; then
 elif [[ "$TARGET" != ssh://* ]]; then
   echo "--host 需为 wsl 或 ssh://user@host"; exit 1
 fi
+DB_MODE="${DB_MODE:-sqlite}"
+case "$DB_MODE" in sqlite|mysql) ;; *) echo "--db 需为 sqlite 或 mysql"; exit 1 ;; esac
 
 SSH_HOST="${TARGET#ssh://}"
 
@@ -55,6 +58,11 @@ run_target_script() {
 }
 
 log() { echo "[deploy-image] $*"; }
+
+COMPOSE_FILES="-f docker-compose.deploy.yml"
+if [ "${DB_MODE:-sqlite}" = "mysql" ]; then
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.mysql.deploy.yml --profile mysql"
+fi
 
 # ========== 0. 预检 ==========
 command -v curl >/dev/null || { echo "缺少 curl"; exit 1; }
@@ -134,8 +142,8 @@ cd '$DEPLOY_DIR/src/docker'
 # 先 down 再 up：compose v1 对新版 Docker 已有容器做 in-place 重建会撞
 # ContainerConfig KeyError（bind mount 数据不受影响）
 $COMPOSE_CMD -f docker-compose.deploy.yml down 2>/dev/null || true
-$COMPOSE_CMD -f docker-compose.deploy.yml up -d
-$COMPOSE_CMD -f docker-compose.deploy.yml ps
+$COMPOSE_FILES $COMPOSE_CMD up -d
+$COMPOSE_FILES $COMPOSE_CMD ps
 EOF
 
 # ========== 6. 镜像保留策略：按版本 tag 只保留最近 KEEP 个 ==========
@@ -155,6 +163,21 @@ log "验证部署（backend 健康检查最长 ~60s）..."
 VERIFY_OK=1
 ok()  { echo "  ✓ $1"; }
 bad() { echo "  ✗ $1"; VERIFY_OK=0; }
+
+# MySQL 模式：等待数据库 healthy（首个启动含 schema/data 初始化）
+if [ "$DB_MODE" = "mysql" ]; then
+  for i in $(seq 1 24); do
+    H=$(run_target_script <<'EOF'
+docker ps --filter "label=com.docker.compose.service=mysql" --format '{{.Status}}' | grep -o 'healthy|starting|unhealthy' | head -1
+EOF
+)
+    [ "$H" = "healthy" ] && break
+    log "  MySQL 状态: ${H:-unknown}，等待..."
+    sleep 10
+  done
+  [ "$H" = "healthy" ] || { echo "  ✗ MySQL 未就绪"; exit 1; }
+  ok "MySQL healthy"
+fi
 
 # 7.1 容器 healthy（backend 镜像自带 HEALTHCHECK，start-period 60s）
 for i in $(seq 1 12); do

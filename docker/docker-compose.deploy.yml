@@ -3,7 +3,10 @@
 # 与 docker-compose.yml（开发/自建）的差异：
 #   1. 镜像使用版本化 tag（IMAGE_TAG，由部署脚本注入，保留策略见脚本）
 #   2. 挂载目录全部参数化（GPM_DEPLOY_DIR，默认 ~/gpm-deploy），不绑定仓库相对路径
-#   3. 无 build 段——镜像由脚本在本机构建后（目标机构建模式则先 compose build 再 retag）
+#   3. 无 build 段——镜像由脚本在目标机构建后 retag
+#   4. 数据库参数化：默认 SQLite；--db mysql 时叠加 docker-compose.mysql.deploy.yml
+#      （profile=mysql 激活 MySQL 服务与后端接入覆盖），首次启动自动执行
+#      db/schema-mysql.sql + db/data-mysql.sql 初始化（ADR-0015）
 #
 # 环境变量（脚本在目标机生成 .env 提供）：
 #   IMAGE_TAG      镜像版本 tag（如 20260910-153000）
@@ -17,8 +20,10 @@ services:
       TZ: Asia/Shanghai
       # WSL 等小内存验证机的堆预算（与开发态调优一致，防 OOM Kill）
       JAVA_OPTS: -Xms256m -Xmx384m -XX:+UseG1GC
-      SPRING_DATASOURCE_URL: jdbc:sqlite:/app/data/game_platform.db
-      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.sqlite.JDBC
+      SPRING_DATASOURCE_URL: ${DB_URL:-jdbc:sqlite:/app/data/game_platform.db}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: ${DB_DRIVER:-org.sqlite.JDBC}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-}
       GAME_PLATFORM_DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - ${GPM_DEPLOY_DIR}/data:/app/data

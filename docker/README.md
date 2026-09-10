@@ -106,3 +106,14 @@ scripts/deploy-image.sh --keep 2 --port 8081            # 可选项
 | 自动验证 | 容器 healthy / 前端可达 / 登录 API / 插件 STARTED，失败项逐条列出 |
 | compose 形态 | 自动探测 v2 插件或 v1 独立二进制（v1 需 down→up 规避 ContainerConfig） |
 | 小内存主机 | 部署编排内置 `JAVA_OPTS=-Xms256m -Xmx384m`（防 OOM Kill） |
+
+## MySQL 部署模式（--db mysql）
+
+```bash
+scripts/deploy-image.sh --db mysql
+# 等价叠加：docker-compose.mysql.deploy.yml（profile=mysql）
+```
+
+- 目标机额外起 MySQL 8.4 服务（数据落 `mysql_data` 命名卷），backend 等其 healthy 后启动；
+- 后端经 `SPRING_DATASOURCE_*` 切换到 MySQL，首启自动执行 `schema-mysql.sql + data-mysql.sql`；
+- 默认（`--db sqlite`）行为不变；MySQL 凭据为 compose 内占位，生产请改密。

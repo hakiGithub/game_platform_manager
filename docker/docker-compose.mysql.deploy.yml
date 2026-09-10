@@ -1,0 +1,41 @@
+# MySQL 部署叠加层（与 docker-compose.deploy.yml 配合，--db mysql 激活）
+#
+# 用法（deploy-image.sh --db mysql 自动叠加；手动等价形式）：
+#   docker compose -f docker-compose.deploy.yml \
+#                  -f docker-compose.mysql.deploy.yml \
+#                  --profile mysql up -d
+#
+# 后端首次启动自动执行 db/schema-mysql.sql + db/data-mysql.sql（ADR-0015）。
+# 数据落 mysql_data 命名卷；SQLite 挂载目录在 MySQL 模式下不使用。
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: game_platform_root
+      MYSQL_DATABASE: game_platform
+      MYSQL_USER: game_platform
+      MYSQL_PASSWORD: game_platform_123
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ugame_platform", "-pgame_platform_123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  backend:
+    profiles: ["mysql"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/game_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SPRING_DATASOURCE_USERNAME: game_platform
+      SPRING_DATASOURCE_PASSWORD: game_platform_123
+
+volumes:
+  mysql_data:
