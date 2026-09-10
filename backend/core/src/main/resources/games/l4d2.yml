@@ -30,6 +30,8 @@ game:
   docker:
     image: cm2network/left4dead2
     tag: latest
+    # 容器内服务端根目录（InstanceFileService/地图列表的相对路径基准）
+    workingDir: /home/steam/l4d2-dedicated
     env:
       SRCDS_TOKEN: ""
       SRCDS_RCONPW: "rconpassword"

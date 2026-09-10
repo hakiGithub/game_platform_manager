@@ -1,6 +1,6 @@
 # 04 — 数据库初始化竞态：Tomcat 可服务后 ~15s 内所有请求 500
 
-**Status:** needs-triage
+**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）
 
 ## 现象
 

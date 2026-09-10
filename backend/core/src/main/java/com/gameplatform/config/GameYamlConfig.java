@@ -115,6 +115,12 @@ public class GameYamlConfig {
         private String image;
 
         /**
+         * 容器内服务端根目录（工作目录）。InstanceFileService/地图列表等以该目录
+         * 为相对路径基准（如 left4dead2/addons）；缺省由适配器决定（/home/steam）。
+         */
+        private String workingDir;
+
+        /**
          * 镜像标签(版本)
          */
         private String tag;

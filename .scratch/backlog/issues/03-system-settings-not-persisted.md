@@ -1,6 +1,6 @@
 # 03 — 系统设置假回环：GET 硬编码 / PUT 空壳，保存永不生效
 
-**Status:** needs-triage
+**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）
 
 ## 现象
 

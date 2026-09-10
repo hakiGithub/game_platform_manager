@@ -7,6 +7,7 @@ import com.gameplatform.plugin.l4d2.util.VpkParser;
 import com.gameplatform.plugin.l4d2.vo.MapListVO;
 import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
+import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
@@ -51,16 +52,45 @@ public class MapService {
 
     /**
      * 列出实例的所有地图（VPK 战役）。
+     *
+     * <p>经 InstanceFileService 列举与读取（Native=installPath，Docker=容器内
+     * workingDir）——与 doUpload/deleteMap 的落位通道一致。此前走 VpkParserService
+     * 的本机 Files.list，对任何远程/容器部署都只能看到后端进程工作目录（缺陷 #02）。
      */
     public List<MapListVO> listMaps(Long instanceId) {
         log.info("获取地图列表, instanceId: {}", instanceId);
         requireInstance(instanceId);
         String addonsPath = pathResolver.getAddonsPath();
 
-        List<VpkParser.Campaign> campaigns = vpkParserService.getCampaignList(addonsPath);
         List<MapListVO> voList = new ArrayList<>();
-        for (VpkParser.Campaign campaign : campaigns) {
-            voList.add(convertToMapListVO(campaign));
+        List<FileAccessService.FileInfo> files = instanceFileService.listFiles(instanceId, addonsPath);
+        for (FileAccessService.FileInfo file : files) {
+            if (file.isDirectory() || !file.getName().toLowerCase().endsWith(".vpk")) {
+                continue;
+            }
+            String filename = file.getName();
+            try {
+                // 下载到临时文件复用 VpkParser 完整解析（含 missions 提取）
+                Path tempVpk = Files.createTempFile("l4d2_list_", ".vpk");
+                try {
+                    instanceFileService.downloadFile(instanceId,
+                            addonsPath + "/" + filename, tempVpk.toString());
+                    VpkParser.VpkArchive archive = new VpkParser().parse(tempVpk.toFile());
+                    if (archive == null) {
+                        continue;
+                    }
+                    MapListVO vo = buildMapListVOFromArchive(archive, filename);
+                    boolean exists = voList.stream()
+                            .anyMatch(v -> v.getTitle().equals(vo.getTitle()));
+                    if (!exists) {
+                        voList.add(vo);
+                    }
+                } finally {
+                    Files.deleteIfExists(tempVpk);
+                }
+            } catch (Exception e) {
+                log.warn("解析 VPK 失败，跳过: {}, err={}", filename, e.getMessage());
+            }
         }
         return voList;
     }

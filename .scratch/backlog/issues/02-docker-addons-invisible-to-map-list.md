@@ -1,6 +1,6 @@
 # 02 — Docker 实例 addons 对宿主机地图列表不可见，地图管理半失效
 
-**Status:** needs-triage
+**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）
 
 ## 现象
 

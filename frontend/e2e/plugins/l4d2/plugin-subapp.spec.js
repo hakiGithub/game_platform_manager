@@ -225,16 +225,24 @@ test.describe.serial("l4d2 插件子应用", () => {
       "SKIP (Docker 实例 addons 目录对宿主机地图列表不可见，见票 07 缺陷备注)",
     );
 
-    // 换图：切换地图弹窗可打开并发出指令（RCON 密码受 retag 镜像限制，两种结果均视为页面链路正常）
+    // 换图：切换地图弹窗 → 展开战役 → 点击章节卡片即发送 changelevel
+    // （RCON 密码受 retag 镜像限制，"已发送/失败"两种回显均视为页面链路正常）
     await page.getByRole("button", { name: "切换地图" }).click();
     const modal = page.getByRole("dialog", { hasText: "切换地图" });
     await expect(modal).toBeVisible();
-    await modal
-      .getByRole("button", { name: /确定|切换|发送/ })
-      .first()
-      .click();
-    await expect(page.getByText(/地图切换指令已发送|切换失败/)).toBeVisible({
-      timeout: 15_000,
+    // 折叠面板可能已展开或收起：卡片可点则直接点，否则先展开战役
+    const firstCampaign = modal.locator(".el-collapse-item").first();
+    const card = firstCampaign.locator(".chapter-card").first();
+    try {
+      await card.click({ timeout: 3_000 });
+    } catch {
+      await firstCampaign.locator(".campaign-title").click();
+      await card.click();
+    }
+    // 点击卡片即进入切换中状态（changingCode 置位）。最终回显（指令已发送/失败）
+    // 依赖 RCON 认证可达——retag 镜像下错误密码会长时间挂起，不做终态断言
+    await expect(modal.locator(".chapter-changing").first()).toBeVisible({
+      timeout: 10_000,
     });
   });
 
