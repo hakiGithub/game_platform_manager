@@ -42,7 +42,7 @@ public interface HostMapper extends BaseMapper<Host> {
      * @param onlineStatus 在线状态
      * @return 影响行数
      */
-    @Update("UPDATE host_info SET online_status = #{onlineStatus}, update_time = datetime('now', 'localtime') WHERE id = #{hostId}")
+    @Update("UPDATE host_info SET online_status = #{onlineStatus} WHERE id = #{hostId}")
     int updateOnlineStatus(@Param("hostId") Long hostId, @Param("onlineStatus") Integer onlineStatus);
 
     /**
@@ -54,7 +54,7 @@ public interface HostMapper extends BaseMapper<Host> {
      * @param diskUsage   磁盘使用率
      * @return 影响行数
      */
-    @Update("UPDATE host_info SET cpu_usage = #{cpuUsage}, memory_usage = #{memoryUsage}, disk_usage = #{diskUsage}, last_check_time = datetime('now', 'localtime'), update_time = datetime('now', 'localtime') WHERE id = #{hostId}")
-    int updateResourceUsage(@Param("hostId") Long hostId, @Param("cpuUsage") java.math.BigDecimal cpuUsage, @Param("memoryUsage") java.math.BigDecimal memoryUsage, @Param("diskUsage") java.math.BigDecimal diskUsage);
+    @Update("UPDATE host_info SET cpu_usage = #{cpuUsage}, memory_usage = #{memoryUsage}, disk_usage = #{diskUsage}, last_check_time = #{lastCheckTime} WHERE id = #{hostId}")
+    int updateResourceUsage(@Param("hostId") Long hostId, @Param("cpuUsage") java.math.BigDecimal cpuUsage, @Param("memoryUsage") java.math.BigDecimal memoryUsage, @Param("diskUsage") java.math.BigDecimal diskUsage, @Param("lastCheckTime") java.time.LocalDateTime lastCheckTime);
 
 }

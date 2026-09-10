@@ -300,7 +300,8 @@ public class HostServiceImpl implements HostService {
                         id,
                         BigDecimal.valueOf(cpuUsage != null ? cpuUsage : 0.0),
                         BigDecimal.valueOf(memoryUsage != null ? memoryUsage : 0.0),
-                        BigDecimal.valueOf(diskUsage != null ? diskUsage : 0.0)
+                        BigDecimal.valueOf(diskUsage != null ? diskUsage : 0.0),
+                        java.time.LocalDateTime.now()
                 );
 
                 log.info("主机状态刷新成功: {} - CPU: {}%, 内存: {}%, 磁盘: {}%",

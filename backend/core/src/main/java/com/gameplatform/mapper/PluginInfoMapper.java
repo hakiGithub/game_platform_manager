@@ -51,7 +51,7 @@ public interface PluginInfoMapper extends BaseMapper<PluginInfo> {
      * @param status 状态
      * @return 影响行数
      */
-    @Update("UPDATE plugin_info SET status = #{status}, update_time = datetime('now', 'localtime') WHERE id = #{id}")
+    @Update("UPDATE plugin_info SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") Long id, @Param("status") Integer status);
 
     /**
@@ -61,7 +61,7 @@ public interface PluginInfoMapper extends BaseMapper<PluginInfo> {
      * @param runtimeState 运行时状态
      * @return 影响行数
      */
-    @Update("UPDATE plugin_info SET runtime_state = #{runtimeState}, update_time = datetime('now', 'localtime') WHERE id = #{id}")
+    @Update("UPDATE plugin_info SET runtime_state = #{runtimeState} WHERE id = #{id}")
     int updateRuntimeState(@Param("id") Long id, @Param("runtimeState") String runtimeState);
 
     /**
@@ -97,7 +97,7 @@ public interface PluginInfoMapper extends BaseMapper<PluginInfo> {
      * @param startTime 启动时间
      * @return 影响行数
      */
-    @Update("UPDATE plugin_info SET start_time = #{startTime}, runtime_state = 'STARTED', update_time = datetime('now', 'localtime') WHERE id = #{id}")
+    @Update("UPDATE plugin_info SET start_time = #{startTime}, runtime_state = 'STARTED' WHERE id = #{id}")
     int updateStartTime(@Param("id") Long id, @Param("startTime") String startTime);
 
     /**
@@ -107,7 +107,7 @@ public interface PluginInfoMapper extends BaseMapper<PluginInfo> {
      * @param loadTime 加载时间
      * @return 影响行数
      */
-    @Update("UPDATE plugin_info SET load_time = #{loadTime}, update_time = datetime('now', 'localtime') WHERE id = #{id}")
+    @Update("UPDATE plugin_info SET load_time = #{loadTime} WHERE id = #{id}")
     int updateLoadTime(@Param("id") Long id, @Param("loadTime") String loadTime);
 
 }

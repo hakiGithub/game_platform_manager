@@ -73,7 +73,7 @@ public interface BackupRecordMapper extends BaseMapper<BackupRecord> {
      * @param errorMessage 错误信息
      * @return 影响行数
      */
-    @Update("UPDATE backup_record SET status = #{status}, error_message = #{errorMessage}, update_time = datetime('now', 'localtime') WHERE id = #{backupId}")
+    @Update("UPDATE backup_record SET status = #{status}, error_message = #{errorMessage} WHERE id = #{backupId}")
     int updateStatus(@Param("backupId") Long backupId, @Param("status") Integer status, @Param("errorMessage") String errorMessage);
 
     /**
@@ -83,7 +83,7 @@ public interface BackupRecordMapper extends BaseMapper<BackupRecord> {
      * @param progress 进度(0-100)
      * @return 影响行数
      */
-    @Update("UPDATE backup_record SET progress = #{progress}, update_time = datetime('now', 'localtime') WHERE id = #{backupId}")
+    @Update("UPDATE backup_record SET progress = #{progress} WHERE id = #{backupId}")
     int updateProgress(@Param("backupId") Long backupId, @Param("progress") Integer progress);
 
     /**
@@ -97,9 +97,9 @@ public interface BackupRecordMapper extends BaseMapper<BackupRecord> {
      * @return 影响行数
      */
     @Update("UPDATE backup_record SET status = #{status}, file_size = #{fileSize}, file_md5 = #{fileMd5}, " +
-            "error_message = #{errorMessage}, complete_time = datetime('now', 'localtime'), " +
-            "update_time = datetime('now', 'localtime') WHERE id = #{backupId}")
-    int updateCompleteInfo(@Param("backupId") Long backupId, @Param("status") Integer status,
+            "error_message = #{errorMessage}, complete_time = #{completeTime} " +
+            "WHERE id = #{backupId}")
+    int updateCompleteInfo(@Param("backupId") Long backupId, @Param("status") Integer status, @Param("completeTime") java.time.LocalDateTime completeTime,
                            @Param("fileSize") Long fileSize, @Param("fileMd5") String fileMd5,
                            @Param("errorMessage") String errorMessage);
 
@@ -109,7 +109,7 @@ public interface BackupRecordMapper extends BaseMapper<BackupRecord> {
      * @param backupId 备份ID
      * @return 影响行数
      */
-    @Update("UPDATE backup_record SET retry_count = retry_count + 1, update_time = datetime('now', 'localtime') WHERE id = #{backupId}")
+    @Update("UPDATE backup_record SET retry_count = retry_count + 1 WHERE id = #{backupId}")
     int incrementRetryCount(@Param("backupId") Long backupId);
 
     /**

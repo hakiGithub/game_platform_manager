@@ -253,7 +253,7 @@ public class BackupServiceImpl implements BackupService {
 
             // 更新备份记录
             backupRecordMapper.updateCompleteInfo(backupId, BackupRecord.STATUS_SUCCESS,
-                    fileSize, fileMd5, null);
+                    java.time.LocalDateTime.now(), fileSize, fileMd5, null);
 
             // 更新实例最后备份时间
             instance.setLastBackupTime(LocalDateTime.now());
@@ -462,7 +462,7 @@ public class BackupServiceImpl implements BackupService {
 
             // 更新备份记录
             backupRecordMapper.updateCompleteInfo(backupId, BackupRecord.STATUS_SUCCESS,
-                    fileSize, fileMd5, null);
+                    java.time.LocalDateTime.now(), fileSize, fileMd5, null);
 
             // 更新实例最后备份时间
             instance.setLastBackupTime(LocalDateTime.now());
@@ -492,7 +492,7 @@ public class BackupServiceImpl implements BackupService {
             log.info("备份失败,准备重试: backupId={}, retryCount={}", backupId, record.getRetryCount() + 1);
             // 这里可以实现重试逻辑
         } else {
-            backupRecordMapper.updateCompleteInfo(backupId, BackupRecord.STATUS_FAILED, 0L, null, errorMessage);
+            backupRecordMapper.updateCompleteInfo(backupId, BackupRecord.STATUS_FAILED, java.time.LocalDateTime.now(), 0L, null, errorMessage);
         }
 
         backupCancellationMap.remove(backupId);

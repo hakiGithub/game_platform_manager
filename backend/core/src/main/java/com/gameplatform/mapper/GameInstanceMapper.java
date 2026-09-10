@@ -61,7 +61,7 @@ public interface GameInstanceMapper extends BaseMapper<GameInstance> {
      * @param runStatus  运行状态
      * @return 影响行数
      */
-    @Update("UPDATE game_instance SET run_status = #{runStatus}, update_time = datetime('now', 'localtime') WHERE id = #{instanceId}")
+    @Update("UPDATE game_instance SET run_status = #{runStatus} WHERE id = #{instanceId}")
     int updateRunStatus(@Param("instanceId") Long instanceId, @Param("runStatus") Integer runStatus);
 
     /**
@@ -71,7 +71,7 @@ public interface GameInstanceMapper extends BaseMapper<GameInstance> {
      * @param onlinePlayers 在线玩家数
      * @return 影响行数
      */
-    @Update("UPDATE game_instance SET online_players = #{onlinePlayers}, update_time = datetime('now', 'localtime') WHERE id = #{instanceId}")
+    @Update("UPDATE game_instance SET online_players = #{onlinePlayers} WHERE id = #{instanceId}")
     int updateOnlinePlayers(@Param("instanceId") Long instanceId, @Param("onlinePlayers") Integer onlinePlayers);
 
     /**
