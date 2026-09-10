@@ -15,6 +15,8 @@
 
 > **产品修复 ×2**（E2E 发现）：① `DockerAdapter.getPortMappings/getVolumeMounts` 对游戏元数据字符串形式的端口/卷映射（"27015:27015/tcp"）盲转 Map 抛 ClassCastException——docker 部署类型对所有此类元数据不可用，已兼容两种形式（含匿名卷）；② `detail.vue` 创建备份发送 `name/type`，后端契约要求 `backupName/backupType`——备份创建功能整体不可用，已按契约映射。
 >
-> **待修缺陷记录**：③ 备份异步执行器不推进——`BackupServiceImpl.performFileBackupAsync` 为 `@Async protected` 且同类自调用（Spring 代理不生效），叠加 Docker 实例源路径不存在，备份记录永远停在 0（备份中）；修复后应将用例中的 SKIP 断言转回状态轮询。④ 宿主卫生助手 `support/host-hygiene.js` 清理失败链遗留的 `game-instance-*` 容器（仅 127.0.0.1 托管环境生效）。
+> **产品修复 ×3**（整轮演练发现）：③ `host_info.ip_address` 有数据库唯一约束而删除主机为软删除——**同一 IP 主机删除后永远无法重新纳管**（500 UNIQUE 冲突）；`HostServiceImpl.createHost` 现于插入前物理清理同 IP 软删行，整轮验证修复路径被实战触发。
+>
+> **待修缺陷记录**：④ 备份异步执行器不推进——`BackupServiceImpl.performFileBackupAsync` 为 `@Async protected` 且同类自调用（Spring 代理不生效），叠加 Docker 实例源路径不存在，备份记录永远停在 0（备份中）；修复后应将用例中的 SKIP 断言转回状态轮询。⑤ 宿主卫生助手 `support/host-hygiene.js` 清理失败链遗留的 `game-instance-*` 容器（仅 127.0.0.1 托管环境生效）。
 >
 > 实施事实：环境校验在「下一步」点击时执行并通过后自动进确认步；详情页停止/重启确认框为 ElMessageBox 默认「确定」按钮；卸载按钮仅对「已停止」实例显示（运行中走先停后卸）；牺牲主机 27015 被真实 l4d2 服务占用，演练端口挪移 27025 系；Docker Hub 对 cm2network/left4dead2 拉取被网络干扰拒绝，经本地镜像 retag + 适配器本地存在即跳过拉取绕开。

@@ -61,7 +61,13 @@ test.describe.serial("dst / sdtd 演练腿", () => {
       sshPassword: e2eEnv.testHost.auth,
     });
     hostId = created.body?.data?.id ?? null;
-    expect(hostId).toBeTruthy();
+    if (!hostId) {
+      throw new Error(
+        `前置主机创建失败: HTTP ${created.status} ${JSON.stringify(
+          created.body,
+        )}`,
+      );
+    }
     await api.post(`/api/hosts/${hostId}/test`);
   });
 
@@ -109,7 +115,13 @@ test.describe.serial("dst / sdtd 演练腿", () => {
         const game = (games.body?.data ?? []).find(
           (g) => g.gameCode === leg.code,
         );
-        expect(game).toBeTruthy();
+        if (!game) {
+          throw new Error(
+            `${leg.code} 未在游戏目录中找到: HTTP ${games.status}, 列表大小=${
+              (games.body?.data ?? []).length
+            }, body=${JSON.stringify(games.body).slice(0, 300)}`,
+          );
+        }
 
         const deployed = await api.post("/api/instances", {
           instanceName: leg.instance,
@@ -127,7 +139,13 @@ test.describe.serial("dst / sdtd 演练腿", () => {
           },
         });
         instanceId = deployed.body?.data?.id ?? null;
-        expect(instanceId).toBeTruthy();
+        if (!instanceId) {
+          throw new Error(
+            `${leg.code} 实例创建失败: HTTP ${deployed.status} ${JSON.stringify(
+              deployed.body,
+            )}`,
+          );
+        }
 
         // 部署任务完成后实例进入稳定态（自动启动关闭 → 已停止）
         const deadline = Date.now() + 10 * 60_000;

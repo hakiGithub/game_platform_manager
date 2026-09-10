@@ -21,6 +21,7 @@ import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,7 @@ public class HostServiceImpl implements HostService {
     private final SshUtil sshUtil;
     private final DeploymentAccess deployAccess;
     private final SshTunnelManager sshTunnelManager;
+    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 加密密钥(生产环境应从配置读取)
@@ -61,6 +63,16 @@ public class HostServiceImpl implements HostService {
         Host existHost = hostMapper.selectByIpAddress(dto.getIp());
         if (existHost != null) {
             throw new BusinessException("该IP地址已存在");
+        }
+
+        // 物理清理同 IP 的软删行：host_info.ip_address 有数据库级唯一约束，
+        // 而删除主机为软删除（is_deleted=1 行仍占用唯一键），不清会导致
+        // 同 IP 主机删除后永远无法重新纳管（E2E 全量演练发现）
+        int purged = jdbcTemplate.update(
+                "DELETE FROM host_info WHERE ip_address = ? AND is_deleted = 1",
+                dto.getIp());
+        if (purged > 0) {
+            log.info("主机重新纳管: 物理清理同 IP 软删记录 {} 行 (ip={})", purged, dto.getIp());
         }
 
         Host host = new Host();

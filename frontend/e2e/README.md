@@ -10,6 +10,10 @@ cd frontend
 # 受管模式（推荐）：临时 SQLite 起后端+前端 → 跑全部用例 → 报告 → 清理
 npm run e2e
 
+# 整轮编排：六个分组保序执行（无主机用例 → 主机 → 生命周期 → 插件 → 演练腿），
+# 聚合各分组结果并输出整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）
+npm run e2e:round
+
 # 跳过 mvn 编译（之前编译过一次、core/target/cp.txt 存在时）
 E2E_FAST=1 npm run e2e
 
@@ -21,6 +25,20 @@ npm run e2e:report
 ```
 
 首次运行前：`npm install` + `npx playwright install chromium`。
+
+## 牺牲主机凭据（凭据不入库）
+
+在 `frontend/e2e/.env.local`（已被 .gitignore，格式 KEY=VALUE）写入：
+
+```
+E2E_TEST_HOST_ADDRESS=127.0.0.1
+E2E_TEST_HOST_PORT=22
+E2E_TEST_HOST_USERNAME=haki
+E2E_TEST_HOST_AUTH=你的密码
+```
+
+该文件由 runner 与用例进程自动装载（`support/env-file.js`），真实环境变量优先。
+红线：**凭据只存本地，绝不提交入库**。
 
 ## 测试数据仓库（e2e/fixtures/）
 

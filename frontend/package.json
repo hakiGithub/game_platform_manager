@@ -13,6 +13,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "e2e": "node e2e/runner.mjs",
+    "e2e:round": "node e2e/runner.mjs --round",
     "e2e:attach": "node e2e/runner.mjs --attach",
     "e2e:report": "playwright show-report e2e/.report"
   },

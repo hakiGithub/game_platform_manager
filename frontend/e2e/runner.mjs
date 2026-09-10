@@ -19,6 +19,7 @@ const PROJECT_DIR = resolve(FRONTEND_DIR, "..");
 const TMP_DIR = join(E2E_DIR, ".tmp");
 
 const ATTACH = process.argv.includes("--attach");
+const ROUND = process.argv.includes("--round");
 const BASE_URL = e2eEnv.baseUrl;
 const BACKEND_URL = e2eEnv.backendUrl;
 const FRONTEND_PORT = new URL(BASE_URL).port || "80";
@@ -161,6 +162,104 @@ function stopStack() {
   clearTmp();
 }
 
+// 整轮分组：保序执行（无主机用例先行，部署腿最后——插件"零实例"用例依赖未部署状态）
+const ROUND_GROUPS = [
+  {
+    name: "冒烟与导航",
+    paths: ["e2e/infra", "e2e/main-app/auth", "e2e/main-app/workspace"],
+  },
+  {
+    name: "无主机页面组",
+    paths: [
+      "e2e/main-app/games",
+      "e2e/main-app/system",
+      "e2e/main-app/tasks",
+      "e2e/main-app/plugins",
+    ],
+  },
+  { name: "主机纳管", paths: ["e2e/main-app/host"] },
+  {
+    name: "实例生命周期 l4d2",
+    paths: ["e2e/main-app/instance/lifecycle.spec.js"],
+  },
+  { name: "插件子应用 l4d2", paths: ["e2e/plugins/l4d2"] },
+  {
+    name: "dst/sdtd 演练腿",
+    paths: ["e2e/main-app/instance/drill-legs.spec.js"],
+  },
+];
+
+function runPlaywright(args, opts = {}) {
+  return run(
+    "node",
+    ["node_modules/@playwright/test/cli.js", "test", ...args],
+    {
+      cwd: FRONTEND_DIR,
+      env: {
+        ...process.env,
+        E2E_BASE_URL: BASE_URL,
+        E2E_BACKEND_URL: BACKEND_URL,
+      },
+      ...opts,
+    },
+  );
+}
+
+function parseSummary(output) {
+  const pick = (re) => {
+    const m = output.match(re);
+    return m ? Number(m[1]) : 0;
+  };
+  return {
+    passed: pick(/(\d+)\s+passed/),
+    failed: pick(/(\d+)\s+failed/),
+    skipped: pick(/(\d+)\s+skipped/),
+    didNotRun: pick(/(\d+)\s+did not run/),
+    interrupted:
+      /interrupted|Timed out waiting for/.test(output) &&
+      !/failed/.test(output),
+  };
+}
+
+async function runRound() {
+  const deadline =
+    Date.now() + Number(process.env.E2E_ROUND_TIMEOUT ?? 150) * 60_000;
+  const tally = { passed: 0, failed: 0, skipped: 0, didNotRun: 0 };
+  for (const group of ROUND_GROUPS) {
+    if (Date.now() > deadline) {
+      log(`整轮看门狗超时，跳过剩余分组：${group.name}`);
+      tally.didNotRun += 1; // 以分组数计的未执行标记
+      continue;
+    }
+    log(`—— 分组[${group.name}]开始 ——`);
+    // 管道捕获以便聚合；分组结束后回显完整输出保持可见性
+    const r = runPlaywright([...group.paths, "--reporter=list"], {
+      stdio: ["ignore", "pipe", "inherit"],
+      encoding: "utf8",
+    });
+    if (r.stdout) process.stdout.write(r.stdout);
+    const status = r.status ?? 1;
+    const summary = parseSummary(r.stdout ?? "");
+    tally.passed += summary.passed;
+    tally.failed += summary.failed;
+    tally.skipped += summary.skipped;
+    tally.didNotRun += summary.didNotRun;
+    log(
+      `分组[${group.name}]结束：退出码 ${status}，+${summary.passed} 通过 / +${summary.failed} 失败 / +${summary.skipped} 跳过`,
+    );
+  }
+
+  log("========== 整轮结果 ==========");
+  log(
+    `总数 ${tally.passed + tally.failed + tally.skipped} = 通过 ${tally.passed} + 失败 ${tally.failed} + 跳过 ${tally.skipped}` +
+      (tally.didNotRun ? `（另有 ${tally.didNotRun} 项未执行）` : ""),
+  );
+  const verdict = tally.failed === 0 && tally.didNotRun === 0 ? "PASS" : "FAIL";
+  log(`整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）: ${verdict}`);
+  log(`HTML 报告: npm run e2e:report`);
+  return verdict === "PASS" ? 0 : 1;
+}
+
 async function main() {
   if (ATTACH) {
     log(`附着模式：直接对 ${BASE_URL} 跑用例（不起栈、不清理）`);
@@ -172,16 +271,13 @@ async function main() {
     await waitForHttp(`${BASE_URL}/`, "前端");
   }
 
+  if (ROUND) {
+    return runRound();
+  }
+
   log("执行 Playwright 用例...");
   // Windows 下 npx 是 .cmd，spawn 不带 shell 会静默失败 —— 直接用 node 调 CLI 入口
-  const r = run("node", ["node_modules/@playwright/test/cli.js", "test"], {
-    cwd: FRONTEND_DIR,
-    env: {
-      ...process.env,
-      E2E_BASE_URL: BASE_URL,
-      E2E_BACKEND_URL: BACKEND_URL,
-    },
-  });
+  const r = runPlaywright([]);
   log(`用例执行结束，退出码 ${r.status}（报告: npm run e2e:report）`);
   return r.status ?? 1;
 }
