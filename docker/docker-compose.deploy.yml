@@ -1,0 +1,42 @@
+# 部署编排（scripts/deploy-image.sh 目标机侧使用）—— ADR-0012 插件挂载语义的兑现
+#
+# 与 docker-compose.yml（开发/自建）的差异：
+#   1. 镜像使用版本化 tag（IMAGE_TAG，由部署脚本注入，保留策略见脚本）
+#   2. 挂载目录全部参数化（GPM_DEPLOY_DIR，默认 ~/gpm-deploy），不绑定仓库相对路径
+#   3. 无 build 段——镜像由脚本在本机构建后（目标机构建模式则先 compose build 再 retag）
+#
+# 环境变量（脚本在目标机生成 .env 提供）：
+#   IMAGE_TAG      镜像版本 tag（如 20260910-153000）
+#   GPM_DEPLOY_DIR 挂载目录根（默认 /home/<user>/gpm-deploy）
+#   FRONTEND_PORT  前端对外端口（默认 8081）
+services:
+  backend:
+    image: game-platform-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # WSL 等小内存验证机的堆预算（与开发态调优一致，防 OOM Kill）
+      JAVA_OPTS: -Xms256m -Xmx384m -XX:+UseG1GC
+      SPRING_DATASOURCE_URL: jdbc:sqlite:/app/data/game_platform.db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.sqlite.JDBC
+      GAME_PLATFORM_DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ${GPM_DEPLOY_DIR}/data:/app/data
+      - ${GPM_DEPLOY_DIR}/plugins:/app/plugins    # 插件目录挂载（热部署 30s 扫描）
+      - ${GPM_DEPLOY_DIR}/backups:/app/backups
+      - ${GPM_DEPLOY_DIR}/storage:/app/storage
+      - ${GPM_DEPLOY_DIR}/temp:/app/temp
+      - ${GPM_DEPLOY_DIR}/games:/app/games
+      - ${GPM_DEPLOY_DIR}/logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8080"
+
+  frontend:
+    image: game-platform-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"

@@ -1,0 +1,11 @@
+# backend 镜像构建上下文排除（上下文 = backend/）
+target
+data
+logs
+plugins
+backups
+storage
+temp
+games
+*.log
+*.pid

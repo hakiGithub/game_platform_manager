@@ -1,0 +1,38 @@
+# Docker 构建上下文排除清单（上下文=仓库根，服务 backend/frontend 两个 Dockerfile 共用）
+# 目标：上下文只含源码与构建描述，不含依赖产物/运行时数据/版本库
+
+.git
+.trae
+.scratch
+.agents
+docs
+docs/design
+.venv
+
+# 依赖与构建产物
+**/node_modules
+**/target
+**/dist
+**/coverage
+frontend/test-results
+frontend/playwright-report
+
+# 运行时数据（容器内由 volume 挂载提供）
+backend/data
+backend/logs
+backend/plugins
+backend/backups
+backend/storage
+backend/temp
+backend/games
+
+# E2E 与本地工具产物
+frontend/e2e/.tmp
+frontend/e2e/.report
+frontend/e2e/.artifacts
+frontend/e2e/.env.local
+*.log
+*.pid
+
+# 镜像/ Steam302 等独立构建目录不在本上下文使用
+docker/steam302

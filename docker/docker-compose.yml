@@ -4,8 +4,8 @@
 services:
   backend:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.backend
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
     image: game-platform-backend:latest
     restart: unless-stopped
     environment:
