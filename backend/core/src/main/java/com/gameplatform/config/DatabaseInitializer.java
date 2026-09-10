@@ -1,9 +1,9 @@
 package com.gameplatform.config;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -22,13 +22,17 @@ import java.nio.file.Paths;
  *       增量结构升级需另行提供方言迁移方案</li>
  * </ul>
  *
+ * <p>时序：经 {@code @PostConstruct} 在单例初始化阶段执行——早于 finishRefresh
+ * 阶段 Web 端口绑定，杜绝"端口已可访问但核心表未建"的请求 500 窗口
+ * （此前为 CommandLineRunner，全新库启动后有 ~17s 的 500 窗口，E2E 缺陷 #04）。
+ *
  * @author GamePlatform
  * @version 1.1.0
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DatabaseInitializer implements CommandLineRunner {
+public class DatabaseInitializer {
 
     private final DatabaseDialectResolver dialectResolver;
     private final DatabaseScriptExecutor scriptExecutor;
@@ -37,8 +41,8 @@ public class DatabaseInitializer implements CommandLineRunner {
     @Value("${spring.datasource.url}")
     private String datasourceUrl;
 
-    @Override
-    public void run(String... args) throws Exception {
+    @PostConstruct
+    public void run() throws Exception {
         DatabaseDialect dialect = dialectResolver.resolve();
         log.info("开始初始化数据库（方言: {}）...", dialect);
 
