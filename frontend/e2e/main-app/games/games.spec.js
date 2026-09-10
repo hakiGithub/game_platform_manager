@@ -13,6 +13,8 @@ import { test, expect } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { injectSession } from "../../support/session.js";
+import { createApi, login } from "../../support/api.js";
+import { e2eEnv } from "../../support/env.js";
 
 const FIXTURE_YML = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -20,6 +22,28 @@ const FIXTURE_YML = join(
 );
 
 test.describe.serial("游戏元数据", () => {
+  test("元数据全量注册守护（yml 与配置类不同步会表现为注册数骤降）", async ({
+    request,
+  }) => {
+    const token = await login(
+      e2eEnv.backendUrl,
+      e2eEnv.adminUser,
+      e2eEnv.adminPass,
+    );
+    const res = await request.get(`${e2eEnv.backendUrl}/api/games/list`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const games = (await res.json()).data ?? [];
+    // 内置元数据目录 139 个 yml；任何键与配置类不同步导致的解析失败都会减员
+    expect(games.length).toBeGreaterThanOrEqual(100);
+    for (const code of ["l4d2", "dst", "sdtd", "minecraft", "ark"]) {
+      expect(
+        games.some((g) => g.gameCode === code),
+        `游戏目录缺少 ${code}（元数据解析失败或未注册）`,
+      ).toBe(true);
+    }
+  });
+
   test("游戏目录加载且筛选可见内置游戏", async ({ page }) => {
     await injectSession(page);
     await page.goto("/services/games/list");
