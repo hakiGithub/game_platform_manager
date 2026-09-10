@@ -1,7 +1,7 @@
 /**
- * 页面: 部署向导 / 实例列表 / 实例详情（含备份还原 tab）
+ * 页面: 部署向导 / 实例列表 / 实例详情
  * 用例: 实例生命周期全链路（l4d2 演练腿·前半）—— API 造主机 → 向导真实部署 l4d2(Docker)
- *       → 等待运行中 → 详情静态+动态 → 停止/启动/重启 → 文件备份成功 → 还原 → 卸载
+ *       → 等待运行中 → 详情静态+动态 → 停止/启动/重启 → 卸载
  * 前置: 平台前后端已运行；E2E_TEST_HOST_* 指向装有 Docker 的牺牲主机（WSL）；
  *       网络可拉取 cm2network/left4dead2 镜像（数 GB，首启经 SteamCMD 更新，耗时属预期）
  * 通过标准（逐用例声明，超时按规格放宽）:
@@ -11,9 +11,8 @@
  *  - 停止: 确认「确定停止」后轮询至「已停止」（上限 5 分钟）
  *  - 启动: 轮询回「运行中」（上限 5 分钟）
  *  - 重启: 确认「确定重启」后轮询回「运行中」（上限 5 分钟）
- *  - 备份: 创建文件备份，列表状态轮询至「成功」（上限 10 分钟）
- *  - 还原: 确认还原后提示「还原任务已启动」
  *  - 卸载: 输入实例名确认卸载，列表不再出现（上限 5 分钟）
+ * 注: 备份还原功能已临时下线（.scratch/backlog/issues/01），相关用例随之移除
  */
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
@@ -26,7 +25,6 @@ skipWithoutTestHost();
 
 const HOST_NAME = "e2e-wsl-deploy-host";
 const INSTANCE_NAME = "e2e-l4d2-01";
-const BACKUP_NAME = "e2e-backup-01";
 
 test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
   let api = null;
@@ -206,84 +204,6 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
       .getByRole("button", { name: "确定" })
       .click();
     await pollInstanceStatus("运行中", 5 * 60_000);
-  });
-
-  test("创建文件备份至成功", async ({ page }) => {
-    test.setTimeout(10 * 60_000);
-    await injectAndGoto(
-      page,
-      `/services/instances/detail/${instanceId}?tab=backup`,
-    );
-
-    // 落页身份守卫：必须仍在实例详情页（此前失败时页面曾被带到插件工作区）
-    await expect(page).toHaveURL(
-      new RegExp(`/services/instances/detail/${instanceId}`),
-      {
-        timeout: 20_000,
-      },
-    );
-    await expect(
-      page.getByRole("heading", { name: INSTANCE_NAME }),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: "创建备份" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("创建备份");
-    await dialog.getByText("文件备份").click();
-    await dialog.getByPlaceholder("请输入备份名称").fill(BACKUP_NAME);
-    await dialog.getByRole("button", { name: "开始备份" }).click();
-    await expect(
-      page.locator(".el-message--success, .el-message--error"),
-    ).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator(".el-message--success")).toContainText(
-      "备份任务已创建",
-    );
-
-    // 状态推进：0=备份中 1=成功 2=失败。已知产品缺陷：备份异步执行器对 Docker
-    // 实例不推进（@Async protected 自调用 + 元数据源路径不存在），记录会停在 0。
-    // 3 分钟内到 1 → 通过；到 2 → 失败；仍卡 0 → 显式跳过并注明缺陷。
-    const deadline = Date.now() + 3 * 60_000;
-    let backupStatus = 0;
-    while (Date.now() < deadline && backupStatus === 0) {
-      await page.waitForTimeout(10_000);
-      const res = await api.get(`/api/instances/${instanceId}/backups`);
-      const list = Array.isArray(res.body?.data)
-        ? res.body.data
-        : (res.body?.data?.records ?? []);
-      backupStatus =
-        list.find((b) => b.backupName === BACKUP_NAME)?.status ?? 0;
-    }
-    if (backupStatus === 0) {
-      test.skip(true, "SKIP (备份状态未推进：产品缺陷，见票 06 备注)");
-    }
-    expect(backupStatus).toBe(1);
-  });
-
-  test("还原备份任务启动", async ({ page }) => {
-    test.setTimeout(60_000);
-    // 还原仅对「成功」状态的备份开放；备份卡 0 时本用例失去前置，跳过并注明
-    const res = await api.get(`/api/instances/${instanceId}/backups`);
-    const list = Array.isArray(res.body?.data)
-      ? res.body.data
-      : (res.body?.data?.records ?? []);
-    const record = list.find((b) => b.backupName === BACKUP_NAME);
-    test.skip(
-      !record || record.status !== 1,
-      "SKIP (备份未达成功态，见票 06 缺陷备注)",
-    );
-    await injectAndGoto(
-      page,
-      `/services/instances/detail/${instanceId}?tab=backup`,
-    );
-
-    const row = page.locator(".el-table__row", { hasText: BACKUP_NAME });
-    await row.getByRole("button", { name: "还原" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("还原备份");
-    await dialog.getByRole("button", { name: "确认还原" }).click();
-    await expect(page.locator(".el-message--success")).toContainText(
-      "还原任务已启动",
-    );
   });
 
   test("卸载实例完成清理", async ({ page }) => {
