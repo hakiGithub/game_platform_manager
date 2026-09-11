@@ -57,6 +57,9 @@ public class HostCapabilityProber {
         } catch (Exception e) {
             throw new BusinessException("探测脚本加载失败: " + e.getMessage());
         }
+        // Windows 开发环境下资源文件可能带 CRLF 行尾，上传前归一为 LF
+        // （Linux shell 不认 \r，否则报 "\r: not found"）
+        script = script.replace("\r\n", "\n").replace('\r', '\n');
 
         // SFTP 推送脚本（不区分局域网，ADR-0006 决策 3）
         fileService.writeTextFile(hostId, REMOTE_SCRIPT_PATH, script);
@@ -72,6 +75,13 @@ public class HostCapabilityProber {
         cache.put(hostId, new CachedProbe(System.currentTimeMillis(), capabilities));
         log.info("主机能力探测完成: hostId={}, tools={}", hostId, capabilities.getTools());
         return capabilities;
+    }
+
+    /**
+     * 失效指定主机的探测缓存（如环境工具安装成功后立即刷新，ADR-0021）。
+     */
+    public void invalidate(Long hostId) {
+        cache.remove(hostId);
     }
 
     /**
@@ -95,6 +105,16 @@ public class HostCapabilityProber {
             }
             if (root.hasNonNull("tmpFreeKb")) {
                 caps.setTmpFreeKb(root.get("tmpFreeKb").asLong());
+            }
+            // ADR-0021 新增字段（老脚本输出缺失时保留默认值）
+            if (root.hasNonNull("packageManager")) {
+                caps.setPackageManager(root.get("packageManager").asText(""));
+            }
+            if (root.hasNonNull("docker")) {
+                caps.setDocker(root.get("docker").asBoolean(false));
+            }
+            if (root.hasNonNull("sudoNopasswd")) {
+                caps.setSudoNopasswd(root.get("sudoNopasswd").asBoolean(false));
             }
             return caps;
         } catch (Exception e) {
