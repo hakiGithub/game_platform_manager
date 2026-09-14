@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -46,6 +47,9 @@ class HostServiceTest {
     @Mock
     private HostMapper hostMapper;
 
+    @Mock
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
 
     @Mock
     private SshUtil sshUtil;
@@ -62,6 +66,9 @@ class HostServiceTest {
 
     @BeforeEach
     void setUp() {
+        // createHost 会物理清理同 IP 软删行（jdbcTemplate.update），默认无清理记录
+        when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(0);
+
         // Given: 初始化测试数据
         testHost = new Host();
         testHost.setId(1L);

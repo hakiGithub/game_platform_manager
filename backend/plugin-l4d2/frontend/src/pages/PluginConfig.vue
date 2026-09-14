@@ -26,6 +26,9 @@
         <el-button @click="showCandidates = true" :disabled="!selectedPlugin">
           查看候选路径
         </el-button>
+        <el-button type="warning" plain @click="onRestoreDefaults" :disabled="!selectedPlugin">
+          恢复默认配置
+        </el-button>
       </div>
     </div>
 
@@ -35,6 +38,13 @@
       </div>
 
       <div v-else>
+        <!-- 插件无候选 cfg 文件：configPath 为空的空配置结构 -->
+        <div v-if="config && !config.configPath" class="empty-tip">
+          <el-empty
+            description="未找到该插件的 cfg 配置文件——插件可能没有可编辑的配置项，或尚未安装/启用"
+          />
+        </div>
+
         <div v-if="config?.configPath" class="config-path">
           <span class="label">配置文件路径:</span>
           <code>{{ config.configPath }}</code>
@@ -179,8 +189,10 @@ async function onPluginChange(name: string) {
   loading.value = true
   try {
     const data = await pluginConfigApi.get(instanceId.value, name)
-    config.value = data
-    tableItems.value = (data.items || []).map(it => ({ ...it }))
+    // 后端对"无候选 cfg 文件"的插件返回空配置结构（items 为空数组）；
+    // 兼容旧后端可能的 null，避免 data.items 抛 TypeError 被误报为加载失败
+    config.value = data || null
+    tableItems.value = (data?.items || []).map(it => ({ ...it }))
   } catch (e: any) {
     ElMessage.error('加载配置失败：' + (e?.message || e))
     config.value = null
@@ -251,6 +263,37 @@ function formatTime(t?: string): string {
     return new Date(t).toLocaleString('zh-CN')
   } catch {
     return t
+  }
+}
+
+/**
+ * 恢复默认配置：调用后端立即将带 Default 注释的配置项重置并写回配置文件，
+ * 与底部"还原默认值"（仅暂存表格、需再点保存）不同，本操作直接落盘。
+ */
+async function onRestoreDefaults() {
+  if (!selectedPlugin.value || !instanceId.value) return
+  const count = tableItems.value.filter(
+    it => it.defaultValue !== undefined && it.defaultValue !== ''
+  ).length
+  if (!count) {
+    ElMessage.warning('该配置没有可恢复的默认值（配置项缺少 Default 注释）')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将把 ${count} 个配置项恢复为默认值，并立即写回配置文件（其余项保持不变）。确认恢复？`,
+      '恢复默认配置',
+      { type: 'warning', confirmButtonText: '恢复默认', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await pluginConfigApi.restoreDefaults(instanceId.value, selectedPlugin.value)
+    ElMessage.success('已恢复默认配置')
+    onPluginChange(selectedPlugin.value)
+  } catch (e: any) {
+    ElMessage.error('恢复默认失败：' + (e?.message || e))
   }
 }
 

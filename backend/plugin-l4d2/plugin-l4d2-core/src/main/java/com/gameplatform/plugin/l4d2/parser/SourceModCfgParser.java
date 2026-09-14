@@ -29,8 +29,10 @@ import java.util.regex.Pattern;
 @Component
 public class SourceModCfgParser {
 
+    // 键支持带引号与不带引号两种形式：SourceMod 自动生成的 cfg（sm cfgbuilder）
+    // 键不加引号（如 l4d2_health_Head_Boomer "2"），手工编辑的配置常见双引号键
     private static final Pattern KV_PATTERN =
-            Pattern.compile("\"([^\"]+)\"\\s+\"([^\"]+)\"\\s*(?://\\s*(.*))?");
+            Pattern.compile("\"?([^\"\\s]+)\"?\\s+\"([^\"]*)\"\\s*(?://\\s*(.*))?");
 
     private static final Pattern DEFAULT_PATTERN = Pattern.compile("Default:\\s*(\\S+)");
     private static final Pattern MIN_PATTERN = Pattern.compile("Min:\\s*(\\S+)");
@@ -65,6 +67,50 @@ public class SourceModCfgParser {
             item.setLineNumber(i + 1);
             String comment = m.group(3);
             if (comment != null) parseMetadata(comment, item);
+            // SourceMod 自动生成格式：Default/Min/Max 与描述在 KV 行上方的 "// " 注释块中，
+            // 向上扫描提取（缺省字段才回填，同行注释优先；空行/非注释行终止扫描）
+            int j = i - 1;
+            StringBuilder blockDesc = new StringBuilder();
+            while (j >= 0) {
+                String prev = lines[j].trim();
+                if (!prev.startsWith("//")) break;
+                String meta = prev.substring(2).trim();
+                if (meta.isEmpty() || meta.equals("-")) break;
+                if (item.getDefaultValue() == null) {
+                    Matcher dm = DEFAULT_PATTERN.matcher(meta);
+                    if (dm.find()) {
+                        String dv = dm.group(1);
+                        if (dv.length() >= 2 && dv.startsWith("\"") && dv.endsWith("\"")) {
+                            dv = dv.substring(1, dv.length() - 1);
+                        }
+                        item.setDefaultValue(dv);
+                    }
+                }
+                if (item.getMin() == null) {
+                    Matcher mn = MIN_PATTERN.matcher(meta);
+                    if (mn.find()) {
+                        try { item.setMin(Double.parseDouble(mn.group(1))); }
+                        catch (NumberFormatException ignored) {}
+                    }
+                }
+                if (item.getMax() == null) {
+                    Matcher mx = MAX_PATTERN.matcher(meta);
+                    if (mx.find()) {
+                        try { item.setMax(Double.parseDouble(mx.group(1))); }
+                        catch (NumberFormatException ignored) {}
+                    }
+                }
+                blockDesc.insert(0, meta + "\n");
+                j--;
+            }
+            if (item.getDescription() == null && blockDesc.length() > 0) {
+                String desc = blockDesc.toString()
+                        .replaceAll("Default:\\s*\\S+", "")
+                        .replaceAll("Min:\\s*\\S+", "")
+                        .replaceAll("Max:\\s*\\S+", "")
+                        .trim();
+                if (!desc.isEmpty()) item.setDescription(desc);
+            }
             items.add(item);
         }
         return items;
@@ -106,9 +152,15 @@ public class SourceModCfgParser {
             String line = lines[idx];
             Matcher m = KV_PATTERN.matcher(line.trim());
             if (m.matches()) {
-                String prefix = line.substring(0, line.indexOf('"'));
+                // 保留原行的键引号风格：带引号键写回 \"key\" \"value\"，
+                // 不带引号键（SourceMod 自动生成格式）写回 key \"value\"——
+                // 若统一补引号会把键拼进前缀造成键值重复（回归：保存后行损坏）
+                String trimmed = line.trim();
+                String indent = line.substring(0, line.length() - line.stripLeading().length());
+                boolean quotedKey = trimmed.startsWith("\"");
+                String keyPart = quotedKey ? "\"" + item.getKey() + "\"" : item.getKey();
                 String comment = m.group(3) != null ? " // " + m.group(3) : "";
-                lines[idx] = prefix + "\"" + item.getKey() + "\" \"" + item.getValue() + "\"" + comment;
+                lines[idx] = indent + keyPart + " \"" + item.getValue() + "\"" + comment;
             }
         }
         return String.join("\n", lines);

@@ -137,7 +137,8 @@
             </div>
             <div class="info-item">
               <span class="info-label">运行时间</span>
-              <span class="info-value">{{ formatUptime(serverStatus?.uptime || 0) }}</span>
+              <!-- status 接口暂未返回 uptime：无值时显示"未知"而非误导性的 0 秒 -->
+              <span class="info-value">{{ serverStatus?.uptime ? formatUptime(serverStatus.uptime) : '未知' }}</span>
             </div>
             <div class="info-item">
               <span class="info-label">服务器版本</span>
@@ -282,18 +283,22 @@ const currentMapName = computed(() => {
 })
 
 const difficultyText = computed(() => {
-  const difficulty = serverStatus.value?.difficulty || 'normal'
-  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.label || '普通'
+  // 查询失败/引擎未返回时显示"未知"，不得兜底为普通等默认值误导用户
+  const difficulty = serverStatus.value?.difficulty
+  if (!difficulty) return '未知'
+  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.label || '未知'
 })
 
 const difficultyColor = computed(() => {
-  const difficulty = serverStatus.value?.difficulty || 'normal'
+  const difficulty = serverStatus.value?.difficulty
+  if (!difficulty) return 'var(--el-color-info)'
   return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.color || 'var(--platform-cyan)'
 })
 
 const gameModeText = computed(() => {
-  const mode = serverStatus.value?.gameMode || 'coop'
-  return GAME_MODES[mode as keyof typeof GAME_MODES]?.label || '合作模式'
+  const mode = serverStatus.value?.gameMode
+  if (!mode) return '未知'
+  return GAME_MODES[mode as keyof typeof GAME_MODES]?.label || '未知'
 })
 
 /**

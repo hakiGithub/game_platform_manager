@@ -2,6 +2,7 @@
  * L4D2 API 接口
  */
 import { get, getMain, post, put, del, upload } from './request'
+import { DIFFICULTIES, GAME_MODES } from '@/utils/gameConstants'
 import type {
   PluginInfo,
   AdminInfo,
@@ -10,6 +11,20 @@ import type {
   PresetConfig,
   FileInfo
 } from '@/types'
+
+/**
+ * 后端 StatusParser 返回中文难度/模式名（简单/普通/高级/专家、合作模式等），
+ * 这里归一化为前端 code（easy/normal/...）；未识别的值（未知、新命令失败等）置空串，
+ * 由组件显示"未知"，不得兜底为默认难度/模式误导用户。
+ */
+function toCode(map: Record<string, { value: string; label: string }>, raw?: string): string {
+  if (!raw) return ''
+  const rawTrimmed = raw.trim()
+  for (const [code, meta] of Object.entries(map)) {
+    if (meta.value === rawTrimmed || meta.label === rawTrimmed) return code
+  }
+  return ''
+}
 
 /**
  * 服务器状态 API
@@ -22,8 +37,10 @@ export const serverApi = {
       map: vo?.map || '',
       players: vo?.currentPlayers || 0,
       maxPlayers: vo?.maxPlayers || 0,
-      difficulty: vo?.difficulty || 'normal',
-      gameMode: vo?.gameMode || 'coop',
+      // 查询失败/引擎不支持的字段置空串，由组件显示"未知"，
+      // 不得兜底为 normal/coop 等默认值（否则面板会误导用户）
+      difficulty: toCode(DIFFICULTIES, vo?.difficulty),
+      gameMode: toCode(GAME_MODES, vo?.gameMode),
       hostname: vo?.hostname || '',
       version: vo?.version || '',
       osType: vo?.osType || '',
@@ -320,21 +337,28 @@ export const monitorApi = {
 }
 
 /**
- * 管理员管理 API
+ * 管理员管理 API（对齐后端 AdminController，全部为实例维度操作）
+ * 后端契约：
+ *   GET    /admins/list?instanceId=
+ *   POST   /admins/add                     body: { instanceId, steamId, adminFlags, remark }
+ *   DELETE /admins/{steamId}?instanceId=
+ *   PUT    /admins/{steamId}/flags?instanceId=&adminFlags=
  */
 export const adminApi = {
   // 获取管理员列表
-  getList: () => get<AdminInfo[]>('/admins'),
-  
+  getList: (instanceId: number) => get<AdminInfo[]>('/admins/list', { instanceId }),
+
   // 添加管理员
-  add: (admin: Omit<AdminInfo, 'addedAt'>) => post<void>('/admins', admin),
-  
+  add: (instanceId: number, admin: { steamId: string; adminFlags: string; remark?: string }) =>
+    post<void>('/admins/add', { instanceId, ...admin }),
+
   // 删除管理员
-  delete: (steamId: string) => del<void>(`/admins/${steamId}`),
-  
-  // 更新管理员权限
-  update: (steamId: string, data: { flags?: string; immunity?: number }) => 
-    put<void>(`/admins/${steamId}`, data)
+  delete: (instanceId: number, steamId: string) =>
+    del<void>(`/admins/${encodeURIComponent(steamId)}?instanceId=${instanceId}`),
+
+  // 更新管理员权限旗标
+  updateFlags: (instanceId: number, steamId: string, adminFlags: string) =>
+    put<void>(`/admins/${encodeURIComponent(steamId)}/flags?instanceId=${instanceId}&adminFlags=${encodeURIComponent(adminFlags)}`)
 }
 
 /**
@@ -429,6 +453,21 @@ export interface PluginListVO {
 
 // === Phase 2: Plugin Store ===
 
+/** 远端仓库配置（令牌只回传脱敏提示，不回传明文） */
+export interface StoreConfig {
+  configured: boolean
+  repo: string
+  branch: string
+  proxyUrl: string
+  githubTokenMasked?: string | null
+}
+
+/** 未配置仓库业务码（后端 L4D2PluginException.CODE_STORE_NOT_CONFIGURED） */
+export const STORE_NOT_CONFIGURED_CODE = 1550
+
+/** 商店下载任务的"运行中"状态集合（对齐后端 PluginStoreService 状态常量；RUNNING 兼容宿主任务中心词汇） */
+export const STORE_TASK_RUNNING_STATUSES = ['PENDING', 'RUNNING', 'DOWNLOADING', 'INSTALLING']
+
 /**
  * 插件商店 API（Phase 2.5）
  */
@@ -468,6 +507,11 @@ export const pluginStoreApi = {
     finishedAt?: string
   }>>('/plugin-store/tasks', { instanceId }),
   cancelTask: (taskId: string) => post<void>(`/plugin-store/tasks/${taskId}/cancel`),
+  getConfig: () => get<StoreConfig>('/plugin-store/config'),
+  saveConfig: (data: { repo: string; branch?: string; proxyUrl?: string; githubToken?: string }) =>
+    put<StoreConfig>('/plugin-store/config', data),
+  testConfig: (data: { repo: string; branch?: string; proxyUrl?: string; githubToken?: string }) =>
+    post<{ repo: string; branch: string; pluginCount: number }>('/plugin-store/config/test', data),
 }
 
 // === Phase 2: Plugin Config ===
@@ -499,6 +543,9 @@ export const pluginConfigApi = {
   }) => post<void>('/plugin-config/update', data),
   candidates: (instanceId: number, pluginName: string) =>
     get<Array<{ path: string; exists: boolean }>>('/plugin-config/candidates', { instanceId, pluginName }),
+  // 恢复默认配置：将带 Default 注释的配置项重置为默认值并写回
+  restoreDefaults: (instanceId: number, pluginName: string) =>
+    post<void>('/plugin-config/restore-defaults', { instanceId, pluginName }),
 }
 
 // === Phase 2: Preset ===

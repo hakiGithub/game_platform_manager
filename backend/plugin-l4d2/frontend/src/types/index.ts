@@ -58,13 +58,18 @@ export interface PluginInfo {
   hasConfig: boolean
 }
 
-// 管理员信息
+// 管理员信息（对齐后端 AdminVO：admins 扩展资源）
 export interface AdminInfo {
+  id?: string
+  instanceId?: number
   steamId: string
-  name: string
-  flags: string
-  immunity: number
-  addedAt: string
+  /** 权限旗标（如 "abcdefghijklmn" 的子集） */
+  adminFlags: string
+  /** 备注（页面作为管理员名称展示） */
+  remark?: string
+  isActive?: boolean
+  createTime?: string
+  updateTime?: string
 }
 
 // 性能数据

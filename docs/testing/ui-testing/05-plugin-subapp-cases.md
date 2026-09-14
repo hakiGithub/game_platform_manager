@@ -44,7 +44,7 @@
 | `pages/Monitor.test.ts` | Monitor.vue | 实时数据、图表 |
 | `pages/PlayerStats.test.ts` | PlayerStats.vue | 玩家统计、趋势图 |
 | `pages/Playtime.test.ts` | Playtime.vue | 游戏时长统计 |
-| `pages/PluginStore.test.ts` | PluginStore.vue | 插件商店列表、下载 |
+| `components/plugins/RemoteStoreTab.test.ts` | RemoteStoreTab.vue | 远端仓库列表、行内展开详情、下载（ADR-0022 并入插件管理三 Tab） |
 | `pages/PluginConfig.test.ts` | PluginConfig.vue | 插件配置编辑 |
 | `pages/Preset.test.ts` | Preset.vue | 预设应用 |
 | `pages/ServerInfo.test.ts` | ServerInfo.vue | 服务器信息编辑 |
@@ -257,6 +257,23 @@ describe('MapSelectorModal', () => {
 | 多 tick 同步 | marker 保留策略、差异更新 |
 | 重置配置 | 确认弹窗、恢复默认值 |
 
+### 3.5 PluginConfig（插件配置编辑）
+
+> 语义说明（2026-09 修复后）：候选 cfg 路径优先取插件元数据（plugin.yaml）声明的
+> `config_files`（与实际安装文件名一致，中文显示名插件必走此路径），每条声明产生
+> "游戏目录副本"（已启用时存在，优先）与"插件库副本"（安装即存在）两个候选；
+> 无 meta 时回退按插件名推导。解析兼容带引号/不带引号键，并提取前置注释块中的
+> Default/Min/Max/描述；序列化保留原行键引号风格与注释块（保存不损文件）。
+
+| 用例 | 验证点 |
+|------|--------|
+| 无 cfg 插件 | 返回空配置结构（items 空数组、configPath 空），页面显示空态提示，不报错 |
+| 未启用插件编辑 | 命中插件库副本候选，configPath 指向 plugins_store，可查看/编辑/保存 |
+| 保存持久化 | update 后重新 GET，修改值落盘；行格式保持 `key "value"`（不重复键） |
+| 恢复默认配置 | header 按钮 → 确认弹窗（显示可恢复项数）→ restore-defaults 立即写回 → 表格刷新 |
+| 恢复默认边界 | 无 Default 注释的项保持不变；全部已是默认值时提示无可恢复 |
+| 已启用插件生效 | 保存 → 重载配置（exec server.cfg）→ RCON 读回实时值 |
+
 ---
 
-*最后更新: 2026-08-03（ADR-0003 废弃 standalone 模式，移除 InstanceSelect 与 standalone 测试章节）*
+*最后更新: 2026-09-13（新增 3.5 PluginConfig 用例：meta 候选优先/库副本回退/恢复默认）*

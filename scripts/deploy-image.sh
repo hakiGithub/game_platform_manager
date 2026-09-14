@@ -142,8 +142,8 @@ cd '$DEPLOY_DIR/src/docker'
 # 先 down 再 up：compose v1 对新版 Docker 已有容器做 in-place 重建会撞
 # ContainerConfig KeyError（bind mount 数据不受影响）
 $COMPOSE_CMD -f docker-compose.deploy.yml down 2>/dev/null || true
-$COMPOSE_FILES $COMPOSE_CMD up -d
-$COMPOSE_FILES $COMPOSE_CMD ps
+$COMPOSE_CMD $COMPOSE_FILES up -d
+$COMPOSE_CMD $COMPOSE_FILES ps
 EOF
 
 # ========== 6. 镜像保留策略：按版本 tag 只保留最近 KEEP 个 ==========
@@ -213,7 +213,7 @@ AUTH=$(run_target_script <<EOF
 curl -s -m 5 -X POST http://localhost:$FRONTEND_PORT/api/auth/login   -H 'Content-Type: application/json'   -d '{"username":"admin","password":"admin123"}'
 EOF
 )
-TOKEN=$(echo "$AUTH" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).data.token||'')}catch{console.log('')}}")
+TOKEN=$(echo "$AUTH" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).data.token||'')}catch{console.log('')}})")
 PLUGINS=$(run_target_script <<EOF
 curl -s -m 5 -H 'Authorization: Bearer $TOKEN' http://localhost:$FRONTEND_PORT/api/pf4j/plugins
 EOF

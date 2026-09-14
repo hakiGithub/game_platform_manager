@@ -10,6 +10,7 @@ import com.gameplatform.plugin.l4d2.vo.PluginListVO;
 import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.l4d2.vo.PluginReadmeVO;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
+import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
@@ -129,6 +130,21 @@ public class PluginInstallService {
      * </ul>
      */
     public void installFromLocalFile(Long instanceId, File localFile) {
+        installFromLocalFile(instanceId, localFile, null);
+    }
+
+    /**
+     * 带进度监听的安装（任务中心异步安装用）：上传阶段按字节报进度、
+     * 逐文件响应协作式取消；listener 为 null 时行为与旧版一致。
+     *
+     * <p>检测 VPK magic（地图）vs ZIP/RAR/7z（插件）：
+     * <ul>
+     *   <li>VPK → 复制到 addons/</li>
+     *   <li>ZIP/7z → 解压 → 归档到 plugins_store/&lt;name&gt;/left4dead2/...</li>
+     *   <li>.smx → 包装为 plugins_store/&lt;name&gt;/left4dead2/addons/sourcemod/plugins/&lt;name&gt;.smx</li>
+     * </ul>
+     */
+    public void installFromLocalFile(Long instanceId, File localFile, InstallProgressListener listener) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
@@ -139,7 +155,8 @@ public class PluginInstallService {
             // VPK 地图：仍然复制到 addons/（与插件分离）
             String addonsPath = pathResolver.getAddonsPath();
             String targetPath = addonsPath + "/" + localFile.getName();
-            instanceFileService.uploadLocalFile(instanceId, targetPath, localFile.getAbsolutePath());
+            instanceFileService.uploadLocalFile(instanceId, targetPath,
+                    localFile.getAbsolutePath(), byteCallback(listener, 20, 70));
             log.info("VPK 地图已上传: instanceId={}, path={}", instanceId, targetPath);
             return;
         }
@@ -148,15 +165,21 @@ public class PluginInstallService {
         if (lowerName.endsWith(SMX_SUFFIX)) {
             // 单 .smx 文件：包装为插件目录 plugins_store/<name>/left4dead2/addons/sourcemod/plugins/<name>.smx
             String pluginName = stripExtension(localFile.getName());
-            installSingleSmxToStore(instanceId, pluginName, localFile);
+            installSingleSmxToStore(instanceId, pluginName, localFile, listener);
             return;
         }
 
         // ZIP/7z：解压到 plugins_store/<pluginName>/left4dead2/...
         File tempDir = createTempDir("l4d2-extract-");
         try {
+            if (listener != null) {
+                listener.onProgress(16, "解压插件包（" + (localFile.length() / 1024 / 1024) + " MB）");
+            }
             extractArchive(localFile, tempDir);
-            installZipToStore(instanceId, tempDir);
+            if (listener != null) {
+                listener.onProgress(18, "解压完成，开始上传到主机 plugins_store");
+            }
+            installZipToStore(instanceId, tempDir, listener);
         } finally {
             deleteRecursive(tempDir);
         }
@@ -166,10 +189,12 @@ public class PluginInstallService {
      * 单 .smx 包装为最小插件目录：plugins_store/<pluginName>/left4dead2/addons/sourcemod/plugins/<pluginName>.smx
      * 并写 plugin.yaml（source=upload, fileList=[addons/sourcemod/plugins/<pluginName>.smx]）。
      */
-    private void installSingleSmxToStore(Long instanceId, String pluginName, File smxFile) {
+    private void installSingleSmxToStore(Long instanceId, String pluginName, File smxFile,
+                                         InstallProgressListener listener) {
         String storePath = pathResolver.getPluginLeft4Dead2Path(pluginName)
                 + "/addons/sourcemod/plugins/" + pluginName + SMX_SUFFIX;
-        instanceFileService.uploadLocalFile(instanceId, storePath, smxFile.getAbsolutePath());
+        instanceFileService.uploadLocalFile(instanceId, storePath,
+                smxFile.getAbsolutePath(), byteCallback(listener, 20, 70));
 
         PluginMeta meta = new PluginMeta();
         meta.setName(pluginName);
@@ -186,21 +211,25 @@ public class PluginInstallService {
      * 2. 检测插件名（解压根目录名，或第一个 .smx 文件名）
      * 3. 上传所有文件到 plugins_store/<pluginName>/left4dead2/...
      * 4. 写 plugin.yaml
+     *
+     * <p>多插件归档时按根目录数量切分 [20, 90) 进度区间，保证整体百分比单调。
      */
-    private void installZipToStore(Long instanceId, File extractRoot) {
+    private void installZipToStore(Long instanceId, File extractRoot, InstallProgressListener listener) {
         List<File> pluginRoots = findPluginRoots(extractRoot);
 
         if (pluginRoots.isEmpty()) {
             // 单插件 zip：直接用解压根作为 left4dead2
             String pluginName = derivePluginNameFromExtract(extractRoot);
-            installSinglePluginArchive(instanceId, pluginName, extractRoot);
+            installSinglePluginArchive(instanceId, pluginName, extractRoot, listener, 20, 70);
             return;
         }
 
-        for (File pluginRoot : pluginRoots) {
-            String pluginName = pluginRoot.getParentFile().getName();
-            File left4dead2Dir = pluginRoot; // 即 left4dead2 目录本身
-            installSinglePluginArchive(instanceId, pluginName, left4dead2Dir);
+        for (int i = 0; i < pluginRoots.size(); i++) {
+            String pluginName = pluginRoots.get(i).getParentFile().getName();
+            File left4dead2Dir = pluginRoots.get(i); // 即 left4dead2 目录本身
+            int base = 20 + (int) (70.0 * i / pluginRoots.size());
+            int span = Math.max(1, (int) (70.0 / pluginRoots.size()));
+            installSinglePluginArchive(instanceId, pluginName, left4dead2Dir, listener, base, span);
         }
     }
 
@@ -243,15 +272,19 @@ public class PluginInstallService {
         }
     }
 
-    private void installSinglePluginArchive(Long instanceId, String pluginName, File left4dead2Dir) {
+    private void installSinglePluginArchive(Long instanceId, String pluginName, File left4dead2Dir,
+                                            InstallProgressListener listener, int basePercent, int spanPercent) {
         String storeLeft4Dead2 = pathResolver.getPluginLeft4Dead2Path(pluginName);
 
         List<String> fileList = new ArrayList<>();
         List<String> configFiles = new ArrayList<>();
 
         try (Stream<Path> walk = Files.walk(left4dead2Dir.toPath())) {
-            List<Path> files = walk.filter(Files::isRegularFile).toList();
-            for (Path filePath : files) {
+            // 先收集待上传清单与总字节数：上传阶段才能按字节报进度、逐文件响应取消
+            record UploadItem(String relative, Path local, long size) {}
+            List<UploadItem> items = new ArrayList<>();
+            long totalBytes = 0;
+            for (Path filePath : walk.filter(Files::isRegularFile).toList()) {
                 String relative = left4dead2Dir.toPath().relativize(filePath).toString().replace('\\', '/');
                 if (relative.isEmpty()) continue;
 
@@ -262,10 +295,31 @@ public class PluginInstallService {
                 if (ZipSlipGuard.isMacOSJunk(relative)) {
                     continue;
                 }
+                long size = Files.size(filePath);
+                items.add(new UploadItem(relative, filePath, size));
+                totalBytes += size;
+            }
 
+            if (listener != null) {
+                listener.onLog("INFO", "插件 " + pluginName + " 待上传 " + items.size()
+                        + " 个文件 / " + (totalBytes / 1024 / 1024) + " MB");
+            }
+
+            // 已完成文件累计字节：整体百分比 = base + span * (uploadedBefore + 当前文件已传) / totalBytes，
+            // 单调递增；单文件失败也推进基数，避免百分比回退
+            long[] uploadedBefore = {0};
+            int[] lastPercent = {basePercent};
+            for (int i = 0; i < items.size(); i++) {
+                UploadItem item = items.get(i);
+                if (listener != null && listener.isCancelled()) {
+                    throw new L4D2PluginException(L4D2PluginException.BUSINESS, "任务已取消，中止安装");
+                }
+                String relative = item.relative();
                 String remotePath = storeLeft4Dead2 + "/" + relative;
                 try {
-                    instanceFileService.uploadLocalFile(instanceId, remotePath, filePath.toString());
+                    instanceFileService.uploadLocalFile(instanceId, remotePath,
+                            item.local().toString(),
+                            byteCallback(listener, uploadedBefore, totalBytes, basePercent, spanPercent, lastPercent));
                     fileList.add(relative);
                     if (relative.toLowerCase().endsWith(".cfg")
                             && relative.toLowerCase().startsWith("cfg/sourcemod/")) {
@@ -273,6 +327,8 @@ public class PluginInstallService {
                     }
                 } catch (Exception e) {
                     log.warn("上传插件文件失败 relPath={}, err={}", relative, e.getMessage());
+                } finally {
+                    uploadedBefore[0] += item.size();
                 }
             }
         } catch (IOException e) {
@@ -288,6 +344,78 @@ public class PluginInstallService {
         pluginMetaService.save(instanceId, meta);
         log.info("ZIP 插件已归档到 plugins_store: instanceId={}, plugin={}, files={}",
                 instanceId, pluginName, fileList.size());
+    }
+
+    /**
+     * 单文件（VPK/SMX）传输进度回调：百分比 = base + span * 已传字节 / 文件总字节。
+     */
+    private FileTransferProgressCallback byteCallback(InstallProgressListener listener,
+                                                      int basePercent, int spanPercent) {
+        if (listener == null) return null;
+        return new FileTransferProgressCallback() {
+            @Override
+            public void onStart(long totalBytes) {
+            }
+
+            @Override
+            public void onProgress(long bytesTransferred, long totalBytes) {
+                if (listener.isCancelled()) {
+                    throw new L4D2PluginException(L4D2PluginException.BUSINESS, "任务已取消，中止安装");
+                }
+                if (totalBytes <= 0) return;
+                int percent = basePercent + (int) (spanPercent * bytesTransferred / totalBytes);
+                listener.onProgress(Math.min(percent, basePercent + spanPercent), "上传中 " + percent + "%");
+            }
+
+            @Override
+            public void onComplete() {
+            }
+
+            @Override
+            public void onError(Throwable error) {
+            }
+        };
+    }
+
+    /**
+     * 归档上传的字节级进度回调：按"已完成文件累计 + 当前文件已传"映射到
+     * [basePercent, basePercent + spanPercent]，整数百分比变化才上报；
+     * 回调内检查取消——抛异常即中止当前文件传输（SDK 契约），由外层循环
+     * 下一文件的取消检查彻底终止安装。
+     */
+    private FileTransferProgressCallback byteCallback(InstallProgressListener listener,
+                                                      long[] uploadedBefore, long totalBytes,
+                                                      int basePercent, int spanPercent, int[] lastPercent) {
+        if (listener == null) return null;
+        return new FileTransferProgressCallback() {
+            @Override
+            public void onStart(long fileTotalBytes) {
+            }
+
+            @Override
+            public void onProgress(long bytesTransferred, long fileTotalBytes) {
+                if (listener.isCancelled()) {
+                    throw new L4D2PluginException(L4D2PluginException.BUSINESS, "任务已取消，中止安装");
+                }
+                if (totalBytes <= 0) return;
+                int percent = basePercent + (int) (spanPercent * (uploadedBefore[0] + bytesTransferred) / totalBytes);
+                if (percent > lastPercent[0]) {
+                    lastPercent[0] = percent;
+                    listener.onProgress(Math.min(percent, basePercent + spanPercent),
+                            String.format("已上传 %d/%d MB",
+                                    (uploadedBefore[0] + bytesTransferred) / 1024 / 1024,
+                                    totalBytes / 1024 / 1024));
+                }
+            }
+
+            @Override
+            public void onComplete() {
+            }
+
+            @Override
+            public void onError(Throwable error) {
+            }
+        };
     }
 
     /**
@@ -389,6 +517,37 @@ public class PluginInstallService {
      * @return 重建后的 PluginMeta；目录不存在或为空返回 null
      */
     private PluginMeta rebuildMetaByScanningStore(Long instanceId, String pluginName) {
+        StoreFileScan scan = scanStoreLeft4Dead2(instanceId, pluginName);
+        if (scan == null) {
+            return null;
+        }
+
+        PluginMeta meta = new PluginMeta();
+        meta.setName(pluginName);
+        meta.setSource("panel");
+        meta.setFileList(scan.fileList());
+        meta.setConfigFiles(scan.configFiles());
+        try {
+            pluginMetaService.save(instanceId, meta);
+            log.info("元数据已重建: instanceId={}, plugin={}, files={}",
+                    instanceId, pluginName, scan.fileList().size());
+        } catch (Exception e) {
+            log.warn("元数据重建后持久化失败 instanceId={}, plugin={}, err={}",
+                    instanceId, pluginName, e.getMessage());
+        }
+        return meta;
+    }
+
+    /** 库目录扫描结果（路径均相对 left4dead2/，已排序） */
+    private record StoreFileScan(List<String> fileList, List<String> configFiles) {
+    }
+
+    /**
+     * 扫描 plugins_store/&lt;name&gt;/left4dead2/ 递归收集文件清单。
+     *
+     * @return 扫描结果；目录不存在或为空返回 null
+     */
+    private StoreFileScan scanStoreLeft4Dead2(Long instanceId, String pluginName) {
         String storeLeft4Dead2 = pathResolver.getPluginLeft4Dead2Path(pluginName);
 
         List<String> fileList = new ArrayList<>();
@@ -432,21 +591,45 @@ public class PluginInstallService {
         }
         java.util.Collections.sort(fileList);
         java.util.Collections.sort(configFiles);
+        return new StoreFileScan(fileList, configFiles);
+    }
 
-        PluginMeta meta = new PluginMeta();
-        meta.setName(pluginName);
-        meta.setSource("panel");
-        meta.setFileList(fileList);
-        meta.setConfigFiles(configFiles);
+    /**
+     * 商店下载安装后回填插件元数据（插件商店下载流程专用）。
+     *
+     * <p>{@link #atomicMoveToStore} 只写 name/source/时间戳，fileList 为空会导致已安装列表
+     * hasSmx 恒为 false、启用流程每次走扫描重建。此方法在移动完成后立即回填：
+     * fileList/configFiles 缺失时扫描库目录重建，并保留 source=store。
+     * 失败只告警不抛出——文件已就位，元数据可由启用流程的重建逻辑兜底。
+     *
+     * @param instanceId 实例 ID
+     * @param pluginName 插件名（库目录名）
+     */
+    public void backfillStoreMeta(Long instanceId, String pluginName) {
         try {
+            PluginMeta meta = pluginMetaService.load(instanceId, pluginName);
+            if (meta == null) {
+                meta = new PluginMeta();
+                meta.setName(pluginName);
+                meta.setCreatedAt(System.currentTimeMillis());
+            }
+            meta.setSource("store");
+            if (meta.getFileList() == null || meta.getFileList().isEmpty()) {
+                StoreFileScan scan = scanStoreLeft4Dead2(instanceId, pluginName);
+                if (scan != null) {
+                    meta.setFileList(scan.fileList());
+                    meta.setConfigFiles(scan.configFiles());
+                }
+            }
+            meta.setUpdatedAt(System.currentTimeMillis());
             pluginMetaService.save(instanceId, meta);
-            log.info("元数据已重建: instanceId={}, plugin={}, files={}",
-                    instanceId, pluginName, fileList.size());
+            log.info("商店插件元数据已回填: instanceId={}, plugin={}, files={}",
+                    instanceId, pluginName,
+                    meta.getFileList() == null ? 0 : meta.getFileList().size());
         } catch (Exception e) {
-            log.warn("元数据重建后持久化失败 instanceId={}, plugin={}, err={}",
+            log.warn("商店插件元数据回填失败 instanceId={}, plugin={}, err={}",
                     instanceId, pluginName, e.getMessage());
         }
-        return meta;
     }
 
     private String resolveSourceForEnable(Long instanceId, String pluginName) {
@@ -681,8 +864,10 @@ public class PluginInstallService {
             return false;
         }
         try {
-            String storePath = pathResolver.getPluginStorePath(pluginName);
-            return instanceFileService.exists(instanceId, storePath);
+            // 以 plugin.yaml（安装最后一步写入）为准，而非目录存在性：
+            // 安装中途取消/失败会留下半截目录，若按目录判定会被误判"已安装"且无法重装
+            String yamlPath = pathResolver.getPluginYamlPath(pluginName);
+            return instanceFileService.exists(instanceId, yamlPath);
         } catch (Exception e) {
             log.warn("检查插件存在性失败 instanceId={}, plugin={}, err={}",
                     instanceId, pluginName, e.getMessage());

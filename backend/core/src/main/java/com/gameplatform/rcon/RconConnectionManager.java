@@ -72,33 +72,73 @@ public class RconConnectionManager {
 
     /**
      * 借用实例连接执行操作，可覆盖本次借用的读超时。
+     *
+     * <p>池内既有连接可能已被服务端静默关闭（空闲期被 srcds 掐断且本端无感知），
+     * 首次执行命令若因连接失效抛 IOException，会丢弃池内连接、换全新连接重试一次，
+     * 调用方无感；重试仍失败才向上抛错。
      */
     public <T> T withConnection(long instanceId, Duration timeout, RconAction<T> action) {
         RconProperties.Pool poolCfg = properties.getPool();
         if (!poolCfg.isEnabled()) {
             return executeWithoutPool(instanceId, timeout, action);
         }
-        CachedConnection cached = pool.computeIfAbsent(instanceId, this::createConnection);
-        if (!cached.tryBorrow(poolCfg.getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
+        CachedConnection active = pool.computeIfAbsent(instanceId, this::createConnection);
+        if (!active.tryBorrow(poolCfg.getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
             throw new BusinessException("实例 " + instanceId + " 的 RCON 连接正忙");
         }
-        CachedConnection active = cached;
+        // 是否为池内既有连接：此类连接可能已被服务端关闭，命令失败允许换新连接重试一次；
+        // 本调用内新建的连接不重试（新建即失败属于端到端故障，重试无意义）
+        boolean reusedFromPool = true;
         try {
-            if (active.isBroken()) {
-                active.close();
-                active = createConnection(instanceId);
-                pool.put(instanceId, active);
+            while (true) {
+                if (active.isBroken()) {
+                    active.close();
+                    active = createAndReplace(instanceId, active);
+                    if (!active.tryBorrow(poolCfg.getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
+                        throw new BusinessException("实例 " + instanceId + " 的 RCON 连接正忙");
+                    }
+                    reusedFromPool = false;
+                }
+                try {
+                    if (timeout != null) {
+                        active.applySoTimeout(timeout.toMillis());
+                    }
+                    return action.execute(active.in, active.out);
+                } catch (IOException e) {
+                    active.markBroken();
+                    if (!reusedFromPool) {
+                        throw new BusinessException("RCON 通信失败: " + e.getMessage(), e);
+                    }
+                    log.info("RCON 池内连接已失效（服务端可能已关闭空闲连接），换新连接重试 instanceId={}, err={}",
+                            instanceId, e.getMessage());
+                    active.close();
+                    active.release();
+                    active = createAndReplace(instanceId, active);
+                    if (!active.tryBorrow(poolCfg.getBorrowTimeoutSeconds(), TimeUnit.SECONDS)) {
+                        throw new BusinessException("实例 " + instanceId + " 的 RCON 连接正忙");
+                    }
+                    reusedFromPool = false;
+                }
             }
-            if (timeout != null) {
-                active.applySoTimeout(timeout.toMillis());
-            }
-            return action.execute(active.in, active.out);
-        } catch (IOException e) {
-            active.markBroken();
-            throw new BusinessException("RCON 通信失败: " + e.getMessage(), e);
         } finally {
             active.release();
         }
+    }
+
+    /**
+     * 用新建连接替换池内指定连接；若并发场景下池内已是其他连接，则复用池内现值并关闭新建连接。
+     *
+     * @return 应继续使用的连接（未加锁，调用方需自行 tryBorrow）
+     */
+    private CachedConnection createAndReplace(long instanceId, CachedConnection stale) {
+        CachedConnection fresh = createConnection(instanceId);
+        CachedConnection existing = pool.put(instanceId, fresh);
+        if (existing != null && existing != stale) {
+            // 并发窗口内其他线程已替换过连接：以池内现值为准，关闭本次新建的连接
+            fresh.close();
+            return existing;
+        }
+        return fresh;
     }
 
     /**

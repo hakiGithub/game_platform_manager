@@ -204,6 +204,10 @@ function handleSubRouteChange(payload: { path: string } | string) {
   if (!subPath.startsWith("/")) return;
   lastReportedInternal.value = subPath;
   if (!pluginStore.findMenuByPath(subPath)) return;
+  // 内嵌模式（如实例详情"插件扩展"标签页）：只跟踪子应用路由，不回写宿主 URL。
+  // 本组件的路由同步语义仅对 /extensions/app/ 工作区路由成立，否则 router.replace
+  // 会把宿主页面整个顶掉（表现为"点开实例详情被跳到插件工作区仪表盘"）
+  if (!route.path.startsWith("/extensions/app/")) return;
   const target = `/extensions/app/${props.gameCode}${subPath}`;
   if (route.path !== target) {
     router.replace({ path: target, query: route.query }).catch(() => {});

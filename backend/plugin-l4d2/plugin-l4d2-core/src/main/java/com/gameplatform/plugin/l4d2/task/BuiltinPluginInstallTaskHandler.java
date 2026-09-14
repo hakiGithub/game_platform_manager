@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2.task;
 
 import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.service.BuiltinPluginInstaller;
+import com.gameplatform.plugin.l4d2.service.InstallProgressListener;
 import com.gameplatform.plugin.l4d2.vo.BuiltinPluginVO;
 import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskHandler;
@@ -91,7 +92,10 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
                 payload.getString("pluginId"), payload.getString("pluginName"));
     }
 
-    /** 单个安装 */
+    /**
+     * 单个安装：安装链路（解压 + 逐文件上传）实时上报进度并响应取消；
+     * 取消导致的安装中止按"正常返回"处理，由框架按 ctx.isCancelled 落 CANCELLED。
+     */
     private TaskResult executeSingle(TaskContext context, long instanceId,
                                      String pluginId, String pluginName) throws Exception {
         if (context.isCancelled()) {
@@ -102,11 +106,19 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
         context.reportProgress(10, "准备安装内置插件: " + pluginName);
         context.log("开始安装内置插件: instanceId=" + instanceId + ", plugin=" + pluginId);
 
-        String msg = builtinPluginInstaller.install(instanceId, pluginId);
-        context.reportProgress(100, msg);
-        context.log("内置插件安装完成: " + pluginId + " - " + msg);
-        return TaskResult.success(
-                Map.of("pluginId", pluginId, "pluginName", pluginName), msg);
+        try {
+            String msg = builtinPluginInstaller.install(instanceId, pluginId, taskListener(context));
+            context.reportProgress(100, msg);
+            context.log("内置插件安装完成: " + pluginId + " - " + msg);
+            return TaskResult.success(
+                    Map.of("pluginId", pluginId, "pluginName", pluginName), msg);
+        } catch (Exception e) {
+            if (context.isCancelled()) {
+                context.log("WARN", "任务已取消，停止安装: " + e.getMessage());
+                return TaskResult.failure("任务已取消，停止安装");
+            }
+            throw e;
+        }
     }
 
     /** 批量安装：逐个执行，单个失败不影响其他，全部失败才 FAILED */
@@ -140,12 +152,16 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
             item.put("pluginId", pluginId);
             item.put("pluginName", pluginName);
             try {
-                String msg = builtinPluginInstaller.install(instanceId, pluginId);
+                String msg = builtinPluginInstaller.install(instanceId, pluginId, taskListener(context));
                 success++;
                 item.put("status", "SUCCESS");
                 item.put("message", msg);
                 context.log("安装成功: " + pluginId + " - " + msg);
             } catch (Exception e) {
+                // 单插件安装中途取消：记失败项并置取消标志，循环下一轮终止
+                if (context.isCancelled()) {
+                    cancelled = true;
+                }
                 item.put("status", "FAILED");
                 item.put("message", e.getMessage());
                 context.log("WARN", "安装失败（跳过继续）: " + pluginId + " - " + e.getMessage());
@@ -156,16 +172,16 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
         int processed = results.size();
         int failed = processed - success;
 
-        // 全部失败 / 取消且零成功：按框架语义抛异常标记 FAILED（正常返回一律 COMPLETED）
+        // 取消且零成功 / 全部失败：按框架语义抛异常标记 FAILED（正常返回一律 COMPLETED）
+        if (success == 0 && cancelled) {
+            throw new IllegalStateException("任务已取消，0/" + total + " 个插件安装成功");
+        }
         if (success == 0 && processed > 0) {
             List<String> errors = results.stream()
                     .filter(r -> "FAILED".equals(r.get("status")))
                     .map(r -> r.get("pluginId") + ": " + r.get("message"))
                     .toList();
             throw new IllegalStateException("批量安装全部失败（0/" + processed + " 成功）: " + errors);
-        }
-        if (success == 0 && cancelled) {
-            throw new IllegalStateException("任务已取消，0/" + total + " 个插件安装成功");
         }
 
         Map<String, Object> data = Map.of(
@@ -182,11 +198,39 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
             context.reportProgress(100, summary);
             return TaskResult.success(data, summary);
         }
-        String summary = success == total
-                ? "全部 " + total + " 个插件安装成功"
-                : "批量安装完成：成功 " + success + "/" + total + "，失败 " + failed;
+        String summary;
+        if (success == total) {
+            summary = "全部 " + total + " 个插件安装成功";
+        } else if (cancelled) {
+            summary = "批量安装已取消：成功 " + success + "/" + total + "，失败 " + failed;
+        } else {
+            summary = "批量安装完成：成功 " + success + "/" + total + "，失败 " + failed;
+        }
         context.reportProgress(100, summary);
         return TaskResult.success(data, summary);
+    }
+
+    /**
+     * TaskContext → InstallProgressListener 桥接：安装链路的进度/日志直达任务详情，
+     * 取消检查直达协作式取消标志（上传循环逐文件生效）。
+     */
+    private InstallProgressListener taskListener(TaskContext context) {
+        return new InstallProgressListener() {
+            @Override
+            public boolean isCancelled() {
+                return context.isCancelled();
+            }
+
+            @Override
+            public void onProgress(int percent, String message) {
+                context.reportProgress(percent, message);
+            }
+
+            @Override
+            public void onLog(String level, String message) {
+                context.log(level, message);
+            }
+        };
     }
 
     @Override

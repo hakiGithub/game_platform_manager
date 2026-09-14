@@ -8,6 +8,7 @@ import com.gameplatform.plugin.l4d2.parser.SourceModCfgParser;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.CvarBlacklist;
 import com.gameplatform.plugin.l4d2.util.GbkCodecUtil;
+import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.l4d2.vo.CandidatePathVO;
 import com.gameplatform.plugin.l4d2.vo.config.ConfigItem;
 import com.gameplatform.plugin.service.InstanceFileService;
@@ -57,10 +58,58 @@ public class SourceModCfgService {
     private final L4D2PathResolver pathResolver;
     private final L4D2RconService rconService;
     private final PluginConfigAuditService auditService;
+    private final PluginMetaService pluginMetaService;
     private final Charset gbk = GbkCodecUtil.gbk();
 
     /**
-     * 候选 cfg 路径推导。
+     * 候选 cfg 路径推导（实例维度）。
+     *
+     * <p>主候选：插件 meta（plugin.yaml）声明的 {@code config_files}——与实际安装的
+     * 文件名一致（插件的 cfg 文件名通常取自 .smx 文件名，可能与中文显示名完全不同）。
+     * 次候选：按插件名推导（{@link #getNameBasedCandidates(String)}，兼容无 meta 的旧场景）。
+     *
+     * @param instanceId 实例 ID
+     * @param pluginName 插件名
+     * @return 候选 cfg 相对路径列表（去重、按优先级排序）
+     */
+    public List<String> getCandidatePaths(Long instanceId, String pluginName) {
+        List<String> paths = new ArrayList<>();
+        // 主候选：插件 meta（plugin.yaml）声明的 config_files。
+        // 每条声明产生两个候选：游戏目录副本（已启用时存在，优先）与
+        // 插件库副本（安装即存在——未启用时游戏目录尚无 cfg，从库副本查看/编辑）
+        String storePrefix = pathResolver.getPluginStorePath(pluginName) + "/left4dead2/";
+        try {
+            PluginMeta meta = pluginMetaService.load(instanceId, pluginName);
+            if (meta != null && meta.getConfigFiles() != null) {
+                for (String cfg : meta.getConfigFiles()) {
+                    if (cfg == null || cfg.isBlank()) {
+                        continue;
+                    }
+                    String rel = cfg.trim();
+                    if (!paths.contains(rel)) {
+                        paths.add(rel);
+                    }
+                    String storePath = storePrefix + rel;
+                    if (!paths.contains(storePath)) {
+                        paths.add(storePath);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("读取插件 meta 的 config_files 失败 instanceId={}, pluginName={}, err={}",
+                    instanceId, pluginName, e.getMessage());
+        }
+        // 次候选：按插件名推导
+        for (String candidate : getNameBasedCandidates(pluginName)) {
+            if (!paths.contains(candidate)) {
+                paths.add(candidate);
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * 按插件名推导候选 cfg 路径（无实例上下文/无 meta 时的兜底规则）。
      *
      * <p>对齐 l4d2-server-next getPluginConfigCandidates：
      * <ul>
@@ -72,7 +121,7 @@ public class SourceModCfgService {
      * @param pluginName 插件名
      * @return 候选 cfg 相对路径列表（最多 4 个）
      */
-    public List<String> getCandidatePaths(String pluginName) {
+    public List<String> getNameBasedCandidates(String pluginName) {
         if (pluginName == null || pluginName.isBlank()) {
             return List.of();
         }
@@ -118,7 +167,7 @@ public class SourceModCfgService {
         InstanceVO instance = requireInstance(instanceId);
         Long hostId = instance.getHostId();
 
-        for (String candidate : getCandidatePaths(pluginName)) {
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
             String relPath = toRelativePath(candidate);
             if (!fileExistsSafe(instanceId, relPath)) {
                 continue;
@@ -150,7 +199,7 @@ public class SourceModCfgService {
     public List<CandidatePathVO> listCandidates(Long instanceId, String pluginName) {
         requireInstance(instanceId);
         List<CandidatePathVO> result = new ArrayList<>();
-        for (String candidate : getCandidatePaths(pluginName)) {
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
             CandidatePathVO vo = new CandidatePathVO();
             vo.setPath(candidate);
             vo.setExists(fileExistsSafe(instanceId, toRelativePath(candidate)));
@@ -170,7 +219,7 @@ public class SourceModCfgService {
 
         String targetCandidate = null;
         String targetRelPath = null;
-        for (String candidate : getCandidatePaths(pluginName)) {
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
             String relPath = toRelativePath(candidate);
             if (fileExistsSafe(instanceId, relPath)) {
                 targetCandidate = candidate;
@@ -285,6 +334,10 @@ public class SourceModCfgService {
      * <p>优先使用 pathResolver 的标准方法，避免硬编码 left4dead2 前缀。
      */
     private String toRelativePath(String candidatePath) {
+        // 已是完整相对路径（如插件库副本 left4dead2/addons/...）则原样透传，避免二次拼接
+        if (candidatePath.startsWith(pathResolver.getGamePath() + "/")) {
+            return candidatePath;
+        }
         if (candidatePath.startsWith(CFG_SOURCEMOD_PREFIX)) {
             String filename = candidatePath.substring(CFG_SOURCEMOD_PREFIX.length());
             return pathResolver.getSourceModCfgPath() + "/" + filename;
@@ -410,7 +463,7 @@ public class SourceModCfgService {
         // 1. 找到候选 cfg 文件
         String targetCandidate = null;
         String targetRelPath = null;
-        for (String candidate : getCandidatePaths(pluginName)) {
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
             String relPath = toRelativePath(candidate);
             if (fileExistsSafe(instanceId, relPath)) {
                 targetCandidate = candidate;

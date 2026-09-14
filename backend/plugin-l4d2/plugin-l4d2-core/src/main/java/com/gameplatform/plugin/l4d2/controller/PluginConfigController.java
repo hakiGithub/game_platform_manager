@@ -44,14 +44,15 @@ public class PluginConfigController {
     /**
      * 获取插件配置。
      */
-    @Operation(summary = "获取插件配置", description = "读取 SourceMod cfg 配置项列表")
+    @Operation(summary = "获取插件配置", description = "读取 SourceMod cfg 配置项列表；插件无候选 cfg 文件时返回空配置结构（items 为空数组、configPath 为空）")
     @GetMapping("/get")
     public Result<PluginConfigVO> get(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
             @Parameter(description = "插件名称") @RequestParam String pluginName) {
         log.info("获取插件配置, instanceId: {}, pluginName: {}", instanceId, pluginName);
         PluginConfigResource resource = sourceModCfgService.getConfig(instanceId, pluginName);
-        return Result.success(toVO(resource));
+        PluginConfigVO vo = toVO(resource);
+        return Result.success(vo != null ? vo : emptyVO(pluginName));
     }
 
     /**
@@ -121,6 +122,19 @@ public class PluginConfigController {
         vo.setItems(spec.getItems());
         vo.setRawContent(spec.getRawContent());
         vo.setLastSyncedAt(spec.getLastSyncedAt());
+        return vo;
+    }
+
+    /**
+     * 插件无候选 cfg 文件时的空配置结构：
+     * 返回规范 VO（items 为空数组、configPath 为空）而非 null，
+     * 前端可正常渲染空态，不会把"无配置项"误当成加载失败。
+     */
+    private PluginConfigVO emptyVO(String pluginName) {
+        PluginConfigVO vo = new PluginConfigVO();
+        vo.setPluginName(pluginName);
+        vo.setConfigName(pluginName + ".cfg");
+        vo.setItems(List.of());
         return vo;
     }
 }

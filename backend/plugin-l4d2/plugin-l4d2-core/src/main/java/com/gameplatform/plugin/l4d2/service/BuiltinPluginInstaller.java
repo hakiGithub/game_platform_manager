@@ -148,6 +148,15 @@ public class BuiltinPluginInstaller {
      * @return 安装结果描述
      */
     public String install(Long instanceId, String pluginId) {
+        return install(instanceId, pluginId, null);
+    }
+
+    /**
+     * 带进度监听的安装（任务中心异步安装用）：
+     * 12% 读取插件包 → 15% 解压上传中 → [20, 90] 上传（字节级，含取消检查）→ 100%。
+     * listener 为 null 时行为与旧版一致。
+     */
+    public String install(Long instanceId, String pluginId, InstallProgressListener listener) {
         if (pluginId == null || pluginId.isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "pluginId 不能为空");
         }
@@ -162,13 +171,23 @@ public class BuiltinPluginInstaller {
             return "插件已安装，无需重复安装: " + plugin.getName();
         }
 
+        if (listener != null && listener.isCancelled()) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS, "任务已取消，中止安装");
+        }
+
         Path tempZip = null;
         try {
+            if (listener != null) {
+                listener.onProgress(12, "读取内置插件包: " + plugin.getFileName());
+            }
             tempZip = extractClasspathZipToTemp(plugin.getFileName());
             long sizeMb = tempZip.toFile().length() / 1024 / 1024;
             log.info("开始安装内置插件: instanceId={}, plugin={}, zipSize={}MB",
                     instanceId, pluginId, sizeMb);
-            pluginInstallService.installFromLocalFile(instanceId, tempZip.toFile());
+            if (listener != null) {
+                listener.onProgress(15, "插件包就绪（" + sizeMb + " MB），解压并上传到主机");
+            }
+            pluginInstallService.installFromLocalFile(instanceId, tempZip.toFile(), listener);
             log.info("内置插件安装完成: instanceId={}, plugin={}", instanceId, pluginId);
             return "插件安装成功: " + plugin.getName();
         } catch (L4D2PluginException e) {

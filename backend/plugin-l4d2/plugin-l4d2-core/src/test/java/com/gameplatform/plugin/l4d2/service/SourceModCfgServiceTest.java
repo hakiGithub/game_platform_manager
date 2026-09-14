@@ -69,6 +69,9 @@ class SourceModCfgServiceTest {
     @Mock
     private PluginConfigAuditService auditService;
 
+    @Mock
+    private PluginMetaService pluginMetaService;
+
     private final SourceModCfgParser cfgParser = new SourceModCfgParser();
     private final L4D2PathResolver pathResolver = new L4D2PathResolver();
 
@@ -80,7 +83,7 @@ class SourceModCfgServiceTest {
     void setUp() {
         service = new SourceModCfgService(
                 instanceQueryService, instanceFileService, extensionClient,
-                cfgParser, pathResolver, rconService, auditService);
+                cfgParser, pathResolver, rconService, auditService, pluginMetaService);
         instance = new InstanceVO();
         instance.setId(INSTANCE_ID);
         instance.setHostId(HOST_ID);
@@ -100,7 +103,7 @@ class SourceModCfgServiceTest {
 
     @Test
     void getCandidatePaths_l4d2AiUpgrade_shouldReturnFourCandidatesWithL4dAlias() {
-        List<String> paths = service.getCandidatePaths("l4d2_ai_upgrade");
+        List<String> paths = service.getNameBasedCandidates("l4d2_ai_upgrade");
         assertEquals(4, paths.size(), "l4d2_ 前缀应返回 4 个候选（含 l4d_ 别名）");
         assertEquals("cfg/sourcemod/l4d2_ai_upgrade.cfg", paths.get(0));
         assertEquals("addons/sourcemod/plugins/l4d2_ai_upgrade.cfg", paths.get(1));
@@ -115,7 +118,7 @@ class SourceModCfgServiceTest {
 
     @Test
     void getCandidatePaths_adminEsp_shouldReturnTwoCandidates() {
-        List<String> paths = service.getCandidatePaths("admin_esp");
+        List<String> paths = service.getNameBasedCandidates("admin_esp");
         assertEquals(2, paths.size(), "非 l4d_/l4d2_ 前缀不生成别名");
         assertEquals("cfg/sourcemod/admin_esp.cfg", paths.get(0));
         assertEquals("addons/sourcemod/plugins/admin_esp.cfg", paths.get(1));
@@ -125,7 +128,7 @@ class SourceModCfgServiceTest {
 
     @Test
     void getCandidatePaths_l4dPrefix_shouldGenerateL4d2Alias() {
-        List<String> paths = service.getCandidatePaths("l4d_multi_slot");
+        List<String> paths = service.getNameBasedCandidates("l4d_multi_slot");
         assertEquals(4, paths.size(), "l4d_ 前缀应返回 4 个候选（含 l4d2_ 别名）");
         assertTrue(paths.stream().anyMatch(p -> p.contains("l4d2_multi_slot.cfg")),
                 "l4d_ 插件应同时返回 l4d2_ 别名候选");
@@ -133,7 +136,7 @@ class SourceModCfgServiceTest {
 
     @Test
     void getCandidatePaths_blankName_shouldReturnEmpty() {
-        List<String> paths = service.getCandidatePaths("");
+        List<String> paths = service.getNameBasedCandidates("");
         assertTrue(paths.isEmpty(), "空插件名应返回空列表");
     }
 

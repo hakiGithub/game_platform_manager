@@ -30,13 +30,15 @@ export default defineConfig({
     port: 3000,
     open: true,
     proxy: {
+      // 本地开发默认代理本机后端；可用环境变量指向已部署环境（如 Docker 镜像的 nginx）：
+      //   VITE_PROXY_TARGET=http://127.0.0.1:8081 npm run dev
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api')
       },
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: (process.env.VITE_PROXY_TARGET || 'ws://localhost:8080').replace(/^http/, 'ws'),
         ws: true,
         rewrite: (path) => path.replace(/^\/ws/, '/api/ws')
       }

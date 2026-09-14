@@ -22,12 +22,18 @@ const mockRoute = {
   params: {},
   matched: [],
 };
-const mockRouter = { push: vi.fn(), replace: vi.fn() };
+// push/replace 返回 Promise：Sidebar.handleSelect 会链式调用 .catch()
+const mockRouter = { push: vi.fn().mockResolvedValue(), replace: vi.fn().mockResolvedValue() };
 
-vi.mock("vue-router", () => ({
-  useRoute: () => mockRoute,
-  useRouter: () => mockRouter,
-}));
+// 部分 mock：真实路由模块会被 @/router 间接加载（需要 createRouter 等导出）
+vi.mock("vue-router", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useRoute: () => mockRoute,
+    useRouter: () => mockRouter,
+  };
+});
 
 // ---------- 公共 mock：element-plus（部分 mock：组件走真实导出，仅消息提示打桩） ----------
 vi.mock("element-plus", async (importOriginal) => {
@@ -108,6 +114,8 @@ vi.mock("@/plugins/stores/pluginStore", () => ({
       };
       return manifestRef.value;
     }),
+    findMenuByPath: (p) =>
+      (manifestRef.value?.menus || []).find((m) => m.path === p) || null,
   }),
 }));
 
@@ -252,6 +260,91 @@ describe("PluginTab 无效 instanceId 自愈", () => {
     expect(mockRouter.replace).toHaveBeenCalledWith(
       expect.objectContaining({ query: { instanceId: 201 } })
     );
+    wrapper.unmount();
+  });
+});
+
+/**
+ * 实例详情页 URL 被插件工作区劫持回归测试
+ *
+ * Bug 场景：实例详情页"插件扩展"标签页内嵌 PluginTab，子应用挂载后上报
+ * ROUTE_CHANGE { path: "/dashboard" }，handleSubRouteChange 无条件
+ * router.replace("/extensions/app/{gameCode}/dashboard")，把宿主详情页整个
+ * 顶掉——表现为"点开实例详情被跳到插件工作区仪表盘?instanceId=N"。
+ *
+ * 期望：
+ * 1. 内嵌模式（宿主路由非 /extensions/app/）：只跟踪子应用路由，不改写 URL
+ * 2. 工作区路由模式：URL 同步行为保持不变
+ */
+import WujieVue from "wujie-vue3";
+import { generateWujieAppName } from "@/plugins/wujie/apps.config";
+
+describe("PluginTab 内嵌模式不改写宿主 URL", () => {
+  const PLUGIN_TAB_STUBS = {
+    "el-result": true,
+    "el-empty": true,
+    "el-dialog": true,
+    "el-alert": true,
+    "el-table": true,
+    "el-table-column": true,
+    "el-button": true,
+    "el-dropdown": true,
+    "el-dropdown-menu": true,
+    "el-dropdown-item": true,
+    "el-icon": true,
+  };
+
+  function mountAt(routePath, props = {}) {
+    mockRoute.path = routePath;
+    return mount(PluginTab, {
+      props: { gameCode: "gameB", menuPath: "dashboard", instanceId: 9, ...props },
+      global: { stubs: PLUGIN_TAB_STUBS },
+    });
+  }
+
+  function emitSubRouteChange(gameCode, subPath) {
+    WujieVue.bus.$emit(`${generateWujieAppName(gameCode)}:ROUTE_CHANGE`, {
+      path: subPath,
+    });
+  }
+
+  it("内嵌模式（实例详情页）收到子应用 ROUTE_CHANGE 不应改写宿主 URL", async () => {
+    getInstanceListMock.mockResolvedValue({
+      records: [{ id: 9, instanceName: "inst-9", hostId: 1, hostIp: "1.1.1.1" }],
+    });
+
+    const wrapper = mountAt("/services/instances/detail/9");
+    // 等 watch immediate → loadManifest → ensureInstanceOrPrompt 完成
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockRouter.replace).not.toHaveBeenCalled(); // 反查命中，setup 阶段无导航
+
+    emitSubRouteChange("gameB", "/dashboard");
+    await nextTick();
+
+    // 修复后：内嵌模式只记录路由，不 router.replace 顶掉详情页
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    // 子应用仍内嵌渲染在原页面
+    expect(wrapper.findComponent({ name: "PluginContainer" }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("工作区路由模式收到子应用 ROUTE_CHANGE 仍同步 URL", async () => {
+    getInstanceListMock.mockResolvedValue({
+      records: [{ id: 9, instanceName: "inst-9", hostId: 1, hostIp: "1.1.1.1" }],
+    });
+
+    const wrapper = mountAt("/extensions/app/gameB/maps");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    emitSubRouteChange("gameB", "/dashboard");
+    await nextTick();
+
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      path: "/extensions/app/gameB/dashboard",
+      query: mockRoute.query,
+    });
     wrapper.unmount();
   });
 });
