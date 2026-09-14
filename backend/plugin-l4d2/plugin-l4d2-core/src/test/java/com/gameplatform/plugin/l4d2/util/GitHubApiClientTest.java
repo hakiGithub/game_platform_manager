@@ -41,6 +41,8 @@ class GitHubApiClientTest {
     @BeforeEach
     void setUp() {
         config = new L4D2Config();
+        // 默认仓库已内置取消（未配置仓库语义），测试显式配置
+        config.getPluginStore().setRepo("LaoYutang/l4d2-plugins-store");
         client = new GitHubApiClient(httpClient, config);
     }
 

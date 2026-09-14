@@ -4,7 +4,7 @@ description: >
   GamePlatform 游戏服务器管理平台的插件开发与排查技能（用户级副本，跨项目可用）。在为 GamePlatform
   平台（PF4J + Spring 子容器 + Wujie 微前端）开发或修改游戏插件（plugin-{gameCode}）、声明菜单与扩展点
   （getMenus / TaskHandler / ScheduledTask）、使用 ExtensionClient 持久化、调用宿主服务
-  （主机/实例/文件/SSH 隧道）、开发 Wujie 插件前端，或排查插件加载失败、菜单不显示/白屏、持久化越权、
+  （主机/实例/文件/SSH 隧道/RCON/实例动态信息）、开发 Wujie 插件前端，或排查插件加载失败、菜单不显示/白屏、持久化越权、
   任务卡死、更新插件开发文档时使用。Use when developing, debugging, or migrating GamePlatform
   platform plugins. 主应用 core/api/plugin 模块自身功能开发、非 GamePlatform 平台的插件开发、
   纯前端样式微调不适用本 skill。
@@ -44,7 +44,7 @@ curl http://localhost:8080/api/pf4j/plugin/mygame/manifest
 1. **骨架**：Maven 模块 `plugin-{gameCode}` + `plugin.properties` + `{GameCode}Plugin`（PF4J 入口，仅生命周期日志）+ `{GameCode}Extension`（扩展点实现）→ `references/getting-started.md`
 2. **菜单**：双端插件实现 `getMenus()` 返回 `List<PluginMenuDeclaration>`（宿主不预置任何默认菜单）→ `references/extension-and-menus.md` §6
 3. **持久化**：定义 `{Resource} extends AbstractExtension<Spec>` 标 `@ExtensionModel`，注入 `ExtensionClient` 做 CRUD → `references/persistence.md`
-4. **控制器与宿主服务**：路径必须以 `/api/plugin/{gameCode}/` 开头；需要主机/实例/文件/SSH 隧道能力时注入宿主服务面 → `references/host-services.md`
+4. **控制器与宿主服务**：路径必须以 `/api/plugin/{gameCode}/` 开头；需要主机/实例/文件/SSH 隧道/RCON 能力时注入宿主服务面 → `references/host-services.md`
 5. **异步任务**：实现 `TaskHandler` + `TaskHandlerExtension` 注册，注入 `TaskService` 提交 → `references/async-tasks.md`
 6. **定时任务**：实现 `ScheduledTaskHandler`（独立于任务中心），可选声明式默认计划或注入 `ScheduleService` → `references/scheduled-tasks.md`
 7. **前端**：`frontend/` Vue 3 + Vite 子应用，`utils/runtime.ts` 实现 `detectMode()`，路由 path 与 `getMenus()` 声明严格对齐 → `references/frontend.md`
@@ -67,9 +67,9 @@ curl http://localhost:8080/api/pf4j/plugin/mygame/manifest
 | 文件 | 内容 | 何时读 |
 |---|---|---|
 | `references/getting-started.md` | 版本约定、快速开始、项目结构、plugin.properties、Plugin 入口、pom.xml、独立仓库构建（§6.1） | 新建插件模块、配置骨架；在平台仓库外打包插件时 |
-| `references/extension-and-menus.md` | GameEnhancementExtension 全实现：元数据 / getManifest（features 已废弃）/ getConfigFields / 生命周期钩子 / **getMenus + PluginMenuDeclaration（ADR-0001）** / PluginManifestVO 契约 / 菜单加载链路 / getDeployConfigs（ADR-0008） | 实现扩展点、声明菜单、自描述清单、声明部署配置模板 |
+| `references/extension-and-menus.md` | GameEnhancementExtension 全实现：元数据 / getManifest（features 已废弃）/ getConfigFields / 生命周期钩子 / **getMenus + PluginMenuDeclaration（ADR-0001）** / PluginManifestVO 契约 / 菜单加载链路 / getDeployConfigs（ADR-0008）/ **InstanceInfoProvider 实例动态信息（ADR-0017）** | 实现扩展点、声明菜单、自描述清单、声明部署配置模板、提供玩家数等实时信息 |
 | `references/persistence.md` | `@ExtensionModel` 三种存储策略、ExtensionClient 全方法、ListOptions、安全约束 | 声明扩展资源、CRUD、条件查询；**禁止拼 SQL**，specFilter 走参数化 |
-| `references/host-services.md` | HostQueryService / InstanceQueryService / InstanceFileService（SFTP 与 docker exec 自动路由）/ FileAccessService / SshTunnelService（ADR-0009）/ configInfo.database 组装 / 控制器规范 | 读写实例文件、执行远程命令、SSH 隧道连实例数据库；**不要自写 docker cp 到本地路径** |
+| `references/host-services.md` | HostQueryService / InstanceQueryService / InstanceFileService（SFTP 与 docker exec 自动路由）/ FileAccessService / SshTunnelService（ADR-0009）/ **RconService（ADR-0016）** / **文件传输进度回调** / configInfo.database 组装 / 控制器规范 | 读写实例文件、执行远程命令、SSH 隧道连实例数据库、执行 RCON 命令（勿自建 RCON 连接）；**不要自写 docker cp 到本地路径** |
 | `references/async-tasks.md` | TaskHandler / TaskHandlerExtension / TaskService、注册/实现/提交、进度节流、取消超时、互斥键 | 开发异步任务；**Handler 必须无状态**，循环必须检查 `isCancelled`/`isTimeout` |
 | `references/scheduled-tasks.md` | ScheduledTaskHandler / ScheduledTaskDeclarationExtension / ScheduleService、声明式 upsert 语义、来源隔离、重叠 SKIPPED、插件生命周期联动（ADR-0011） | 开发定时任务；与任务中心完全分离，不要混用两套 Handler |
 | `references/frontend.md` | 两运行模式 detectMode、Wujie 通信、目录结构、Night Ops token 隔离（ADR-0007）、popper 定位修正、前端易缺失文件清单 | 开发 Wujie 子应用；弹层漂移**不要用** popper-options / teleported 方案，用 wujiePopperFix |

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     last_login_time DATETIME,
     last_login_ip   VARCHAR(50),
     create_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted      TINYINT DEFAULT 0,
     remark          TEXT,
     UNIQUE KEY uk_sys_user_username (username),
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS host_info (
     last_check_time  DATETIME,
     is_lan_host      TINYINT DEFAULT 0,           -- 是否局域网主机 0-否 1-是（详见 ADR-0004）
     create_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted       TINYINT DEFAULT 0,
     UNIQUE KEY uk_host_info_ip_address (ip_address),
     KEY idx_host_info_online_status (online_status),
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS game_metadata (
     custom_operations      TEXT,                 -- JSON对象
     icon_url               VARCHAR(500),
     create_time            DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time            DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted             TINYINT DEFAULT 0,
     remark                 TEXT,
     UNIQUE KEY uk_game_metadata_game_code (game_code),
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS game_instance (
     last_backup_time DATETIME,
     runtime_metadata TEXT,                        -- JSON对象，存储运行时元数据
     create_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted       TINYINT DEFAULT 0,
     remark           TEXT,
     UNIQUE KEY uk_game_instance_host_instance (host_id, instance_name),
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS plugin_info (
     start_time       DATETIME,                    -- 启动时间
     author           VARCHAR(100),
     create_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted       TINYINT DEFAULT 0,
     remark           TEXT,
     UNIQUE KEY uk_plugin_info_plugin_id (plugin_id),
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS backup_record (
     source_path    VARCHAR(500),
     retry_count    INT DEFAULT 0,
     create_time    DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted     TINYINT DEFAULT 0,
     remark         TEXT,
     KEY idx_backup_record_instance_id (instance_id),

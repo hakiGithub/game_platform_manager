@@ -32,26 +32,30 @@ vi.mock("element-plus", () => ({
   ElMessage: {
     error: vi.fn(),
     success: vi.fn(),
+    warning: vi.fn(),
   },
   ElMessageBox: {
     confirm: vi.fn().mockResolvedValue(true),
   },
 }));
 
-// Mock router
+// Mock router（401 跳转会调用 push().finally，须返回 Promise）
 vi.mock("@/router", () => ({
   default: {
-    push: vi.fn(),
+    push: vi.fn().mockResolvedValue(),
   },
 }));
 
-// Mock user store
-vi.mock("@/stores/user", () => ({
-  useUserStore: vi.fn(() => ({
+// Mock user store（共享实例：拦截器与断言须拿到同一个 store 对象）
+vi.mock("@/stores/user", () => {
+  const store = {
     token: "test-token",
     logout: vi.fn(),
-  })),
-}));
+  };
+  return {
+    useUserStore: vi.fn(() => store),
+  };
+});
 
 describe("request.js", () => {
   let mockAxios;
@@ -60,6 +64,8 @@ describe("request.js", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // 重置模块注册表：让每个用例重新执行 request.js（拦截器在模块求值时注册）
+    vi.resetModules();
 
     // 重新导入以获取新的实例
     mockAxios = (await import("axios")).default;
@@ -118,6 +124,7 @@ describe("request.js", () => {
 
       const responseInterceptor = responseInterceptors[0][0];
       const response = {
+        config: {},
         data: {
           code: 0,
           data: { id: 1, name: "test" },
@@ -135,6 +142,7 @@ describe("request.js", () => {
 
       const responseInterceptor = responseInterceptors[0][0];
       const response = {
+        config: {},
         data: {
           code: 200,
           data: { id: 2, name: "test2" },
@@ -169,6 +177,7 @@ describe("request.js", () => {
 
       const responseInterceptor = responseInterceptors[0][0];
       const response = {
+        config: {},
         data: {
           code: 400,
           message: "业务错误",
@@ -185,6 +194,7 @@ describe("request.js", () => {
 
       const responseInterceptor = responseInterceptors[0][0];
       const response = {
+        config: {},
         data: {
           code: 500,
         },
@@ -197,7 +207,7 @@ describe("request.js", () => {
 
   describe("响应错误处理", () => {
     it("应该处理 401 错误", async () => {
-      const { ElMessageBox } = await import("element-plus");
+      const { ElMessage } = await import("element-plus");
       const router = (await import("@/router")).default;
       const { useUserStore } = await import("@/stores/user");
 
@@ -211,9 +221,14 @@ describe("request.js", () => {
         },
       };
 
-      await responseErrorHandler(error);
+      // 处理器登出/跳转后仍以 reject 结束，交由调用方感知失败
+      await expect(responseErrorHandler(error)).rejects.toBeDefined();
 
-      expect(ElMessageBox.confirm).toHaveBeenCalled();
+      // 401：登出 + 提示 + 跳转登录页（对齐实现，UI 规范 3.1.1）
+      const userStore = useUserStore();
+      expect(userStore.logout).toHaveBeenCalled();
+      expect(ElMessage.warning).toHaveBeenCalledWith("登录状态已过期，请重新登录");
+      expect(router.push).toHaveBeenCalledWith("/login");
     });
 
     it("应该处理 403 错误", async () => {

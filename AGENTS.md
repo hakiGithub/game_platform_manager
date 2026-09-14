@@ -270,6 +270,7 @@ bash scripts/deploy-plugin.sh --skip-build
 ## 关键工程约定
 
 - **范围隔离（ADR-0002）**：主应用 `core/` 不得包含插件业务配置（`plugin.{gameCode}` 前缀）和插件专属表（`{gameCode}_*` 前缀）；插件配置由 `@ConfigurationProperties` 字段默认值自负，插件表由 ExtensionClient 的 `ext_plugin_{pluginId}_{resource}` 模式自管。游戏元数据 `games/{gameCode}.yml` 是例外，由主应用维护。详见 [ADR-0002](docs/design/adr/0002-main-app-plugin-scope-isolation.md)
+- **游戏元数据加载**：classpath 内置 + 外部扩展目录（`game-platform.metadata.external-dir`，默认 `./games`，Docker 挂载 `games/:/app/games`）合并加载，同 `game_code` 外部覆盖内置；classpath 读取必须走流（fat jar 内 `resource.getFile()` 不可用）；热重载默认开启（`scan-interval` 秒周期重扫外部目录，内容无变化不写库）；手动重扫走 `POST /games/scan`
 - **插件运行模式（ADR-0003）**：废弃 `plugin-l4d2-standalone` 独立运行模式，前端只保留 Wujie + dev 两种模式；新增插件不应实现 standalone 模式。详见 [ADR-0003](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
 - **多数据库方言（ADR-0015）**：数据源支持 SQLite / MySQL / PostgreSQL，方言由启动时连接元数据自动判定（MariaDB 归入 MySQL），无显式开关；切换数据库只需替换 `spring.datasource` 标准配置。建表/种子脚本按方言拆分（`db/schema-{方言}.sql`、`db/data-{方言}.sql`），表不存在时启动自动初始化；MySQL 索引一律内联 KEY 子句（不支持 `CREATE INDEX IF NOT EXISTS`）；`db/migration/` 迁移体系仅对 SQLite 生效。详见 [ADR-0015](docs/design/adr/0015-multi-database-dialect-support.md)
 - 扩展资源基类使用 Hutool 雪花 ID（String 类型 PRIMARY KEY），保留 name 作为 NOT NULL UNIQUE 业务标识
@@ -281,6 +282,7 @@ bash scripts/deploy-plugin.sh --skip-build
 - `SshUtil` 使用连接池模式（共享 SshClient + CachedSession 会话池），后台每 60s 清理空闲超时会话
 - RCON 是主应用宿主能力（传输层：协议/连接池/端点解析归 core `com.gameplatform.rcon`，语义层归插件），SDK 暴露 `RconService`，端点解析只认标准键 `configInfo.rconPort`（缺省 27015）/`rconPassword`，命令执行统一带调用方审计。详见 [ADR-0016](docs/design/adr/0016-rcon-host-capability.md)
 - 实例详情拆分为静态接口 `GET /instances/{id}` 与动态接口 `GET /instances/{id}/metrics`
+- 实例动态信息（玩家数等）走 `InstanceInfoProvider` 扩展点（插件子容器 `@Component` 注册，非 PF4J ExtensionPoint），未实现自动降级（RUNNING 用库中存量值），TTL 缓存与查询预算归主应用；`InstanceDynamicInfo` 的 extras 仅透传到 VO 不解释。详见 [ADR-0017](docs/design/adr/0017-instance-info-provider.md)
 - 插件 UI 资源路径需在 `SecurityConfig` 中放行 `/pf4j/plugin/*/ui/**` 和 `/pf4j/plugins/*/ui/**`
 - `PluginFrameworkController.getPluginResource` 对 `index.html` 返回 `Cache-Control: no-store`，其余带 hash 的 JS/CSS 保留 7 天缓存
 - `InstanceVO` 必须包含 `iconUrl` 与 `runtimeMetadata` 字段
@@ -338,8 +340,26 @@ bash scripts/deploy-plugin.sh --skip-build
   - [ADR-0003 废弃 plugin-l4d2-standalone](docs/design/adr/0003-deprecate-plugin-l4d2-standalone.md)
   - [ADR-0015 多数据库方言支持](docs/design/adr/0015-multi-database-dialect-support.md)
   - [ADR-0016 RCON 能力上提](docs/design/adr/0016-rcon-host-capability.md)
+  - [ADR-0017 实例信息 Provider 扩展点](docs/design/adr/0017-instance-info-provider.md)
+  - [ADR-0021 主机环境工具安装](docs/design/adr/0021-host-environment-tool-install.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---
 
-*最后更新: 2026-08-03*
+## Agent skills
+
+### Issue tracker
+
+Issue 以本地 Markdown 文件形式存放在 `.scratch/<feature-slug>/`（一个 ticket 一个文件，spec 为 `spec.md`）。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+默认五角色词汇（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`），以 `Status:` 行记录在 issue 文件顶部。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+单上下文布局：根目录 `CONTEXT.md` + `docs/design/adr/`。See `docs/agents/domain.md`.
+
+---
+
+*最后更新: 2026-09-10*

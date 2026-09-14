@@ -99,3 +99,10 @@ backend/plugin-l4d2/plugin-l4d2-core/src/main/resources/builtin-plugins/
 frontend/src/auto-imports.d.ts
 frontend/src/components.d.ts
 *.timestamp-*.mjs
+
+# GUI 验证截图与测试运行产物（本地验证证据，不入库）
+gui-test-screenshots/
+backend/test-results/
+
+# 插件 jar 构建产物（经 scripts/deploy-image.sh 同步挂载，不入库）
+backend/plugins/*.jar

@@ -69,7 +69,8 @@ public class L4D2Config {
 
     @Data
     public static class PluginStore {
-        private String repo = "LaoYutang/l4d2-plugins-store";
+        /** 仓库地址（owner/repo）。默认留空 = 未配置仓库，运行时配置存扩展表（store-config） */
+        private String repo = "";
         private String branch = "master";
         private long cacheTtlMs = 600_000L; // 10 分钟
         private int maxConcurrent = 3;

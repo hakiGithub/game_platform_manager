@@ -47,9 +47,11 @@ public interface InstanceFileService {
     byte[] downloadFileToMemory(long instanceId, String relativePath);
     byte[] getFileBytes(long instanceId, String relativePath, long offset, long length);
 
-    // 上传 / 下载
+    // 上传 / 下载（v3.10.0 新增进度回调重载；无回调签名保留为 default 方法）
     void uploadLocalFile(long instanceId, String relativePath, String localPath);
     void downloadFile(long instanceId, String relativePath, String localPath);
+    void uploadLocalFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);
+    void downloadFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);
 
     // 文件管理
     void deleteFile(long instanceId, String relativePath);
@@ -116,6 +118,9 @@ public interface FileAccessService {
     void uploadFile(Long hostId, String remotePath, MultipartFile file);  // Spring multipart
     void uploadLocalFile(Long hostId, String remotePath, String localPath);
     void downloadFile(Long hostId, String remotePath, String localPath);
+    // v3.10.0 进度回调重载（无回调签名保留为 default 方法）
+    void uploadLocalFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);
+    void downloadFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);
     void deleteFile(Long hostId, String remotePath);
     void moveFile(Long hostId, String oldPath, String newPath);
 
@@ -257,3 +262,63 @@ public class RconController { /* ... */ }
 - **路径前缀约束**：所有控制器路径必须以 `/api/plugin/{gameCode}/` 开头（框架注册时自动去掉 `/api`，因主应用 context-path 为 `/api`）。
 - **路径冲突检测**：两个插件注册相同 URL 会抛 `PluginPathConflictException` 阻止加载（见 `references/exceptions.md`）。
 - **统一响应**：建议返回 `{code, message, data}` 格式。
+
+---
+
+## 9. RconService — RCON 宿主能力（v3.10.0，ADR-0016）
+
+Source RCON 传输层是主应用宿主能力：连接池、认证、端点解析归 core `com.gameplatform.rcon`，SDK 暴露 `RconService`，命令语义（status 解析、kick/ban 语法等）归插件。
+
+```java
+public interface RconService {
+    String executeCommand(long instanceId, String command);                              // 默认读超时
+    String executeCommand(long instanceId, String command, Duration timeout);            // timeout 为 null 时用默认
+    boolean testConnection(long instanceId);                                            // 建连 + 认证，不执行业务命令
+}
+```
+
+关键约束：
+
+- **端点解析只认标准键**：`configInfo.rconPort`（缺省 27015）与 `rconPassword`。插件自定义变量名（如 `rconPwd`）不会被识别——声明部署配置时必须用标准键。
+- **密码不可由插件指定**：认证凭据由宿主统一管理，插件无法传入或覆盖 RCON 密码。
+- **审计自动携带**：每次执行自动记录调用方插件 ID 到统一审计日志，来源不可伪造；命令语义与输出解析由插件自理。
+- **异常**：实例不存在、端点不可达或连接/通信失败抛 `BusinessException`。
+
+典型用法（参考实现 plugin-l4d2 的 `L4D2RconService`）：
+
+```java
+@Service
+@RequiredArgsConstructor
+public class MyRconFacade {
+    private final RconService rconService;
+
+    public int getPlayerCount(long instanceId) {
+        String out = rconService.executeCommand(instanceId, "status");
+        return parseStatus(out);  // 输出解析是插件语义层职责
+    }
+}
+```
+
+> 插件内**不要再自建 RCON 连接/协议实现**（旧 plugin-l4d2 的 rcon-lib 路线已废弃）；一律注入 `RconService`。
+
+---
+
+## 10. FileTransferProgressCallback — 文件传输进度回调（v3.10.0）
+
+`InstanceFileService` / `FileAccessService` 的 `uploadLocalFile` / `downloadFile` 均有带回调重载，全链路流式（不整体载入内存）：
+
+```java
+public interface FileTransferProgressCallback {
+    void onStart(long totalBytes);                            // 流打开前；totalBytes 未知为 -1
+    void onProgress(long bytesTransferred, long totalBytes); // 频率不保证（可能被节流）
+    void onComplete();                                        // 成功，保证最终一次
+    void onError(Throwable error);                            // 失败，保证最终一次
+}
+```
+
+契约要点：
+
+- **同步回调**：在传输线程上触发，回调内勿做耗时操作（会拖慢传输）。
+- **异常即中止**：回调方法抛出的异常会中止传输并向上传播——可借此实现"取消传输"。
+- **totalBytes = -1**：大小无法预知时勿据此算百分比。
+- **Docker 类部署进度不完整**：传输分两段（SFTP 到宿主临时文件 + docker cp 进/出容器），进度仅覆盖 SFTP 段；docker cp 段无回调，进度可能停在 100% 一段时间，UI 需容忍。

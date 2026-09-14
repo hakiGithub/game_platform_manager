@@ -2,7 +2,14 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { getGameList, getGamePage, getGameDetail, deleteGame, importGameYaml } from "@/api/game";
+import {
+  getGameList,
+  getGamePage,
+  getGameDetail,
+  deleteGame,
+  importGameYaml,
+  scanGameMetadata,
+} from "@/api/game";
 import {
   getInstancesByGameId,
   startInstance,
@@ -32,20 +39,56 @@ const pagination = reactive({
 const lastRefreshAt = ref("等待目录同步");
 const syncPending = computed(() => lastRefreshAt.value.startsWith("等待"));
 
-const catalogGameCount = computed(() => pagination.total || gameList.value.length);
+const catalogGameCount = computed(
+  () => pagination.total || gameList.value.length,
+);
 const deployableGameCount = computed(
-  () => gameList.value.filter((game) => game.supportedDeployTypes?.length > 0).length,
+  () =>
+    gameList.value.filter((game) => game.supportedDeployTypes?.length > 0)
+      .length,
 );
 const multiRuntimeGameCount = computed(
-  () => gameList.value.filter((game) => (game.supportedDeployTypes?.length || 0) > 1).length,
+  () =>
+    gameList.value.filter(
+      (game) => (game.supportedDeployTypes?.length || 0) > 1,
+    ).length,
 );
 const templateReadyGameCount = computed(
   () =>
     gameList.value.filter(
-      (game) =>
-        game.deployConfig && Object.keys(game.deployConfig).length > 0,
+      (game) => game.deployConfig && Object.keys(game.deployConfig).length > 0,
     ).length,
 );
+
+// 扫描游戏配置（classpath 内置 + 外部扩展目录）
+const scanning = ref(false);
+
+async function handleScanYaml() {
+  scanning.value = true;
+  try {
+    const result = await scanGameMetadata();
+    const {
+      totalFiles = 0,
+      successCount = 0,
+      updateCount = 0,
+      errorCount = 0,
+    } = result || {};
+    if (errorCount > 0) {
+      ElMessage.warning(
+        `扫描完成：${totalFiles} 个文件，新增 ${successCount}，更新 ${updateCount}，失败 ${errorCount}（详情见后端日志）`,
+      );
+    } else {
+      ElMessage.success(
+        `扫描完成：${totalFiles} 个文件，新增 ${successCount}，更新 ${updateCount}`,
+      );
+    }
+    await fetchGameList();
+  } catch (error) {
+    ElMessage.error("扫描失败：" + (error.message || "未知错误"));
+  } finally {
+    scanning.value = false;
+  }
+}
 
 // 上传 YAML 导入游戏元数据
 const yamlDialogVisible = ref(false);
@@ -80,7 +123,10 @@ async function handleYamlImport() {
       ElMessage.error("导入失败：" + (result.error || "格式校验未通过"));
     }
   } catch (error) {
-    yamlImportResult.value = { success: false, error: error.message || "上传失败" };
+    yamlImportResult.value = {
+      success: false,
+      error: error.message || "上传失败",
+    };
   } finally {
     yamlImporting.value = false;
   }
@@ -91,9 +137,14 @@ const drawerVisible = ref(false);
 const drawerLoading = ref(false);
 const currentGame = ref(null);
 
-const currentGameInstances = computed(() => currentGame.value?.attachedInstances || []);
+const currentGameInstances = computed(
+  () => currentGame.value?.attachedInstances || [],
+);
 const currentGameRunningCount = computed(
-  () => currentGameInstances.value.filter((instance) => instance.status === "running").length,
+  () =>
+    currentGameInstances.value.filter(
+      (instance) => instance.status === "running",
+    ).length,
 );
 
 // 实例展开缓存：{ [gameId]: { loading, loaded, list } }
@@ -282,11 +333,11 @@ async function handleDelete(row) {
 // 获取部署类型标签
 function getDeployTypeTag(type) {
   const typeMap = {
-    "docker": { label: "Docker", type: "primary" },
+    docker: { label: "Docker", type: "primary" },
     "docker-compose": { label: "Docker Compose", type: "success" },
-    "linuxgsm": { label: "LinuxGSM", type: "warning" },
+    linuxgsm: { label: "LinuxGSM", type: "warning" },
     "linuxgsm-docker": { label: "LinuxGSM Docker", type: "danger" },
-    "native": { label: "原生", type: "info" },
+    native: { label: "原生", type: "info" },
   };
   return typeMap[type] || { label: type, type: "info" };
 }
@@ -352,7 +403,10 @@ function getEntries(value) {
 }
 
 function getPortEntries(row) {
-  return getEntries(row?.deployConfig?.defaultPorts || (row?.defaultPort ? { game: row.defaultPort } : null));
+  return getEntries(
+    row?.deployConfig?.defaultPorts ||
+      (row?.defaultPort ? { game: row.defaultPort } : null),
+  );
 }
 
 function formatRefreshTime() {
@@ -381,9 +435,15 @@ onMounted(() => {
           <span class="catalog-pulse" aria-hidden="true"></span>
           <div>
             <strong>{{ syncPending ? "等待同步" : "目录已就绪" }}</strong>
-            <small>上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
+            <small
+              >上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small
+            >
           </div>
         </div>
+        <el-button :loading="scanning" @click="handleScanYaml">
+          <el-icon><FolderOpened /></el-icon>
+          扫描配置
+        </el-button>
         <el-button @click="yamlDialogVisible = true">
           <el-icon><Upload /></el-icon>
           上传 YAML
@@ -429,7 +489,12 @@ onMounted(() => {
       </div>
       <el-form class="catalog-filter-form" :model="searchForm" inline>
         <el-form-item label="游戏名称或编码">
-          <el-input v-model="searchForm.keyword" placeholder="例如：minecraft" clearable @keyup.enter="handleSearch" />
+          <el-input
+            v-model="searchForm.keyword"
+            placeholder="例如：minecraft"
+            clearable
+            @keyup.enter="handleSearch"
+          />
         </el-form-item>
         <el-form-item class="filter-actions">
           <el-button type="primary" @click="handleSearch">
@@ -478,35 +543,102 @@ onMounted(() => {
                   部署新实例
                 </el-button>
               </div>
-              <div v-loading="instanceMap[row.id]?.loading" class="runtime-list-wrapper">
+              <div
+                v-loading="instanceMap[row.id]?.loading"
+                class="runtime-list-wrapper"
+              >
                 <template v-if="instanceMap[row.id]?.loaded">
-                  <div v-if="instanceMap[row.id].list.length === 0" class="runtime-empty">
+                  <div
+                    v-if="instanceMap[row.id].list.length === 0"
+                    class="runtime-empty"
+                  >
                     <el-icon><Grid /></el-icon>
                     <span>还没有关联实例</span>
-                    <el-button type="primary" size="small" @click="handleDeployGame(row)">立即部署</el-button>
+                    <el-button
+                      type="primary"
+                      size="small"
+                      @click="handleDeployGame(row)"
+                      >立即部署</el-button
+                    >
                   </div>
                   <div v-else class="runtime-cards">
-                    <article v-for="instance in instanceMap[row.id].list" :key="instance.id" class="runtime-card" :class="`is-${instance.status}`">
+                    <article
+                      v-for="instance in instanceMap[row.id].list"
+                      :key="instance.id"
+                      class="runtime-card"
+                      :class="`is-${instance.status}`"
+                    >
                       <div class="runtime-card-heading">
                         <div class="runtime-title">
-                          <span class="runtime-status-dot" :class="`is-${instance.status}`"></span>
+                          <span
+                            class="runtime-status-dot"
+                            :class="`is-${instance.status}`"
+                          ></span>
                           <strong>{{ instance.instanceName }}</strong>
-                          <el-tag :type="statusType(instance.status)" size="small" effect="plain">{{ instance.runStatusDesc }}</el-tag>
+                          <el-tag
+                            :type="statusType(instance.status)"
+                            size="small"
+                            effect="plain"
+                            >{{ instance.runStatusDesc }}</el-tag
+                          >
                         </div>
                         <div class="runtime-card-actions">
-                          <el-button v-if="instance.status === 'stopped' || instance.status === 'error'" type="success" link size="small" @click="handleStartInstance(instance)">启动</el-button>
-                          <el-button v-if="instance.status === 'running'" type="warning" link size="small" @click="handleStopInstance(instance)">停止</el-button>
-                          <el-button type="primary" link size="small" @click="handleViewInstance(instance)">详情</el-button>
+                          <el-button
+                            v-if="
+                              instance.status === 'stopped' ||
+                              instance.status === 'error'
+                            "
+                            type="success"
+                            link
+                            size="small"
+                            @click="handleStartInstance(instance)"
+                            >启动</el-button
+                          >
+                          <el-button
+                            v-if="instance.status === 'running'"
+                            type="warning"
+                            link
+                            size="small"
+                            @click="handleStopInstance(instance)"
+                            >停止</el-button
+                          >
+                          <el-button
+                            type="primary"
+                            link
+                            size="small"
+                            @click="handleViewInstance(instance)"
+                            >详情</el-button
+                          >
                         </div>
                       </div>
                       <div class="runtime-card-grid">
-                        <div><span>主机</span><strong>{{ instance.hostName || "-" }}</strong></div>
-                        <div><span>端点</span><strong class="mono">{{ getInstanceEndpoint(instance) }}</strong></div>
-                        <div><span>玩家</span><strong>{{ instance.onlinePlayers || 0 }}</strong></div>
-                        <div><span>部署方式</span><strong>{{ getDeployTypeTag(instance.deployType).label }}</strong></div>
+                        <div>
+                          <span>主机</span
+                          ><strong>{{ instance.hostName || "-" }}</strong>
+                        </div>
+                        <div>
+                          <span>端点</span
+                          ><strong class="mono">{{
+                            getInstanceEndpoint(instance)
+                          }}</strong>
+                        </div>
+                        <div>
+                          <span>玩家</span
+                          ><strong>{{ instance.onlinePlayers || 0 }}</strong>
+                        </div>
+                        <div>
+                          <span>部署方式</span
+                          ><strong>{{
+                            getDeployTypeTag(instance.deployType).label
+                          }}</strong>
+                        </div>
                       </div>
                     </article>
-                    <button class="runtime-add-card" type="button" @click="handleDeployGame(row)">
+                    <button
+                      class="runtime-add-card"
+                      type="button"
+                      @click="handleDeployGame(row)"
+                    >
                       <el-icon><Plus /></el-icon>
                       <span>部署新实例</span>
                     </button>
@@ -520,7 +652,12 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="catalog-name-cell">
               <span class="catalog-icon">
-                <el-avatar v-if="row.iconUrl" :src="row.iconUrl" :size="32" shape="square" />
+                <el-avatar
+                  v-if="row.iconUrl"
+                  :src="row.iconUrl"
+                  :size="32"
+                  shape="square"
+                />
                 <el-icon v-else><Grid /></el-icon>
               </span>
               <div>
@@ -534,10 +671,23 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="deploy-capability">
               <div class="deploy-tags">
-                <el-tag v-for="type in row.supportedDeployTypes" :key="type" :type="getDeployTypeTag(type).type" size="small" effect="plain">{{ getDeployTypeTag(type).label }}</el-tag>
-                <span v-if="!row.supportedDeployTypes?.length" class="text-muted">未配置</span>
+                <el-tag
+                  v-for="type in row.supportedDeployTypes"
+                  :key="type"
+                  :type="getDeployTypeTag(type).type"
+                  size="small"
+                  effect="plain"
+                  >{{ getDeployTypeTag(type).label }}</el-tag
+                >
+                <span
+                  v-if="!row.supportedDeployTypes?.length"
+                  class="text-muted"
+                  >未配置</span
+                >
               </div>
-              <span>{{ row.supportedDeployTypes?.length || 0 }} 种部署路径</span>
+              <span
+                >{{ row.supportedDeployTypes?.length || 0 }} 种部署路径</span
+              >
             </div>
           </template>
         </el-table-column>
@@ -559,7 +709,10 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="模板状态" min-width="150">
           <template #default="{ row }">
-            <div class="catalog-readiness" :class="`is-${getCatalogReadinessTone(row)}`">
+            <div
+              class="catalog-readiness"
+              :class="`is-${getCatalogReadinessTone(row)}`"
+            >
               <span class="readiness-dot"></span>
               <div>
                 <strong>{{ getCatalogReadiness(row) }}</strong>
@@ -571,9 +724,27 @@ onMounted(() => {
         <el-table-column label="目录操作" width="210" fixed="right">
           <template #default="{ row }">
             <div class="catalog-actions">
-              <el-button type="success" link size="small" @click="handleDeployGame(row)">部署</el-button>
-              <el-button type="primary" link size="small" @click="handleDetail(row)">详情</el-button>
-              <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+              <el-button
+                type="success"
+                link
+                size="small"
+                @click="handleDeployGame(row)"
+                >部署</el-button
+              >
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="handleDetail(row)"
+                >详情</el-button
+              >
+              <el-button
+                type="danger"
+                link
+                size="small"
+                @click="handleDelete(row)"
+                >删除</el-button
+              >
             </div>
           </template>
         </el-table-column>
@@ -587,7 +758,9 @@ onMounted(() => {
       </el-table>
 
       <div class="catalog-footer">
-        <span><i class="catalog-pulse" aria-hidden="true"></i> 目录能力已接入</span>
+        <span
+          ><i class="catalog-pulse" aria-hidden="true"></i> 目录能力已接入</span
+        >
         <el-pagination
           v-if="pagination.total > 0"
           v-model:current-page="pagination.current"
@@ -614,25 +787,40 @@ onMounted(() => {
           <header class="runtime-detail-hero">
             <div class="drawer-topbar">
               <span class="section-kicker">RUNTIME TEMPLATE / GAME DETAIL</span>
-              <el-button text circle aria-label="关闭详情" @click="drawerVisible = false">
+              <el-button
+                text
+                circle
+                aria-label="关闭详情"
+                @click="drawerVisible = false"
+              >
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
             <div class="runtime-detail-title">
               <span class="runtime-detail-icon">
-                <el-avatar v-if="currentGame.iconUrl" :src="currentGame.iconUrl" :size="42" shape="square" />
+                <el-avatar
+                  v-if="currentGame.iconUrl"
+                  :src="currentGame.iconUrl"
+                  :size="42"
+                  shape="square"
+                />
                 <el-icon v-else><Grid /></el-icon>
               </span>
               <div>
                 <h2>{{ currentGame.gameName }}</h2>
                 <code>{{ currentGame.gameCode }}</code>
               </div>
-              <span class="detail-readiness" :class="`is-${getCatalogReadinessTone(currentGame)}`">
+              <span
+                class="detail-readiness"
+                :class="`is-${getCatalogReadinessTone(currentGame)}`"
+              >
                 <i></i>
                 {{ getCatalogReadiness(currentGame) }}
               </span>
             </div>
-            <p class="runtime-detail-description">{{ currentGame.description || "暂无运行时描述" }}</p>
+            <p class="runtime-detail-description">
+              {{ currentGame.description || "暂无运行时描述" }}
+            </p>
             <div class="runtime-detail-meta">
               <span>更新于 {{ formatTime(currentGame.updateTime) }}</span>
               <span>默认端口 {{ currentGame.defaultPort || "—" }}</span>
@@ -659,7 +847,9 @@ onMounted(() => {
             <div class="runtime-overview-grid">
               <div>
                 <span>部署路径</span>
-                <strong>{{ currentGame.supportedDeployTypes?.length || 0 }}</strong>
+                <strong>{{
+                  currentGame.supportedDeployTypes?.length || 0
+                }}</strong>
                 <small>种可选方式</small>
               </div>
               <div>
@@ -694,13 +884,24 @@ onMounted(() => {
                 >
                   {{ getDeployTypeTag(type).label }}
                 </el-tag>
-                <span v-if="!currentGame.supportedDeployTypes?.length" class="detail-muted">暂无部署方式</span>
+                <span
+                  v-if="!currentGame.supportedDeployTypes?.length"
+                  class="detail-muted"
+                  >暂无部署方式</span
+                >
               </div>
             </div>
             <div class="contract-block">
               <span class="contract-label">PORT CONTRACT</span>
-              <div v-if="getPortEntries(currentGame).length" class="port-contract-grid">
-                <div v-for="entry in getPortEntries(currentGame)" :key="entry[0]" class="port-contract-item">
+              <div
+                v-if="getPortEntries(currentGame).length"
+                class="port-contract-grid"
+              >
+                <div
+                  v-for="entry in getPortEntries(currentGame)"
+                  :key="entry[0]"
+                  class="port-contract-item"
+                >
                   <span>{{ entry[0] }}</span>
                   <strong>{{ entry[1] }}</strong>
                   <small>TCP / 默认暴露</small>
@@ -721,8 +922,14 @@ onMounted(() => {
             <div class="dependency-grid">
               <div class="dependency-group">
                 <span class="contract-label">RUNTIME DEPENDENCIES</span>
-                <div v-if="getEntries(currentGame.environmentDeps).length" class="dependency-list">
-                  <div v-for="entry in getEntries(currentGame.environmentDeps)" :key="entry[0]">
+                <div
+                  v-if="getEntries(currentGame.environmentDeps).length"
+                  class="dependency-list"
+                >
+                  <div
+                    v-for="entry in getEntries(currentGame.environmentDeps)"
+                    :key="entry[0]"
+                  >
                     <span>{{ entry[0] }}</span>
                     <strong>{{ entry[1] }}</strong>
                   </div>
@@ -731,8 +938,14 @@ onMounted(() => {
               </div>
               <div class="dependency-group">
                 <span class="contract-label">CUSTOM OPERATIONS</span>
-                <div v-if="getEntries(currentGame.customOperations).length" class="dependency-list">
-                  <div v-for="entry in getEntries(currentGame.customOperations)" :key="entry[0]">
+                <div
+                  v-if="getEntries(currentGame.customOperations).length"
+                  class="dependency-list"
+                >
+                  <div
+                    v-for="entry in getEntries(currentGame.customOperations)"
+                    :key="entry[0]"
+                  >
                     <span>{{ entry[0] }}</span>
                     <strong>{{ entry[1] }}</strong>
                   </div>
@@ -750,23 +963,77 @@ onMounted(() => {
               </div>
               <span class="detail-section-index">04</span>
             </div>
-            <div v-if="currentGameInstances.length" class="drawer-instance-list">
-              <article v-for="instance in currentGameInstances" :key="instance.id" class="drawer-instance-card" :class="`is-${instance.status}`">
+            <div
+              v-if="currentGameInstances.length"
+              class="drawer-instance-list"
+            >
+              <article
+                v-for="instance in currentGameInstances"
+                :key="instance.id"
+                class="drawer-instance-card"
+                :class="`is-${instance.status}`"
+              >
                 <div class="drawer-instance-heading">
                   <div>
-                    <span class="drawer-instance-name"><i class="instance-status-dot" :class="`is-${instance.status}`"></i>{{ instance.instanceName }}</span>
-                    <small>{{ instance.hostName || "未绑定主机" }} · {{ getDeployTypeTag(instance.deployType).label }}</small>
+                    <span class="drawer-instance-name"
+                      ><i
+                        class="instance-status-dot"
+                        :class="`is-${instance.status}`"
+                      ></i
+                      >{{ instance.instanceName }}</span
+                    >
+                    <small
+                      >{{ instance.hostName || "未绑定主机" }} ·
+                      {{ getDeployTypeTag(instance.deployType).label }}</small
+                    >
                   </div>
-                  <el-tag :type="statusType(instance.status)" size="small" effect="plain">{{ instance.runStatusDesc }}</el-tag>
+                  <el-tag
+                    :type="statusType(instance.status)"
+                    size="small"
+                    effect="plain"
+                    >{{ instance.runStatusDesc }}</el-tag
+                  >
                 </div>
                 <div class="drawer-instance-meta">
-                  <span><b>ENDPOINT</b>{{ getInstanceEndpoint(instance) }}</span>
-                  <span><b>PLAYERS</b>{{ instance.onlinePlayers || 0 }} / {{ instance.maxPlayerCount ?? instance.configInfo?.maxPlayers ?? "—" }}</span>
+                  <span
+                    ><b>ENDPOINT</b>{{ getInstanceEndpoint(instance) }}</span
+                  >
+                  <span
+                    ><b>PLAYERS</b>{{ instance.onlinePlayers || 0 }} /
+                    {{
+                      instance.maxPlayerCount ??
+                      instance.configInfo?.maxPlayers ??
+                      "—"
+                    }}</span
+                  >
                 </div>
                 <div class="drawer-instance-actions">
-                  <el-button v-if="instance.status === 'stopped' || instance.status === 'error'" type="success" link size="small" @click="handleStartInstance(instance, currentGame.id)">启动</el-button>
-                  <el-button v-if="instance.status === 'running'" type="warning" link size="small" @click="handleStopInstance(instance, currentGame.id)">停止</el-button>
-                  <el-button type="primary" link size="small" @click="handleViewInstance(instance)">打开实例详情</el-button>
+                  <el-button
+                    v-if="
+                      instance.status === 'stopped' ||
+                      instance.status === 'error'
+                    "
+                    type="success"
+                    link
+                    size="small"
+                    @click="handleStartInstance(instance, currentGame.id)"
+                    >启动</el-button
+                  >
+                  <el-button
+                    v-if="instance.status === 'running'"
+                    type="warning"
+                    link
+                    size="small"
+                    @click="handleStopInstance(instance, currentGame.id)"
+                    >停止</el-button
+                  >
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    @click="handleViewInstance(instance)"
+                    >打开实例详情</el-button
+                  >
                 </div>
               </article>
             </div>
@@ -774,11 +1041,19 @@ onMounted(() => {
               <el-icon><Grid /></el-icon>
               <strong>还没有关联实例</strong>
               <span>这个运行时模板可以直接用于创建第一台服务</span>
-              <el-button type="primary" size="small" @click="handleDeployGame(currentGame)">立即部署</el-button>
+              <el-button
+                type="primary"
+                size="small"
+                @click="handleDeployGame(currentGame)"
+                >立即部署</el-button
+              >
             </div>
           </section>
 
-          <section v-if="currentGame.remark" class="detail-section drawer-note-section">
+          <section
+            v-if="currentGame.remark"
+            class="detail-section drawer-note-section"
+          >
             <span class="contract-label">CATALOG NOTE</span>
             <p>{{ currentGame.remark }}</p>
           </section>
@@ -803,24 +1078,42 @@ onMounted(() => {
         :file-list="yamlFileList"
       >
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">拖拽 YAML 文件到此处，或<em>点击选择</em></div>
+        <div class="el-upload__text">
+          拖拽 YAML 文件到此处，或<em>点击选择</em>
+        </div>
         <template #tip>
-          <div class="el-upload__tip">支持 .yml / .yaml，上传后自动校验格式并导入</div>
+          <div class="el-upload__tip">
+            支持 .yml / .yaml，上传后自动校验格式并导入
+          </div>
         </template>
       </el-upload>
       <el-alert
         v-if="yamlImportResult"
         :type="yamlImportResult.success ? 'success' : 'error'"
-        :title="yamlImportResult.success
-          ? '导入成功' + (yamlImportResult.gameName ? '：' + yamlImportResult.gameName + '（' + yamlImportResult.gameCode + '）' : '')
-          : '导入失败：' + (yamlImportResult.error || '未知错误')"
+        :title="
+          yamlImportResult.success
+            ? '导入成功' +
+              (yamlImportResult.gameName
+                ? '：' +
+                  yamlImportResult.gameName +
+                  '（' +
+                  yamlImportResult.gameCode +
+                  '）'
+                : '')
+            : '导入失败：' + (yamlImportResult.error || '未知错误')
+        "
         :closable="false"
         show-icon
         style="margin-top: 12px"
       />
       <template #footer>
         <el-button @click="yamlDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="yamlImporting" :disabled="!yamlFile" @click="handleYamlImport">
+        <el-button
+          type="primary"
+          :loading="yamlImporting"
+          :disabled="!yamlFile"
+          @click="handleYamlImport"
+        >
           校验并导入
         </el-button>
       </template>
@@ -1031,8 +1324,13 @@ onMounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .instance-count-text {
@@ -2225,7 +2523,9 @@ onMounted(() => {
   color: var(--catalog-accent);
   cursor: pointer;
   font-size: 12px;
-  transition: border-color 0.18s ease, background 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
 
   &:hover {
     border-color: var(--catalog-accent);

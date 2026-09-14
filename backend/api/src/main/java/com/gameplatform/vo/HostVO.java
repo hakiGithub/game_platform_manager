@@ -136,6 +136,12 @@ public class HostVO implements Serializable {
     private Boolean isLanHost;
 
     /**
+     * 认证方式：password | key（由存量凭据类型推导，不回显凭据本身）
+     */
+    @Schema(description = "认证方式：password | key")
+    private String authType;
+
+    /**
      * 创建时间
      */
     @Schema(description = "创建时间")

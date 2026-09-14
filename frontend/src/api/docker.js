@@ -92,6 +92,21 @@ export function deleteContainer(hostId, containerId, params = {}) {
 }
 
 /**
+ * 认领容器为游戏实例（ADR-0023）
+ * @param {number} hostId - 主机ID
+ * @param {string} containerId - 容器ID
+ * @param {Object} data - {instanceName, gameId, deployType?, workDir?, projectName?, serviceName?, remark?}
+ * @returns {Promise<number>} 新建实例ID
+ */
+export function adoptContainer(hostId, containerId, data) {
+  return request({
+    url: `/docker/hosts/${hostId}/containers/${containerId}/adopt`,
+    method: "post",
+    data,
+  });
+}
+
+/**
  * 获取容器资源统计
  * @param {number} hostId - 主机ID
  * @param {string} containerId - 容器ID

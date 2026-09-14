@@ -28,6 +28,10 @@
 | [0017](0017-instance-info-provider.md) | 实例信息 Provider 扩展点（玩家数插件化查询） | Accepted | 2026-08-29 |
 | [0018](0018-map-upload-task-and-archives.md) | 地图上传任务化与压缩包支持 | Accepted | 2026-08-30 |
 | [0019](0019-steam302-headless-docker.md) | Steam302 主机加速——无头精简包 + Docker 化部署 | Accepted | 2026-09-06 |
+| [0020](0020-restart-mode-semantics-and-persistence.md) | 重启模式语义收敛与持久化 | Accepted | 2026-09-06 |
+| [0021](0021-host-environment-tool-install.md) | 主机环境工具安装——白名单 + 发行版自适应 + 同步执行 | Accepted | 2026-09-07 |
+| [0022](0022-l4d2-plugin-market-unification.md) | L4D2 插件市场统一——三 Tab 页面化，取消弹窗与独立商店菜单 | Accepted | 2026-09-11 |
+| [0023](0023-container-adoption.md) | Docker 容器手动认领为游戏实例（Container Adoption） | Accepted | 2026-09-11 |
 
 ## 术语表
 

@@ -59,12 +59,13 @@ class PluginInstallServiceStoreTest {
 
         service.installFromLocalFile(100L, zip);
 
+        // 同步路径（无监听）：走四参重载但回调为 null，行为与旧版一致
         verify(instanceFileService).uploadLocalFile(eq(100L),
                 eq("left4dead2/addons/sourcemod/plugins_store/myplugin/left4dead2/addons/sourcemod/plugins/myplugin.smx"),
-                anyString());
+                anyString(), isNull());
         verify(instanceFileService).uploadLocalFile(eq(100L),
                 eq("left4dead2/addons/sourcemod/plugins_store/myplugin/left4dead2/cfg/sourcemod/myplugin.cfg"),
-                anyString());
+                anyString(), isNull());
         ArgumentCaptor<PluginMeta> metaCaptor = ArgumentCaptor.forClass(PluginMeta.class);
         verify(pluginMetaService).save(eq(100L), metaCaptor.capture());
         PluginMeta saved = metaCaptor.getValue();

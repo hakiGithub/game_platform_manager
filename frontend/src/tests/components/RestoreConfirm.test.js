@@ -1,29 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
-import { mount } from "@vue/test-utils";
-import {
-  ElDialog,
-  ElAlert,
-  ElTag,
-  ElButton,
-  ElProgress,
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElIcon,
-} from "element-plus";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mount, flushPromises } from "@vue/test-utils";
+import ElementPlus from "element-plus";
+import { ElDialog, ElAlert, ElButton, ElProgress } from "element-plus";
 import RestoreConfirm from "@/components/RestoreConfirm.vue";
 
 // Mock Element Plus icons
-vi.mock("@element-plus/icons-vue", () => ({
-  WarningFilled: { name: "WarningFilled" },
-  Calendar: { name: "Calendar" },
-  Document: { name: "Document" },
-  DataLine: { name: "DataLine" },
-  Folder: { name: "Folder" },
-  InfoFilled: { name: "InfoFilled" },
-  CircleCheck: { name: "CircleCheck" },
-  CircleClose: { name: "CircleClose" },
-  Loading: { name: "Loading" },
-}));
+vi.mock("@element-plus/icons-vue", async (importOriginal) => {
+  // 全量透传真实图标：element-plus 内部会按名解析任意图标（如 Close）
+  return { ...(await importOriginal()) };
+});
 
 describe("RestoreConfirm Component", () => {
   const mockBackup = {
@@ -44,8 +29,13 @@ describe("RestoreConfirm Component", () => {
     hostName: "Test Host",
   };
 
-  const createWrapper = (props = {}) => {
-    return mount(RestoreConfirm, {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // dialog 内容经 teleport 渲染：挂到 body + ElementPlus 全量插件 + 等待打开后的内容就绪
+  const createWrapper = async (props = {}) => {
+    const wrapper = mount(RestoreConfirm, {
       props: {
         visible: true,
         backup: mockBackup,
@@ -61,50 +51,45 @@ describe("RestoreConfirm Component", () => {
         ...props,
       },
       global: {
-        components: {
-          ElDialog,
-          ElAlert,
-          ElTag,
-          ElButton,
-          ElProgress,
-          ElDescriptions,
-          ElDescriptionsItem,
-          ElIcon,
-        },
+        plugins: [ElementPlus],
       },
+      attachTo: document.body,
     });
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return wrapper;
   };
 
   describe("Rendering", () => {
-    it("should render dialog when visible", () => {
-      const wrapper = createWrapper({ visible: true });
+    it("should render dialog when visible", async () => {
+      const wrapper = await createWrapper({ visible: true });
       expect(wrapper.findComponent(ElDialog).exists()).toBe(true);
     });
 
-    it("should render danger warning alert", () => {
-      const wrapper = createWrapper();
+    it("should render danger warning alert", async () => {
+      const wrapper = await createWrapper();
       const alert = wrapper.findComponent(ElAlert);
       expect(alert.exists()).toBe(true);
       expect(alert.props("type")).toBe("error");
       expect(alert.props("title")).toBe("危险操作警告");
     });
 
-    it("should render backup information", () => {
-      const wrapper = createWrapper();
+    it("should render backup information", async () => {
+      const wrapper = await createWrapper();
       expect(wrapper.text()).toContain("Test Backup");
       expect(wrapper.text()).toContain("数据库备份");
     });
 
-    it("should render instance information", () => {
-      const wrapper = createWrapper();
+    it("should render instance information", async () => {
+      const wrapper = await createWrapper();
       expect(wrapper.text()).toContain("Test Instance");
       expect(wrapper.text()).toContain("Minecraft");
     });
   });
 
   describe("Progress Display", () => {
-    it("should show progress section when restoring", () => {
-      const wrapper = createWrapper({
+    it("should show progress section when restoring", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 50,
           status: "running",
@@ -119,8 +104,8 @@ describe("RestoreConfirm Component", () => {
       expect(progress.props("percentage")).toBe(50);
     });
 
-    it("should show completed status", () => {
-      const wrapper = createWrapper({
+    it("should show completed status", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 100,
           status: "completed",
@@ -133,8 +118,8 @@ describe("RestoreConfirm Component", () => {
       expect(progress.props("status")).toBe("success");
     });
 
-    it("should show failed status", () => {
-      const wrapper = createWrapper({
+    it("should show failed status", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 50,
           status: "failed",
@@ -149,8 +134,8 @@ describe("RestoreConfirm Component", () => {
   });
 
   describe("Buttons", () => {
-    it("should show confirm and cancel buttons initially", () => {
-      const wrapper = createWrapper();
+    it("should show confirm and cancel buttons initially", async () => {
+      const wrapper = await createWrapper();
       const buttons = wrapper.findAllComponents(ElButton);
 
       const confirmButton = buttons.find((btn) =>
@@ -162,8 +147,8 @@ describe("RestoreConfirm Component", () => {
       expect(cancelButton).toBeDefined();
     });
 
-    it("should disable dialog close when restoring", () => {
-      const wrapper = createWrapper({
+    it("should disable dialog close when restoring", async () => {
+      const wrapper = await createWrapper({
         loading: true,
         restoreProgress: {
           progress: 50,
@@ -179,7 +164,7 @@ describe("RestoreConfirm Component", () => {
     });
 
     it("should emit confirm when confirm button clicked", async () => {
-      const wrapper = createWrapper();
+      const wrapper = await createWrapper();
       const confirmButton = wrapper
         .findAllComponents(ElButton)
         .find((btn) => btn.text().includes("确认还原"));
@@ -191,7 +176,7 @@ describe("RestoreConfirm Component", () => {
     });
 
     it("should emit cancel when cancel button clicked", async () => {
-      const wrapper = createWrapper();
+      const wrapper = await createWrapper();
       const cancelButton = wrapper
         .findAllComponents(ElButton)
         .find((btn) => btn.text().includes("取消"));
@@ -201,8 +186,8 @@ describe("RestoreConfirm Component", () => {
       expect(wrapper.emitted("cancel")).toBeTruthy();
     });
 
-    it("should show loading state during restore", () => {
-      const wrapper = createWrapper({
+    it("should show loading state during restore", async () => {
+      const wrapper = await createWrapper({
         loading: true,
         restoreProgress: {
           progress: 50,
@@ -218,8 +203,8 @@ describe("RestoreConfirm Component", () => {
       expect(confirmButton?.props("disabled")).toBe(true);
     });
 
-    it("should show complete button when finished", () => {
-      const wrapper = createWrapper({
+    it("should show complete button when finished", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 100,
           status: "completed",
@@ -235,8 +220,8 @@ describe("RestoreConfirm Component", () => {
   });
 
   describe("Success/Error Alerts", () => {
-    it("should show success alert when restore completes", () => {
-      const wrapper = createWrapper({
+    it("should show success alert when restore completes", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 100,
           status: "completed",
@@ -251,8 +236,8 @@ describe("RestoreConfirm Component", () => {
       expect(successAlert).toBeDefined();
     });
 
-    it("should show error alert when restore fails", () => {
-      const wrapper = createWrapper({
+    it("should show error alert when restore fails", async () => {
+      const wrapper = await createWrapper({
         restoreProgress: {
           progress: 50,
           status: "failed",
@@ -272,16 +257,16 @@ describe("RestoreConfirm Component", () => {
   });
 
   describe("Backup Type Display", () => {
-    it("should show database icon for database backup", () => {
-      const wrapper = createWrapper({
+    it("should show database icon for database backup", async () => {
+      const wrapper = await createWrapper({
         backup: { ...mockBackup, type: "database" },
       });
 
       expect(wrapper.text()).toContain("数据库备份");
     });
 
-    it("should show files icon for files backup", () => {
-      const wrapper = createWrapper({
+    it("should show files icon for files backup", async () => {
+      const wrapper = await createWrapper({
         backup: { ...mockBackup, type: "files" },
       });
 
@@ -290,16 +275,16 @@ describe("RestoreConfirm Component", () => {
   });
 
   describe("File Size Formatting", () => {
-    it("should format file size correctly", () => {
-      const wrapper = createWrapper({
+    it("should format file size correctly", async () => {
+      const wrapper = await createWrapper({
         backup: { ...mockBackup, size: 1024 * 1024 * 100 }, // 100MB
       });
 
       expect(wrapper.text()).toContain("100.00 MB");
     });
 
-    it("should handle zero size", () => {
-      const wrapper = createWrapper({
+    it("should handle zero size", async () => {
+      const wrapper = await createWrapper({
         backup: { ...mockBackup, size: 0 },
       });
 
@@ -308,15 +293,15 @@ describe("RestoreConfirm Component", () => {
   });
 
   describe("Date Formatting", () => {
-    it("should format backup date", () => {
-      const wrapper = createWrapper();
+    it("should format backup date", async () => {
+      const wrapper = await createWrapper();
 
       // Should contain formatted date
       expect(wrapper.text()).toMatch(/2024/);
     });
 
-    it("should handle missing date", () => {
-      const wrapper = createWrapper({
+    it("should handle missing date", async () => {
+      const wrapper = await createWrapper({
         backup: { ...mockBackup, createdAt: null },
       });
 

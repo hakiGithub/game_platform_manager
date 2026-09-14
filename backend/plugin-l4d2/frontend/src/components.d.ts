@@ -7,6 +7,7 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    BuiltinMarketTab: typeof import('./components/plugins/BuiltinMarketTab.vue')['default']
     ChunkUploader: typeof import('./components/ChunkUploader.vue')['default']
     DifficultyModal: typeof import('./components/DifficultyModal.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -18,6 +19,7 @@ declare module 'vue' {
     ElCol: typeof import('element-plus/es')['ElCol']
     ElCollapse: typeof import('element-plus/es')['ElCollapse']
     ElCollapseItem: typeof import('element-plus/es')['ElCollapseItem']
+    ElCollapseTransition: typeof import('element-plus/es')['ElCollapseTransition']
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
     ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
@@ -46,7 +48,6 @@ declare module 'vue' {
     ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
-    ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
@@ -55,8 +56,11 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     GameModeModal: typeof import('./components/GameModeModal.vue')['default']
+    InstalledPluginsTab: typeof import('./components/plugins/InstalledPluginsTab.vue')['default']
     LogViewer: typeof import('./components/LogViewer.vue')['default']
     MapSelectorModal: typeof import('./components/MapSelectorModal.vue')['default']
+    PluginTaskStrip: typeof import('./components/plugins/PluginTaskStrip.vue')['default']
+    RemoteStoreTab: typeof import('./components/plugins/RemoteStoreTab.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     TaskProgressDialog: typeof import('./components/TaskProgressDialog.vue')['default']

@@ -263,7 +263,7 @@
                 <span v-else class="text-muted">未关联</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
                 <el-button-group>
                   <el-button
@@ -290,6 +290,19 @@
                   >
                     <el-icon><RefreshRight /></el-icon>
                   </el-button>
+                  <el-tooltip
+                    v-if="!row.isLinked"
+                    content="识别为游戏实例"
+                    placement="top"
+                  >
+                    <el-button
+                      type="success"
+                      size="small"
+                      @click.stop="openAdoptDialog(row)"
+                    >
+                      <el-icon><MagicStick /></el-icon>
+                    </el-button>
+                  </el-tooltip>
                   <el-button
                     type="primary"
                     size="small"
@@ -529,6 +542,14 @@
         >
       </template>
     </el-dialog>
+
+    <!-- 认领容器为游戏实例对话框（ADR-0023） -->
+    <AdoptInstanceDialog
+      v-model="adoptDialogVisible"
+      :host-id="selectedHostId"
+      :container="adoptTarget"
+      @adopted="onAdopted"
+    />
   </div>
 </template>
 
@@ -548,9 +569,11 @@ import {
   RefreshRight,
   Right,
   Loading,
+  MagicStick,
 } from "@element-plus/icons-vue";
 import { useHostStore } from "@/stores/host";
 import { useDockerStore } from "@/stores/docker";
+import AdoptInstanceDialog from "@/components/docker/AdoptInstanceDialog.vue";
 import {
   startContainer,
   stopContainer,
@@ -616,6 +639,24 @@ const deletingImage = ref(false);
 const autoLinking = ref(false);
 const autoLinkResultVisible = ref(false);
 const autoLinkResult = ref(null);
+
+// 认领容器为游戏实例（ADR-0023）
+const adoptDialogVisible = ref(false);
+const adoptTarget = ref(null);
+
+function openAdoptDialog(row) {
+  if (!selectedHostId.value) {
+    ElMessage.warning("请先选择主机");
+    return;
+  }
+  adoptTarget.value = row;
+  adoptDialogVisible.value = true;
+}
+
+function onAdopted() {
+  // 容器 isLinked 为运行时计算，刷新容器列表即可看到关联实例
+  handleRefresh();
+}
 
 // 定时刷新
 let refreshTimer = null;

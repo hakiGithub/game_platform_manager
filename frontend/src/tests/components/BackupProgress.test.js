@@ -4,12 +4,10 @@ import { ElProgress, ElTag, ElButton, ElIcon } from "element-plus";
 import BackupProgress from "@/components/BackupProgress.vue";
 
 // Mock Element Plus icons
-vi.mock("@element-plus/icons-vue", () => ({
-  CircleCheck: { name: "CircleCheck" },
-  CircleClose: { name: "CircleClose" },
-  Loading: { name: "Loading" },
-  Warning: { name: "Warning" },
-}));
+vi.mock("@element-plus/icons-vue", async (importOriginal) => {
+  // 全量透传真实图标：element-plus 内部会按名解析任意图标（如 Close）
+  return { ...(await importOriginal()) };
+});
 
 describe("BackupProgress Component", () => {
   const createWrapper = (props = {}) => {

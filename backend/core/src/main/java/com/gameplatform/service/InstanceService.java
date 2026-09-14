@@ -34,9 +34,22 @@ public interface InstanceService {
     /**
      * 删除游戏实例
      *
+     * <p>兼容旧语义：等价于 deleteInstance(id, true)（卸载远程资源）。
+     *
      * @param id 实例ID
      */
     void deleteInstance(Long id);
+
+    /**
+     * 删除游戏实例（ADR-0023 认领实例删除语义）
+     *
+     * <p>认领实例（runtime_metadata.adopted=true）默认记录级删除、不动容器；
+     * 仅 deleteContainer=true 时才执行远程卸载（docker rm 等）。非认领实例行为不变。
+     *
+     * @param id              实例ID
+     * @param deleteContainer 是否同时删除容器等远程资源
+     */
+    void deleteInstance(Long id, boolean deleteContainer);
 
     /**
      * 根据ID查询实例

@@ -63,7 +63,8 @@ class HostsFileRefresherTest {
         when(hostMapper.selectById(1L)).thenReturn(testHost);
 
         // 凭据解析走真实 DeploymentAccess（其内部调用被 mock 的静态 AesUtil.decrypt）
-        refresher = new HostsFileRefresher(hostMapper, sshUtil, new DeploymentAccess(hostMapper));
+        refresher = new HostsFileRefresher(hostMapper, sshUtil, new DeploymentAccess(hostMapper),
+                mock(com.gameplatform.service.Steam302Service.class));
     }
 
     @AfterEach

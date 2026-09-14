@@ -249,3 +249,30 @@ public List<DeployConfigDeclaration> getDeployConfigs() {
 
 > `config` 结构与主应用 yml `deployConfig` 的同名节完全同构，合并零转换。
 > 插件热部署后立即生效（读取时合并，无需重扫游戏元数据）。
+
+---
+
+## 10. 实例动态信息扩展点（InstanceInfoProvider）★ ADR-0017
+
+插件按实例提供动态信息（当前玩家数等），v3.10.0（ADR-0017）。**注册方式与菜单/任务扩展点不同**：不是 PF4J ExtensionPoint，也不是 `GameEnhancementExtension` 的方法，而是插件子容器里的普通 `@Component`——主应用在子容器创建时扫描注册（按游戏编码），卸载/热重载时自动注销。
+
+```java
+@Component
+public class MyGameInstanceInfoProvider implements InstanceInfoProvider {
+    @Override
+    public InstanceDynamicInfo getInstanceInfo(long instanceId) {
+        Integer players = queryPlayerCount(instanceId);  // 如经 RconService 执行 status
+        return players == null ? null : InstanceDynamicInfo.ofPlayerCount(players);
+        // 便捷构造：ofPlayerCount(count) / ofPlayers(count, max)
+    }
+}
+```
+
+**契约与降级语义**：
+
+- 返回 `null` 表示本次不可知——主应用降级为默认值（RUNNING 用库中存量玩家数，非 RUNNING 为 0），不落库、不报错。
+- `InstanceDynamicInfo(playerCount, maxPlayerCount, extras)`：前两个是主应用消费的类型化字段（均允许 null，maxPlayerCount 为 null 表示无法提供，无降级值）；`extras` 是开放扩展袋，主应用不解释，仅透传到实例详情 VO 供前端/插件页面自取。演进路径：extras 先行，主应用按需升级为类型化字段。
+- **并发与缓存归主应用**：按实例 15s TTL 缓存；列表场景并发调用并施加整体查询预算（默认 3s）——实现方只管单实例查询，无需自行缓存；查询慢可能被预算截断（本次降级）。
+- **前端展示**：玩家数上限优先展示 Provider 实时值（ADR-0017），实例列表/详情均生效。
+
+> 参考实现：plugin-l4d2 的 `L4D2InstanceInfoProvider`（组合 `RconService` 执行 `status` 解析玩家数）。

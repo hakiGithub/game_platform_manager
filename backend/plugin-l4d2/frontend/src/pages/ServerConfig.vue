@@ -57,6 +57,10 @@
 
             <el-form-item label="最大玩家数">
               <el-input-number v-model="configForm.maxPlayers" :min="1" :max="32" />
+              <div class="field-tip">
+                原版 L4D2 专服不支持 sv_maxplayers 指令：需安装并启用 SourceMod，
+                或在启动参数中加 -maxplayers，修改后重启服务器生效
+              </div>
             </el-form-item>
 
             <el-form-item label="可见玩家数">
@@ -65,6 +69,10 @@
 
             <el-form-item label="起始地图">
               <el-input v-model="configForm.mapName" placeholder="c1m1_hotel" />
+              <div class="field-tip">
+                仅作记录展示：server.cfg 中的 map 指令会导致无限换图循环，实际起始地图
+                由启动参数（+map）或"运维控制-切换地图"功能管理
+              </div>
             </el-form-item>
 
             <el-form-item label="游戏模式">
@@ -444,6 +452,14 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.field-tip {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
 .server-config-page {
   padding: 12px;
   display: flex;

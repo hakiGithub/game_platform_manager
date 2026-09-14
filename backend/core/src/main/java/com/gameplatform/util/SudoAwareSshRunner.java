@@ -1,4 +1,4 @@
-package com.gameplatform.steam302;
+package com.gameplatform.util;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.deploy.DeploymentAccess;
@@ -9,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * sudo 感知的远程命令执行器（Steam302 专用）
+ * sudo 感知的远程命令执行器（原 Steam302 专用，ADR-0021 上提为共享组件）
  *
  * <p>提权策略（ADR-0019）：
  * <ul>

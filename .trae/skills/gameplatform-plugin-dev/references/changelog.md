@@ -1,7 +1,7 @@
 # 版本与维护约定 / Changelog
 
-> 对齐主应用: `backend/` @ 2026-08-29
-> 关联 ADR: ADR-0001 插件菜单归属与 getMenus() 扩展点、ADR-0006 补丁安装决策树、ADR-0007 插件前端 Night Operations token 隔离、ADR-0009 平台侧能力需求、ADR-0011 定时任务管理、ADR-0014 插件开发文档三副本分工（全文见平台仓库 `docs/design/adr/`）
+> 对齐主应用: `backend/` @ 2026-09-07（HEAD 1ce8f28）
+> 关联 ADR: ADR-0001 插件菜单归属与 getMenus() 扩展点、ADR-0006 补丁安装决策树、ADR-0007 插件前端 Night Operations token 隔离、ADR-0009 平台侧能力需求、ADR-0011 定时任务管理、ADR-0014 插件开发文档三副本分工、ADR-0016 RCON 能力上提、ADR-0017 实例信息 Provider 扩展点（全文见平台仓库 `docs/design/adr/`）
 
 ## 1. 破坏性 / 高影响变更速查
 
@@ -9,6 +9,7 @@
 
 | 平台版本 | 变更 | 详见 |
 |---|---|---|
+| 3.10.0 | 新增 `RconService` 宿主服务（ADR-0016，插件不再自建 RCON 连接）；新增 `InstanceInfoProvider` 扩展点 + `InstanceDynamicInfo`（ADR-0017，玩家数插件化实时查询）；`InstanceFileService` / `FileAccessService` 上传/下载新增 `FileTransferProgressCallback` 进度回调（无回调旧签名保留为 default 方法，源兼容） | [host-services.md](host-services.md) §9、[extension-and-menus.md](extension-and-menus.md) §10 |
 | 3.8.0 | 新增定时任务体系：`ScheduledTaskHandler` / `ScheduledTaskDeclarationExtension` / `ScheduleService`（独立于任务中心，无重试无互斥，重叠 SKIPPED） | [scheduled-tasks.md](scheduled-tasks.md) |
 | 3.7.0 | 新增 `SshTunnelService` SPI、`configInfo.database` 组装、`onInstanceUpdate` 钩子（ADR-0009） | [host-services.md](host-services.md) §5-6 |
 | 3.6.0 | 新增 `getDeployConfigs()` 部署配置声明（ADR-0008）；独立仓库构建插件四个坑（`-parameters` / lombok / clean package / 先 install provided） | [extension-and-menus.md](extension-and-menus.md) §9、[getting-started.md](getting-started.md) §6.1 |
@@ -38,6 +39,7 @@
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| 3.10.0 | 2026-09-07 | 插件 API 面三项扩展（均已实施）：① `RconService` 宿主服务（ADR-0016）：RCON 传输层上提为主应用宿主能力（`com.gameplatform.rcon` 归 core），SDK 暴露 `RconService`，插件按 instanceId 执行命令，端点解析（标准键 `configInfo.rconPort` 缺省 27015 / `rconPassword`）、连接池、认证全部宿主负责，密码不可由插件指定；每次执行自动携带调用方插件 ID 写统一审计日志；仅传输能力，命令语义（status 解析、kick/ban 等）插件自理。含 `testConnection(instanceId)` 连通性测试。② `InstanceInfoProvider` 扩展点（ADR-0017）：插件以 `@Component` 实现（子容器扫描注册，非 PF4J ExtensionPoint），按实例提供 `InstanceDynamicInfo`（playerCount / maxPlayerCount 类型化字段 + extras 开放扩展袋透传到实例详情 VO）；未实现自动降级（RUNNING 用库中存量值，非 RUNNING 为 0）；并发调度、15s TTL 缓存、列表场景 3s 整体查询预算均由主应用负责，返回 null 表示本次不可知（降级不落库）。前端玩家数上限优先展示 Provider 实时值。③ 文件传输进度：`InstanceFileService` / `FileAccessService` 的 `uploadLocalFile` / `downloadFile` 新增 `FileTransferProgressCallback` 重载（onStart/onProgress/onComplete/onError；同步回调勿做耗时操作；频率不保证但 onComplete/onError 各至多一次；回调抛异常即中止传输可作取消；totalBytes 未知为 -1；Docker 类部署进度仅覆盖 SFTP 段，docker cp 段无反馈）；全链路流式不载入内存；无回调旧签名保留为 default 方法。另：游戏元数据归一化——l4d2 compose 变量统一用标准键 `rconPassword`，端点解析只认标准键，插件自定义变量名不再被识别 |
 | 3.9.1 | 2026-08-29 | 删除 skill 内 `examples/`（plugin-mygame 示例已过时）：骨架代码以 `getting-started.md` §2-6 为准，前端易缺失文件清单见 `frontend.md` §10，独立仓库 pom 规范见 `getting-started.md` §6.1；清除全部指向平台仓库的相对路径链接（ADR 仅保留编号引用，跨项目不产生死链；网络 URL 不受影响）。插件 API 面无任何变更 |
 | 3.9.0 | 2026-08-29 | 文档重组（对齐 halo-plugin-dev skill 范式，ADR-0014）：SKILL.md 瘦身为路由器（概述 + Quick Start + 开发工作流 + 关键不变量 + 触发式 references 索引 + 排查速查），密集事实下沉分主题文件；references 文件名与 `docs/plugin-development/` 对齐（getting_started→getting-started、extension_and_menus→extension-and-menus、extension_client→persistence、host_services→host-services、task_handler→async-tasks、scheduled_task→scheduled-tasks、walkthrough_l4d2→walkthrough-l4d2、sdk_reference→sdk-reference）；changelog 增"破坏性 / 高影响变更速查表"；sdk-reference 按"指路而非复制"修剪（宿主校验规则、隧道生命周期、路径常量表下沉到各主题文件）；文档定位澄清（ADR-0014）：`backend/plugin/` 源码为 API 权威，`docs/plugin-development/` 为面向人的权威文档，本 skill 为 AI 自包含副本（工作区 `.trae` 与用户级 `~/.agents` 两处逐字同步，概念与 docs 对齐不逐字一致）。插件 API 面无任何变更 |
 | 3.8.0 | 2026-08-22 | ADR-0011 定时任务体系（独立于任务中心，已实施并提交）：插件新增三个接入点——`ScheduledTaskHandler`（`@Component` 一个 Handler 一个 key）、`ScheduledTaskDeclarationExtension`（声明式默认计划，宿主按 pluginId:key upsert）、`ScheduleService`（编程式 CRUD 服务，注入子容器自动绑定本插件 source，强制来源隔离）。关键语义：无自动重试（下一轮 cron 即天然重试）、不互斥、创建时不校验 handlerKey 触发才解析（未注册记 FAILED）、同一计划同时刻只允许一个 run（重叠记 SKIPPED）、停机不补跑、payload 快照传 Handler、run 日志 500 条上限 + 30 天清理。插件生命周期联动：停用/热重载（purgeTasks=false）暂停、重载恢复、卸载移除（purgeTasks=true）物理清理。主界面「任务中心 → 定时计划」统一管理。新增陷阱：声明式计划被用户改过（userModified）会被 upsert 跳过、删过不复活；热部署勿用 purgeTasks=true（会删计划）。详见 `references/scheduled-tasks.md` 与 ADR-0011 |

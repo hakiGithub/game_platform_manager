@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
@@ -498,5 +499,70 @@ class GameMetadataScannerTest {
         });
 
         assertTrue(exception.getMessage().contains("游戏不存在"));
+    }
+
+    @Test
+    @DisplayName("测试scanAndLoad合并外部扩展目录（同game_code外部覆盖内置）")
+    void testScanAndLoadIncludesExternalDir() throws IOException {
+        ReflectionTestUtils.setField(gameMetadataScanner, "scanPath", "classpath:games/");
+        ReflectionTestUtils.setField(gameMetadataScanner, "externalDir", tempDir.toString());
+
+        File yamlFile = tempDir.resolve("override-game.yml").toFile();
+        try (FileWriter writer = new FileWriter(yamlFile)) {
+            writer.write("""
+                game:
+                  code: external-game
+                  name: External Game
+                  description: Game from external directory
+                """);
+        }
+
+        when(gameMetadataMapper.selectByGameCode(any())).thenReturn(null);
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+
+        GameMetadataScanner.ScanResult result = gameMetadataScanner.scanAndLoad();
+
+        assertNotNull(result);
+        // classpath 内置配置（仓库自带 130+ 个）+ 外部目录，都应被发现
+        assertTrue(result.getTotalFiles() >= 2, "totalFiles 应包含 classpath 与外部目录: " + result.getTotalFiles());
+        assertTrue(result.getLoadedGames().contains("external-game"));
+        verify(gameMetadataMapper, atLeastOnce()).insert(any(GameMetadata.class));
+    }
+
+    @Test
+    @DisplayName("测试内容无变化时跳过写库")
+    void testScanSkipsUnchangedGame() throws IOException {
+        File yamlFile = tempDir.resolve("skip-game.yml").toFile();
+        try (FileWriter writer = new FileWriter(yamlFile)) {
+            writer.write("""
+                game:
+                  code: skip-game
+                  name: Same Name
+                  description: Same desc
+                  version: "1.0.0"
+                """);
+        }
+
+        // 库中已有内容与 YML 完全一致
+        GameMetadata existingGame = new GameMetadata();
+        existingGame.setId(1L);
+        existingGame.setGameCode("skip-game");
+        existingGame.setGameName("Same Name");
+        existingGame.setDescription("Same desc");
+        Map<String, Object> deployConfig = new HashMap<>();
+        deployConfig.put("version", "1.0.0");
+        existingGame.setDeployConfig(deployConfig);
+
+        when(gameMetadataMapper.selectByGameCode("skip-game")).thenReturn(existingGame);
+
+        GameMetadataScanner.ScanResult result = gameMetadataScanner.scanExternalDirectory(tempDir.toString());
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalFiles());
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(0, result.getUpdateCount());
+        assertEquals(1, result.getSkippedCount());
+        verify(gameMetadataMapper, never()).insert(any(GameMetadata.class));
+        verify(gameMetadataMapper, never()).updateById(any(GameMetadata.class));
     }
 }

@@ -123,8 +123,10 @@ String readTextFile(long instanceId, String relativePath, Charset charset);
 void   writeTextFile(long instanceId, String relativePath, String content);
 byte[] downloadFileToMemory(long instanceId, String relativePath);
 byte[] getFileBytes(long instanceId, String relativePath, long offset, long length);
-void uploadLocalFile(long instanceId, String relativePath, String localPath);
-void downloadFile(long instanceId, String relativePath, String localPath);
+void uploadLocalFile(long instanceId, String relativePath, String localPath);   // default，无进度回调
+void downloadFile(long instanceId, String relativePath, String localPath);      // default
+void uploadLocalFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback); // v3.10.0
+void downloadFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);   // v3.10.0
 void deleteFile(long instanceId, String relativePath);
 void moveFile(long instanceId, String oldRel, String newRel);
 void copyFile(long instanceId, String srcRel, String dstRel);
@@ -147,8 +149,10 @@ void writeTextFile(Long hostId, String remotePath, String content);
 byte[] downloadFileToMemory(Long hostId, String remotePath);
 byte[] getFileBytes(Long hostId, String remotePath, long offset, long length);
 void uploadFile(Long hostId, String remotePath, MultipartFile file);
-void uploadLocalFile(Long hostId, String remotePath, String localPath);
-void downloadFile(Long hostId, String remotePath, String localPath);
+void uploadLocalFile(Long hostId, String remotePath, String localPath);   // default
+void downloadFile(Long hostId, String remotePath, String localPath);      // default
+void uploadLocalFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback); // v3.10.0
+void downloadFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);     // v3.10.0
 void deleteFile(Long hostId, String remotePath);
 void moveFile(Long hostId, String oldPath, String newPath);
 List<FileInfo> listFiles(Long hostId, String remotePath);
@@ -174,6 +178,33 @@ void close(TunnelHandle handle);   // 幂等：引用计数减至 0 才真正关
 //     连 127.0.0.1:localPort 即连 remoteHost:remotePort；本地端口仅绑回环、OS 随机分配
 ```
 去重键 / 引用计数 / 三层兜底关闭 / 会话钉住等生命周期规则与 configInfo.database 组装见 `references/host-services.md` §5-6。
+
+### RconService（v3.10.0 ADR-0016，RCON 宿主能力）
+```java
+String  executeCommand(long instanceId, String command);                    // 默认读超时
+String  executeCommand(long instanceId, String command, Duration timeout);  // null = 默认超时
+boolean testConnection(long instanceId);                                   // 建连 + 认证
+// 端点解析只认标准键 configInfo.rconPort(缺省27015)/rconPassword；密码不可由插件指定
+// 每次执行自动携带插件 ID 写审计日志；命令语义（status 解析等）插件自理
+// 实例不存在/端点不可达/通信失败抛 BusinessException
+```
+
+### FileTransferProgressCallback（v3.10.0，文件传输进度回调）
+```java
+void onStart(long totalBytes);                            // totalBytes 未知为 -1
+void onProgress(long bytesTransferred, long totalBytes);  // 频率不保证（可能被节流）
+void onComplete();                                        // 成功，保证最终一次
+void onError(Throwable error);                            // 失败，保证最终一次
+// 同步回调勿做耗时操作；回调抛异常即中止传输（可作取消）；Docker 部署仅覆盖 SFTP 段
+```
+
+### InstanceInfoProvider / InstanceDynamicInfo（v3.10.0 ADR-0017，@Component 注册非 ExtensionPoint）
+```java
+InstanceDynamicInfo getInstanceInfo(long instanceId);   // null = 本次不可知（主应用降级，不落库）
+// record InstanceDynamicInfo(Integer playerCount, Integer maxPlayerCount, Map<String,Object> extras)
+// 便捷构造：ofPlayerCount(count) / ofPlayers(count, max)
+// 主应用负责 15s TTL 缓存 + 列表 3s 查询预算；extras 仅透传到实例详情 VO
+```
 
 ### ScheduleService（v3.8.0 ADR-0011，定时计划编程式服务，注入子容器）
 ```java

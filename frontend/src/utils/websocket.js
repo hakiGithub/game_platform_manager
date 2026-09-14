@@ -231,7 +231,7 @@ class WebSocketClient {
    * @returns {boolean}
    */
   isConnected() {
-    return this.ws && this.ws.readyState === WebSocket.OPEN;
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 }
 

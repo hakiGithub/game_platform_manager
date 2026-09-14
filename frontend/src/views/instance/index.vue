@@ -266,9 +266,15 @@ async function handleRestart(row) {
 }
 
 // 删除实例
+const deleteContainerChecked = ref(false);
+const deleteTargetIsAdopted = computed(
+  () => Boolean(deleteTarget.value?.runtimeMetadata?.adopted),
+);
+
 function handleDelete(row) {
   deleteTarget.value = row;
   deleteConfirmName.value = "";
+  deleteContainerChecked.value = false;
   deleteDialogVisible.value = true;
 }
 
@@ -280,7 +286,10 @@ async function confirmDelete() {
   }
 
   try {
-    await deleteInstance(deleteTarget.value.id);
+    const params = deleteTargetIsAdopted.value
+      ? { deleteContainer: deleteContainerChecked.value }
+      : undefined;
+    await deleteInstance(deleteTarget.value.id, params);
     ElMessage.success("删除成功");
     deleteDialogVisible.value = false;
     fetchData();
@@ -611,7 +620,7 @@ onBeforeUnmount(() => {
     <!-- 删除确认弹窗 -->
     <el-dialog
       v-model="deleteDialogVisible"
-      title="卸载实例"
+      :title="deleteTargetIsAdopted ? '删除认领实例' : '卸载实例'"
       width="420px"
       :close-on-click-modal="false"
     >
@@ -620,13 +629,25 @@ onBeforeUnmount(() => {
           ><Warning
         /></el-icon>
         <p class="confirm-text">
-          确定要卸载实例「{{ deleteTarget?.instanceName }}」吗？
+          确定要{{ deleteTargetIsAdopted ? "删除" : "卸载" }}实例「{{
+            deleteTarget?.instanceName
+          }}」吗？
         </p>
-        <p class="confirm-desc">
+        <template v-if="deleteTargetIsAdopted">
+          <p class="confirm-desc">
+            该实例由容器认领而来，删除默认只移除平台记录，不影响运行中的容器。
+          </p>
+          <div class="confirm-input">
+            <el-checkbox v-model="deleteContainerChecked">
+              同时删除容器（docker rm，不可恢复）
+            </el-checkbox>
+          </div>
+        </template>
+        <p v-else class="confirm-desc">
           卸载将删除实例所有配置、进程、相关文件，此操作不可恢复。
         </p>
         <div class="confirm-input">
-          <p>请输入实例名称以确认卸载：</p>
+          <p>请输入实例名称以确认{{ deleteTargetIsAdopted ? "删除" : "卸载" }}：</p>
           <el-input v-model="deleteConfirmName" placeholder="请输入实例名称" />
         </div>
       </div>
@@ -637,7 +658,7 @@ onBeforeUnmount(() => {
           :disabled="deleteConfirmName !== deleteTarget?.instanceName"
           @click="confirmDelete"
         >
-          确定卸载
+          {{ deleteTargetIsAdopted ? "确定删除" : "确定卸载" }}
         </el-button>
       </template>
     </el-dialog>

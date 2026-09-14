@@ -5,27 +5,43 @@
         <span class="section-kicker">STEAM ACCELERATION</span>
         <h2>Steam302 加速</h2>
       </div>
-      <span class="panel-index">06</span>
+      <span class="panel-index">07</span>
     </div>
 
     <div class="s302-status" :class="phaseClass">
       <span class="s302-dot"></span>
       <div>
         <strong>{{ status?.message || "未部署" }}</strong>
-        <small v-if="status && status.phase !== 'NOT_INSTALLED'">{{ status.image }}</small>
+        <small v-if="status && status.phase !== 'NOT_INSTALLED'">{{
+          status.image
+        }}</small>
       </div>
     </div>
 
     <div v-if="status && status.phase !== 'NOT_INSTALLED'" class="s302-metrics">
-      <div><span>hosts 劫持</span><strong>{{ status.hostsEntries ?? "-" }} 条</strong></div>
-      <div><span>代理域名</span><strong>{{ status.proxiedDomains ?? "-" }} 个</strong></div>
-      <div><span>CA 信任</span><strong :class="status.certTrusted ? 'tone-online' : 'tone-offline'">{{ status.certTrusted ? "已信任" : "未信任" }}</strong></div>
+      <div>
+        <span>hosts 劫持</span
+        ><strong>{{ status.hostsEntries ?? "-" }} 条</strong>
+      </div>
+      <div>
+        <span>代理域名</span
+        ><strong>{{ status.proxiedDomains ?? "-" }} 个</strong>
+      </div>
+      <div>
+        <span>CA 信任</span
+        ><strong :class="status.certTrusted ? 'tone-online' : 'tone-offline'">{{
+          status.certTrusted ? "已信任" : "未信任"
+        }}</strong>
+      </div>
     </div>
 
     <div v-if="status && status.phase !== 'NOT_INSTALLED'" class="s302-share">
       <div class="s302-share-text">
         <span>容器共享加速</span>
-        <small>劫持条目指向宿主机 {{ status.targetIp || "127.0.0.1" }}，bridge 容器与宿主机均可走代理</small>
+        <small
+          >劫持条目指向宿主机 {{ status.targetIp || "127.0.0.1" }}，bridge
+          容器与宿主机均可走代理</small
+        >
       </div>
       <el-switch
         :model-value="!!status.containerShare"
@@ -45,11 +61,20 @@
         安装到主机
       </el-button>
       <template v-else>
-        <el-button v-if="status.phase === 'RUNNING'" :loading="acting" @click="handleStop">停止</el-button>
-        <el-button v-else type="primary" :loading="acting" @click="handleStart">启动</el-button>
+        <el-button
+          v-if="status.phase === 'RUNNING'"
+          :loading="acting"
+          @click="handleStop"
+          >停止</el-button
+        >
+        <el-button v-else type="primary" :loading="acting" @click="handleStart"
+          >启动</el-button
+        >
         <el-button @click="dialogVisible = true">服务配置</el-button>
       </template>
-      <el-button text :loading="statusLoading" @click="refreshStatus">刷新</el-button>
+      <el-button text :loading="statusLoading" @click="refreshStatus"
+        >刷新</el-button
+      >
     </div>
 
     <!-- 服务配置弹窗 -->
@@ -70,9 +95,16 @@
           show-icon
         />
         <template v-else>
-          <p class="s302-hint">开关修改保存后需<strong>重启服务</strong>才会生效（工具将在重启时改写 hosts 并重建代理路由）。</p>
+          <p class="s302-hint">
+            开关修改保存后需<strong>重启服务</strong>才会生效（工具将在重启时改写
+            hosts 并重建代理路由）。
+          </p>
 
-          <div v-for="group in serviceList.groups" :key="group.key" class="s302-group">
+          <div
+            v-for="group in serviceList.groups"
+            :key="group.key"
+            class="s302-group"
+          >
             <div class="s302-group-head">
               <el-checkbox
                 :model-value="groupAllEnabled(group)"
@@ -80,18 +112,28 @@
                 @change="(v) => toggleGroup(group, v)"
               >
                 <strong>{{ group.label }}</strong>
-                <small class="s302-group-count">{{ group.items.length }} 项</small>
+                <small class="s302-group-count"
+                  >{{ group.items.length }} 项</small
+                >
               </el-checkbox>
             </div>
             <div class="s302-items">
-              <div v-for="item in group.items" :key="item.key" class="s302-item">
+              <div
+                v-for="item in group.items"
+                :key="item.key"
+                class="s302-item"
+              >
                 <div class="s302-item-main">
                   <el-switch
                     v-model="item.enabled"
                     size="small"
                     @change="() => markDirty(item.key, item.enabled)"
                   />
-                  <span class="s302-item-name" :class="{ 'is-unknown': !item.known }">{{ item.name }}</span>
+                  <span
+                    class="s302-item-name"
+                    :class="{ 'is-unknown': !item.known }"
+                    >{{ item.name }}</span
+                  >
                   <el-popover
                     v-if="item.domains.length"
                     placement="left"
@@ -99,12 +141,22 @@
                     trigger="click"
                   >
                     <template #reference>
-                      <el-link type="primary" :underline="false" class="s302-domain-link">
+                      <el-link
+                        type="primary"
+                        :underline="false"
+                        class="s302-domain-link"
+                      >
                         {{ item.domains.length }} 个域名
                       </el-link>
                     </template>
                     <div class="s302-domain-list">
-                      <div v-for="d in item.domains" :key="d" class="s302-domain">{{ d }}</div>
+                      <div
+                        v-for="d in item.domains"
+                        :key="d"
+                        class="s302-domain"
+                      >
+                        {{ d }}
+                      </div>
                     </div>
                   </el-popover>
                 </div>
@@ -113,8 +165,15 @@
           </div>
 
           <el-collapse v-if="serviceList.advanced.length" class="s302-advanced">
-            <el-collapse-item :title="`高级设置（${serviceList.advanced.length} 项）`" name="adv">
-              <div v-for="adv in serviceList.advanced" :key="adv.key" class="s302-adv-row">
+            <el-collapse-item
+              :title="`高级设置（${serviceList.advanced.length} 项）`"
+              name="adv"
+            >
+              <div
+                v-for="adv in serviceList.advanced"
+                :key="adv.key"
+                class="s302-adv-row"
+              >
                 <span class="s302-adv-key">{{ adv.key }}</span>
                 <el-input
                   v-model="adv.value"
@@ -129,9 +188,16 @@
       </div>
 
       <template #footer>
-        <span v-if="dirtyCount" class="s302-dirty">{{ dirtyCount }} 项未保存</span>
+        <span v-if="dirtyCount" class="s302-dirty"
+          >{{ dirtyCount }} 项未保存</span
+        >
         <el-button @click="dialogVisible = false">关闭</el-button>
-        <el-button :disabled="!dirtyCount || configError" :loading="saving" @click="handleSave">保存配置</el-button>
+        <el-button
+          :disabled="!dirtyCount || configError"
+          :loading="saving"
+          @click="handleSave"
+          >保存配置</el-button
+        >
         <el-button
           type="primary"
           :disabled="!dirtyCount"
@@ -185,7 +251,11 @@ const dirty = reactive({});
 const dirtyCount = computed(() => Object.keys(dirty).length);
 const phaseClass = computed(() => {
   const phase = status.value?.phase;
-  return phase === "RUNNING" ? "is-running" : phase === "STOPPED" ? "is-stopped" : "is-none";
+  return phase === "RUNNING"
+    ? "is-running"
+    : phase === "STOPPED"
+      ? "is-stopped"
+      : "is-none";
 });
 
 async function refreshStatus() {
@@ -204,7 +274,11 @@ async function handleInstall() {
   const confirmed = await ElMessageBox.confirm(
     "将在主机上部署 Steamcommunity 302 容器（拉取镜像并信任 CA 证书），提交为异步任务执行。是否继续？",
     "安装 Steam302",
-    { confirmButtonText: "提交安装任务", cancelButtonText: "取消", type: "info" }
+    {
+      confirmButtonText: "提交安装任务",
+      cancelButtonText: "取消",
+      type: "info",
+    },
   ).catch(() => false);
   if (!confirmed) return;
 
@@ -214,10 +288,16 @@ async function handleInstall() {
     await ElMessageBox.confirm(
       `安装任务已提交（任务ID: ${taskId}），可在任务中心查看进度。`,
       "已提交",
-      { confirmButtonText: "前往任务中心", cancelButtonText: "留在本页", type: "success" }
-    ).then(() => {
-      router.push("/services/tasks/list");
-    }).catch(() => {});
+      {
+        confirmButtonText: "前往任务中心",
+        cancelButtonText: "留在本页",
+        type: "success",
+      },
+    )
+      .then(() => {
+        router.push("/services/tasks/list");
+      })
+      .catch(() => {});
     refreshStatus();
   } catch (error) {
     ElMessage.error("提交安装任务失败：" + (error.message || ""));
@@ -230,9 +310,11 @@ async function handleContainerShare(enabled) {
   shareSwitching.value = true;
   try {
     await setSteam302ContainerShare(props.hostId, !!enabled);
-    ElMessage.success(enabled
-      ? "容器共享加速已开启：劫持条目已改指宿主机 IP"
-      : "容器共享加速已关闭：劫持条目已恢复 127.0.0.1");
+    ElMessage.success(
+      enabled
+        ? "容器共享加速已开启：劫持条目已改指宿主机 IP"
+        : "容器共享加速已关闭：劫持条目已恢复 127.0.0.1",
+    );
     refreshStatus();
   } catch (error) {
     ElMessage.error("切换容器共享加速失败：" + (error.message || ""));

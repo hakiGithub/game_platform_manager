@@ -91,7 +91,7 @@ describe("websocket.js", () => {
         const promise = client.connect();
 
         // 等待 setTimeout 触发 onopen
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
 
         const ws = await promise;
 
@@ -108,7 +108,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         expect(ws.url).toContain("token=test-token-123");
@@ -122,7 +122,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         expect(ws.url).toContain("param=value");
@@ -136,7 +136,7 @@ describe("websocket.js", () => {
 
         // 第一次连接
         const promise1 = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws1 = await promise1;
 
         // 第二次连接
@@ -153,7 +153,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         const sendSpy = vi.spyOn(ws, "send");
@@ -170,7 +170,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         const sendSpy = vi.spyOn(ws, "send");
@@ -201,7 +201,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         const sendSpy = vi.spyOn(ws, "send");
@@ -233,7 +233,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         await promise;
 
         client.close();
@@ -248,7 +248,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         const closeSpy = vi.spyOn(ws, "close");
@@ -268,7 +268,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         const sendSpy = vi.spyOn(client, "send");
@@ -286,7 +286,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         await promise;
 
         client.close();
@@ -304,7 +304,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         // 模拟接收消息
@@ -322,7 +322,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         // 模拟接收 pong 消息
@@ -343,7 +343,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         // 模拟连接断开
@@ -363,7 +363,7 @@ describe("websocket.js", () => {
         });
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         await promise;
 
         client.close();
@@ -387,7 +387,7 @@ describe("websocket.js", () => {
         client.reconnectCount = 2;
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         const ws = await promise;
 
         // 重置重连次数以便测试
@@ -413,7 +413,7 @@ describe("websocket.js", () => {
         expect(client.getReadyState()).toBe(WebSocket.CLOSED);
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         await promise;
 
         expect(client.getReadyState()).toBe(WebSocket.OPEN);
@@ -427,7 +427,7 @@ describe("websocket.js", () => {
         expect(client.isConnected()).toBe(false);
 
         const promise = client.connect();
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(10);
         await promise;
 
         expect(client.isConnected()).toBe(true);

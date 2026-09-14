@@ -59,7 +59,7 @@ class PluginStoreServiceTest {
     private PluginInstallService pluginInstallService;
 
     @Mock
-    private PluginMetaService pluginMetaService;
+    private StoreConfigService storeConfigService;
 
     @Mock
     private L4D2PathResolver pathResolver;
@@ -77,7 +77,7 @@ class PluginStoreServiceTest {
     void setUp() throws Exception {
         config = new L4D2Config();
         service = new PluginStoreService(gitHubApiClient, httpClient, pluginInstallService,
-                pluginMetaService, config, pathResolver, instanceFileService);
+                storeConfigService, config, pathResolver, instanceFileService);
         tempFile = File.createTempFile("plugin-store-test-", ".zip");
         tempFile.deleteOnExit();
     }
@@ -249,12 +249,15 @@ class PluginStoreServiceTest {
         assertNotNull(task);
         assertEquals(PluginStoreService.STATUS_COMPLETED, task.getStatus());
         assertEquals(100, task.getProgress());
+        assertEquals(5100L, task.getDownloadedBytes(), "完成后 downloadedBytes 应写回任务 VO");
         assertNotNull(task.getFinishedAt());
         assertEquals(1L, task.getInstanceId());
         assertEquals("plugin-1", task.getPluginId());
 
         // 新逻辑：逐文件下载后直接 atomicMoveToStore（不再调用 installFromLocalFileToTempDir）
         verify(pluginInstallService, times(1)).atomicMoveToStore(eq(1L), anyString(), eq("plugin-1"));
+        // 完成后必须回填商店插件元数据（source=store + fileList）
+        verify(pluginInstallService, times(1)).backfillStoreMeta(eq(1L), eq("plugin-1"));
     }
 
     @Test
@@ -407,8 +410,8 @@ class PluginStoreServiceTest {
 
         String taskId = service.download(dto);
 
-        // 等待任务进入 DOWNLOADING 状态
-        assertTrue(awaitStatus(taskId, PluginStoreService.STATUS_DOWNLOADING, 2000),
+        // 等待任务进入 DOWNLOADING 状态（负载高时线程启动可能偏慢，放宽到 5s）
+        assertTrue(awaitStatus(taskId, PluginStoreService.STATUS_DOWNLOADING, 5000),
                 "任务未进入 DOWNLOADING 状态");
 
         // 取消

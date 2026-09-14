@@ -10,6 +10,8 @@
  */
 import { test, expect } from "@playwright/test";
 import { injectSession } from "../../support/session.js";
+import { e2eEnv } from "../../support/env.js";
+import { login } from "../../support/api.js";
 
 test("l4d2 插件卡片状态为 STARTED", async ({ page }) => {
   await injectSession(page);
@@ -25,6 +27,16 @@ test("l4d2 插件卡片状态为 STARTED", async ({ page }) => {
 });
 
 test("零实例时进入工作区提示未找到实例", async ({ page }) => {
+  // 环境自适应：已存在 l4d2 实例的环境（如部署库认领过容器）工作区会正常进入而非警告
+  const token = await login(e2eEnv.backendUrl, e2eEnv.adminUser, e2eEnv.adminPass);
+  const instances = await fetch(`${e2eEnv.backendUrl}/api/instances?page=1&size=50`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => r.json());
+  const hasL4d2 = (instances?.data?.records || []).some(
+    (r) => r.gameCode === "l4d2",
+  );
+  test.skip(hasL4d2, "环境已存在 l4d2 实例，零实例警告分支不适用");
+
   await injectSession(page);
   await page.goto("/extensions/plugins/list");
 

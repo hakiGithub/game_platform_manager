@@ -117,10 +117,12 @@ public class InstanceController {
     /**
      * 删除实例(卸载)
      */
-    @Operation(summary = "删除实例", description = "删除游戏实例并卸载")
+    @Operation(summary = "删除实例", description = "删除游戏实例；认领实例默认记录级删除（不动容器），deleteContainer=true 时同时删除容器")
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@Parameter(description = "实例ID") @PathVariable Long id) {
-        instanceService.deleteInstance(id);
+    public Result<Void> delete(@Parameter(description = "实例ID") @PathVariable Long id,
+                               @Parameter(description = "是否同时删除容器等远程资源（对认领实例生效）")
+                               @RequestParam(required = false, defaultValue = "false") boolean deleteContainer) {
+        instanceService.deleteInstance(id, deleteContainer);
         return Result.success();
     }
 

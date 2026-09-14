@@ -1,7 +1,7 @@
 # SDK 接口签名速查
 
-> 权威来源：`backend/plugin/src/main/java/com/gameplatform/plugin/`。本文件为速查摘要，完整说明见本文档目录其他 `reference/` 文件。
-> 当前对齐版本：v3.8.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
+> **权威来源**：`backend/plugin/src/main/java/com/gameplatform/plugin/`。在平台仓库内编码时以源码为准，本文件是跨项目场景的离线快照，签名有疑义先对源码。本文件只回答"方法长什么样"；实现约束、语义与示例见各主题文件。
+> 当前对齐版本：v3.9.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
 
 ## 扩展点
 
@@ -43,11 +43,7 @@ public class PluginMenuDeclaration {
 }
 ```
 
-**宿主校验规则**（`PluginFrameworkServiceImpl.buildMenusFromDeclarations`）：
-- `path` 为空或空白 → 抛 `IllegalStateException`（提示插件 id + 菜单 title）
-- 同插件内 `path` 重复 → 抛 `IllegalStateException`（提示插件 id + 重复 path）
-- `requireInstance == null` → 框架补全为 `Boolean.TRUE`
-- 宿主**不预置任何默认菜单**，插件需显式声明完整菜单列表
+**宿主校验**：`path` 非空且同插件内唯一（违者抛 `IllegalStateException`）、`requireInstance` null 补全为 true；宿主**不预置任何默认菜单**。字段语义与完整加载链路见 `references/extension-and-menus.md` §6/§8。
 
 ### TaskHandlerExtension (extends ExtensionPoint)
 ```java
@@ -67,6 +63,7 @@ String getResultSummary(TaskResult result);
 default String getMutexKey(TaskPayload payload);  // null=默认规则，""=不互斥
 // 生命周期：onBeforeExecute / onAfterExecute / onSuccess / onFailure / onCancel / onRetry
 ```
+实现约束（无状态、取消/超时检查、互斥键语义、maxRetryCount 选取）见 `references/async-tasks.md`。
 
 ## ExtensionClient（持久化唯一入口，绑定 pluginId）
 
@@ -126,8 +123,10 @@ String readTextFile(long instanceId, String relativePath, Charset charset);
 void   writeTextFile(long instanceId, String relativePath, String content);
 byte[] downloadFileToMemory(long instanceId, String relativePath);
 byte[] getFileBytes(long instanceId, String relativePath, long offset, long length);
-void uploadLocalFile(long instanceId, String relativePath, String localPath);
-void downloadFile(long instanceId, String relativePath, String localPath);
+void uploadLocalFile(long instanceId, String relativePath, String localPath);   // default，无进度回调
+void downloadFile(long instanceId, String relativePath, String localPath);      // default
+void uploadLocalFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback); // v3.10.0
+void downloadFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);   // v3.10.0
 void deleteFile(long instanceId, String relativePath);
 void moveFile(long instanceId, String oldRel, String newRel);
 void copyFile(long instanceId, String srcRel, String dstRel);
@@ -150,8 +149,10 @@ void writeTextFile(Long hostId, String remotePath, String content);
 byte[] downloadFileToMemory(Long hostId, String remotePath);
 byte[] getFileBytes(Long hostId, String remotePath, long offset, long length);
 void uploadFile(Long hostId, String remotePath, MultipartFile file);
-void uploadLocalFile(Long hostId, String remotePath, String localPath);
-void downloadFile(Long hostId, String remotePath, String localPath);
+void uploadLocalFile(Long hostId, String remotePath, String localPath);   // default
+void downloadFile(Long hostId, String remotePath, String localPath);      // default
+void uploadLocalFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback); // v3.10.0
+void downloadFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);     // v3.10.0
 void deleteFile(Long hostId, String remotePath);
 void moveFile(Long hostId, String oldPath, String newPath);
 List<FileInfo> listFiles(Long hostId, String remotePath);
@@ -175,9 +176,34 @@ void close(TunnelHandle handle);   // 幂等：引用计数减至 0 才真正关
 //     便捷构造 SshEndpoint(host, user, password) → port=22；toString 已脱敏
 // record TunnelHandle(String id, int localPort, String remoteHost, int remotePort, String ownerPluginId)
 //     连 127.0.0.1:localPort 即连 remoteHost:remotePort；本地端口仅绑回环、OS 随机分配
-// 去重键 (ownerPluginId, 凭据来源, remoteHost, remotePort)：同插件同目标复用句柄+计数，跨插件不共享
-// 三层兜底关闭：close 归零 → 插件卸载强制清理 → 宿主删主机联动（仅平台凭据隧道）
-// 详见 reference/host-services.md §5；配套 configInfo.database 组装见 §6
+```
+去重键 / 引用计数 / 三层兜底关闭 / 会话钉住等生命周期规则与 configInfo.database 组装见 `references/host-services.md` §5-6。
+
+### RconService（v3.10.0 ADR-0016，RCON 宿主能力）
+```java
+String  executeCommand(long instanceId, String command);                    // 默认读超时
+String  executeCommand(long instanceId, String command, Duration timeout);  // null = 默认超时
+boolean testConnection(long instanceId);                                   // 建连 + 认证
+// 端点解析只认标准键 configInfo.rconPort(缺省27015)/rconPassword；密码不可由插件指定
+// 每次执行自动携带插件 ID 写审计日志；命令语义（status 解析等）插件自理
+// 实例不存在/端点不可达/通信失败抛 BusinessException
+```
+
+### FileTransferProgressCallback（v3.10.0，文件传输进度回调）
+```java
+void onStart(long totalBytes);                            // totalBytes 未知为 -1
+void onProgress(long bytesTransferred, long totalBytes);  // 频率不保证（可能被节流）
+void onComplete();                                        // 成功，保证最终一次
+void onError(Throwable error);                            // 失败，保证最终一次
+// 同步回调勿做耗时操作；回调抛异常即中止传输（可作取消）；Docker 部署仅覆盖 SFTP 段
+```
+
+### InstanceInfoProvider / InstanceDynamicInfo（v3.10.0 ADR-0017，@Component 注册非 ExtensionPoint）
+```java
+InstanceDynamicInfo getInstanceInfo(long instanceId);   // null = 本次不可知（主应用降级，不落库）
+// record InstanceDynamicInfo(Integer playerCount, Integer maxPlayerCount, Map<String,Object> extras)
+// 便捷构造：ofPlayerCount(count) / ofPlayers(count, max)
+// 主应用负责 15s TTL 缓存 + 列表 3s 查询预算；extras 仅透传到实例详情 VO
 ```
 
 ### ScheduleService（v3.8.0 ADR-0011，定时计划编程式服务，注入子容器）
@@ -193,6 +219,7 @@ PageResult<ScheduleRunVO>        listRuns(ScheduleRunQuery query);
 List<TaskLog>                    getRunLogs(String runId);   // 时间正序，最多 500 条
 // 所有操作强制本插件来源隔离（无法操作其他来源计划）
 ```
+重叠 SKIPPED / 停机不补跑 / 插件生命周期联动语义见 `references/scheduled-tasks.md` §5-7。
 
 ### ScheduledTaskHandler（v3.8.0 ADR-0011，定时任务处理器，@Component 注册，独立于 TaskHandler）
 ```java
@@ -246,9 +273,5 @@ plugin.properties keys: plugin.id / plugin.class / plugin.version / plugin.gameC
 ```
 
 ## 路径速查
-| 用途 | 路径 |
-|---|---|
-| 插件静态资源 | `/api/pf4j/plugin/{gameCode}/ui/**` |
-| 插件 API | `/api/plugin/{gameCode}/**` |
-| 插件清单 | `/api/pf4j/plugin/{gameCode}/manifest` |
-| 插件管理 | `/api/pf4j/plugins/**` |
+
+常用三条：插件 API `/api/plugin/{gameCode}/**`；插件静态资源 `/api/pf4j/plugin/{gameCode}/ui/**`；清单 `/api/pf4j/plugin/{gameCode}/manifest`。完整路径常量表与来源（`PluginConstants` 各字段）见 `references/checklist.md` §1。

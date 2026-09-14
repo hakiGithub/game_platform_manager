@@ -9,7 +9,6 @@ import com.gameplatform.plugin.l4d2.util.GitHubApiClient.TreeEntry;
 import com.gameplatform.plugin.l4d2.vo.PluginStoreDetailVO;
 import com.gameplatform.plugin.l4d2.vo.PluginStoreDownloadTaskVO;
 import com.gameplatform.plugin.l4d2.vo.PluginStoreItemVO;
-import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.service.InstanceFileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,7 +61,7 @@ public class PluginStoreService {
     private final GitHubApiClient gitHubApiClient;
     private final ExternalHttpClient httpClient;
     private final PluginInstallService pluginInstallService;
-    private final PluginMetaService pluginMetaService;
+    private final StoreConfigService storeConfigService;
     private final L4D2Config config;
     private final L4D2PathResolver pathResolver;
     private final InstanceFileService instanceFileService;
@@ -99,6 +98,7 @@ public class PluginStoreService {
      * @return 过滤后的插件列表
      */
     public List<PluginStoreItemVO> list(String keyword, String category) {
+        storeConfigService.requireConfigured();
         List<PluginStoreItemVO> items = getCachedItems();
         return items.stream()
                 .filter(item -> matchesKeyword(item, keyword))
@@ -115,6 +115,7 @@ public class PluginStoreService {
         if (pluginId == null || pluginId.isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "pluginId 不能为空");
         }
+        storeConfigService.requireConfigured();
         PluginStoreItemVO item = findItem(pluginId);
 
         List<TreeEntry> tree = getTreeForRead();
@@ -163,6 +164,7 @@ public class PluginStoreService {
         if (pluginId == null || pluginId.isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "pluginId 不能为空");
         }
+        storeConfigService.requireConfigured();
         List<TreeEntry> tree = getTreeForRead();
         if (tree == null || tree.isEmpty()) {
             throw new L4D2PluginException(L4D2PluginException.EXTERNAL_API, "GitHub 仓库目录树为空");
@@ -200,6 +202,7 @@ public class PluginStoreService {
         if (dto.getPluginId() == null || dto.getPluginId().isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "pluginId 不能为空");
         }
+        storeConfigService.requireConfigured();
 
         // 任务去重：相同 instanceId+pluginId 且未结束的任务直接返回已有 taskId
         for (PluginStoreDownloadTaskVO t : tasks.values()) {
@@ -253,6 +256,16 @@ public class PluginStoreService {
     }
 
     // ========== 内部实现 ==========
+
+    /**
+     * 清空商店列表与 tree 缓存（仓库配置保存后调用，新配置立即生效）。
+     */
+    public void evictCache() {
+        cachedItems = null;
+        cachedTimestamp = 0L;
+        cachedTree = null;
+        cachedTreeTimestamp = 0L;
+    }
 
     private List<PluginStoreItemVO> getCachedItems() {
         long ttl = config.getPluginStore().getCacheTtlMs();
@@ -444,6 +457,7 @@ public class PluginStoreService {
                                 }
                                 downloadAndUploadOneFile(dto.getInstanceId(), pluginId, pluginTempDir, fileEntry);
                                 long done = downloadedBytes.addAndGet(fileEntry.size());
+                                task.setDownloadedBytes(done);
                                 long total = task.getTotalBytes();
                                 if (total > 0) {
                                     int progress = (int) (done * 99 / total);
@@ -477,19 +491,14 @@ public class PluginStoreService {
                 task.setMessage("提交到插件库");
                 pluginInstallService.atomicMoveToStore(dto.getInstanceId(), task.getTaskId(), pluginId);
 
-                // 标记 source=store
-                try {
-                    PluginMeta existing = pluginMetaService.load(dto.getInstanceId(), pluginId);
-                    if (existing != null) {
-                        existing.setSource("store");
-                        pluginMetaService.save(dto.getInstanceId(), existing);
-                    }
-                } catch (Exception e) {
-                    log.warn("标记 source=store 失败 pluginId={}, err={}", pluginId, e.getMessage());
-                }
+                // 回填插件元数据（source=store + fileList/configFiles，供已安装列表与启用流程使用）
+                pluginInstallService.backfillStoreMeta(dto.getInstanceId(), pluginId);
 
-                task.setStatus(STATUS_COMPLETED);
+                // 先写进度后写状态：COMPLETED 是前端停止轮询的提交标记，
+                // 若先置 COMPLETED，轮询可能读到"已完成 + 0%"并把过期进度冻显
                 task.setProgress(100);
+                task.setDownloadedBytes(task.getTotalBytes());
+                task.setStatus(STATUS_COMPLETED);
                 task.setMessage("完成");
                 task.setFinishedAt(LocalDateTime.now());
                 log.info("插件下载完成: taskId={}, pluginId={}, files={}",

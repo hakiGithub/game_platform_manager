@@ -1,13 +1,16 @@
 package com.gameplatform.controller.docker;
 
 import com.gameplatform.common.result.Result;
+import com.gameplatform.dto.docker.ContainerAdoptDTO;
 import com.gameplatform.dto.docker.ContainerLogQueryDTO;
 import com.gameplatform.dto.docker.ContainerOperationDTO;
+import com.gameplatform.service.docker.ContainerAdoptionService;
 import com.gameplatform.service.docker.DockerContainerService;
 import com.gameplatform.vo.docker.ContainerDetailVO;
 import com.gameplatform.vo.docker.ContainerHealthVO;
 import com.gameplatform.vo.docker.ContainerListVO;
 import com.gameplatform.vo.docker.ContainerStatsVO;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +34,7 @@ import java.util.List;
 public class DockerContainerController {
 
     private final DockerContainerService containerService;
+    private final ContainerAdoptionService adoptionService;
 
     /**
      * 获取容器列表
@@ -62,6 +66,19 @@ public class DockerContainerController {
         
         ContainerDetailVO detail = containerService.getContainerDetail(hostId, containerId);
         return Result.success(detail);
+    }
+
+    /**
+     * 认领容器为游戏实例（ADR-0023）
+     */
+    @Operation(summary = "认领容器为游戏实例", description = "将主机上已存在的容器创建为平台游戏实例（跳过部署，回写 runtime_metadata）")
+    @PostMapping("/{containerId}/adopt")
+    public Result<Long> adopt(
+            @Parameter(description = "主机ID") @PathVariable Long hostId,
+            @Parameter(description = "容器ID") @PathVariable String containerId,
+            @Valid @RequestBody ContainerAdoptDTO dto) {
+
+        return Result.success(adoptionService.adoptContainer(hostId, containerId, dto));
     }
 
     /**

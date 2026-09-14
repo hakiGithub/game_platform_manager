@@ -232,7 +232,10 @@ public class ServerConfigService {
             sb.append("sv_visiblemaxplayers ").append(dto.getVisibleMaxPlayers()).append("\n");
         }
         if (dto.getMapName() != null) {
-            sb.append("map ").append(dto.getMapName()).append("\n");
+            // 注意：绝不能把 map 写成有效指令——srcds 在每次加载地图后会重新执行
+            // server.cfg，map 指令会再次触发换图，形成无限换图循环（RCON 断连、
+            // 运行时间归零）。起始地图由启动参数（+map）或换图功能管理，此处仅注释记录。
+            sb.append("// map ").append(dto.getMapName()).append("\n");
         }
         if (dto.getGameMode() != null) {
             sb.append("mp_gamemode ").append(dto.getGameMode()).append("\n");
@@ -320,7 +323,15 @@ public class ServerConfigService {
                 continue;
             }
 
-            if (trimmed.isEmpty() || trimmed.startsWith("//")) {
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            // 注释形式的 map 行（本服务写入的起始地图记录）：解析回显，不进 extraConfig
+            if (trimmed.startsWith("// map ")) {
+                vo.setMapName(trimmed.substring("// map ".length()).trim());
+                continue;
+            }
+            if (trimmed.startsWith("//")) {
                 continue;
             }
 

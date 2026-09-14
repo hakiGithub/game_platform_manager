@@ -81,8 +81,8 @@ const hostForm = reactive({
   isLanHost: false, // 是否局域网主机（平台代劳硬开关，详见 ADR-0004）
 });
 
-// 表单验证规则
-const hostRules = {
+// 表单验证规则（凭据仅新增模式必填；编辑模式留空表示保持原凭据不修改）
+const hostRules = computed(() => ({
   name: [
     { required: true, message: "请输入主机名称", trigger: "blur" },
     { min: 1, max: 50, message: "主机名称长度为1-50个字符", trigger: "blur" },
@@ -112,20 +112,20 @@ const hostRules = {
   ],
   sshPassword: [
     {
-      required: computed(() => hostForm.authType === "password"),
+      required: dialogType.value === "add" && hostForm.authType === "password",
       message: "请输入密码",
       trigger: "blur",
     },
   ],
   sshPrivateKey: [
     {
-      required: computed(() => hostForm.authType === "key"),
+      required: dialogType.value === "add" && hostForm.authType === "key",
       message: "请输入SSH私钥",
       trigger: "blur",
     },
   ],
   remark: [{ max: 200, message: "备注最多200个字符", trigger: "blur" }],
-};
+}));
 
 // hosts 刷新弹窗
 const hostsDialogVisible = ref(false);
@@ -319,7 +319,7 @@ function handleEdit(row) {
     sshUsername: row.sshUsername || "root",
     sshPassword: "",
     sshPrivateKey: "",
-    authType: row.sshPassword ? "password" : "key",
+    authType: row.authType || "password",
     tags: row.tags || "",
     remark: row.remark || "",
     isLanHost: !!row.isLanHost,
@@ -329,10 +329,16 @@ function handleEdit(row) {
 
 // 凭据/地址变化后需重新测试
 watch(
-  () => [hostForm.ip, hostForm.sshPort, hostForm.sshUsername, hostForm.sshPassword, hostForm.sshPrivateKey],
+  () => [
+    hostForm.ip,
+    hostForm.sshPort,
+    hostForm.sshUsername,
+    hostForm.sshPassword,
+    hostForm.sshPrivateKey,
+  ],
   () => {
     connectionTested.value = false;
-  }
+  },
 );
 
 // 重置表单
@@ -379,8 +385,10 @@ async function handleTestConnection() {
         ip: hostForm.ip,
         sshPort: hostForm.sshPort,
         username: hostForm.sshUsername,
-        password: hostForm.authType === "password" ? hostForm.sshPassword : undefined,
-        privateKey: hostForm.authType === "key" ? hostForm.sshPrivateKey : undefined,
+        password:
+          hostForm.authType === "password" ? hostForm.sshPassword : undefined,
+        privateKey:
+          hostForm.authType === "key" ? hostForm.sshPrivateKey : undefined,
       });
       if (result.connected) {
         connectionTested.value = true;
@@ -420,10 +428,12 @@ async function handleSubmit() {
           isLanHost: hostForm.isLanHost,
         };
 
-        // 根据认证类型设置密码或私钥
+        // 根据认证类型设置密码或私钥；编辑模式留空不传，后端保持原凭据
         if (hostForm.authType === "password") {
-          data.sshPassword = hostForm.sshPassword;
-        } else {
+          if (hostForm.sshPassword) {
+            data.sshPassword = hostForm.sshPassword;
+          }
+        } else if (hostForm.sshPrivateKey) {
           data.sshPrivateKey = hostForm.sshPrivateKey;
         }
 
@@ -582,14 +592,19 @@ onMounted(() => {
       <div class="hero-copy">
         <span class="section-kicker">HOST CONTROL / HOST INVENTORY</span>
         <h1>主机列表</h1>
-        <p>集中查看连接健康、资源水位和 SSH 运维入口，先确认主机状态，再进入具体处置。</p>
+        <p>
+          集中查看连接健康、资源水位和 SSH
+          运维入口，先确认主机状态，再进入具体处置。
+        </p>
       </div>
       <div class="hero-actions">
         <div class="hero-status">
           <span class="live-pulse" aria-hidden="true"></span>
           <div>
             <strong>{{ syncPending ? "同步中" : "连接面正常" }}</strong>
-            <small>上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small>
+            <small
+              >上次同步 {{ syncPending ? "尚未完成" : lastRefreshAt }}</small
+            >
           </div>
         </div>
       </div>
@@ -607,11 +622,15 @@ onMounted(() => {
       </div>
       <div class="situation-stat">
         <span>离线主机</span>
-        <strong :class="{ 'is-warning': offlineHostCount > 0 }">{{ offlineHostCount }}</strong>
+        <strong :class="{ 'is-warning': offlineHostCount > 0 }">{{
+          offlineHostCount
+        }}</strong>
       </div>
       <div class="situation-stat">
         <span>资源告警</span>
-        <strong :class="{ 'is-warning': attentionHostCount > 0 }">{{ attentionHostCount }}</strong>
+        <strong :class="{ 'is-warning': attentionHostCount > 0 }">{{
+          attentionHostCount
+        }}</strong>
       </div>
       <div class="situation-stat">
         <span>局域网主机</span>
@@ -651,7 +670,11 @@ onMounted(() => {
           />
         </el-form-item>
         <el-form-item label="连接状态">
-          <el-select v-model="searchForm.status" placeholder="全部状态" clearable>
+          <el-select
+            v-model="searchForm.status"
+            placeholder="全部状态"
+            clearable
+          >
             <el-option label="在线" :value="1" />
             <el-option label="离线" :value="0" />
           </el-select>
@@ -697,7 +720,10 @@ onMounted(() => {
       >
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <div class="host-status-cell" :class="row.status === 1 ? 'is-online' : 'is-offline'">
+            <div
+              class="host-status-cell"
+              :class="row.status === 1 ? 'is-online' : 'is-offline'"
+            >
               <span class="status-dot" aria-hidden="true"></span>
               <span>{{ row.status === 1 ? "在线" : "离线" }}</span>
             </div>
@@ -706,14 +732,32 @@ onMounted(() => {
         <el-table-column label="主机" min-width="170">
           <template #default="{ row }">
             <div class="host-identity">
-              <span class="host-icon"><el-icon><Monitor /></el-icon></span>
+              <span class="host-icon"
+                ><el-icon><Monitor /></el-icon
+              ></span>
               <div>
-                <button class="host-name-button" type="button" @click="handleEdit(row)">
+                <button
+                  class="host-name-button"
+                  type="button"
+                  @click="handleEdit(row)"
+                >
                   {{ row.name }}
                 </button>
                 <div class="host-tags">
-                  <el-tag v-if="row.isLanHost" size="small" type="success" effect="plain">局域网</el-tag>
-                  <el-tag v-if="row.osType || row.os" size="small" type="info" effect="plain">{{ row.osType || row.os }}</el-tag>
+                  <el-tag
+                    v-if="row.isLanHost"
+                    size="small"
+                    type="success"
+                    effect="plain"
+                    >局域网</el-tag
+                  >
+                  <el-tag
+                    v-if="row.osType || row.os"
+                    size="small"
+                    type="info"
+                    effect="plain"
+                    >{{ row.osType || row.os }}</el-tag
+                  >
                 </div>
               </div>
             </div>
@@ -723,14 +767,24 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="connection-cell">
               <strong>{{ row.ip }}</strong>
-              <span>SSH {{ row.sshPort }} · {{ row.sshUsername || "root" }}</span>
+              <span
+                >SSH {{ row.sshPort }} · {{ row.sshUsername || "root" }}</span
+              >
             </div>
           </template>
         </el-table-column>
         <el-table-column label="资源水位" min-width="220">
           <template #default="{ row }">
-            <div v-if="row.status === 1 && row.resources" class="resource-stack">
-              <div v-for="metric in resourceMetrics" :key="metric.key" class="resource-line" :class="`is-${getResourceTone(getResourceUsage(row, metric.key))}`">
+            <div
+              v-if="row.status === 1 && row.resources"
+              class="resource-stack"
+            >
+              <div
+                v-for="metric in resourceMetrics"
+                :key="metric.key"
+                class="resource-line"
+                :class="`is-${getResourceTone(getResourceUsage(row, metric.key))}`"
+              >
                 <span>{{ metric.label }}</span>
                 <el-progress
                   :percentage="getResourceUsage(row, metric.key)"
@@ -741,30 +795,60 @@ onMounted(() => {
                 <strong>{{ getResourceUsage(row, metric.key) }}%</strong>
               </div>
             </div>
-            <span v-else-if="row.status === 0" class="resource-offline">资源不可用 · 主机离线</span>
-            <span v-else class="resource-loading"><el-icon class="is-loading"><Loading /></el-icon> 正在同步</span>
+            <span v-else-if="row.status === 0" class="resource-offline"
+              >资源不可用 · 主机离线</span
+            >
+            <span v-else class="resource-loading"
+              ><el-icon class="is-loading"><Loading /></el-icon> 正在同步</span
+            >
           </template>
         </el-table-column>
         <el-table-column label="环境" min-width="130">
           <template #default="{ row }">
             <div class="host-context">
               <strong>{{ row.os || row.osType || "Linux 主机" }}</strong>
-              <span>{{ row.remark || (row.isLanHost ? "局域网接入" : "远程接入") }}</span>
+              <span>{{
+                row.remark || (row.isLanHost ? "局域网接入" : "远程接入")
+              }}</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <div class="host-actions">
-              <el-button link size="small" @click="handleDetail(row)">详情</el-button>
-              <el-button link size="small" :disabled="row.status !== 1" @click="handleTerminal(row)">
+              <el-button link size="small" @click="handleDetail(row)"
+                >详情</el-button
+              >
+              <el-button
+                link
+                size="small"
+                :disabled="row.status !== 1"
+                @click="handleTerminal(row)"
+              >
                 <el-icon><Monitor /></el-icon>
                 终端
               </el-button>
-              <el-button link size="small" @click="handleTest(row)">测试连接</el-button>
-              <el-button link size="small" class="hosts-action" :disabled="row.status !== 1" @click="handleRefreshHosts(row)">hosts</el-button>
-              <el-button link size="small" @click="handleEdit(row)">编辑</el-button>
-              <el-button link size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+              <el-button link size="small" @click="handleTest(row)"
+                >测试连接</el-button
+              >
+              <el-button
+                link
+                size="small"
+                class="hosts-action"
+                :disabled="row.status !== 1"
+                @click="handleRefreshHosts(row)"
+                >hosts</el-button
+              >
+              <el-button link size="small" @click="handleEdit(row)"
+                >编辑</el-button
+              >
+              <el-button
+                link
+                size="small"
+                type="danger"
+                @click="handleDelete(row)"
+                >删除</el-button
+              >
             </div>
           </template>
         </el-table-column>
@@ -778,7 +862,9 @@ onMounted(() => {
       </el-table>
 
       <div class="table-footer">
-        <span class="table-footer-note"><i class="live-pulse" aria-hidden="true"></i> 资源状态已接入</span>
+        <span class="table-footer-note"
+          ><i class="live-pulse" aria-hidden="true"></i> 资源状态已接入</span
+        >
         <el-pagination
           v-if="pagination.total > 0"
           v-model:current-page="pagination.current"
@@ -825,7 +911,8 @@ onMounted(() => {
           />
           <div class="form-tip">
             勾选后，平台可向该主机跨网代劳下载/解压/推送补丁（含容器场景）；
-            不勾选时，目标主机必须能自行下载补丁（需 curl/wget 与解压工具齐全），否则补丁安装会失败。
+            不勾选时，目标主机必须能自行下载补丁（需 curl/wget
+            与解压工具齐全），否则补丁安装会失败。
           </div>
         </el-form-item>
         <el-form-item label="SSH端口" prop="sshPort">
@@ -857,17 +944,29 @@ onMounted(() => {
           <el-input
             v-model="hostForm.sshPassword"
             type="password"
-            placeholder="请输入密码"
+            :placeholder="
+              dialogType === 'edit' ? '留空则保持原密码不变' : '请输入密码'
+            "
             show-password
           />
+          <div v-if="dialogType === 'edit'" class="form-tip">
+            凭据不会回显；无需修改密码时留空即可。
+          </div>
         </el-form-item>
         <el-form-item v-else label="SSH私钥" prop="sshPrivateKey">
           <el-input
             v-model="hostForm.sshPrivateKey"
             type="textarea"
             :rows="6"
-            placeholder="请粘贴SSH私钥内容"
+            :placeholder="
+              dialogType === 'edit'
+                ? '留空则保持原私钥不变'
+                : '请粘贴SSH私钥内容'
+            "
           />
+          <div v-if="dialogType === 'edit'" class="form-tip">
+            凭据不会回显；无需修改私钥时留空即可。
+          </div>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input
@@ -890,7 +989,11 @@ onMounted(() => {
             type="primary"
             :loading="submitLoading"
             :disabled="dialogType === 'add' && !connectionTested"
-            :title="dialogType === 'add' && !connectionTested ? '请先完成连接测试且测试成功' : ''"
+            :title="
+              dialogType === 'add' && !connectionTested
+                ? '请先完成连接测试且测试成功'
+                : ''
+            "
             @click="handleSubmit"
           >
             确定
@@ -926,7 +1029,8 @@ onMounted(() => {
             <p class="hosts-tip">
               检测到以下域名指向 127.0.0.1，勾选后将被改为
               <strong>{{ hostsPreview.hostLanIp }}</strong
-              >。若 /etc/hosts 中包含广告屏蔽条目（如 StevenBlack/hosts），请只勾选需要反向代理的域名。
+              >。若 /etc/hosts 中包含广告屏蔽条目（如
+              StevenBlack/hosts），请只勾选需要反向代理的域名。
             </p>
 
             <div class="domains-toolbar">
@@ -976,9 +1080,7 @@ onMounted(() => {
           <el-divider content-position="left"> sudo 权限 </el-divider>
 
           <div class="sudo-status">
-            <el-tag
-              v-if="hostsPreview.sudoAvailable"
-              type="success"
+            <el-tag v-if="hostsPreview.sudoAvailable" type="success"
               >免密 sudo 可用</el-tag
             >
             <el-tag v-else type="warning">需要 sudo 密码</el-tag>
@@ -1394,7 +1496,9 @@ onMounted(() => {
 
 .host-situation {
   display: grid;
-  grid-template-columns: minmax(210px, 1.45fr) repeat(4, minmax(88px, 0.65fr)) auto;
+  grid-template-columns:
+    minmax(210px, 1.45fr) repeat(4, minmax(88px, 0.65fr))
+    auto;
   align-items: center;
   gap: 0;
   min-height: 78px;

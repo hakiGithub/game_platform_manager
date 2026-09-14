@@ -95,10 +95,9 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '备份还原', icon: 'FolderOpened' }
   },
   {
+    // 商店已并入 插件管理 三 Tab（ADR-0022），保留路由兼容遗留链接
     path: '/plugin-store',
-    name: 'PluginStore',
-    component: () => import('@/pages/PluginStore.vue'),
-    meta: { title: '插件商店', icon: 'ShoppingBag' }
+    redirect: '/plugins',
   },
   {
     path: '/plugin-config',

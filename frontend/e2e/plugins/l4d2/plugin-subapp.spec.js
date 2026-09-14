@@ -12,6 +12,8 @@
  *  - SourceMod: 上传 .smx 样例成功
  *  - 服务器配置: 修改保存出现同步成功提示
  *  - 重启管理: 页面渲染（模式 radio + 可用模式 tag）
+ *  - 远端仓库: 未配置时展示"未配置仓库"引导空态，点「去配置」打开仓库设置弹窗（离线可测，
+ *    不触发真实 GitHub 请求、不保存配置保持幂等）
  */
 import { test, expect } from "@playwright/test";
 import { dirname, join } from "node:path";
@@ -304,6 +306,31 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(row.getByText(/已启用|已禁用/).first()).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test("远端仓库未配置时展示引导空态并可打开仓库设置", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await page.goto(`/extensions/app/l4d2/plugins?instanceId=${instanceId}`);
+
+    // 切到「远端仓库」tab（lazy 挂载后触发列表加载）
+    await page.getByRole("tab", { name: "远端仓库" }).click();
+
+    // 未配置（扩展表无 store-config 记录）→ 引导空态而非报错
+    const empty = page.locator(".el-empty", {
+      hasText: "远端插件仓库未配置",
+    });
+    await expect(empty).toBeVisible({ timeout: 30_000 });
+
+    // 「去配置」直接打开仓库设置弹窗
+    await empty.getByRole("button", { name: "去配置" }).click();
+    const dialog = page.getByRole("dialog", { hasText: "远端仓库设置" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("仓库地址", { exact: true })).toBeVisible();
+    // 不点「测试连接」（真实 GitHub 外呼）、不保存（保持未配置状态幂等）
+    await dialog.getByRole("button", { name: "取消" }).click();
+    await expect(dialog).toBeHidden();
   });
   test("地图删除确认与清理", async ({ page }) => {
     test.setTimeout(60_000);

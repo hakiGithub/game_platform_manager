@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
@@ -152,9 +153,21 @@ public class HostServiceImpl implements HostService {
         if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
             host.setSshPrivateKey(encrypt(dto.getSshPrivateKey()));
         }
-        
+
         hostMapper.updateById(host);
-        
+
+        // 认证方式切换语义：提供新凭据时清除另一类存量凭据（SSH 认证私钥优先，
+        // 不清除会遮蔽新密码；updateById 对 null 字段不落库，需显式 SET NULL）
+        if (dto.getSshPassword() != null && !dto.getSshPassword().isEmpty()) {
+            hostMapper.update(null, new LambdaUpdateWrapper<Host>()
+                    .eq(Host::getId, dto.getId())
+                    .set(Host::getSshPrivateKey, null));
+        } else if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
+            hostMapper.update(null, new LambdaUpdateWrapper<Host>()
+                    .eq(Host::getId, dto.getId())
+                    .set(Host::getSshPassword, null));
+        }
+
         
         return convertToVO(host);
     }
@@ -344,6 +357,8 @@ public class HostServiceImpl implements HostService {
         vo.setLastCheckTime(host.getLastCheckTime());
         vo.setRemark(host.getRemark());
         vo.setIsLanHost(host.getIsLanHost());
+        // 认证方式由存量凭据推导（SSH 认证私钥优先），不回显凭据本身
+        vo.setAuthType(StrUtil.isNotBlank(host.getSshPrivateKey()) ? "key" : "password");
         vo.setCreateTime(host.getCreateTime());
         vo.setUpdateTime(host.getUpdateTime());
         // 不返回敏感信息

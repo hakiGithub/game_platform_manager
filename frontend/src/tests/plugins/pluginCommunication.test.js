@@ -572,7 +572,8 @@ describe('pluginCommunication', () => {
 
       expect(request).toHaveBeenCalledWith({
         url: '/pf4j/plugin/minecraft/manifest',
-        method: 'get'
+        method: 'get',
+        silent: true
       })
 
       expect(result).toEqual(expectedManifest)

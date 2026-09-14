@@ -29,6 +29,32 @@ function getAuthToken(): string | null {
 }
 
 /**
+ * 带 HTTP/业务码的错误对象
+ * code 为响应体业务码（如 1550 未配置仓库）或 HTTP 状态码（响应体不可解析时）
+ */
+export class ApiError extends Error {
+  code: number
+
+  constructor(message: string, code: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+  }
+}
+
+/** 非 2xx 响应：尽力读取统一响应体里的 {code,message}，替代裸 "HTTP error! status: xxx" */
+async function errorFromResponse(response: Response): Promise<ApiError> {
+  let code = response.status
+  let message = `HTTP error! status: ${response.status}`
+  try {
+    const body = await response.json()
+    if (typeof body?.code === 'number') code = body.code
+    if (body?.message) message = body.message
+  } catch { /* 响应体非 JSON（如网关错误页），保留 HTTP 兜底文案 */ }
+  return new ApiError(message, code)
+}
+
+/**
  * 通用请求方法
  */
 async function request<T>(
@@ -54,14 +80,14 @@ async function request<T>(
   console.log('[request] response', fullUrl, response.status)
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
+    throw await errorFromResponse(response)
   }
 
   const result: ApiResponse<T> = await response.json()
   console.log('[request] parsed', fullUrl, result.code, result.message)
-  
+
   if (result.code !== 200) {
-    throw new Error(result.message || 'Request failed')
+    throw new ApiError(result.message || 'Request failed', result.code)
   }
 
   return result.data
@@ -153,13 +179,21 @@ export async function upload<T>(url: string, file: File, onProgress?: (percent: 
           if (result.code === 200) {
             resolve(result.data)
           } else {
-            reject(new Error(result.message || 'Upload failed'))
+            reject(new ApiError(result.message || 'Upload failed', result.code))
           }
         } catch (e) {
           reject(new Error('Invalid response'))
         }
       } else {
-        reject(new Error(`HTTP error! status: ${xhr.status}`))
+        // 非 2xx：尽力解析统一响应体，回退 HTTP 状态文案
+        let code = xhr.status
+        let message = `HTTP error! status: ${xhr.status}`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          if (typeof body?.code === 'number') code = body.code
+          if (body?.message) message = body.message
+        } catch { /* 非 JSON 响应体 */ }
+        reject(new ApiError(message, code))
       }
     })
 

@@ -194,15 +194,21 @@ game-platform:
     # 容器名
     container-name: steam302
 
+  # 补丁安装（ADR-0021）
+  patch:
+    # Docker 代劳工具镜像（宿主机缺原生下载/解压工具时 docker run 借用，目标主机自行 pull）
+    tooling-image: registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest
+
   # 游戏元数据配置
   metadata:
     # 扫描路径 (classpath:games/ 表示扫描resources/games目录)
     scan-path: classpath:games/
-    # 是否启用热重载
-    hot-reload: false
+    # 热重载：周期扫描外部目录，drop-in yml 自动入库（类似插件目录热加载）
+    hot-reload: true
     # 扫描间隔(秒)，热重载启用时有效
     scan-interval: 300
-    # 外部配置目录（可选，用于加载额外的游戏配置）
+    # 外部扩展目录：classpath 内置 + 此目录合并加载，同 game_code 外部覆盖内置。
+    # Docker 部署时 compose 挂载 ${GPM_DEPLOY_DIR}/games:/app/games，丢入 yml 即扩展/微调游戏配置，无需重建镜像
     external-dir: ./games
 
   # 实例状态同步配置

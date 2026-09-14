@@ -41,19 +41,29 @@ public class GitHubApiClient {
     private final L4D2Config config;
 
     /**
-     * 获取仓库分支的递归目录树。
+     * 获取仓库分支的递归目录树（使用运行时配置的仓库/分支/代理/令牌）。
      *
      * <p>调用 {@code GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1}。
      *
      * @return 目录树条目列表（包含 blob 与 tree 类型）
      */
-    @SuppressWarnings("unchecked")
     public List<TreeEntry> getTree() {
         L4D2Config.PluginStore ps = config.getPluginStore();
+        return getTree(ps.getRepo(), ps.getBranch(), ps.getProxyUrl(), resolveToken());
+    }
+
+    /**
+     * 获取指定仓库分支的递归目录树（参数化版本，供"测试连接"用表单值直连，
+     * 不触碰运行时配置）。仓库地址为空时返回空列表。
+     */
+    public List<TreeEntry> getTree(String repo, String branch, String proxyUrl, String token) {
+        if (repo == null || repo.isBlank()) {
+            return List.of();
+        }
         String rawUrl = String.format("%s/%s/git/trees/%s?recursive=1",
-                GITHUB_API_BASE, ps.getRepo(), ps.getBranch());
-        String url = applyProxy(rawUrl);
-        Map<String, Object> resp = httpClient.getForObject(url, Map.class, buildAuthParams());
+                GITHUB_API_BASE, repo, branch);
+        String url = applyProxy(rawUrl, proxyUrl);
+        Map<String, Object> resp = httpClient.getForObject(url, Map.class, buildAuthParams(token));
         if (resp == null) {
             return List.of();
         }
@@ -282,10 +292,13 @@ public class GitHubApiClient {
      * 对齐 l4d2-server-next applyProxy。
      */
     String applyProxy(String rawUrl) {
+        return applyProxy(rawUrl, config.getPluginStore().getProxyUrl());
+    }
+
+    String applyProxy(String rawUrl, String proxyUrl) {
         if (rawUrl == null || rawUrl.isBlank()) {
             return rawUrl;
         }
-        String proxyUrl = config.getPluginStore().getProxyUrl();
         if (proxyUrl == null || proxyUrl.isBlank()) {
             return rawUrl;
         }
@@ -309,7 +322,10 @@ public class GitHubApiClient {
      * <p>未设置环境变量时返回空 Map，使用匿名限流。
      */
     private Map<String, ?> buildAuthParams() {
-        String token = resolveToken();
+        return buildAuthParams(resolveToken());
+    }
+
+    private Map<String, ?> buildAuthParams(String token) {
         if (token == null || token.isBlank()) {
             return null;
         }

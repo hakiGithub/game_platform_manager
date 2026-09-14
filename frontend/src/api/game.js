@@ -147,3 +147,14 @@ export function validateGameYaml(file) {
     headers: { "Content-Type": "multipart/form-data" },
   });
 }
+
+/**
+ * 重新扫描游戏元数据配置（classpath 内置 + 外部扩展目录，同 game_code 外部覆盖内置）
+ * @returns {Promise<{totalFiles:number, successCount:number, updateCount:number, errorCount:number, loadedGames:string[], errors:string[]}>}
+ */
+export function scanGameMetadata() {
+  return request({
+    url: "/games/scan",
+    method: "post",
+  });
+}

@@ -4,7 +4,7 @@ import com.gameplatform.plugin.patch.HostCapabilities;
 import org.springframework.stereotype.Component;
 
 /**
- * 补丁安装决策引擎（ADR-0006 决策 5）
+ * 补丁安装决策引擎（ADR-0006 决策 5；ADR-0021 决策 6 引入 Docker 代劳）
  *
  * <p>纯函数：由探测结果（工具集）、补丁格式与 isLanHost 机械推导执行策略，
  * 无人工猜测分支。矩阵：</p>
@@ -15,6 +15,10 @@ import org.springframework.stereotype.Component;
  * WAN 且不能自治                 → ERROR_WAN_NOT_SELF_SUFFICIENT
  * 非压缩包：解压能力不参与判定
  * </pre>
+ *
+ * <p>能力判定含 Docker 代劳（ADR-0021）：主机有 Docker 时视为既能下载也能解压
+ * （工具镜像内预装 curl/wget/bsdtar 等），执行侧由 PatchInstallExecutor 负责在
+ * 原生工具缺失时借 {@code docker run --rm} 完成下载/解压/校验。</p>
  */
 @Component
 public class PatchDecisionEngine {
@@ -55,13 +59,18 @@ public class PatchDecisionEngine {
         return PatchStrategy.PLATFORM_DOWNLOAD_PLATFORM_EXTRACT;
     }
 
-    /** 下载能力：curl 或 wget 存在即认为可尝试（实际失败再回退，ADR-0006 决策 5） */
+    /** 下载能力：curl/wget 存在，或 Docker 可代劳（工具镜像预装下载器） */
     public boolean canDownload(HostCapabilities caps) {
-        return caps.hasTool("curl") || caps.hasTool("wget");
+        return caps.hasTool("curl") || caps.hasTool("wget") || caps.hasDocker();
     }
 
-    /** 解压能力：按格式匹配 tar/unzip/bsdtar 与压缩工具 */
+    /** 解压能力：原生工具齐备，或 Docker 可代劳（工具镜像预装 bsdtar 等） */
     public boolean canExtract(HostCapabilities caps, PatchFormat format) {
+        return canExtractNative(caps, format) || caps.hasDocker();
+    }
+
+    /** 原生解压能力（不含 Docker 代劳）：按格式匹配 tar/unzip/bsdtar 与压缩工具 */
+    public boolean canExtractNative(HostCapabilities caps, PatchFormat format) {
         if (!format.isArchive()) {
             return true;
         }

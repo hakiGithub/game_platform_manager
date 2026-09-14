@@ -13,6 +13,7 @@ import com.gameplatform.service.FileService;
 import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -51,6 +52,10 @@ public class PatchInstallExecutor {
     private static final long SSH_TIMEOUT_MS = 600_000L;
 
     private final Semaphore globalSemaphore = new Semaphore(GLOBAL_CONCURRENCY);
+
+    /** Docker 代劳工具镜像（ADR-0021 决策 6：目标主机自行 pull） */
+    @Value("${game-platform.patch.tooling-image:registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest}")
+    private String toolingImage;
 
     private final AbstractInstanceFileService instanceFileService;
     private final FileService fileService;
@@ -116,7 +121,9 @@ public class PatchInstallExecutor {
         PatchStrategy strategy = decisionEngine.decide(caps, format, Boolean.TRUE.equals(host.getIsLanHost()));
         progress.onLog("补丁格式: " + format + ", 策略: " + strategy + ", isLanHost: " + host.getIsLanHost());
         if (strategy == PatchStrategy.ERROR_WAN_NOT_SELF_SUFFICIENT) {
-            throw new BusinessException("目标主机不能自治（不能下载或不能解压）且为公网主机，平台不跨公网代劳（ADR-0004/ADR-0006）");
+            throw new BusinessException("目标主机不能自治且为公网主机，平台不跨公网代劳（ADR-0004/ADR-0006）。缺失: "
+                    + describeMissing(caps, format)
+                    + "。可到主机详情页「环境工具」面板安装缺失工具（ADR-0021）");
         }
 
         // 5. 执行（可重试错误自动重试）
@@ -139,11 +146,11 @@ public class PatchInstallExecutor {
                     progress.onProgress(10, "目标主机远程下载补丁");
                     remoteDownload(host, caps, request.getUrl(), hostArchive);
                     verifyRemoteChecksum(host, caps, hostArchive, request.getSha256());
-                    topLevel = listRemoteEntries(host, format, hostArchive);
+                    topLevel = listRemoteEntries(host, caps, format, hostArchive);
                     backup(route, host, topLevel, request.getTargetPath());
                     if (format.isArchive()) {
                         progress.onProgress(40, "目标主机远程解压");
-                        remoteExtract(host, format, hostArchive, hostTmpDir + "/extracted");
+                        remoteExtract(host, caps, format, hostArchive, hostTmpDir + "/extracted");
                         moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
                     } else {
                         progress.onProgress(40, "推送文件到目标位置");
@@ -157,7 +164,7 @@ public class PatchInstallExecutor {
                     topLevel = extractor.listTopLevelEntries(localArchive, format);
                     backup(route, host, topLevel, request.getTargetPath());
                     progress.onProgress(60, "目标主机远程解压");
-                    remoteExtract(host, format, hostArchive, hostTmpDir + "/extracted");
+                    remoteExtract(host, caps, format, hostArchive, hostTmpDir + "/extracted");
                     moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
                 }
                 case PLATFORM_DOWNLOAD_PLATFORM_EXTRACT -> {
@@ -198,13 +205,50 @@ public class PatchInstallExecutor {
         }
     }
 
+    // ==================== Docker 代劳（ADR-0021 决策 6） ====================
+
+    /**
+     * 借工具镜像在目标主机上执行命令（原生工具缺失时的下载/解压/校验代劳）。
+     * volumes 形如 "-v /tmp/x:/w -v /tmp/y:/d"，innerCmd 在容器内执行。
+     */
+    private SshUtil.CommandResult dockerRunTool(Host host, String volumes, String innerCmd) {
+        return execOnHostQuietly(host, "docker run --rm " + volumes + " " + toolingImage + " " + innerCmd);
+    }
+
+    /** 描述缺失能力（WAN 报错文案用，ADR-0021 决策 7） */
+    private String describeMissing(HostCapabilities caps, PatchFormat format) {
+        List<String> missing = new ArrayList<>();
+        if (!caps.hasTool("curl") && !caps.hasTool("wget")) {
+            missing.add("下载工具(curl/wget)");
+        }
+        if (format.isArchive() && !decisionEngine.canExtractNative(caps, format)) {
+            missing.add("解压工具(格式 " + format + " 所需)");
+        }
+        if (missing.isEmpty()) {
+            missing.add("未知（探测结果异常）");
+        }
+        if (!caps.hasDocker()) {
+            missing.add("Docker(可代劳下载/解压)");
+        }
+        return String.join("、", missing);
+    }
+
     // ==================== 下载 ====================
 
     private void remoteDownload(Host host, HostCapabilities caps, String url, String destPath) {
-        String cmd = caps.hasTool("curl")
-                ? "curl -fsSL --max-time 600 -o " + shellQuote(destPath) + " " + shellQuote(url)
-                : "wget -q --timeout=600 -O " + shellQuote(destPath) + " " + shellQuote(url);
-        SshUtil.CommandResult r = execOnHost(host, cmd);
+        SshUtil.CommandResult r;
+        if (caps.hasTool("curl")) {
+            r = execOnHost(host, "curl -fsSL --max-time 600 -o " + shellQuote(destPath) + " " + shellQuote(url));
+        } else if (caps.hasTool("wget")) {
+            r = execOnHost(host, "wget -q --timeout=600 -O " + shellQuote(destPath) + " " + shellQuote(url));
+        } else if (caps.hasDocker()) {
+            // Docker 代劳：镜像内预装 curl/wget
+            r = dockerRunTool(host, "-v " + shellQuote(parentOf(destPath)) + ":/w",
+                    "curl -fsSL --max-time 600 -o " + containerPath(destPath, "w")
+                            + " " + shellQuote(url));
+        } else {
+            throw new RetryableException("远程下载失败: 无下载工具且无 Docker 代劳");
+        }
         if (r == null || !r.isSuccess()) {
             throw new RetryableException("远程下载失败: " + (r != null ? r.getError() : "无响应"));
         }
@@ -238,25 +282,37 @@ public class PatchInstallExecutor {
         if (sha256 == null || sha256.isBlank()) {
             return;
         }
-        String cmd;
+        SshUtil.CommandResult r;
         if (caps.hasTool("sha256sum")) {
-            cmd = "sha256sum " + shellQuote(remoteFile) + " | awk '{print $1}'";
+            r = execOnHost(host, "sha256sum " + shellQuote(remoteFile) + " | awk '{print $1}'");
         } else if (caps.hasTool("shasum")) {
-            cmd = "shasum -a 256 " + shellQuote(remoteFile) + " | awk '{print $1}'";
+            r = execOnHost(host, "shasum -a 256 " + shellQuote(remoteFile) + " | awk '{print $1}'");
+        } else if (caps.hasDocker()) {
+            // Docker 代劳校验
+            r = dockerRunTool(host, "-v " + shellQuote(parentOf(remoteFile)) + ":/w",
+                    "sha256sum " + containerPath(remoteFile, "w"));
         } else {
             log.warn("目标主机无校验工具，跳过 sha256 校验（仅警告）");
             return;
         }
-        SshUtil.CommandResult r = execOnHost(host, cmd);
-        if (r == null || !r.isSuccess() || !sha256.equalsIgnoreCase(r.getOutput().trim())) {
+        if (r == null || !r.isSuccess() || !sha256.equalsIgnoreCase(r.getOutput().trim().split("\\s+")[0])) {
             throw new BusinessException("补丁 sha256 校验失败");
         }
     }
 
     // ==================== 解压与移动（远程） ====================
 
-    private Set<String> listRemoteEntries(Host host, PatchFormat format, String remoteArchive) {
-        SshUtil.CommandResult r = execOnHost(host, "tar -tzf " + shellQuote(remoteArchive));
+    private Set<String> listRemoteEntries(Host host, HostCapabilities caps, PatchFormat format, String remoteArchive) {
+        SshUtil.CommandResult r;
+        if (caps.hasTool("tar")) {
+            r = execOnHost(host, "tar -tzf " + shellQuote(remoteArchive));
+        } else if (caps.hasDocker()) {
+            // Docker 代劳：镜像内 bsdtar 可列所有归档格式
+            r = dockerRunTool(host, "-v " + shellQuote(parentOf(remoteArchive)) + ":/w",
+                    "bsdtar -tf " + containerPath(remoteArchive, "w"));
+        } else {
+            throw new BusinessException("读取压缩包清单失败: 无 tar 且无 Docker 代劳");
+        }
         if (r == null || !r.isSuccess()) {
             throw new BusinessException("读取压缩包清单失败: " + (r != null ? r.getError() : ""));
         }
@@ -272,17 +328,26 @@ public class PatchInstallExecutor {
         return topLevel;
     }
 
-    private void remoteExtract(Host host, PatchFormat format, String archive, String destDir) {
+    private void remoteExtract(Host host, HostCapabilities caps, PatchFormat format, String archive, String destDir) {
         execOk(host, "mkdir -p " + shellQuote(destDir));
-        String cmd = switch (format) {
-            case TAR_GZ -> "tar -xzf";
-            case TAR_BZ2 -> "tar -xjf";
-            case TAR_XZ -> "tar -xJf";
-            case ZIP -> "unzip -o";
-            default -> throw new BusinessException("不支持的目标侧解压格式: " + format);
-        };
-        SshUtil.CommandResult r = execOnHost(host,
-                cmd + " " + shellQuote(archive) + " -C " + shellQuote(destDir));
+        SshUtil.CommandResult r;
+        if (decisionEngine.canExtractNative(caps, format)) {
+            String cmd = switch (format) {
+                case TAR_GZ -> "tar -xzf";
+                case TAR_BZ2 -> "tar -xjf";
+                case TAR_XZ -> "tar -xJf";
+                case ZIP -> "unzip -o";
+                default -> throw new BusinessException("不支持的目标侧解压格式: " + format);
+            };
+            r = execOnHost(host, cmd + " " + shellQuote(archive) + " -C " + shellQuote(destDir));
+        } else if (caps.hasDocker()) {
+            // Docker 代劳：镜像内 bsdtar 覆盖所有归档格式
+            r = dockerRunTool(host,
+                    "-v " + shellQuote(parentOf(archive)) + ":/a -v " + shellQuote(destDir) + ":/d",
+                    "bsdtar -xf " + containerPath(archive, "a") + " -C /d");
+        } else {
+            throw new BusinessException("远程解压失败: 无原生解压工具且无 Docker 代劳");
+        }
         if (r == null || !r.isSuccess()) {
             throw new BusinessException("远程解压失败: " + (r != null ? r.getError() : ""));
         }
@@ -541,5 +606,12 @@ public class PatchInstallExecutor {
     private static String parentOf(String path) {
         int idx = path.lastIndexOf('/');
         return idx > 0 ? path.substring(0, idx) : "/";
+    }
+
+    /** 宿主机路径 → 容器内挂载点路径（parentOf 挂载为 {mount}，故去掉父目录前缀） */
+    private static String containerPath(String hostPath, String mount) {
+        String parent = parentOf(hostPath);
+        String rest = hostPath.substring(parent.length());
+        return "/" + mount + rest;
     }
 }

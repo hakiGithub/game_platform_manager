@@ -7,7 +7,7 @@ import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.plugin.task.TaskSubmitRequest;
 import com.gameplatform.service.Steam302Service;
 import com.gameplatform.steam302.Steam302HostsSync;
-import com.gameplatform.steam302.SudoAwareSshRunner;
+import com.gameplatform.util.SudoAwareSshRunner;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.Steam302StatusVO;
 import lombok.RequiredArgsConstructor;

@@ -271,3 +271,29 @@ export function setSteam302ContainerShare(id, enabled) {
     data: { enabled },
   });
 }
+
+/**
+ * 查询主机环境工具状态（ADR-0021）
+ * @param {number} hostId - 主机ID
+ * @returns {Promise<{tools: Array<{tool: string, displayName: string, installed: boolean, installable: boolean}>, packageManager: string, sudoNopasswd: boolean, docker: boolean}>}
+ */
+export function getHostTools(hostId) {
+  return request({
+    url: `/hosts/${hostId}/tools`,
+    method: "get",
+  });
+}
+
+/**
+ * 安装主机环境工具（白名单，同步执行，超时约 2 分钟）
+ * @param {number} hostId - 主机ID
+ * @param {string} tool - 工具名（unzip/unrar/7z/xz/bzip2/tar/gzip/curl/wget/rsync）
+ * @returns {Promise<string>} 安装输出
+ */
+export function installHostTool(hostId, tool) {
+  return request({
+    url: `/hosts/${hostId}/tools/${tool}/install`,
+    method: "post",
+    timeout: 150000,
+  });
+}

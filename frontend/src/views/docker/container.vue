@@ -42,6 +42,14 @@
               <el-icon><RefreshRight /></el-icon>
               重启
             </el-button>
+            <el-button
+              v-if="containerDetail && !containerDetail.isLinked"
+              type="success"
+              @click="adoptDialogVisible = true"
+            >
+              <el-icon><MagicStick /></el-icon>
+              识别为实例
+            </el-button>
             <el-button type="danger" @click="showDeleteConfirm">
               <el-icon><Delete /></el-icon>
               删除
@@ -71,10 +79,10 @@
         <el-descriptions :column="3" border>
           <el-descriptions-item label="容器ID">
             <el-tooltip
-              :content="containerDetail.containerIdFull"
+              :content="containerDetail.containerId"
               placement="top"
             >
-              <span class="mono-text">{{ containerDetail.containerId }}</span>
+              <span class="mono-text">{{ containerDetail.containerIdShort || containerDetail.containerId }}</span>
             </el-tooltip>
           </el-descriptions-item>
           <el-descriptions-item label="镜像">
@@ -90,13 +98,11 @@
           </el-descriptions-item>
           <el-descriptions-item label="关联实例">
             <el-link
-              v-if="
-                containerDetail.isLinked && containerDetail.linkedInstanceName
-              "
+              v-if="containerDetail.isLinked && containerDetail.linkInfo?.instanceName"
               type="primary"
               @click="goToInstance"
             >
-              {{ containerDetail.linkedInstanceName }}
+              {{ containerDetail.linkInfo.instanceName }}
             </el-link>
             <span v-else class="text-muted">未关联</span>
           </el-descriptions-item>
@@ -308,6 +314,14 @@
     <!-- 错误状态 -->
     <el-empty v-else description="容器不存在或已被删除" />
 
+    <!-- 认领容器为游戏实例对话框（ADR-0023） -->
+    <AdoptInstanceDialog
+      v-model="adoptDialogVisible"
+      :host-id="hostId"
+      :container="adoptTarget"
+      @adopted="onAdopted"
+    />
+
     <!-- 删除确认对话框 -->
     <el-dialog
       v-model="deleteConfirmVisible"
@@ -373,9 +387,11 @@ import {
   Coin,
   Download,
   Upload,
+  MagicStick,
 } from "@element-plus/icons-vue";
 import { useDockerStore } from "@/stores/docker";
 import { useHostStore } from "@/stores/host";
+import AdoptInstanceDialog from "@/components/docker/AdoptInstanceDialog.vue";
 import {
   getContainerDetail,
   getContainerStats,
@@ -430,18 +446,35 @@ const deleteConfirmForce = ref(false);
 const deleteConfirmVolumes = ref(false);
 const deleting = ref(false);
 
+// 认领对话框（ADR-0023）
+const adoptDialogVisible = ref(false);
+const adoptTarget = computed(() =>
+  containerDetail.value
+    ? {
+        containerId: containerDetail.value.containerId,
+        containerName: containerDetail.value.containerName,
+        imageName: containerDetail.value.imageName,
+      }
+    : null,
+);
+
+function onAdopted() {
+  refreshDetail();
+}
+
 // 定时刷新
 let statsTimer = null;
 
-// 环境变量列表
+// 环境变量列表（后端 env 为 KEY=VALUE 字符串数组）
 const envList = computed(() => {
-  if (!containerDetail.value?.environment) return [];
-  return Object.entries(containerDetail.value.environment).map(
-    ([key, value]) => ({
-      key,
-      value,
-    }),
-  );
+  const env = containerDetail.value?.env;
+  if (!Array.isArray(env)) return [];
+  return env
+    .filter((item) => typeof item === "string" && item.includes("="))
+    .map((item) => {
+      const idx = item.indexOf("=");
+      return { key: item.slice(0, idx), value: item.slice(idx + 1) };
+    });
 });
 
 // 端口映射列表
@@ -609,8 +642,9 @@ function goToHost() {
 
 // 跳转到实例
 function goToInstance() {
-  if (containerDetail.value?.linkedInstanceId) {
-    router.push(`/instance/detail/${containerDetail.value.linkedInstanceId}`);
+  const instanceId = containerDetail.value?.linkInfo?.instanceId;
+  if (instanceId) {
+    router.push(`/instance/detail/${instanceId}`);
   }
 }
 

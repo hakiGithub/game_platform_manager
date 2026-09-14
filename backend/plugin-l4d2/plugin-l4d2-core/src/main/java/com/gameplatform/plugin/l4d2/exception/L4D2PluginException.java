@@ -16,6 +16,11 @@ public class L4D2PluginException extends RuntimeException {
     public static final String FILE = "FILE";
     public static final String NETWORK = "NETWORK";
     public static final String EXTERNAL_API = "EXTERNAL_API";
+    /** 远端插件仓库未配置（仓库地址为空），Controller 转业务码 1550 */
+    public static final String STORE_NOT_CONFIGURED = "STORE_NOT_CONFIGURED";
+
+    /** 业务码：远端插件仓库未配置（占用插件域 15xx 段） */
+    public static final int CODE_STORE_NOT_CONFIGURED = 1550;
 
     private final String code;
 

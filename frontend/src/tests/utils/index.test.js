@@ -315,13 +315,17 @@ describe("utils/index.js", () => {
       navigator.clipboard.writeText.mockRejectedValueOnce(
         new Error("Clipboard API not available"),
       );
+      // 测试环境没有 document.execCommand，降级方案依赖它，这里打桩
+      const execCommand = vi.fn(() => true);
+      document.execCommand = execCommand;
 
       const text = "fallback text";
 
       await copyToClipboard(text);
 
-      // 验证降级方案创建了 textarea 元素
-      expect(document.createElement).toBeDefined();
+      // 验证降级方案走了 execCommand 复制
+      expect(execCommand).toHaveBeenCalledWith("copy");
+      delete document.execCommand;
     });
   });
 });

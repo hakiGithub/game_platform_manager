@@ -118,6 +118,25 @@ AUTO 模式的分流依据：优先经 RCON 重启还是优先命令重启。插
 
 ---
 
+## 主机环境工具领域（ADR-0021）
+
+### 主机环境工具（Host Environment Tool）
+宿主机上补丁安装流程所依赖的二进制工具（unzip、unrar、p7zip、xz、bzip2、tar、curl、wget、rsync），平台以**白名单**形式提供一键安装。与 Steam302 领域的"主机工具安装任务"（指 STEAM302_INSTALL 那类异步任务）是不同概念——本领域只谈发行版包管理器安装的系统包，且为**同步**执行。
+
+### 主机能力探测（Host Capability Probe）
+推送到主机执行的探测脚本产出的能力清单：环境工具的有无（command -v）、包管理器类型（apt/dnf/yum/apk/pacman/zypper）、提权能力（root / sudo）。内存缓存短 TTL，不落库；安装成功后立即失效对应主机的缓存。
+
+### 发行版自适应安装（Distro-Adaptive Install）
+平台按探测到的包管理器自动选择安装命令（如 `apt-get install -y unzip`）。识别不了的发行版不做猜测，引导用户用 Web 终端手动安装。
+
+### Docker 代劳（Docker Tooling Proxy）
+主机有 Docker 且能自行拉取平台工具镜像时，下载/解压借 `docker run --rm` 容器内预装工具完成，宿主机零改动、无需提权。主机拉不到镜像（无外网 LAN 等）则 Docker 代劳不可用，回退链：发行版自适应安装 / 平台代劳。不提供平台侧镜像投喂（save/load）。
+
+### 平台工具镜像（Platform Tooling Image）
+平台自维护的小型解压/下载工具镜像（alpine + p7zip/unrar 等预装），托管于平台镜像仓库，运行时零网络依赖（除首次拉取）。
+
+---
+
 ## Steam302 主机加速（ADR-0019）
 
 ### Steam302 精简包（Steam302 Headless Bundle）
@@ -131,3 +150,60 @@ AUTO 模式的分流依据：优先经 RCON 重启还是优先命令重启。插
 
 ### 主机工具安装任务（Host Tool Install Task）
 主机级工具的异步安装任务（如 STEAM302_INSTALL）：scopeType=HOST、scopeKey=hostId 互斥，同一主机同时只跑一个。
+
+---
+
+## 插件市场领域（ADR-0022，plugin-l4d2）
+
+### 插件市场三 Tab（Plugin Market Tabs）
+L4D2 插件管理页内的三个平级视图：已安装 / 内置插件 / 远端仓库。"找插件装"与"管理已装"同页同语境，市场不弹窗、不设独立菜单。
+
+### 内置插件（Builtin Plugin）
+随插件分发的内置插件清单条目（必选/推荐/可选分类），支持批量安装，安装异步提交任务中心。
+
+### 远端仓库插件（Remote Repository Plugin）
+GitHub 远端插件仓库条目，逐个下载安装；详情（README + 文件列表）在表格行内展开，不弹抽屉。
+
+### 仓库配置（Store Config）
+远端仓库的运行时设置：仓库地址、分支、代理前缀、访问令牌。归 l4d2 插件自管（ADR-0002），不进主应用系统设置；仓库地址接受完整 URL 或 owner/repo 两种写法，统一以 owner/repo 为准。
+
+### 未配置仓库（Unconfigured Store）
+仓库地址为空的状态：远端仓库 Tab 展示"未配置仓库"引导去配置，而非报错。与连接失败（已配置但远端不可达）互斥——后者给可读错误文案。平台不内置默认仓库，新装即未配置。
+
+### 插件任务反馈区（Plugin Task Strip）
+插件管理页页头下方的 sticky 任务进度区：任意 tab 发起的安装/下载均在此可见，可展开明细；不锁页面、不阻止切换。
+
+### 已安装名称匹配（Installed Name Match）
+内置/远端 tab 标识"已安装"的前端规则：插件名去 `.smx` 后缀、忽略大小写与下划线/连字符差异后精确相等。已安装项打角标不隐藏，筛选 chips（全部/未安装/已安装）默认"全部"。匹配率不足时升级为后端 VO 返回 `installed` 字段。
+
+---
+
+## 容器认领领域（ADR-0023）
+
+### 容器认领（Container Adoption）
+在 Docker 容器页面把一个已存在的容器手动识别为游戏服务器实例：创建真实 `game_instance` 记录并回写 `runtime_metadata.containerId/containerName` + `adopted` 标记，**不触发部署**。认领后启停、状态对账、isLinked、控制台自动生效。
+
+### 认领实例（Adopted Instance）
+带 `adopted` 标记的实例。删除语义是**记录级删除**：默认只删实例记录不动容器，前端确认弹窗显式勾选"同时删除容器"才执行 docker rm。
+
+### deployType 自动探测（Deploy Type Detection）
+认领时按所选游戏元数据 `deployTypes` 在 Docker 类类型中取交集，优先级 docker > docker-compose > linuxgsm-docker；选定 docker-compose 时从容器的 `com.docker.compose.*` labels 预填 projectName/workDir/serviceName，labels 缺失则字段可编辑必填。
+
+---
+
+## UI 自动化测试领域
+
+### 冒烟集（Smoke Suite）
+CI 门禁自动执行的无主机 E2E 子集：登录认证、路由守卫、全页面可达性、游戏元数据管理与 YAML 导入、系统设置、任务中心、插件列表与插件 UI 资源可达、主机表单校验与错误态。红线是"CI 环境可重复执行"，因此不依赖任何真实主机。
+
+### 全量回归集（Full Regression Suite）
+打真实牺牲主机的完整链路 E2E，以 `docs/testing/ui-testing/07-e2e-checklist.md` 为蓝本。发版前/手动触发，不进 CI。
+
+### 演练链（Drill Chain）
+单个演练游戏在全量回归中的完整测试序列：部署 → 运维能力（启停/重启/备份还原）→ 插件能力（仅 l4d2 有）→ 删除实例清理现场 → 下一个游戏。游戏之间串行执行，互不影响。
+
+### 演练游戏（Drill Game）
+全量回归选定的部署靶子游戏：l4d2、dst、sdtd（7 Days to Die）。按真实在用游戏选型，接受单次全量回归耗时长（数 GB 下载）的代价。
+
+### 牺牲主机（Sacrificial Test Host）
+专供自动化折腾的测试 Linux 主机，授权全权限：部署、启停、备份还原、删除实例均可真实执行，测完自动清理。与开发/生产主机严格隔离，凭据经环境变量注入测试进程。

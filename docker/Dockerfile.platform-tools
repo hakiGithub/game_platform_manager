@@ -1,0 +1,14 @@
+# 平台工具镜像（ADR-0021 决策 6）
+# 用途：宿主机缺原生下载/解压工具时，补丁安装流程借 `docker run --rm` 容器内预装工具代劳，
+#       宿主机零改动、无需提权。运行时除首次 pull 外零网络依赖。
+# 构建/推送（与 gfw-302 同仓库 haki_hub，手动构建）：
+#   docker build -t registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest -f docker/Dockerfile.platform-tools .
+#   docker push registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest
+FROM alpine:3.20
+
+# bsdtar(libarchive-tools) 覆盖 tar.gz/tar.bz2/tar.xz/zip 单命令解压；p7zip/unrar 补 7z/rar；
+# curl/wget 下载；sha256sum 校验（alpine 自带 busybox 提供）
+RUN apk add --no-cache libarchive-tools p7zip unrar curl wget rsync
+
+# 默认入口打印工具清单，便于验证镜像
+CMD ["sh", "-c", "command -v bsdtar 7z unrar curl wget rsync sha256sum"]

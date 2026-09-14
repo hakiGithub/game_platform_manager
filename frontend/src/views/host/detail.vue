@@ -9,6 +9,7 @@ import {
   testHostConnection,
 } from "@/api/host";
 import Steam302Panel from "./components/Steam302Panel.vue";
+import HostToolsPanel from "./components/HostToolsPanel.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -23,14 +24,31 @@ const resources = ref(null);
 const connectionResult = ref(null);
 let refreshTimer = null;
 
-const currentStatus = computed(() => statusSnapshot.value?.status ?? host.value?.status ?? 0);
+const currentStatus = computed(
+  () => statusSnapshot.value?.status ?? host.value?.status ?? 0,
+);
 const isOnline = computed(() => currentStatus.value === 1);
 const statusLabel = computed(() => (isOnline.value ? "在线" : "离线"));
 const resourceSignal = computed(() => isOnline.value && !!resources.value);
 const resourceCards = computed(() => [
-  { key: "cpu", label: "CPU", value: getUsage("cpu"), description: "处理器使用率" },
-  { key: "memory", label: "内存", value: getUsage("memory"), description: "系统内存使用率" },
-  { key: "disk", label: "磁盘", value: getUsage("disk"), description: "根分区使用率" },
+  {
+    key: "cpu",
+    label: "CPU",
+    value: getUsage("cpu"),
+    description: "处理器使用率",
+  },
+  {
+    key: "memory",
+    label: "内存",
+    value: getUsage("memory"),
+    description: "系统内存使用率",
+  },
+  {
+    key: "disk",
+    label: "磁盘",
+    value: getUsage("disk"),
+    description: "根分区使用率",
+  },
 ]);
 const hostTags = computed(() => parseTags(host.value?.tags));
 
@@ -82,7 +100,10 @@ async function handleTestConnection() {
       ElMessage.error(connectionResult.value?.message || "主机当前不可达");
     }
   } catch (error) {
-    connectionResult.value = { connected: false, message: error.message || "连接测试失败" };
+    connectionResult.value = {
+      connected: false,
+      message: error.message || "连接测试失败",
+    };
     ElMessage.error("连接测试失败：" + (error.message || ""));
   } finally {
     connectionLoading.value = false;
@@ -164,7 +185,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="host-detail-page node-operations-page" v-loading="loading">
+  <div v-loading="loading" class="host-detail-page node-operations-page">
     <template v-if="host">
       <section class="node-hero">
         <div class="node-heading">
@@ -173,13 +194,20 @@ onBeforeUnmount(() => {
             返回主机清单
           </el-button>
           <div class="node-title-row">
-            <div class="node-icon"><el-icon><Monitor /></el-icon></div>
+            <div class="node-icon">
+              <el-icon><Monitor /></el-icon>
+            </div>
             <div>
               <span class="section-kicker">NODE COMMAND / HOST PROFILE</span>
               <h1>{{ host.name || host.hostname }}</h1>
-              <p>{{ host.ip }} · {{ host.os || host.osType || "Linux 主机" }}</p>
+              <p>
+                {{ host.ip }} · {{ host.os || host.osType || "Linux 主机" }}
+              </p>
             </div>
-            <span class="node-status" :class="isOnline ? 'is-online' : 'is-offline'">
+            <span
+              class="node-status"
+              :class="isOnline ? 'is-online' : 'is-offline'"
+            >
               <i></i>
               {{ statusLabel }}
             </span>
@@ -188,7 +216,10 @@ onBeforeUnmount(() => {
             <span>HOST ID</span>
             <code>{{ host.id }}</code>
             <span class="separator">·</span>
-            <span>SSH {{ host.sshPort || 22 }} / {{ host.sshUsername || "root" }}</span>
+            <span
+              >SSH {{ host.sshPort || 22 }} /
+              {{ host.sshUsername || "root" }}</span
+            >
           </div>
         </div>
         <div class="node-actions">
@@ -197,7 +228,11 @@ onBeforeUnmount(() => {
             {{ isOnline ? "节点心跳正常" : "节点信号中断" }}
           </div>
           <div class="action-row">
-            <el-button type="primary" :disabled="!isOnline" @click="handleTerminal">
+            <el-button
+              type="primary"
+              :disabled="!isOnline"
+              @click="handleTerminal"
+            >
               <el-icon><Monitor /></el-icon>
               打开终端
             </el-button>
@@ -213,19 +248,30 @@ onBeforeUnmount(() => {
         <div class="rail-intro">
           <span class="section-kicker">NODE TELEMETRY</span>
           <strong>节点态势</strong>
-          <small>{{ resourceSignal ? "资源信号实时接入" : "资源信号不可用" }}</small>
+          <small>{{
+            resourceSignal ? "资源信号实时接入" : "资源信号不可用"
+          }}</small>
         </div>
         <div class="rail-stat" :class="`is-${getUsageTone(getUsage('cpu'))}`">
           <span>CPU</span>
-          <strong>{{ getUsage("cpu") === null ? "—" : `${getUsage("cpu")}%` }}</strong>
+          <strong>{{
+            getUsage("cpu") === null ? "—" : `${getUsage("cpu")}%`
+          }}</strong>
         </div>
-        <div class="rail-stat" :class="`is-${getUsageTone(getUsage('memory'))}`">
+        <div
+          class="rail-stat"
+          :class="`is-${getUsageTone(getUsage('memory'))}`"
+        >
           <span>内存</span>
-          <strong>{{ getUsage("memory") === null ? "—" : `${getUsage("memory")}%` }}</strong>
+          <strong>{{
+            getUsage("memory") === null ? "—" : `${getUsage("memory")}%`
+          }}</strong>
         </div>
         <div class="rail-stat" :class="`is-${getUsageTone(getUsage('disk'))}`">
           <span>磁盘</span>
-          <strong>{{ getUsage("disk") === null ? "—" : `${getUsage("disk")}%` }}</strong>
+          <strong>{{
+            getUsage("disk") === null ? "—" : `${getUsage("disk")}%`
+          }}</strong>
         </div>
         <div class="rail-stat">
           <span>负载</span>
@@ -244,12 +290,21 @@ onBeforeUnmount(() => {
               <span class="panel-index">01</span>
             </div>
             <div v-if="resourceSignal" class="resource-card-grid">
-              <article v-for="card in resourceCards" :key="card.key" class="resource-card" :class="`is-${getUsageTone(card.value)}`">
+              <article
+                v-for="card in resourceCards"
+                :key="card.key"
+                class="resource-card"
+                :class="`is-${getUsageTone(card.value)}`"
+              >
                 <div class="resource-card-heading">
                   <span>{{ card.label }}</span>
                   <strong>{{ card.value }}%</strong>
                 </div>
-                <el-progress :percentage="card.value || 0" :stroke-width="7" :show-text="false" />
+                <el-progress
+                  :percentage="card.value || 0"
+                  :stroke-width="7"
+                  :show-text="false"
+                />
                 <small>{{ card.description }}</small>
               </article>
             </div>
@@ -269,7 +324,11 @@ onBeforeUnmount(() => {
               </div>
               <div>
                 <span>LAST SAMPLE</span>
-                <strong>{{ formatTime(statusSnapshot?.sampledAt || statusSnapshot?.updatedAt) }}</strong>
+                <strong>{{
+                  formatTime(
+                    statusSnapshot?.sampledAt || statusSnapshot?.updatedAt,
+                  )
+                }}</strong>
               </div>
             </div>
           </section>
@@ -283,19 +342,54 @@ onBeforeUnmount(() => {
               <span class="panel-index">02</span>
             </div>
             <div class="profile-list">
-              <div><span>主机名称</span><strong>{{ host.name || host.hostname || "-" }}</strong><small>管理标识</small></div>
-              <div><span>主机地址</span><strong class="mono">{{ host.ip || "-" }}</strong><small>{{ host.isLanHost ? "局域网接入" : "远程接入" }}</small></div>
-              <div><span>操作系统</span><strong>{{ host.os || host.osType || "Linux 主机" }}</strong><small>运行环境</small></div>
-              <div><span>SSH 连接</span><strong class="mono">{{ host.sshUsername || "root" }}@{{ host.ip }}:{{ host.sshPort || 22 }}</strong><small>认证信息已托管</small></div>
-              <div><span>运行时间</span><strong>{{ formatUptime(statusSnapshot?.uptime) }}</strong><small>节点在线时长</small></div>
-              <div><span>最近同步</span><strong>{{ formatTime(statusSnapshot?.updatedAt) }}</strong><small>资源采样时间</small></div>
+              <div>
+                <span>主机名称</span
+                ><strong>{{ host.name || host.hostname || "-" }}</strong
+                ><small>管理标识</small>
+              </div>
+              <div>
+                <span>主机地址</span
+                ><strong class="mono">{{ host.ip || "-" }}</strong
+                ><small>{{ host.isLanHost ? "局域网接入" : "远程接入" }}</small>
+              </div>
+              <div>
+                <span>操作系统</span
+                ><strong>{{ host.os || host.osType || "Linux 主机" }}</strong
+                ><small>运行环境</small>
+              </div>
+              <div>
+                <span>SSH 连接</span
+                ><strong class="mono"
+                  >{{ host.sshUsername || "root" }}@{{ host.ip }}:{{
+                    host.sshPort || 22
+                  }}</strong
+                ><small>认证信息已托管</small>
+              </div>
+              <div>
+                <span>运行时间</span
+                ><strong>{{ formatUptime(statusSnapshot?.uptime) }}</strong
+                ><small>节点在线时长</small>
+              </div>
+              <div>
+                <span>最近同步</span
+                ><strong>{{ formatTime(statusSnapshot?.updatedAt) }}</strong
+                ><small>资源采样时间</small>
+              </div>
             </div>
             <div v-if="hostTags.length" class="tag-strip">
               <span>TAG INDEX</span>
-              <el-tag v-for="tag in hostTags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+              <el-tag
+                v-for="tag in hostTags"
+                :key="tag"
+                size="small"
+                effect="plain"
+                >{{ tag }}</el-tag
+              >
             </div>
             <p v-if="host.remark" class="profile-note">{{ host.remark }}</p>
           </section>
+
+          <HostToolsPanel :host-id="hostId" :is-online="isOnline" />
         </main>
 
         <aside class="node-side-column">
@@ -305,21 +399,38 @@ onBeforeUnmount(() => {
                 <span class="section-kicker">SSH CONTROL</span>
                 <h2>连接控制</h2>
               </div>
-              <span class="panel-index">03</span>
+              <span class="panel-index">04</span>
             </div>
-            <div class="connection-hero" :class="isOnline ? 'is-online' : 'is-offline'">
+            <div
+              class="connection-hero"
+              :class="isOnline ? 'is-online' : 'is-offline'"
+            >
               <span class="connection-dot"></span>
               <div>
-                <strong>{{ isOnline ? "SSH 通道可用" : "SSH 通道不可用" }}</strong>
+                <strong>{{
+                  isOnline ? "SSH 通道可用" : "SSH 通道不可用"
+                }}</strong>
                 <small>{{ host.ip }}:{{ host.sshPort || 22 }}</small>
               </div>
             </div>
-            <div v-if="connectionResult" class="connection-result" :class="connectionResult.connected ? 'is-success' : 'is-failed'">
-              <strong>{{ connectionResult.connected ? "连接测试成功" : "连接测试失败" }}</strong>
+            <div
+              v-if="connectionResult"
+              class="connection-result"
+              :class="connectionResult.connected ? 'is-success' : 'is-failed'"
+            >
+              <strong>{{
+                connectionResult.connected ? "连接测试成功" : "连接测试失败"
+              }}</strong>
               <span>{{ connectionResult.message || "-" }}</span>
-              <small v-if="connectionResult.latency > 0">延迟 {{ connectionResult.latency }}ms</small>
+              <small v-if="connectionResult.latency > 0"
+                >延迟 {{ connectionResult.latency }}ms</small
+              >
             </div>
-            <el-button class="connection-test" :loading="connectionLoading" @click="handleTestConnection">
+            <el-button
+              class="connection-test"
+              :loading="connectionLoading"
+              @click="handleTestConnection"
+            >
               测试连接
             </el-button>
           </section>
@@ -330,13 +441,29 @@ onBeforeUnmount(() => {
                 <span class="section-kicker">SCHEDULER SIGNAL</span>
                 <h2>调度信号</h2>
               </div>
-              <span class="panel-index">04</span>
+              <span class="panel-index">05</span>
             </div>
             <div class="signal-list">
-              <div><span>节点状态</span><strong :class="isOnline ? 'tone-online' : 'tone-offline'">{{ statusLabel }}</strong></div>
-              <div><span>负载均值</span><strong class="mono">{{ statusSnapshot?.loadAverage || "—" }}</strong></div>
-              <div><span>局域网接入</span><strong>{{ host.isLanHost ? "已启用" : "未启用" }}</strong></div>
-              <div><span>主机系统</span><strong>{{ host.os || host.osType || "Linux" }}</strong></div>
+              <div>
+                <span>节点状态</span
+                ><strong :class="isOnline ? 'tone-online' : 'tone-offline'">{{
+                  statusLabel
+                }}</strong>
+              </div>
+              <div>
+                <span>负载均值</span
+                ><strong class="mono">{{
+                  statusSnapshot?.loadAverage || "—"
+                }}</strong>
+              </div>
+              <div>
+                <span>局域网接入</span
+                ><strong>{{ host.isLanHost ? "已启用" : "未启用" }}</strong>
+              </div>
+              <div>
+                <span>主机系统</span
+                ><strong>{{ host.os || host.osType || "Linux" }}</strong>
+              </div>
             </div>
           </section>
 
@@ -346,16 +473,24 @@ onBeforeUnmount(() => {
                 <span class="section-kicker">NODE OPERATIONS</span>
                 <h2>运维入口</h2>
               </div>
-              <span class="panel-index">05</span>
+              <span class="panel-index">06</span>
             </div>
             <div class="operation-list">
-              <button type="button" :disabled="!isOnline" @click="handleTerminal">
-                <span><el-icon><Monitor /></el-icon> Web 终端</span>
+              <button
+                type="button"
+                :disabled="!isOnline"
+                @click="handleTerminal"
+              >
+                <span
+                  ><el-icon><Monitor /></el-icon> Web 终端</span
+                >
                 <small>{{ isOnline ? "打开交互式 Shell" : "主机离线" }}</small>
                 <el-icon><ArrowRight /></el-icon>
               </button>
               <button type="button" @click="refreshHostTelemetry">
-                <span><el-icon><Refresh /></el-icon> 资源采样</span>
+                <span
+                  ><el-icon><Refresh /></el-icon> 资源采样</span
+                >
                 <small>立即刷新节点指标</small>
                 <el-icon><ArrowRight /></el-icon>
               </button>
