@@ -40,6 +40,10 @@
 - [ ] 异常使用 `PluginException` / `ExtensionStoreException` 体系
 - [ ] 任务 Handler 无状态，`@Component` 标注，Map 构造时缓存
 - [ ] `execute` 循环检查 `isCancelled()`/`isTimeout()`
+- [ ] 长任务进度/取消检查点下沉到 IO 循环（文件/分块级），不止任务开头（见 async-tasks.md §6b）
+- [ ] 生成的 cfg/server.cfg 不含 `map` 指令（会触发无限换图循环，见 gotchas.md §20）
+- [ ] 写入的 cfg 文件为 GBK 编码（UTF-8 中文会在读取时丢行，见 gotchas.md §21）
+- [ ] 插件配置文件名以 plugin.yaml 的 `config_files` 声明为准（与显示名无关，见 gotchas.md §22）
 - [ ] `getDefaultTimeoutMs()` 返回合理超时；`maxRetryCount` 按副作用选取
 - [ ] `getMenus()` 已声明完整菜单列表（双端插件必填）；同插件内 path 唯一
 - [ ] 纯资源浏览页菜单显式设置 `requireInstance=Boolean.FALSE`（如地图中心）
@@ -51,7 +55,7 @@
 
 ### 2.2 验收标准
 
-开发者照本 SKILL 可完成一个最小插件并接入主应用跑通，至少包含：
+开发者照本文档 可完成一个最小插件并接入主应用跑通，至少包含：
 
 1. 一个 `GameEnhancementExtension` 实现，含 `getMenus()` 菜单声明
 2. 一个控制器（`/api/plugin/{gameCode}/` 前缀）

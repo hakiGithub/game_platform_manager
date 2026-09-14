@@ -93,6 +93,20 @@ public class MapCenterService {
 
 循环中定期检查 `context.isCancelled()` / `context.isTimeout()`，命中即返回 `TaskResult.failure`。超时阈值后再等 30s grace period，仍不结束则 `Future.cancel(true)` 强制中断，状态置 FAILED。
 
+### 6b. 长任务实战模式：进度与取消要贯穿到 IO 循环（源自插件安装实战）
+
+只在任务开头检查一次 isCancelled、整个执行期间不上报进度，是安装/传输类长任务最常见的两个误用：
+
+- **进度**：63MB 平台包安装曾 5 分半只有首尾两次上报——用户误判"卡死"并反复点取消。
+  长传输/批处理应把字节或条目映射进进度区间（如 10%→90% 按已传字节推进），
+  并让失败可定位到具体文件（任务日志记"待上传 N 个文件 / X MB"）。
+- **取消**：取消标志是协作式的——IO 循环内不检查，点取消只会"已接受"，任务照跑到底才终止。
+  检查点应下沉到每个文件/每个分块；文件传输可经 `FileTransferProgressCallback` 回调内
+  抛异常中止传输（"异常即中止"契约），实现秒级取消。
+
+参考实现：`BuiltinPluginInstallTaskHandler` + `InstallProgressListener`（把 `TaskContext`
+桥接进安装链路：进度直达任务详情、取消在传输回调内即时生效；批装在条目间检查、单装在回调内检查）。
+
 ## 7. 互斥键（getMutexKey）
 
 | 返回值 | 含义 |

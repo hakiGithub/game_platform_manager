@@ -95,7 +95,7 @@ ExtensionStoreException (扩展资源存储基类)
 
 ## 11. standalone 模式（ADR-0003，v3.3.0 起废弃）
 
-`plugin-l4d2-standalone` 已物理删除。新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。需要独立部署的用户可部署完整主应用。详见 ADR-0003。
+`plugin-l4d2-standalone` 已物理删除。新增插件**不应**实现 standalone 独立运行模式。前端只支持 wujie + dev 两种模式。需要独立部署的用户可部署完整主应用。详见 [ADR-0003](../../design/adr/0003-deprecate-plugin-l4d2-standalone.md)。
 
 ## 12. 范围隔离（ADR-0002，v3.2.0 起变更）
 
@@ -106,7 +106,7 @@ ExtensionStoreException (扩展资源存储基类)
 - **代码**：主应用 `core/` 不得 `import com.gameplatform.plugin.{gameCode}.*`。
 - **例外**：游戏元数据 `core/resources/games/{gameCode}.yml` 由主应用维护（部署向导输入），不属于插件业务。
 
-详见 ADR-0002。
+详见 [ADR-0002](../../design/adr/0002-main-app-plugin-scope-isolation.md)。
 
 ## 13. 部署与热加载陷阱（v3.5.0）
 
@@ -118,14 +118,14 @@ ExtensionStoreException (扩展资源存储基类)
 
 ## 14. 版本与维护
 
-- 文档分工见 ADR-0014：`backend/plugin/` 源码为 API 权威；`docs/plugin-development/` 为面向人的权威文档；本 skill 为 AI 自包含副本（工作区与用户级两处逐字同步，与 docs 概念对齐、不逐字一致）。
-- 主版本变更（破坏性 API 改动）→ 在 `references/changelog.md` 升版本号并记录。
+- 本文档目录（`reference/`）为插件开发文档唯一权威源（v3.1.0 起）。
+- 主版本变更（破坏性 API 改动）→ 在 `CHANGELOG.md` 升版本号并记录。
 - minor 变更只更 changelog。
-- 接口签名、路径常量、异常类变更 → 先改代码，再登记到对应 `references/` 文件。
+- 接口签名以 `backend/plugin/` 源码为权威，新增即补登记到对应 `reference/` 文件。
 
 ## 15. 独立仓库构建插件（v3.6.0，源自 plugin-dst 实战）
 
-插件可以不放在平台仓库 `backend/` 下，用**无 parent 的独立 pom** 构建（规范见 `getting-started.md` §6.1）。这条路有四个坑：
+插件可以不放在平台仓库 `backend/` 下，用 `examples/plugin-mygame/pom.xml` 那样的**独立 pom**（无 parent）构建。这条路有四个坑：
 
 1. **provided 依赖需先安装**：`game-platform-plugin` / `game-platform-api` 不在中央仓库，先在平台仓库 `backend/` 下执行 `mvn -pl api,plugin install -DskipTests`（注意 settings.xml 可能配置了非默认 localRepository，如 `D:\dev\maven_repo`）。
 2. **必须显式开 `-parameters`**（`<parameters>true</parameters>`）。根因：插件子容器注入宿主服务（如 `InstanceQueryService`）时存在两个候选 bean——子容器注册的 `instanceQueryService` 单例与主容器的 `instanceQueryServiceImpl`——Spring 依赖**构造参数名与 bean 名匹配**（`instanceQueryService`）消歧；Spring 6.1（Boot 3.2）移除了字节码 LVT 参数名回退，只有 `-parameters` 编译出的 `MethodParameters` 可用。平台仓库内的插件经 `spring-boot-starter-parent` 默认开启，独立 pom 无 parent 必须自带。缺失症状：子容器创建抛 `UnsatisfiedDependencyException: expected single matching bean but found 2`。
@@ -166,3 +166,25 @@ DST 等游戏**没有 RCON**，游戏内命令唯一注入通道是进程 stdin�
 - **忘 close 有宿主兜底但仍应主动清理**：插件 stop/unload 时宿主强制关闭该插件全部句柄；`onUnload()` 主动 close 是加速路径，`onInstanceDelete` 应关闭对应实例的池+隧道。
 - **`onInstanceUpdate` 每次更新都触发**（无平台侧 diff）：插件收到完整新 configInfo 后自行比对是否真变，再决定是否重建连接池；频繁无效重建是自己代码的问题，不是平台的。
 - **`openWithCredentials` 的凭据宿主不落库不写日志**：`SshEndpoint` toString 已脱敏，插件侧也不要把该对象写进自己的日志/持久层。
+
+## 20. server.cfg 禁写 map 指令（v3.11.1，源自插件配置实战）
+
+srcds **每次加载地图后都会重新执行 server.cfg**。若 server.cfg 含 `map xxx` 指令，会再次触发换图 →
+再次执行 server.cfg → 无限换图循环（实测每分钟百余次 Host_NewGame）：运行时间恒为 0、
+RCON 反复断连、控制台日志暴涨。插件配置页已把"起始地图"自动注释落盘（`// map xxx`）；
+插件自建/改写 cfg 时同样不得包含 map 指令——起始地图交由启动参数（+map）或换图功能管理。
+
+## 21. cfg 文件是 GBK 编码（读写经 GbkCodecUtil）
+
+平台按 **GBK** 读写 SourceMod cfg（`readTextFile(id, path, gbk)`）。若以 UTF-8 写入含中文
+注释的 cfg，GBK 解码的字节对齐会吞掉换行——注释行与下一行配置行粘连，整行以 `//` 开头被
+跳过，**解析丢项甚至全部丢项**（实测 22 项配置读出 2 项）。写 cfg（含 plugins_store 库副本）
+用 GBK 或纯 ASCII；不要"顺手修复"成 UTF-8。
+
+## 22. 插件配置文件名与显示名无关（v3.11.1）
+
+实际 cfg 文件名取自 .smx 文件名（如 `l4d2_health_rewards.cfg`），与市场条目的中文显示名
+（如"自选-击杀特感和女巫奖励血量(v1.1.4)(豆瓣酱な)"）毫无关系——按显示名拼
+`cfg/sourcemod/{显示名}.cfg` 永远找不到文件。配置读取优先按 plugin.yaml 的 `config_files`
+声明；未启用插件从 `addons/sourcemod/plugins_store/{名}/left4dead2/` 库副本读取（安装即存在），
+此时编辑的是库副本，启用后自动切到游戏目录副本。
