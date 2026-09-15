@@ -411,8 +411,41 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
         SshUtil.CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s restart", workDir, composeCmd, projectName), 120000);
+        if (result.isSuccess()) {
+            return true;
+        }
 
-        return result.isSuccess();
+        // compose 失败静默返回 false 会把重启问题变成无声黑盒；且容器可能由旧项目名
+        // （实例重建前）或手工 compose 创建，按当前 project 重启碰不到真实容器。
+        // 回退用 runtimeMetadata.containerId 做容器级重启——它是部署实例的真实容器，与项目名解耦。
+        log.warn("实例 {} compose 重启失败（project={}，exitCode={}，stderr={}），回退 docker restart",
+                instanceId, projectName, result.getExitCode(), result.getError());
+        String containerId = resolveContainerId(config);
+        if (containerId == null || containerId.isEmpty()) {
+            log.error("实例 {} 无 runtimeMetadata.containerId，无法回退容器级重启", instanceId);
+            return false;
+        }
+        SshUtil.CommandResult fallback = executeCommand(host,
+                String.format("docker restart %s", containerId), 120000);
+        if (!fallback.isSuccess()) {
+            log.error("实例 {} docker restart {} 失败（exitCode={}，stderr={}）",
+                    instanceId, containerId, fallback.getExitCode(), fallback.getError());
+        }
+        return fallback.isSuccess();
+    }
+
+    /**
+     * 从部署配置解析容器 ID（runtimeMetadata.containerId）。
+     */
+    private String resolveContainerId(Map<String, Object> config) {
+        Object metadata = config.get("runtimeMetadata");
+        if (metadata instanceof Map<?, ?> meta) {
+            Object containerId = meta.get("containerId");
+            if (containerId != null) {
+                return String.valueOf(containerId);
+            }
+        }
+        return null;
     }
 
     @Override
