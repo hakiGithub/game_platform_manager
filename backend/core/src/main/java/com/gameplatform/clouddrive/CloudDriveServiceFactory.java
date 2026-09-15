@@ -40,8 +40,9 @@ public class CloudDriveServiceFactory {
             }
 
             @Override
-            public List<String> transfer(String accountName, String shareUrl, String targetPath, Duration timeout) {
-                return executor.transfer(accountName, shareUrl, targetPath, timeout, pluginId);
+            public List<String> transfer(String accountName, String shareUrl, String passcode,
+                                         String targetPath, Duration timeout) {
+                return executor.transfer(accountName, shareUrl, passcode, targetPath, timeout, pluginId);
             }
         };
     }

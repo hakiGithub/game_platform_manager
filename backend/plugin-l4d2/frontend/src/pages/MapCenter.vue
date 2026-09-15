@@ -161,6 +161,14 @@
                     <el-button size="small" link type="primary" @click="copyDownloadInfo(link)">
                       复制
                     </el-button>
+                    <el-button
+                      size="small"
+                      link
+                      type="success"
+                      @click="openCloudInstall(row, link)"
+                    >
+                      转存并安装
+                    </el-button>
                   </div>
                 </div>
               </div>
@@ -327,6 +335,41 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 云盘转存安装（ADR-0025） -->
+    <el-dialog v-model="cloudInstallVisible" title="转存并安装到当前实例" width="520px">
+      <el-descriptions :column="1" border size="small" style="margin-bottom: 12px">
+        <el-descriptions-item label="地图">{{ cloudInstallForm.title || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="分享链接">{{ cloudInstallForm.shareUrl }}</el-descriptions-item>
+        <el-descriptions-item label="转存目录">/maps/{{ cloudInstallForm.dirKey }}</el-descriptions-item>
+      </el-descriptions>
+      <el-form label-width="90px">
+        <el-form-item label="云盘账号" required>
+          <el-select
+            v-model="cloudInstallForm.accountName"
+            placeholder="选择云盘账号"
+            style="width: 100%"
+            :loading="cloudAccountsLoading"
+          >
+            <el-option
+              v-for="a in cloudAccounts"
+              :key="a.name"
+              :value="a.name"
+              :label="(a.displayName || a.name) + '（' + a.providerType + (a.status === 'HEALTHY' ? '' : '，' + a.status) + '）'"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="提取码">
+          <el-input v-model="cloudInstallForm.passcode" placeholder="默认取链接自带提取码" style="width: 180px" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cloudInstallVisible = false">取消</el-button>
+        <el-button type="primary" :loading="cloudInstalling" @click="submitCloudInstall">
+          转存并安装
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -339,12 +382,91 @@ import {
   triggerCrawl,
   getCrawlStatus,
 } from '@/api/mapCenter'
+import { downloadApi, cloudAccountApi, type CloudAccountVO } from '@/api'
+import { usePluginStore } from '@/stores/plugin'
 import type {
   MapCenterQuery,
   MapCenterVO,
   CrawlStatusVO,
   DownloadLink,
 } from '@/api/mapCenter'
+
+// ===== 云盘转存安装（ADR-0025） =====
+const store = usePluginStore()
+const instanceId = computed(() => store.instanceInfo?.instanceId)
+const cloudInstallVisible = ref(false)
+const cloudInstalling = ref(false)
+const cloudAccounts = ref<CloudAccountVO[]>([])
+const cloudAccountsLoading = ref(false)
+const cloudInstallForm = ref({
+  accountName: '',
+  shareUrl: '',
+  passcode: '',
+  source: '',
+  sourceId: '',
+  title: '',
+  dirKey: '',
+})
+
+async function loadCloudAccounts() {
+  cloudAccountsLoading.value = true
+  try {
+    const data = await cloudAccountApi.list()
+    cloudAccounts.value = (data || []).filter((a) => a.status !== 'DISABLED')
+  } catch (e: any) {
+    ElMessage.warning('云盘账号加载失败（需管理员，在主前端「系统设置 → 云盘账号」页维护）：' + (e?.message || e))
+  } finally {
+    cloudAccountsLoading.value = false
+  }
+}
+
+function openCloudInstall(map: MapCenterVO, link: DownloadLink) {
+  if (!instanceId.value) {
+    ElMessage.warning('请先选择实例')
+    return
+  }
+  if (cloudAccounts.value.length === 0) {
+    loadCloudAccounts()
+  }
+  const source = (map.source || 'map').toLowerCase()
+  const sourceId = map.sourceId || map.id
+  cloudInstallForm.value = {
+    accountName: cloudInstallForm.value.accountName,
+    shareUrl: link.shareUrl,
+    passcode: link.accessCode || '',
+    source,
+    sourceId,
+    title: map.titleCn || map.titleEn || sourceId,
+    dirKey: `${source}-${sourceId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+  }
+  cloudInstallVisible.value = true
+}
+
+async function submitCloudInstall() {
+  const form = cloudInstallForm.value
+  if (!form.accountName) {
+    ElMessage.warning('请选择云盘账号')
+    return
+  }
+  cloudInstalling.value = true
+  try {
+    await downloadApi.createCloudTask({
+      instanceId: instanceId.value!,
+      accountName: form.accountName,
+      shareUrl: form.shareUrl,
+      passcode: form.passcode.trim() || undefined,
+      source: form.source,
+      sourceId: form.sourceId,
+      title: form.title,
+    })
+    ElMessage.success('云盘转存安装任务已创建，可到「下载管理」页查看进度')
+    cloudInstallVisible.value = false
+  } catch (e: any) {
+    ElMessage.error('创建任务失败：' + (e?.message || e))
+  } finally {
+    cloudInstalling.value = false
+  }
+}
 
 // ===== 地图列表 =====
 const loading = ref(false)

@@ -18,7 +18,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Map;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -140,11 +142,19 @@ public class PatchInstallExecutor {
         String hostArchive = hostTmpDir + "/patch" + archiveSuffix(format);
         Set<String> topLevel = null;
 
+        // 带请求头的下载仅在远程下载路径支持（ADR-0025）；被决策为平台下载时显式失败而非静默丢头
+        boolean hasHeaders = request.getHeaders() != null && !request.getHeaders().isEmpty();
+        if (hasHeaders && strategy != PatchStrategy.TARGET_DOWNLOAD_TARGET_EXTRACT) {
+            throw new BusinessException(ERR_UNSUPPORTED_HEADER_FILE
+                    + ": 该实例被决策为平台下载路径（不支持请求头），调用方应回退平台中转");
+        }
+
         try {
+            execOk(host, "mkdir -p " + shellQuote(hostTmpDir));
             switch (strategy) {
                 case TARGET_DOWNLOAD_TARGET_EXTRACT -> {
                     progress.onProgress(10, "目标主机远程下载补丁");
-                    remoteDownload(host, caps, request.getUrl(), hostArchive);
+                    remoteDownload(host, caps, request, hostArchive);
                     verifyRemoteChecksum(host, caps, hostArchive, request.getSha256());
                     topLevel = listRemoteEntries(host, caps, format, hostArchive);
                     backup(route, host, topLevel, request.getTargetPath());
@@ -235,23 +245,124 @@ public class PatchInstallExecutor {
 
     // ==================== 下载 ====================
 
-    private void remoteDownload(Host host, HostCapabilities caps, String url, String destPath) {
-        SshUtil.CommandResult r;
-        if (caps.hasTool("curl")) {
-            r = execOnHost(host, "curl -fsSL --max-time 600 -o " + shellQuote(destPath) + " " + shellQuote(url));
-        } else if (caps.hasTool("wget")) {
-            r = execOnHost(host, "wget -q --timeout=600 -O " + shellQuote(destPath) + " " + shellQuote(url));
-        } else if (caps.hasDocker()) {
-            // Docker 代劳：镜像内预装 curl/wget
-            r = dockerRunTool(host, "-v " + shellQuote(parentOf(destPath)) + ":/w",
-                    "curl -fsSL --max-time 600 -o " + containerPath(destPath, "w")
-                            + " " + shellQuote(url));
-        } else {
-            throw new RetryableException("远程下载失败: 无下载工具且无 Docker 代劳");
+    /** 请求头不被支持的失败原因码（调用方据此回退平台中转，ADR-0025） */
+    public static final String ERR_UNSUPPORTED_HEADER_FILE = "UNSUPPORTED_HEADER_FILE";
+
+    /**
+     * 远程下载（可选携带请求头，ADR-0025）。
+     * 头内容经 SFTP 落临时文件（0600），curl 以 --header @file 读取，用完即删——
+     * 命令行不出现 Cookie 等敏感头（防 ps 泄露）。无 curl / curl&lt;7.55 / 仅 wget 时
+     * 以 UNSUPPORTED_HEADER_FILE 失败，不降级为明文 -H。
+     */
+    private void remoteDownload(Host host, HostCapabilities caps, PatchInstallRequest request, String destPath) {
+        String url = request.getUrl();
+        Map<String, String> headers = request.getHeaders();
+        boolean hasHeaders = headers != null && !headers.isEmpty();
+
+        String headerFile = null;          // 宿主机上的头文件路径
+        Path localHeaderFile = null;       // 平台侧临时头文件
+        try {
+            if (hasHeaders) {
+                localHeaderFile = writeHeaderFileLocal(headers);
+                headerFile = uploadHeaderFile(host, destPath, localHeaderFile);
+            }
+            if (headerFile != null || caps.hasTool("curl")) {
+                StringBuilder cmd = new StringBuilder("curl -fsSL --max-time 600 -o ")
+                        .append(shellQuote(destPath));
+                if (headerFile != null) {
+                    cmd.append(" --header @").append(shellQuote(headerFile));
+                }
+                cmd.append(" ").append(shellQuote(url));
+                requireDownloadOk(execOnHost(host, cmd.toString()));
+            } else if (caps.hasTool("wget")) {
+                if (hasHeaders) {
+                    throw new BusinessException(ERR_UNSUPPORTED_HEADER_FILE
+                            + ": 请求头下载需要 curl(>=7.55)，主机仅有 wget");
+                }
+                requireDownloadOk(execOnHost(host, "wget -q --timeout=600 -O "
+                        + shellQuote(destPath) + " " + shellQuote(url)));
+            } else if (caps.hasDocker()) {
+                // Docker 代劳：镜像内预装 curl；头文件目录一并挂载
+                String volumes = "-v " + shellQuote(parentOf(destPath)) + ":/w";
+                StringBuilder inner = new StringBuilder("curl -fsSL --max-time 600 -o ")
+                        .append(containerPath(destPath, "w"));
+                if (headerFile != null) {
+                    volumes += " -v " + shellQuote(parentOf(headerFile)) + ":/h";
+                    inner.append(" --header @").append(shellQuote(containerPath(headerFile, "h")));
+                }
+                inner.append(" ").append(shellQuote(url));
+                requireDownloadOk(dockerRunTool(host, volumes, inner.toString()));
+            } else {
+                throw new RetryableException("远程下载失败: 无下载工具且无 Docker 代劳");
+            }
+        } finally {
+            if (headerFile != null) {
+                runRemoteQuietly(host, "rm -f " + shellQuote(headerFile));
+            }
+            if (localHeaderFile != null) {
+                try {
+                    Files.deleteIfExists(localHeaderFile);
+                } catch (IOException ignore) {
+                    // 平台侧临时文件清理失败无碍
+                }
+            }
         }
+    }
+
+    private void requireDownloadOk(SshUtil.CommandResult r) {
         if (r == null || !r.isSuccess()) {
             throw new RetryableException("远程下载失败: " + (r != null ? r.getError() : "无响应"));
         }
+    }
+
+    /** 头文件内容写平台临时文件（"Name: value" 每行一个头） */
+    private Path writeHeaderFileLocal(Map<String, String> headers) {
+        try {
+            Path local = Files.createTempFile("patch_hdr_", ".txt");
+            StringBuilder sb = new StringBuilder();
+            headers.forEach((k, v) -> sb.append(k).append(": ").append(v == null ? "" : v).append('\n'));
+            Files.writeString(local, sb.toString());
+            return local;
+        } catch (IOException e) {
+            throw new BusinessException("请求头临时文件写入失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 头文件上传：SFTP 推到目标目录旁，chmod 600。前置校验主机 curl 支持 --header @file。
+     * 返回宿主机头文件路径（供 curl --header @file 与 docker 挂载）。
+     */
+    private String uploadHeaderFile(Host host, String destPath, Path localHeaderFile) {
+        if (!hostSupportsHeaderFileCurl(host)) {
+            throw new BusinessException(ERR_UNSUPPORTED_HEADER_FILE
+                    + ": 主机 curl 缺失或版本低于 7.55（不支持 --header @file）");
+        }
+        String parent = parentOf(destPath);
+        execOk(host, "mkdir -p " + shellQuote(parent));
+        String remote = parent + "/.gp_headers_" + System.currentTimeMillis();
+        fileService.uploadLocalFile(host.getId(), remote, localHeaderFile.toString());
+        runRemoteQuietly(host, "chmod 600 " + shellQuote(remote));
+        return remote;
+    }
+
+    /** curl --header @file 需 7.55+；按主机探测并缓存 */
+    private final java.util.Map<Long, Boolean> headerFileCurlCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private boolean hostSupportsHeaderFileCurl(Host host) {
+        return headerFileCurlCache.computeIfAbsent(host.getId(), id -> {
+            SshUtil.CommandResult r = execOnHostQuietly(host, "curl --version");
+            if (r == null || !r.isSuccess() || r.getOutput() == null) {
+                return false;
+            }
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("curl\\s+(\\d+)\\.(\\d+)").matcher(r.getOutput());
+            if (!m.find()) {
+                return false;
+            }
+            int major = Integer.parseInt(m.group(1));
+            int minor = Integer.parseInt(m.group(2));
+            return major > 7 || (major == 7 && minor >= 55);
+        });
     }
 
     private Path platformDownload(PatchInstallRequest request, ProgressListener progress) {

@@ -22,10 +22,11 @@ import java.util.Map;
  *   <li>{@code crawl} → {@link CrawlTaskHandler}：地图爬取任务</li>
  *   <li>{@code map-upload} → {@link MapUploadTaskHandler}：地图上传任务（ADR-0018）</li>
  *   <li>{@code builtin-plugin-install} → {@link BuiltinPluginInstallTaskHandler}：内置插件安装任务</li>
+ *   <li>{@code cloud-install} → {@link CloudInstallTaskHandler}：云盘转存安装任务（ADR-0025）</li>
  * </ul>
  *
  * @author GamePlatform
- * @version 1.1.0
+ * @version 1.2.0
  */
 @Slf4j
 @Component
@@ -35,16 +36,19 @@ public class L4D2TaskHandlerExtension implements TaskHandlerExtension {
 
     public L4D2TaskHandlerExtension(CrawlTaskHandler crawlTaskHandler,
                                     MapUploadTaskHandler mapUploadTaskHandler,
-                                    BuiltinPluginInstallTaskHandler builtinPluginInstallTaskHandler) {
+                                    BuiltinPluginInstallTaskHandler builtinPluginInstallTaskHandler,
+                                    CloudInstallTaskHandler cloudInstallTaskHandler) {
         // 单装与批装共用同一 Handler 实例，注册两个 taskType（Handler 内按 payload 区分）
         this.handlers = Map.of(
                 L4D2Constants.TASK_TYPE_CRAWL, crawlTaskHandler,
                 L4D2Constants.TASK_TYPE_MAP_UPLOAD, mapUploadTaskHandler,
                 L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_INSTALL, builtinPluginInstallTaskHandler,
-                L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL, builtinPluginInstallTaskHandler);
-        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}, builtin-plugin-install -> {}",
+                L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL, builtinPluginInstallTaskHandler,
+                L4D2Constants.TASK_TYPE_CLOUD_INSTALL, cloudInstallTaskHandler);
+        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}, builtin-plugin-install -> {}, cloud-install -> {}",
                 crawlTaskHandler.getClass().getSimpleName(), mapUploadTaskHandler.getClass().getSimpleName(),
-                builtinPluginInstallTaskHandler.getClass().getSimpleName());
+                builtinPluginInstallTaskHandler.getClass().getSimpleName(),
+                cloudInstallTaskHandler.getClass().getSimpleName());
     }
 
     @Override

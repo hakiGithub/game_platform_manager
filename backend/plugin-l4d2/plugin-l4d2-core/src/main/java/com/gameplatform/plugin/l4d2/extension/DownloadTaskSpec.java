@@ -94,6 +94,15 @@ public class DownloadTaskSpec implements Serializable {
     /** 主应用补丁安装任务 ID（PatchInstallService 接入后 URL 任务执行委托任务中心，ADR-0006） */
     private String patchTaskId;
 
+    /** 云盘账号 name（仅 CLOUD 任务，ADR-0025） */
+    private String accountName;
+
+    /** 转存产物目录（挂载内相对路径，如 /maps/orange-807，仅 CLOUD 任务） */
+    private String cloudPath;
+
+    /** 实际使用的传输通道：DIRECT 主机直连 / RELAY 平台中转（仅 CLOUD 任务，ADR-0025） */
+    private String transferMode;
+
     /** 备注 */
     private String remark;
 }

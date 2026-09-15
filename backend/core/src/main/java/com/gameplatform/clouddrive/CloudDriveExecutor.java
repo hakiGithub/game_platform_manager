@@ -84,19 +84,20 @@ public class CloudDriveExecutor {
     }
 
     /**
-     * 同步转存（ADR-0024）：submitTransfer + 轮询到终态；超时抛错并附 jobId。
+     * 同步转存（ADR-0024/0025）：submitTransfer + 轮询到终态；超时抛错并附 jobId。
      * SDK 无取消作业 API，超时后底层作业继续后台执行。
      */
-    public List<String> transfer(String accountName, String shareUrl, String targetPath,
-                                 Duration timeout, String caller) {
+    public List<String> transfer(String accountName, String shareUrl, String passcode,
+                                 String targetPath, Duration timeout, String caller) {
         Duration effectiveTimeout = timeout == null
                 ? Duration.ofMillis(properties.getTransferTimeoutMillis())
                 : timeout;
         String target = unifiedPath(accountName, targetPath);
+        String code = (passcode == null || passcode.isBlank()) ? null : passcode;
 
         String jobId;
         try {
-            jobId = client.submitTransfer(TransferRequest.of(shareUrl, target));
+            jobId = client.submitTransfer(new TransferRequest(shareUrl, code, target, null));
         } catch (Exception e) {
             throw new BusinessException("提交转存失败: " + e.getMessage());
         }

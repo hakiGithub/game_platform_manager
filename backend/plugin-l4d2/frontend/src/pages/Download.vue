@@ -89,6 +89,47 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
+        <!-- Tab 3: 云盘分享链接（ADR-0025） -->
+        <el-tab-pane label="云盘分享" name="cloud">
+          <el-form :model="cloudForm" label-width="120px" class="cloud-form">
+            <el-form-item label="云盘账号" required>
+              <el-select
+                v-model="cloudForm.accountName"
+                placeholder="选择云盘账号"
+                style="width: 320px"
+                :loading="accountsLoading"
+              >
+                <el-option
+                  v-for="a in cloudAccounts"
+                  :key="a.name"
+                  :value="a.name"
+                  :label="(a.displayName || a.name) + '（' + a.providerType + (a.status === 'HEALTHY' ? '' : '，' + a.status) + '）'"
+                />
+              </el-select>
+              <span class="form-tip">账号在主前端「系统设置 → 云盘账号」页维护</span>
+            </el-form-item>
+            <el-form-item label="分享链接" required>
+              <el-input
+                v-model="cloudForm.shareUrl"
+                placeholder="网盘分享链接，如 https://pan.quark.cn/s/xxxx"
+                clearable
+              />
+            </el-form-item>
+            <el-form-item label="提取码">
+              <el-input v-model="cloudForm.passcode" placeholder="可选" style="width: 160px" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="cloudSubmitting" @click="submitCloud">
+                转存并安装
+              </el-button>
+              <el-button @click="cloudForm.shareUrl = ''; cloudForm.passcode = ''">清空</el-button>
+              <span class="form-tip">
+                转存到账号 /maps/ 后自动下载 vpk 到本实例 addons/（主机直连优先，平台中转兜底）
+              </span>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -124,8 +165,11 @@
         </el-table-column>
         <el-table-column label="类型" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.taskType === 'WORKSHOP' ? 'warning' : 'info'" size="small">
-              {{ row.taskType === 'WORKSHOP' ? 'Workshop' : 'URL' }}
+            <el-tag
+              :type="row.taskType === 'WORKSHOP' ? 'warning' : row.taskType === 'CLOUD' ? 'success' : 'info'"
+              size="small"
+            >
+              {{ row.taskType === 'WORKSHOP' ? 'Workshop' : row.taskType === 'CLOUD' ? '云盘' : 'URL' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -327,6 +371,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   downloadApi,
+  cloudAccountApi,
+  type CloudAccountVO,
   type DownloadTaskVO,
   type WorkshopItemVO,
   type WorkshopParseResultVO
@@ -337,7 +383,54 @@ const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
 
 // Tab 切换
-const activeTab = ref<'url' | 'workshop'>('url')
+const activeTab = ref<'url' | 'workshop' | 'cloud'>('url')
+
+// ===== 云盘分享表单（ADR-0025） =====
+const cloudForm = ref({ accountName: '', shareUrl: '', passcode: '' })
+const cloudAccounts = ref<CloudAccountVO[]>([])
+const accountsLoading = ref(false)
+const cloudSubmitting = ref(false)
+
+async function loadCloudAccounts() {
+  accountsLoading.value = true
+  try {
+    const data = await cloudAccountApi.list()
+    cloudAccounts.value = (data || []).filter((a) => a.status !== 'DISABLED')
+  } catch (e: any) {
+    ElMessage.warning('云盘账号加载失败（需管理员，且先在主前端「云盘账号」页配置）：' + (e?.message || e))
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
+async function submitCloud() {
+  if (!instanceId.value) {
+    ElMessage.warning('请先选择实例')
+    return
+  }
+  if (!cloudForm.value.accountName || !cloudForm.value.shareUrl.trim()) {
+    ElMessage.warning('请选择云盘账号并填写分享链接')
+    return
+  }
+  cloudSubmitting.value = true
+  try {
+    await downloadApi.createCloudTask({
+      instanceId: instanceId.value,
+      accountName: cloudForm.value.accountName,
+      shareUrl: cloudForm.value.shareUrl.trim(),
+      passcode: cloudForm.value.passcode.trim() || undefined,
+    })
+    ElMessage.success('云盘转存安装任务已创建')
+    cloudForm.value.shareUrl = ''
+    cloudForm.value.passcode = ''
+    await loadTasks()
+    startPolling()
+  } catch (e: any) {
+    ElMessage.error('创建云盘任务失败：' + (e?.message || e))
+  } finally {
+    cloudSubmitting.value = false
+  }
+}
 
 // ===== URL 下载表单 =====
 const urlForm = ref({
@@ -677,6 +770,7 @@ function formatTime(t?: string): string {
 // ===== 生命周期 =====
 onMounted(() => {
   loadTasks()
+  loadCloudAccounts()
 })
 
 onBeforeUnmount(() => {

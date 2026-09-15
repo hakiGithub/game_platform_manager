@@ -33,6 +33,7 @@
 | [0022](0022-l4d2-plugin-market-unification.md) | L4D2 插件市场统一——三 Tab 页面化，取消弹窗与独立商店菜单 | Accepted | 2026-09-11 |
 | [0023](0023-container-adoption.md) | Docker 容器手动认领为游戏实例（Container Adoption） | Accepted | 2026-09-11 |
 | [0024](0024-cloud-drive-host-capability.md) | 云盘能力上提为主应用宿主服务（clp-sdk 嵌入 + ExtensionClient 宿主化） | Accepted | 2026-09-15 |
+| [0025](0025-l4d2-cloud-map-install.md) | L4D2 地图中心云盘转存安装（主机直连优先、平台中转兜底） | Accepted | 2026-09-15 |
 
 ## 术语表
 

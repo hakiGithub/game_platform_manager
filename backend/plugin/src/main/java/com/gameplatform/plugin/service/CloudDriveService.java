@@ -52,19 +52,21 @@ public interface CloudDriveService {
     long download(String accountName, String path, OutputStream target);
 
     /**
-     * 同步转存（ADR-0024 契约）：阻塞至转存终态并返回转存产物。
+     * 同步转存（ADR-0024/0025 契约）：阻塞至转存终态并返回转存产物。
      * <p>
      * 超时抛 BusinessException（消息含 jobId，底层作业可能仍在后台执行，可由业务方决策重试）；
      * 转存失败（分享失效等）同样抛 BusinessException。
      *
      * @param accountName 云盘账号 name（转存目标账号）
      * @param shareUrl    分享链接
-     * @param targetPath  挂载内相对目标目录（如 {@code /maps/incoming}，须已存在或为挂载根）
+     * @param passcode    提取码（null 或空 = 无提取码）
+     * @param targetPath  挂载内相对目标目录（如 {@code /maps/orange-807}，目录不存在时由引擎创建）
      * @param timeout     等待上限；为 null 时用主应用配置的默认超时
-     * @return 转存产物路径列表（网盘内统一路径；引擎未回填时返回空列表，此时目标目录即产物位置）
+     * @return 转存产物路径列表（挂载内相对路径；引擎未回填时返回空列表，此时目标目录即产物位置）
      * @throws com.gameplatform.common.exception.BusinessException 账号不存在、超时或转存失败
      */
-    List<String> transfer(String accountName, String shareUrl, String targetPath, Duration timeout);
+    List<String> transfer(String accountName, String shareUrl, String passcode,
+                          String targetPath, Duration timeout);
 
     /** 文件条目（各网盘统一抽象） */
     record CloudFileInfo(String name, String path, boolean directory, long size, Long modifiedAtMillis) {

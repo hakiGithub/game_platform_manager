@@ -798,6 +798,36 @@ export const downloadApi = {
 
   // 删除任务记录（仅终态）
   deleteTask: (taskId: string) => del<void>(`/download/tasks/${taskId}`),
+
+  // 创建云盘转存安装任务（ADR-0025，返回下载任务 ID）
+  createCloudTask: (data: CloudInstallPayload) => post<string>('/download/cloud', data),
+}
+
+/** 云盘转存安装请求（ADR-0025） */
+export interface CloudInstallPayload {
+  instanceId: number
+  accountName: string
+  shareUrl: string
+  passcode?: string
+  source?: string
+  sourceId?: string
+  title?: string
+}
+
+/** 主前端「云盘账号」页管理的账号（GET /api/cloud/accounts，ROLE_ADMIN） */
+export interface CloudAccountVO {
+  name: string
+  providerType: string
+  displayName: string
+  status: string
+  credentialHint: string
+  mountPath: string
+  remark?: string
+}
+
+/** 云盘账号（主应用 API，ADR-0024/0025） */
+export const cloudAccountApi = {
+  list: () => getMain<CloudAccountVO[]>('/cloud/accounts'),
 }
 
 // === Phase 5: 数据采集模块（玩家统计 + 游玩时长 + 监控重构） ===

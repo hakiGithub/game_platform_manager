@@ -79,6 +79,17 @@ public class DownloadService {
     public static final String STATUS_COMPLETED = "COMPLETED";
     public static final String STATUS_FAILED = "FAILED";
     public static final String STATUS_CANCELLED = "CANCELLED";
+
+    /**
+     * 云盘转存安装（ADR-0025）与 URL/Workshop 下载共用 3 并发额度，避免双通道叠加打满主机带宽。
+     */
+    public void acquireDownloadSlot() throws InterruptedException {
+        downloadSemaphore.acquire();
+    }
+
+    public void releaseDownloadSlot() {
+        downloadSemaphore.release();
+    }
     public static final String STATUS_PENDING_MANUAL = "PENDING_MANUAL";
 
     /** URL 切分正则：匹配 http(s) 开头的 URL */
@@ -321,8 +332,20 @@ public class DownloadService {
         if (runtime != null) {
             return runtime.vo;
         }
-        Optional<DownloadTaskResource> opt = extensionClient.getById(DownloadTaskResource.class, taskId);
+        Optional<DownloadTaskResource> opt = findByTaskId(taskId);
         return opt.map(this::toVO).orElse(null);
+    }
+
+    /**
+     * 按任务 ID 取记录：内存 map 之外的记录（URL/WORKSHOP 重启后、CLOUD 全程）
+     * name 即 taskId，框架生成的主键 id 与之不同，需 id/name 双查。
+     */
+    private Optional<DownloadTaskResource> findByTaskId(String taskId) {
+        Optional<DownloadTaskResource> opt = extensionClient.getById(DownloadTaskResource.class, taskId);
+        if (opt.isEmpty()) {
+            opt = extensionClient.get(DownloadTaskResource.class, taskId);
+        }
+        return opt;
     }
 
     /**
@@ -352,7 +375,7 @@ public class DownloadService {
         }
         // 更新 DB 状态为 CANCELLED
         try {
-            Optional<DownloadTaskResource> opt = extensionClient.getById(DownloadTaskResource.class, taskId);
+            Optional<DownloadTaskResource> opt = findByTaskId(taskId);
             if (opt.isPresent()) {
                 DownloadTaskResource resource = opt.get();
                 DownloadTaskSpec spec = resource.getSpec();
@@ -388,7 +411,13 @@ public class DownloadService {
             }
             tasks.remove(taskId);
         }
-        extensionClient.deleteById(DownloadTaskResource.class, taskId);
+        Optional<DownloadTaskResource> opt = findByTaskId(taskId);
+        if (opt.isPresent()) {
+            extensionClient.deleteById(DownloadTaskResource.class, opt.get().getId());
+        } else {
+            // 兜底：直接按 name 删（findByTaskId 已双查，此处防御异常数据）
+            extensionClient.delete(DownloadTaskResource.class, taskId);
+        }
         log.info("删除下载任务: taskId={}", taskId);
     }
 

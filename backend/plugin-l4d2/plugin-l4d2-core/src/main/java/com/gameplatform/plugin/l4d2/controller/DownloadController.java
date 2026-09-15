@@ -49,6 +49,19 @@ public class DownloadController {
 
     private final DownloadService downloadService;
     private final WorkshopDownloadService workshopDownloadService;
+    private final com.gameplatform.plugin.l4d2.service.CloudInstallService cloudInstallService;
+
+    /**
+     * 创建云盘转存安装任务（ADR-0025）：分享链接转存云盘账号后安装到实例 addons。
+     */
+    @Operation(summary = "创建云盘转存安装任务", description = "分享链接转存云盘账号（/maps/{source}-{sourceId}）后下载安装到实例；主机可自治下载走直连，否则平台中转")
+    @PostMapping("/cloud")
+    public Result<String> createCloudTask(@Valid @RequestBody com.gameplatform.plugin.l4d2.dto.CloudInstallDTO dto) {
+        log.info("创建云盘转存安装任务: instanceId={}, account={}, sourceId={}",
+                dto.getInstanceId(), dto.getAccountName(), dto.getSourceId());
+        String taskId = cloudInstallService.createTask(dto);
+        return Result.success("云盘转存安装任务已创建", taskId);
+    }
 
     /**
      * 创建 URL 下载任务（支持多 URL 切分）。

@@ -229,3 +229,22 @@ core 以保留 pluginId `"platform"` 使用 ExtensionClient；插件绑定的 pl
 
 ### clp-sdk
 本地姊妹项目 cloud_list_platform 的进程内 SDK（`com.haki.clouddrive:clp-sdk`），零 Spring、OkHttp/Jackson。索引/搜索/订阅能力被本平台明确排除（会引入索引表）。
+
+---
+
+## 云盘地图安装领域（ADR-0025，plugin-l4d2）
+
+### 云盘转存安装（Cloud Install）
+L4D2 地图中心的一键流程：分享链接 → 转存到平台云盘账号 `/maps/{source}-{sourceId}` → 筛选 vpk/压缩包 → 下载安装到实例 addons。任务类型 `cloud-install`，进度分段 转存 0-40% / 下载 40-80% / 上传 80-100%。
+
+### 主机直连（Direct，transferMode=DIRECT）
+主机可自治下载（probeHost 判定 curl/wget/docker 任一可用）时，PatchInstall 携带 headers 在主机侧 curl 直链下载。headers 经 `--header @file`（临时文件 0600、用完删）传递，命令行不出现网盘 Cookie；远程 curl < 7.55 不支持 @file 时回退中转。
+
+### 平台中转（Relay，transferMode=RELAY）
+直连不可用或直链重试失败时的兜底：`CloudDriveService.download` 在平台进程流式下载（SDK 自动解析直链并附带必需请求头）→ VPK 校验 → `uploadLocalFile` 推送到实例。复用 Workshop 下载链路设施。
+
+### 直链时效契约（Link Freshness）
+直链短时效且与请求头绑定：拿链后立即下发、不缓存；curl 失败重取一次直链，仍失败转中转。任务不因直链过期而失败。
+
+### 转存目录约定（Transfer Layout）
+账号挂载点内 `/maps/{source}-{sourceId}`（裸链接 `share-{hash8}`）。重复转存由 SDK Diff 引擎去重；"是否已转存"以 list 探测为准，MapResource 不回写状态。
