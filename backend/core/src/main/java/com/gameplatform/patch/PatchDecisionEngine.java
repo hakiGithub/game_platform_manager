@@ -80,6 +80,9 @@ public class PatchDecisionEngine {
             case TAR_BZ2 -> tar && caps.hasTool("bzip2");
             case TAR_XZ -> tar && caps.hasTool("xz");
             case ZIP -> caps.hasTool("unzip") || caps.hasTool("bsdtar");
+            // ADR-0026：rar/7z 原生工具缺失时由 platform-tools 工具容器（unrar/7z）解压
+            case RAR -> caps.hasTool("unrar") || caps.hasTool("7z");
+            case SEVEN_Z -> caps.hasTool("7z");
             case GZ -> caps.hasTool("gzip");
             case BZ2 -> caps.hasTool("bzip2");
             case XZ -> caps.hasTool("xz");

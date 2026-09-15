@@ -275,7 +275,7 @@ public class CloudInstallService {
                                         CloudDriveService.CloudFileInfo item, int base, int slice,
                                         RecordUpdater updater) {
         String name = item.name();
-        boolean isZip = name.toLowerCase(Locale.ROOT).endsWith(".zip");
+        String lower = name.toLowerCase(Locale.ROOT);
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 // 直链时效契约（ADR-0025）：拿链后立即下发，不缓存
@@ -284,11 +284,14 @@ public class CloudInstallService {
                         .instanceId(instanceId)
                         .url(link.url())
                         .headers(link.headers());
-                if (isZip) {
-                    // 直链 URL 无扩展名，显式声明格式；解压后顶层条目（vpk）落 addons
-                    builder.targetPath(pathResolver.getAddonsPath() + "/").format("zip");
-                } else {
+                if (lower.endsWith(".vpk")) {
                     builder.targetPath(pathResolver.getAddonsPath() + "/" + name);
+                } else {
+                    // zip/rar（ADR-0025/0026）：直链 URL 无扩展名，显式声明格式；
+                    // includePattern 只取 vpk 平铺落 addons（工具容器/原生解压）
+                    builder.targetPath(pathResolver.getAddonsPath() + "/")
+                            .format(lower.endsWith(".rar") ? "rar" : "zip")
+                            .includePattern("*.vpk");
                 }
                 String patchTaskId = patchInstallService.install(builder.build());
                 context.log("直连下载 " + name + "（第 " + attempt + " 次）");

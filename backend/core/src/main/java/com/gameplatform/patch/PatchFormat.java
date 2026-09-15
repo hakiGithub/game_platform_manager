@@ -12,6 +12,10 @@ public enum PatchFormat {
     GZ(true),
     BZ2(true),
     XZ(true),
+    /** RAR 压缩包（ADR-0026：原生 unrar 缺失时由 platform-tools 工具容器解压） */
+    RAR(true),
+    /** 7z 压缩包（ADR-0026：原生 p7zip 缺失时由工具容器解压） */
+    SEVEN_Z(true),
     /** 非压缩包 */
     PLAIN(false);
 
@@ -51,6 +55,12 @@ public enum PatchFormat {
         if (lower.endsWith(".zip")) {
             return ZIP;
         }
+        if (lower.endsWith(".rar")) {
+            return RAR;
+        }
+        if (lower.endsWith(".7z")) {
+            return SEVEN_Z;
+        }
         if (lower.endsWith(".gz")) {
             return GZ;
         }
@@ -69,6 +79,8 @@ public enum PatchFormat {
             case "tar.bz2", "tbz2" -> TAR_BZ2;
             case "tar.xz", "txz" -> TAR_XZ;
             case "zip" -> ZIP;
+            case "rar" -> RAR;
+            case "7z" -> SEVEN_Z;
             case "gz" -> GZ;
             case "bz2" -> BZ2;
             case "xz" -> XZ;

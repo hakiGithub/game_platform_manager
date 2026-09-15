@@ -43,4 +43,11 @@ public class PatchInstallRequest {
      * 平台下载同样以该原因失败，不静默丢弃。
      */
     private java.util.Map<String, String> headers;
+
+    /**
+     * 产物筛选 glob 列表（可选，ADR-0026）：逗号分隔、大小写不敏感（如 {@code *.vpk,*.vpk.001}）。
+     * 提供时压缩包解压后仅匹配文件平铺落位 targetPath（先列清单做备份预判，空清单报错）；
+     * 不提供保持全量解压语义。仅压缩包格式生效。
+     */
+    private String includePattern;
 }

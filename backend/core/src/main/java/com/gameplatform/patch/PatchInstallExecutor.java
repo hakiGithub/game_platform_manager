@@ -151,19 +151,27 @@ public class PatchInstallExecutor {
 
         try {
             execOk(host, "mkdir -p " + shellQuote(hostTmpDir));
+            // includePattern（ADR-0026）：解压后仅匹配文件平铺落位，顶层条目清单由匹配结果替代
+            boolean filtered = request.getIncludePattern() != null && !request.getIncludePattern().isBlank();
             switch (strategy) {
                 case TARGET_DOWNLOAD_TARGET_EXTRACT -> {
                     progress.onProgress(10, "目标主机远程下载补丁");
                     remoteDownload(host, caps, request, hostArchive);
                     verifyRemoteChecksum(host, caps, hostArchive, request.getSha256());
-                    topLevel = listRemoteEntries(host, caps, format, hostArchive);
-                    backup(route, host, topLevel, request.getTargetPath());
                     if (format.isArchive()) {
                         progress.onProgress(40, "目标主机远程解压");
                         remoteExtract(host, caps, format, hostArchive, hostTmpDir + "/extracted");
-                        moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
+                        if (filtered) {
+                            topLevel = installFiltered(route, host, hostTmpDir + "/extracted",
+                                    request.getIncludePattern(), request.getTargetPath(), progress);
+                        } else {
+                            topLevel = listRemoteEntries(host, caps, format, hostArchive);
+                            backup(route, host, topLevel, request.getTargetPath());
+                            moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
+                        }
                     } else {
-                        progress.onProgress(40, "推送文件到目标位置");
+                        topLevel = Set.of(hostArchive.substring(hostArchive.lastIndexOf('/') + 1));
+                        backup(route, host, Set.of(request.getTargetPath()), request.getTargetPath());
                         moveSingleInto(route, host, hostArchive);
                     }
                 }
@@ -171,11 +179,16 @@ public class PatchInstallExecutor {
                     Path localArchive = platformDownload(request, progress);
                     progress.onProgress(40, "推送压缩包到目标主机");
                     fileService.uploadLocalFile(route.hostId, hostArchive, localArchive.toString());
-                    topLevel = extractor.listTopLevelEntries(localArchive, format);
-                    backup(route, host, topLevel, request.getTargetPath());
                     progress.onProgress(60, "目标主机远程解压");
                     remoteExtract(host, caps, format, hostArchive, hostTmpDir + "/extracted");
-                    moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
+                    if (filtered) {
+                        topLevel = installFiltered(route, host, hostTmpDir + "/extracted",
+                                request.getIncludePattern(), request.getTargetPath(), progress);
+                    } else {
+                        topLevel = extractor.listTopLevelEntries(localArchive, format);
+                        backup(route, host, topLevel, request.getTargetPath());
+                        moveEntriesInto(route, host, topLevel, hostTmpDir + "/extracted");
+                    }
                 }
                 case PLATFORM_DOWNLOAD_PLATFORM_EXTRACT -> {
                     Path localArchive = platformDownload(request, progress);
@@ -448,14 +461,27 @@ public class PatchInstallExecutor {
                 case TAR_BZ2 -> "tar -xjf";
                 case TAR_XZ -> "tar -xJf";
                 case ZIP -> "unzip -o";
+                case RAR -> "unrar x -y";
+                case SEVEN_Z -> "7z x -y";
                 default -> throw new BusinessException("不支持的目标侧解压格式: " + format);
             };
-            r = execOnHost(host, cmd + " " + shellQuote(archive) + " -C " + shellQuote(destDir));
+            // unrar/7z 的输出目录是位置参数（无 -C），先 cd 再执行
+            if (format == PatchFormat.RAR || format == PatchFormat.SEVEN_Z) {
+                r = execOnHost(host, "cd " + shellQuote(destDir) + " && "
+                        + cmd + " " + shellQuote(archive));
+            } else {
+                r = execOnHost(host, cmd + " " + shellQuote(archive) + " -C " + shellQuote(destDir));
+            }
         } else if (caps.hasDocker()) {
-            // Docker 代劳：镜像内 bsdtar 覆盖所有归档格式
+            // Docker 代劳（ADR-0026）：镜像预装 bsdtar/unrar/7z，按格式分派；--rm 用完即销毁
+            String inner = switch (format) {
+                case RAR -> "unrar x -y " + containerPath(archive, "a") + " /d/";
+                case SEVEN_Z -> "7z x -y " + containerPath(archive, "a") + " -o/d";
+                default -> "bsdtar -xf " + containerPath(archive, "a") + " -C /d";
+            };
             r = dockerRunTool(host,
                     "-v " + shellQuote(parentOf(archive)) + ":/a -v " + shellQuote(destDir) + ":/d",
-                    "bsdtar -xf " + containerPath(archive, "a") + " -C /d");
+                    inner);
         } else {
             throw new BusinessException("远程解压失败: 无原生解压工具且无 Docker 代劳");
         }
@@ -469,6 +495,117 @@ public class PatchInstallExecutor {
         for (String entry : topLevel) {
             moveSingle(route, host, sourceDir + "/" + entry, entry);
         }
+    }
+
+    /**
+     * 工具容器宿主能力（ADR-0026）：主机侧解压（原生优先 → platform-tools 容器兜底），
+     * 供 HostToolingServiceFactory（插件语义化能力）与补丁流程共用。返回落位文件名清单。
+     */
+    public List<String> toolingExtract(Host host, HostCapabilities caps, PatchFormat format,
+                                       String archive, String destDir, String includePattern) {
+        String tmpDir = "/tmp/gp_tooling_" + System.currentTimeMillis();
+        try {
+            execOk(host, "mkdir -p " + shellQuote(tmpDir) + " " + shellQuote(destDir));
+            remoteExtract(host, caps, format, archive, tmpDir + "/extracted");
+            if (includePattern != null && !includePattern.isBlank()) {
+                String findExpr = buildFindExpr(includePattern);
+                SshUtil.CommandResult list = execOnHost(host,
+                        "cd " + shellQuote(tmpDir + "/extracted") + " && find . -type f " + findExpr
+                                + " | sed 's|^\\./||' | sort");
+                if (list == null || !list.isSuccess() || list.getOutput() == null) {
+                    throw new BusinessException("筛选产物清单失败: " + (list != null ? list.getError() : "无响应"));
+                }
+                List<String> files = list.getOutput().lines().map(String::trim)
+                        .filter(s -> !s.isEmpty()).toList();
+                if (files.isEmpty()) {
+                    throw new BusinessException("压缩包内未找到匹配文件（includePattern=" + includePattern + "）");
+                }
+                List<String> placed = new ArrayList<>();
+                for (String rel : files) {
+                    String base = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;
+                    execOk(host, "mv -f " + shellQuote(tmpDir + "/extracted/" + rel)
+                            + " " + shellQuote(destDir + "/" + base));
+                    placed.add(base);
+                }
+                return placed;
+            }
+            // 全量解压：列顶层条目移入
+            SshUtil.CommandResult list = execOnHost(host,
+                    "cd " + shellQuote(tmpDir + "/extracted") + " && find . -maxdepth 1 -mindepth 1 | sed 's|^\\./||' | sort");
+            List<String> placed = new ArrayList<>();
+            if (list != null && list.isSuccess() && list.getOutput() != null) {
+                for (String entry : list.getOutput().lines().map(String::trim)
+                        .filter(s -> !s.isEmpty()).toList()) {
+                    execOk(host, "mv -f " + shellQuote(tmpDir + "/extracted/" + entry)
+                            + " " + shellQuote(destDir + "/" + entry));
+                    placed.add(entry);
+                }
+            }
+            return placed;
+        } finally {
+            runRemoteQuietly(host, "rm -rf " + shellQuote(tmpDir));
+        }
+    }
+
+    /**
+     * includePattern 产物筛选落位（ADR-0026）：在解压目录（宿主机临时目录）内两段 find——
+     * ① 按模式列匹配文件清单（供按 basename 预判覆盖并 backup）；
+     * ② mv 平铺落位 targetPath（重名冲突由目标侧 mv -f 覆盖，备份已先行）。
+     * 空清单报错。返回备份键集（匹配文件 basename），失败时供回滚。
+     */
+    private Set<String> installFiltered(FileRoute route, Host host, String extractedDir,
+                                        String includePattern, String targetPath,
+                                        ProgressListener progress) {
+        String findExpr = buildFindExpr(includePattern);
+        SshUtil.CommandResult list = execOnHost(host,
+                "cd " + shellQuote(extractedDir) + " && find . -type f " + findExpr
+                        + " | sed 's|^\\./||' | sort");
+        if (list == null || !list.isSuccess() || list.getOutput() == null) {
+            throw new BusinessException("筛选产物清单失败: " + (list != null ? list.getError() : "无响应"));
+        }
+        List<String> files = list.getOutput().lines()
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        if (files.isEmpty()) {
+            throw new BusinessException("压缩包内未找到匹配文件（includePattern=" + includePattern + "）");
+        }
+        // 备份键 = 目标目录下的最终文件名（basename 平铺）
+        Set<String> backupKeys = new java.util.LinkedHashSet<>();
+        for (String rel : files) {
+            String base = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;
+            backupKeys.add(base);
+        }
+        progress.onProgress(70, "筛选产物 " + files.size() + " 个，备份将被覆盖文件");
+        backup(route, host, backupKeys, targetPath);
+
+        progress.onProgress(80, "平铺落位 " + files.size() + " 个文件");
+        for (String rel : files) {
+            String base = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;
+            // 域已限定在解压目录内，路径来自服务端 find 输出；basename 已剥离目录
+            execOk(host, "mv -f " + shellQuote(extractedDir + "/" + rel)
+                    + " " + shellQuote(targetPath + "/" + base));
+        }
+        progress.onLog("includePattern 筛选落位 " + files.size() + " 个文件 → " + targetPath);
+        return backupKeys;
+    }
+
+    /** 逗号分隔 glob → find -iname 复合表达式（大小写不敏感，任意模式命中即算） */
+    private static String buildFindExpr(String includePattern) {
+        String[] patterns = includePattern.split(",");
+        StringBuilder expr = new StringBuilder("\\( ");
+        for (int i = 0; i < patterns.length; i++) {
+            String p = patterns[i].trim();
+            if (p.isEmpty()) {
+                continue;
+            }
+            if (i > 0) {
+                expr.append("-o ");
+            }
+            expr.append("-iname ").append(shellQuote(p.replace('*', '*').replace('?', '?'))).append(' ');
+        }
+        expr.append("\\)");
+        return expr.toString();
     }
 
     private void moveSingleInto(FileRoute route, Host host, String sourcePath) {
@@ -707,6 +844,8 @@ public class PatchInstallExecutor {
             case TAR_BZ2 -> ".tar.bz2";
             case TAR_XZ -> ".tar.xz";
             case ZIP -> ".zip";
+            case RAR -> ".rar";
+            case SEVEN_Z -> ".7z";
             case GZ -> ".gz";
             case BZ2 -> ".bz2";
             case XZ -> ".xz";

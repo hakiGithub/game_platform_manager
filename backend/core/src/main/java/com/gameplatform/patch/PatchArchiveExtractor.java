@@ -125,6 +125,10 @@ public class PatchArchiveExtractor {
             case TAR_BZ2 -> new TarArchiveInputStream(new BZip2CompressorInputStream(raw));
             case TAR_XZ -> new TarArchiveInputStream(new XZCompressorInputStream(raw));
             case ZIP -> new ZipArchiveInputStream(raw);
+            // ADR-0026：平台 Java 侧不支持 rar/7z（带 headers 的目标主机路径由工具容器解；
+            // 平台解压路径遇 rar/7z 显式报错，由调用方决策回退）
+            case RAR, SEVEN_Z -> throw new BusinessException(
+                    "平台侧不支持解压 " + format + "（请使用目标主机解压路径或工具容器）");
             default -> throw new BusinessException("不支持的解压格式: " + format);
         };
     }
