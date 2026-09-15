@@ -30,6 +30,17 @@ public class PluginMetaService {
     private final L4D2PathResolver pathResolver;
     private final ObjectMapper yamlMapper;
 
+    /**
+     * 元数据内存缓存（ADR-0026 同期性能修复）：每次远程读 plugin.yaml ~0.23s，
+     * 插件列表 N 个插件 = N 次往返。面板内的变更（save/delete）即时失效；
+     * 面板外的改动最长 TTL 内陈旧（个人运维可接受）。
+     */
+    private static final long CACHE_TTL_MS = 60_000L;
+    private final Map<String, CachedMeta> cache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record CachedMeta(PluginMeta meta, boolean present, long at) {
+    }
+
     public PluginMetaService(InstanceFileService instanceFileService,
                              L4D2PathResolver pathResolver,
                              ObjectMapper yamlMapper) {
@@ -38,8 +49,19 @@ public class PluginMetaService {
         this.yamlMapper = yamlMapper;
     }
 
-    /** 读取插件元数据；不存在返回 null */
+    /** 读取插件元数据；不存在返回 null（带 TTL 缓存，变更路径即时失效） */
     public PluginMeta load(Long instanceId, String pluginName) {
+        String key = instanceId + "/" + pluginName;
+        CachedMeta cached = cache.get(key);
+        if (cached != null && System.currentTimeMillis() - cached.at() < CACHE_TTL_MS) {
+            return cached.present() ? cached.meta() : null;
+        }
+        PluginMeta meta = loadRemote(instanceId, pluginName);
+        cache.put(key, new CachedMeta(meta, meta != null, System.currentTimeMillis()));
+        return meta;
+    }
+
+    private PluginMeta loadRemote(Long instanceId, String pluginName) {
         String path = pathResolver.getPluginYamlPath(pluginName);
         try {
             // 直接读取：文件不存在时 readTextFile 抛异常即视为无元数据，
@@ -68,7 +90,7 @@ public class PluginMetaService {
         }
     }
 
-    /** 保存插件元数据（覆盖写） */
+    /** 保存插件元数据（覆盖写），并刷新缓存 */
     public void save(Long instanceId, PluginMeta meta) {
         if (meta == null || meta.getName() == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "PluginMeta/name 不能为空");
@@ -88,13 +110,15 @@ public class PluginMetaService {
             root.put("updated_at", now);
             String yaml = yamlMapper.writeValueAsString(root);
             instanceFileService.writeTextFile(instanceId, path, yaml);
+            cache.put(instanceId + "/" + meta.getName(),
+                    new CachedMeta(meta, true, System.currentTimeMillis()));
         } catch (Exception e) {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "保存 plugin.yaml 失败: " + e.getMessage(), e);
         }
     }
 
-    /** 删除插件元数据文件 */
+    /** 删除插件元数据文件，并失效缓存 */
     public void delete(Long instanceId, String pluginName) {
         String path = pathResolver.getPluginYamlPath(pluginName);
         try {
@@ -102,6 +126,7 @@ public class PluginMetaService {
         } catch (Exception e) {
             log.debug("删除 plugin.yaml 失败 plugin={}, err={}", pluginName, e.getMessage());
         }
+        cache.remove(instanceId + "/" + pluginName);
     }
 
     private String asString(Object o) {
