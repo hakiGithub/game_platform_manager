@@ -16,12 +16,21 @@ import type {
  * 后端 StatusParser 返回中文难度/模式名（简单/普通/高级/专家、合作模式等），
  * 这里归一化为前端 code（easy/normal/...）；未识别的值（未知、新命令失败等）置空串，
  * 由组件显示"未知"，不得兜底为默认难度/模式误导用户。
+ * 匹配规则：value/label 精确值 + alias（高级↔困难、拾荒↔清道夫等用词差异）
+ * + 去掉“模式”后缀的宽容比对（后端发“合作”，前端 label 是“合作模式”）。
  */
-function toCode(map: Record<string, { value: string; label: string }>, raw?: string): string {
+const stripModeSuffix = (s: string) => s.replace(/模式$/, '')
+
+function toCode(
+  map: Record<string, { value: string; label: string; alias?: readonly string[] }>,
+  raw?: string
+): string {
   if (!raw) return ''
   const rawTrimmed = raw.trim()
+  const rawCandidates = new Set([rawTrimmed, stripModeSuffix(rawTrimmed)])
   for (const [code, meta] of Object.entries(map)) {
-    if (meta.value === rawTrimmed || meta.label === rawTrimmed) return code
+    const known = [meta.value, meta.label, ...(meta.alias ?? [])].map(stripModeSuffix)
+    if (known.some((k) => rawCandidates.has(k))) return code
   }
   return ''
 }

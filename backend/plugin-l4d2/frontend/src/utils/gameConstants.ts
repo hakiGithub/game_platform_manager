@@ -17,6 +17,8 @@ export const DIFFICULTIES = {
   hard: {
     value: 'hard',
     label: '困难',
+    // 后端 StatusParser 把 hard 译作“高级”（z_difficulty 注释用词）
+    alias: ['高级'],
     color: '#f2b84b'
   },
   impossible: {
@@ -27,30 +29,36 @@ export const DIFFICULTIES = {
 } as const
 
 // 游戏模式
+// alias：后端 StatusParser 返回的短名（无“模式”后缀；“scavenge”译作“拾荒”）
 export const GAME_MODES = {
   coop: {
     value: 'coop',
     label: '合作模式',
+    alias: ['合作'],
     description: '4人合作对抗AI感染者'
   },
   versus: {
     value: 'versus',
     label: '对抗模式',
+    alias: ['对抗'],
     description: '8人对战，轮流扮演生还者和感染者'
   },
   survival: {
     value: 'survival',
     label: '生存模式',
+    alias: ['生存'],
     description: '尽可能长时间存活'
   },
   scavenge: {
     value: 'scavenge',
     label: '清道夫模式',
+    alias: ['拾荒'],
     description: '收集油桶加油'
   },
   realism: {
     value: 'realism',
     label: '写实模式',
+    alias: ['写实'],
     description: '更真实的合作模式'
   }
 } as const
