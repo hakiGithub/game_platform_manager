@@ -1013,6 +1013,7 @@ public class DownloadService {
         vo.setPreviewUrl(spec.getPreviewUrl());
         vo.setStartTime(spec.getStartTime());
         vo.setCompleteTime(spec.getCompleteTime());
+        vo.setPatchTaskId(spec.getPatchTaskId());
         return vo;
     }
 

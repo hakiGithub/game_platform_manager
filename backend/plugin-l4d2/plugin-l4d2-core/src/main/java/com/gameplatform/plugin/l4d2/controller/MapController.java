@@ -55,6 +55,28 @@ public class MapController {
     }
 
     /**
+     * 批量识别（异步，ADR-0027）：对 addons 目录索引执行地图识别
+     * （摘要复用优先，未命中走工具容器/平台侧分析），返回任务 ID 供轮询。
+     */
+    @Operation(summary = "批量识别地图", description = "对实例 addons 目录的 VPK 执行地图识别（异步任务）")
+    @PostMapping("/recognize")
+    public Result<String> recognizeMaps(
+            @Parameter(description = "实例ID") @RequestParam Long instanceId,
+            @Parameter(description = "是否重试已识别失败的条目") @RequestParam(defaultValue = "true") boolean forceRetry) {
+        String taskId = taskService.submit(TaskSubmitRequest.builder()
+                .taskType(L4D2Constants.TASK_TYPE_MAP_RECOGNIZE)
+                .source(L4D2Constants.TASK_SOURCE)
+                .scopeKey(String.valueOf(instanceId))
+                .payload(Map.of(
+                        "instanceId", instanceId,
+                        "forceRetry", String.valueOf(forceRetry)))
+                .build());
+        log.info("地图批量识别任务已提交: instanceId={}, taskId={}, forceRetry={}",
+                instanceId, taskId, forceRetry);
+        return Result.success("地图识别任务已创建", taskId);
+    }
+
+    /**
      * 上传地图（异步，ADR-0018）：同步阶段仅校验扩展名并暂存文件，
      * 随后提交 map-upload 任务到执行队列；VPK 解析/SSH 上传/自动裁剪由任务执行。
      */

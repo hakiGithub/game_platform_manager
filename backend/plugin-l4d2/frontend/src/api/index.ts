@@ -144,6 +144,10 @@ export const mapApi = {
   // 热重载地图（RCON）
   hotReload: (instanceId: number) => post<void>('/maps/hot-reload', { instanceId }),
 
+  // 批量识别（异步任务，ADR-0027），返回任务 ID 供轮询
+  recognize: (instanceId: number, forceRetry = true) =>
+    post<string>(`/maps/recognize?instanceId=${instanceId}&forceRetry=${forceRetry}`),
+
   // 裁剪 VPK（移除无用资源）
   trim: (instanceId: number, mapName: string) =>
     post<VpkTrimResultVO>(`/maps/${mapName}/trim?instanceId=${instanceId}`),
@@ -229,6 +233,12 @@ export interface MapListVO {
   title?: string
   vpkName?: string
   chapters?: Array<{ code: string; title?: string; modes?: string[] }>
+  /** 识别状态（ADR-0027）：OK/PENDING/FAILED/INVALID */
+  recognitionStatus?: string
+  /** 识别失败原因 */
+  recognitionError?: string
+  /** 开图命令（命中地图中心元数据时回填，如 ["map c1m1_hotel"]） */
+  launchCommands?: string[]
 }
 
 export interface VpkTrimResultVO {
@@ -710,7 +720,7 @@ export const pluginManageApi = {
 export interface DownloadTaskVO {
   taskId: string
   instanceId: number
-  taskType: 'URL' | 'WORKSHOP'
+  taskType: 'URL' | 'WORKSHOP' | 'CLOUD'
   taskUrl: string
   filename: string
   fileSize: number
@@ -727,6 +737,8 @@ export interface DownloadTaskVO {
   completeTime?: string
   formattedSpeed: string
   formattedSize: string
+  /** 主应用任务中心任务 ID（CLOUD 任务据此查开图命令结果，ADR-0027） */
+  patchTaskId?: string
 }
 
 /**

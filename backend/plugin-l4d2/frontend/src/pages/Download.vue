@@ -359,6 +359,29 @@
           <span class="error-text">{{ detailTask.errorMessage }}</span>
         </el-descriptions-item>
       </el-descriptions>
+
+      <!-- 开图命令（ADR-0027）：云盘转存安装完成后可一键开图 -->
+      <div
+        v-if="detailTask && detailTask.taskType === 'CLOUD' && detailTask.status === 'COMPLETED'"
+        class="launch-section"
+      >
+        <h4 class="launch-title">开图命令</h4>
+        <div v-if="launchCommandsLoading" class="launch-loading">加载中...</div>
+        <template v-else-if="launchCommands.length">
+          <div v-for="cmd in launchCommands" :key="cmd" class="launch-row">
+            <code class="launch-code">{{ cmd }}</code>
+            <el-button
+              size="small"
+              type="primary"
+              @click="launchFromTask(cmd)"
+            >
+              开图
+            </el-button>
+          </div>
+        </template>
+        <div v-else class="launch-loading">未匹配到开图命令（仅地图中心来源的安装提供）</div>
+      </div>
+
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
@@ -372,6 +395,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   downloadApi,
   cloudAccountApi,
+  mainTaskApi,
+  rconApi,
   type CloudAccountVO,
   type DownloadTaskVO,
   type WorkshopItemVO,
@@ -462,6 +487,48 @@ const deletingId = ref('')
 // 任务详情
 const detailDialogVisible = ref(false)
 const detailTask = ref<DownloadTaskVO | null>(null)
+const launchCommands = ref<string[]>([])
+const launchCommandsLoading = ref(false)
+
+/** CLOUD 任务详情打开时拉取主任务结果中的开图命令（ADR-0027） */
+async function loadLaunchCommands(task: DownloadTaskVO) {
+  launchCommands.value = []
+  if (task.taskType !== 'CLOUD' || task.status !== 'COMPLETED' || !task.patchTaskId) {
+    return
+  }
+  launchCommandsLoading.value = true
+  try {
+    const main = await mainTaskApi.detail(task.patchTaskId)
+    const result = main?.result?.data || main?.result
+    const cmds = result?.launchCommands
+    if (Array.isArray(cmds)) {
+      launchCommands.value = cmds.map(String)
+    }
+  } catch {
+    // 主任务可能已被清理，静默降级
+  } finally {
+    launchCommandsLoading.value = false
+  }
+}
+
+/** 开图：绑定任务自身的实例 */
+async function launchFromTask(cmd: string) {
+  if (!detailTask.value?.instanceId) return
+  const mapCode = cmd.trim().replace(/^map\s+/i, '')
+  try {
+    await ElMessageBox.confirm(
+      `确定在实例 ${detailTask.value.instanceId} 上切换到地图 ${mapCode}？当前对局将中断。`,
+      '开图确认',
+      { type: 'warning' }
+    )
+    await rconApi.changeMap(detailTask.value.instanceId, mapCode)
+    ElMessage.success('开图命令已发送')
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('开图失败：' + (e?.message || e))
+    }
+  }
+}
 
 // 轮询定时器
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -681,6 +748,7 @@ async function clearFinished() {
 }
 
 function showDetail(task: DownloadTaskVO) {
+  loadLaunchCommands(task)
   detailTask.value = task
   detailDialogVisible.value = true
 }
@@ -848,4 +916,35 @@ onBeforeUnmount(() => {
   color: var(--platform-red);
   word-break: break-all;
 }
+
+.launch-section {
+  margin-top: 12px;
+}
+
+.launch-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.launch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.launch-code {
+  background: var(--el-fill-color-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.launch-loading {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
 </style>

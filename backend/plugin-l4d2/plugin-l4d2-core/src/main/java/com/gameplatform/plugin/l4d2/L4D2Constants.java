@@ -49,6 +49,9 @@ public final class L4D2Constants {
     /** 任务中心：任务类型 - 云盘转存安装（ADR-0025） */
     public static final String TASK_TYPE_CLOUD_INSTALL = "cloud-install";
 
+    /** 任务中心：任务类型 - 地图批量识别（ADR-0027） */
+    public static final String TASK_TYPE_MAP_RECOGNIZE = "map-recognize";
+
     /** 内置插件安装任务短时防重提交窗口（毫秒） */
     public static final long INSTALL_SUBMIT_DEDUP_WINDOW_MS = 30_000L;
 }

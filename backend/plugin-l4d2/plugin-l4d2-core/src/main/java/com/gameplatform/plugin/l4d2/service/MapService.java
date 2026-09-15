@@ -2,6 +2,9 @@ package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
+import com.gameplatform.plugin.l4d2.extension.MapFileIndexSpec;
+import com.gameplatform.plugin.l4d2.extension.MapRecognitionSpec;
+import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.VpkParser;
 import com.gameplatform.plugin.l4d2.vo.MapListVO;
@@ -49,6 +52,8 @@ public class MapService {
     private final L4D2RconService rconService;
     private final L4D2Config config;
     private final L4D2PathResolver pathResolver;
+    private final MapRecognitionService mapRecognitionService;
+    private final com.gameplatform.plugin.task.TaskService taskService;
 
     /**
      * 列出实例的所有地图（VPK 战役）。
@@ -66,6 +71,8 @@ public class MapService {
         // 此前对每个 vpk 全量 SFTP 下载到平台再解析，394MB 的包耗时 20s 级且无缓存。
         List<MapListVO> voList = new ArrayList<>();
         List<FileAccessService.FileInfo> files = instanceFileService.listFiles(instanceId, addonsPath);
+        // 识别 join（ADR-0027）：索引 + 共享识别记录，零现场解析
+        Map<String, MapFileIndexSpec> index = mapRecognitionService.indexForInstance(instanceId);
         for (FileAccessService.FileInfo file : files) {
             if (file.isDirectory() || !file.getName().toLowerCase().endsWith(".vpk")) {
                 continue;
@@ -75,9 +82,64 @@ public class MapService {
             vo.setVpkName(filename);
             vo.setTitle(filename.substring(0, filename.length() - 4));
             vo.setChapters(new ArrayList<>());
+            applyRecognition(vo, index.get(filename));
             voList.add(vo);
         }
         return voList;
+    }
+
+    /**
+     * 把识别结果并入列表 VO（ADR-0027）：识别 OK 时以战役标题覆盖文件名标题、
+     * 回填章节与开图命令；未识别/失败保留文件名标题并暴露状态供前端展示。
+     */
+    private void applyRecognition(MapListVO vo, MapFileIndexSpec entry) {
+        if (entry == null) {
+            vo.setRecognitionStatus("PENDING");
+            vo.setLaunchCommands(new ArrayList<>());
+            return;
+        }
+        vo.setRecognitionStatus(entry.getStatus() != null ? entry.getStatus() : "PENDING");
+        vo.setLaunchCommands(new ArrayList<>());
+        if (!"READY".equals(entry.getStatus()) || entry.getDigest() == null) {
+            return;
+        }
+        java.util.Optional<MapRecognitionSpec> recognition =
+                mapRecognitionService.recognitionOf(entry.getDigest());
+        if (recognition.isEmpty()) {
+            vo.setRecognitionStatus("PENDING");
+            return;
+        }
+        MapRecognitionSpec spec = recognition.get();
+        vo.setRecognitionStatus(spec.getStatus() != null ? spec.getStatus() : "PENDING");
+        if (!"OK".equals(spec.getStatus())) {
+            vo.setRecognitionError(spec.getErrorMessage());
+            return;
+        }
+        if (spec.getTitle() != null && !spec.getTitle().isBlank()) {
+            vo.setTitle(spec.getTitle());
+        }
+        if (spec.getChaptersJson() != null && !spec.getChaptersJson().isBlank()) {
+            try {
+                List<MapListVO.ChapterVO> chapters = new ArrayList<>();
+                com.fasterxml.jackson.databind.JsonNode nodes =
+                        new com.fasterxml.jackson.databind.ObjectMapper().readTree(spec.getChaptersJson());
+                for (com.fasterxml.jackson.databind.JsonNode node : nodes) {
+                    MapListVO.ChapterVO chapter = new MapListVO.ChapterVO();
+                    chapter.setCode(node.path("code").asText(""));
+                    if (!chapter.getCode().isEmpty()) {
+                        chapter.setTitle(node.hasNonNull("title") ? node.get("title").asText(null) : null);
+                        List<String> modes = new ArrayList<>();
+                        node.withArray("modes").forEach(m -> modes.add(m.asText()));
+                        chapter.setModes(modes);
+                        chapters.add(chapter);
+                    }
+                }
+                vo.setChapters(chapters);
+            } catch (Exception e) {
+                log.warn("章节 JSON 解析失败: digest={}", entry.getDigest(), e);
+            }
+        }
+        vo.setLaunchCommands(mapRecognitionService.launchCommandsOf(entry.getDigest()));
     }
 
     /**
@@ -176,11 +238,31 @@ public class MapService {
             MapListVO vo = buildMapListVOFromArchive(archive, filename);
 
             // 自动裁剪
+            boolean trimmed = false;
             if (config.getVpkTrim().isEnabled()) {
                 try {
-                    trimMap(instanceId, filename);
+                    VpkTrimResultVO trimResult = trimMap(instanceId, filename);
+                    trimmed = trimResult.getSavedBytes() > 0;
                 } catch (Exception e) {
                     log.warn("自动裁剪 VPK 失败，不阻塞上传: {}", filename, e);
+                }
+            }
+
+            // 平台侧识别落库（ADR-0027 决策 4②）：文件已过平台，直接用解析结果写共享
+            // 识别记录（不走容器）。裁剪覆盖了远端文件时内容已变、暂存摘要失效，
+            // 此时跳过——交给主机侧识别任务按最终文件分析。
+            if (!trimmed) {
+                try {
+                    String digest = cn.hutool.crypto.digest.DigestUtil.sha256Hex(stagedFile.toFile());
+                    List<MapRecognitionService.MapListChapter> chapters =
+                            vo.getChapters() == null ? List.of() : vo.getChapters().stream()
+                                    .map(c -> new MapRecognitionService.MapListChapter(
+                                            c.getCode(), c.getTitle(), c.getModes()))
+                                    .toList();
+                    mapRecognitionService.recordFromPlatformParse(instanceId, filename,
+                            digest, vo.getTitle(), chapters);
+                } catch (Exception e) {
+                    log.warn("上传识别落库失败（不影响上传）: {}", filename, e);
                 }
             }
 
@@ -216,6 +298,31 @@ public class MapService {
         requireInstance(instanceId);
         String addonsPath = pathResolver.getAddonsPath();
         vpkParserService.clearCache(addonsPath);
+        triggerRecognition(instanceId);
+    }
+
+    /**
+     * 自动触发批量识别（ADR-0027 决策 4④）：refresh 发现新文件后提交 map-recognize
+     * 任务（PENDING 优先）。任务互斥由框架保证；提交失败（如同名任务在跑）静默忽略。
+     */
+    private void triggerRecognition(long instanceId) {
+        try {
+            int pending = mapRecognitionService.reconcileIndex(instanceId);
+            if (pending <= 0) {
+                return;
+            }
+            String taskId = taskService.submit(com.gameplatform.plugin.task.TaskSubmitRequest.builder()
+                    .taskType(L4D2Constants.TASK_TYPE_MAP_RECOGNIZE)
+                    .source(L4D2Constants.TASK_SOURCE)
+                    .scopeKey(String.valueOf(instanceId))
+                    .payload(Map.of(
+                            "instanceId", instanceId,
+                            "forceRetry", "false"))
+                    .build());
+            log.info("已自动触发地图识别任务: instanceId={}, taskId={}", instanceId, taskId);
+        } catch (Exception e) {
+            log.debug("触发地图识别任务跳过（可能已有任务在跑）: instanceId={}, err={}", instanceId, e.getMessage());
+        }
     }
 
     /**

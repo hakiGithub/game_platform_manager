@@ -2,6 +2,7 @@ package com.gameplatform.clouddrive;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.service.HostToolingService;
+import com.gameplatform.plugin.service.VpkAnalyzeResult;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.patch.PatchDecisionEngine;
 import com.gameplatform.patch.PatchFormat;
@@ -35,6 +36,7 @@ public class HostToolingServiceFactory {
     private final com.gameplatform.patch.HostCapabilityProber prober;
     private final PatchDecisionEngine decisionEngine;
     private final com.gameplatform.patch.PatchInstallExecutor executorBridge;
+    private final VpkToolingAnalyzer vpkToolingAnalyzer;
 
     public HostToolingService forPlugin(String pluginId) {
         return new HostToolingService() {
@@ -55,6 +57,18 @@ public class HostToolingServiceFactory {
                 }
                 // 委托 PatchInstallExecutor 的主机命令与工具容器设施执行解压
                 return executorBridge.toolingExtract(host, caps, format, remoteArchive, destDir, includePattern);
+            }
+
+            @Override
+            public String fileDigest(Long instanceId, String relativePath) {
+                log.info("[HostTooling][{}] fileDigest instance={} path={}", pluginId, instanceId, relativePath);
+                return vpkToolingAnalyzer.fileDigest(instanceId, relativePath);
+            }
+
+            @Override
+            public VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath) {
+                log.info("[HostTooling][{}] analyzeVpk instance={} path={}", pluginId, instanceId, relativeVpkPath);
+                return vpkToolingAnalyzer.analyzeVpk(instanceId, relativeVpkPath);
             }
         };
     }

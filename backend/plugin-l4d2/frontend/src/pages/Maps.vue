@@ -13,6 +13,7 @@
           批量裁剪（{{ selectedRows.length }}）
         </el-button>
         <el-button @click="handleHotReload">热重载</el-button>
+        <el-button :loading="recognizing" @click="handleRecognize">识别地图</el-button>
         <el-button @click="loadList">刷新</el-button>
       </div>
     </div>
@@ -23,12 +24,70 @@
         :data="mapList"
         @selection-change="handleSelectionChange"
       >
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="expand-content">
+              <template v-if="row.recognitionStatus === 'OK' && row.chapters?.length">
+                <h4 class="expand-title">章节（{{ row.chapters.length }}）</h4>
+                <div class="chapter-list">
+                  <div v-for="ch in row.chapters" :key="ch.code" class="chapter-item">
+                    <el-tag size="small" type="info">{{ ch.code }}</el-tag>
+                    <span class="chapter-name">{{ ch.title || ch.code }}</span>
+                    <el-tag
+                      v-for="mode in (ch.modes || [])"
+                      :key="mode"
+                      size="small"
+                      type="success"
+                      effect="plain"
+                    >
+                      {{ mode }}
+                    </el-tag>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      link
+                      :disabled="!isInstanceRunning"
+                      @click="launchMap(ch.code)"
+                    >
+                      开图
+                    </el-button>
+                  </div>
+                </div>
+              </template>
+              <div v-if="(row.launchCommands?.length || 0) > 0" class="launch-commands">
+                <h4 class="expand-title">开图命令</h4>
+                <div v-for="cmd in row.launchCommands" :key="cmd" class="command-line">
+                  <code>{{ cmd }}</code>
+                </div>
+              </div>
+              <el-alert
+                v-if="row.recognitionStatus === 'INVALID'"
+                type="info"
+                :closable="false"
+                title="该文件不是有效的 L4D2 地图 VPK（无 mission 信息）"
+              />
+              <el-alert
+                v-else-if="row.recognitionStatus === 'FAILED'"
+                type="warning"
+                :closable="false"
+                :title="'识别失败：' + (row.recognitionError || '未知原因') + '，可用「识别地图」重试'"
+              />
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column type="selection" width="50" />
         <el-table-column prop="vpkName" label="VPK 文件名" min-width="200" />
         <el-table-column prop="title" label="标题" min-width="150" />
         <el-table-column label="章节数" width="100">
           <template #default="{ row }">
             {{ row.chapters?.length || 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="识别" width="90">
+          <template #default="{ row }">
+            <el-tag :type="recognitionTagType(row.recognitionStatus)" size="small">
+              {{ recognitionText(row.recognitionStatus) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="330" fixed="right">
@@ -102,9 +161,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { mapApi } from '@/api'
+import { mapApi, rconApi, instanceApi, mainTaskApi } from '@/api'
 import type { MapListVO, VpkTrimResultVO, MissionInfoVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import ChunkUploader from '@/components/ChunkUploader.vue'
@@ -112,6 +171,94 @@ import MapSelectorModal from '@/components/MapSelectorModal.vue'
 
 const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
+const instanceRunning = ref(false)
+const isInstanceRunning = computed(() => instanceRunning.value)
+const recognizing = ref(false)
+let recognizeTimer: number | null = null
+
+/** 服务器运行中才允许开图（换图会中断当前对局） */
+async function refreshInstanceRunning() {
+  if (!instanceId.value) return
+  try {
+    const status = await instanceApi.getStatus(instanceId.value)
+    instanceRunning.value = status?.runStatus === 1
+  } catch {
+    instanceRunning.value = false
+  }
+}
+
+function recognitionText(status?: string): string {
+  switch (status) {
+    case 'OK': return '已识别'
+    case 'FAILED': return '失败'
+    case 'INVALID': return '无效'
+    default: return '未识别'
+  }
+}
+
+function recognitionTagType(status?: string): 'success' | 'warning' | 'info' | 'danger' {
+  switch (status) {
+    case 'OK': return 'success'
+    case 'FAILED': return 'danger'
+    case 'INVALID': return 'info'
+    default: return 'warning'
+  }
+}
+
+/** 批量识别：提交 map-recognize 任务并轮询到终态后刷新列表 */
+async function handleRecognize() {
+  if (!instanceId.value || recognizing.value) return
+  recognizing.value = true
+  try {
+    const taskId = await mapApi.recognize(instanceId.value, true)
+    ElMessage.success('识别任务已提交')
+    recognizeTimer = window.setInterval(async () => {
+      try {
+        const task = await mainTaskApi.detail(taskId)
+        if (task && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(task.status)) {
+          stopRecognizePolling()
+          recognizing.value = false
+          if (task.status === 'COMPLETED') {
+            ElMessage.success(task.resultSummary || '识别完成')
+          } else {
+            ElMessage.warning('识别任务未完成: ' + (task.errorMessage || task.status))
+          }
+          await loadList()
+        }
+      } catch {
+        // 轮询抖动忽略，下一轮继续
+      }
+    }, 3000)
+  } catch (e: any) {
+    recognizing.value = false
+    ElMessage.error('提交识别任务失败：' + (e?.message || e))
+  }
+}
+
+function stopRecognizePolling() {
+  if (recognizeTimer) {
+    clearInterval(recognizeTimer)
+    recognizeTimer = null
+  }
+}
+
+/** 开图：RCON 换图到指定章节码（实例运行中可用） */
+async function launchMap(mapCode: string) {
+  if (!instanceId.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定切换到地图 ${mapCode}？当前对局将中断。`,
+      '开图确认',
+      { type: 'warning' }
+    )
+    await rconApi.changeMap(instanceId.value, mapCode)
+    ElMessage.success('开图命令已发送')
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('开图失败：' + (e?.message || e))
+    }
+  }
+}
 
 const mapList = ref<MapListVO[]>([])
 const selectedRows = ref<MapListVO[]>([])
@@ -250,7 +397,12 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-onMounted(loadList)
+onMounted(() => {
+  loadList()
+  refreshInstanceRunning()
+})
+
+onBeforeUnmount(stopRecognizePolling)
 </script>
 
 <style scoped>
@@ -259,5 +411,44 @@ onMounted(loadList)
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.expand-content {
+  padding: 8px 16px 8px 48px;
+}
+
+.expand-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chapter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chapter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chapter-name {
+  min-width: 120px;
+}
+
+.launch-commands .command-line {
+  margin-bottom: 4px;
+}
+
+.launch-commands code {
+  background: var(--el-fill-color-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 </style>

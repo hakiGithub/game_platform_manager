@@ -37,18 +37,21 @@ public class L4D2TaskHandlerExtension implements TaskHandlerExtension {
     public L4D2TaskHandlerExtension(CrawlTaskHandler crawlTaskHandler,
                                     MapUploadTaskHandler mapUploadTaskHandler,
                                     BuiltinPluginInstallTaskHandler builtinPluginInstallTaskHandler,
-                                    CloudInstallTaskHandler cloudInstallTaskHandler) {
+                                    CloudInstallTaskHandler cloudInstallTaskHandler,
+                                    MapRecognizeTaskHandler mapRecognizeTaskHandler) {
         // 单装与批装共用同一 Handler 实例，注册两个 taskType（Handler 内按 payload 区分）
         this.handlers = Map.of(
                 L4D2Constants.TASK_TYPE_CRAWL, crawlTaskHandler,
                 L4D2Constants.TASK_TYPE_MAP_UPLOAD, mapUploadTaskHandler,
                 L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_INSTALL, builtinPluginInstallTaskHandler,
                 L4D2Constants.TASK_TYPE_BUILTIN_PLUGIN_BATCH_INSTALL, builtinPluginInstallTaskHandler,
-                L4D2Constants.TASK_TYPE_CLOUD_INSTALL, cloudInstallTaskHandler);
-        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}, builtin-plugin-install -> {}, cloud-install -> {}",
+                L4D2Constants.TASK_TYPE_CLOUD_INSTALL, cloudInstallTaskHandler,
+                L4D2Constants.TASK_TYPE_MAP_RECOGNIZE, mapRecognizeTaskHandler);
+        log.info("[L4D2] 任务处理器已注册: crawl -> {}, map-upload -> {}, builtin-plugin-install -> {}, cloud-install -> {}, map-recognize -> {}",
                 crawlTaskHandler.getClass().getSimpleName(), mapUploadTaskHandler.getClass().getSimpleName(),
                 builtinPluginInstallTaskHandler.getClass().getSimpleName(),
-                cloudInstallTaskHandler.getClass().getSimpleName());
+                cloudInstallTaskHandler.getClass().getSimpleName(),
+                mapRecognizeTaskHandler.getClass().getSimpleName());
     }
 
     @Override

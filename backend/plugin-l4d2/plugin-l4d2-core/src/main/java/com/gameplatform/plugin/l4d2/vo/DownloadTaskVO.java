@@ -144,6 +144,9 @@ public class DownloadTaskVO implements Serializable {
         }
     }
 
+    /** 主应用任务中心任务 ID（CLOUD 任务可据此查开图命令结果，ADR-0027） */
+    private String patchTaskId;
+
     /**
      * 实时计算格式化速度。
      */

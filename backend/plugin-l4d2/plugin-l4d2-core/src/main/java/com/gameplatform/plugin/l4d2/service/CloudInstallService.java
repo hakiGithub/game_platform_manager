@@ -83,6 +83,7 @@ public class CloudInstallService {
     private final DownloadService downloadService;
     private final L4D2PathResolver pathResolver;
     private final L4D2Config config;
+    private final MapRecognitionService mapRecognitionService;
 
     /** 任务取消/超时信号：中断整个安装流程（不再转兜底通道） */
     static class CancelledSignal extends RuntimeException {
@@ -122,6 +123,12 @@ public class CloudInstallService {
             payload.put("passcode", dto.getPasscode());
         }
         payload.put("cloudPath", cloudPath);
+        if (!isBlank(dto.getSource())) {
+            payload.put("source", dto.getSource());
+        }
+        if (!isBlank(dto.getSourceId())) {
+            payload.put("sourceId", dto.getSourceId());
+        }
         if (!isBlank(dto.getTitle())) {
             payload.put("title", dto.getTitle());
         }
@@ -169,6 +176,7 @@ public class CloudInstallService {
         String shareUrl = payload.getString("shareUrl");
         String passcode = payload.getString("passcode");
         String cloudPath = payload.getString("cloudPath");
+        String sourceId = payload.getString("sourceId");
 
         RecordUpdater updater = new RecordUpdater(downloadTaskId);
         List<String> installed = new ArrayList<>();
@@ -239,14 +247,25 @@ public class CloudInstallService {
                 i++;
             }
 
-            // ===== 完成（95-100%） =====
+            // ===== 识别（95-100%，ADR-0027 决策 4①：失败不连坐安装成功态） =====
             updater.complete(installed);
+            List<String> launchCommands = new ArrayList<>();
+            if (!installed.isEmpty()) {
+                context.reportProgress(95, "安装完成，识别地图（" + installed.size() + " 个 vpk）");
+                try {
+                    launchCommands = mapRecognitionService.recognizeAfterInstall(instanceId, installed,
+                            sourceId, message -> context.log(message));
+                } catch (Exception e) {
+                    context.log("WARN", "地图识别失败（不影响安装，可在地图列表重试）: " + e.getMessage());
+                }
+            }
             context.reportProgress(100, "云盘安装完成，共 " + installed.size() + " 个 vpk");
             Map<String, Object> data = new HashMap<>();
             data.put("installed", installed);
             data.put("transferMode", transferMode);
             data.put("transferred", transferred);
             data.put("cloudPath", cloudPath);
+            data.put("launchCommands", launchCommands);
             return data;
         } catch (CancelledSignal cs) {
             updater.cancelled(cs.getMessage());

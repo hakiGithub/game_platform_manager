@@ -131,10 +131,22 @@
                 </el-descriptions-item>
               </el-descriptions>
 
-              <!-- 地图命令 -->
+              <!-- 地图命令（含开图入口，ADR-0027） -->
               <div v-if="row.mapCommands && row.mapCommands.length" class="expand-section">
                 <h4 class="section-title">地图命令</h4>
-                <pre class="command-block"><code>{{ row.mapCommands.join('\n') }}</code></pre>
+                <div class="command-line-list">
+                  <div v-for="cmd in row.mapCommands" :key="cmd" class="command-row">
+                    <code class="command-text">{{ cmd }}</code>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      link
+                      @click="openLaunchDialog(cmd, row)"
+                    >
+                      开图
+                    </el-button>
+                  </div>
+                </div>
               </div>
 
               <!-- 下载链接 -->
@@ -414,6 +426,46 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 开图对话框（ADR-0027）：选择实例后经 RCON 执行开图命令 -->
+    <el-dialog v-model="launchVisible" title="开图" width="480px">
+      <el-descriptions :column="1" border size="small" style="margin-bottom: 12px">
+        <el-descriptions-item label="地图">{{ launchForm.title }}</el-descriptions-item>
+        <el-descriptions-item label="命令">
+          <code>{{ launchForm.command }}</code>
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-form label-width="90px">
+        <el-form-item label="目标实例" required>
+          <el-select
+            v-model="launchForm.instanceId"
+            placeholder="选择要开图的实例"
+            style="width: 100%"
+            :loading="installInstancesLoading"
+            filterable
+          >
+            <el-option
+              v-for="i in installInstances"
+              :key="i.id"
+              :value="i.id"
+              :label="i.instanceName + (i.runStatusDesc ? '（' + i.runStatusDesc + '）' : '')"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="开图会立即切换服务器当前地图，中断在线玩家的当前对局"
+      />
+      <template #footer>
+        <el-button @click="launchVisible = false">取消</el-button>
+        <el-button type="primary" :loading="launching" :disabled="!launchForm.instanceId" @click="submitLaunch">
+          执行开图
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -426,7 +478,7 @@ import {
   triggerCrawl,
   getCrawlStatus,
 } from '@/api/mapCenter'
-import { downloadApi, cloudAccountApi, mainInstanceApi, type CloudAccountVO, type MainInstanceVO } from '@/api'
+import { downloadApi, cloudAccountApi, mainInstanceApi, rconApi, type CloudAccountVO, type MainInstanceVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import type {
   MapCenterQuery,
@@ -593,6 +645,39 @@ async function submitCloudInstall() {
     ElMessage.error('创建任务失败：' + (e?.message || e))
   } finally {
     cloudInstalling.value = false
+  }
+}
+
+// ===== 开图（ADR-0027） =====
+const launchVisible = ref(false)
+const launching = ref(false)
+const launchForm = ref<{ command: string; title: string; instanceId: number | null }>({
+  command: '',
+  title: '',
+  instanceId: null,
+})
+
+function openLaunchDialog(command: string, map: MapCenterVO) {
+  launchForm.value = {
+    command,
+    title: map.titleCn || map.titleEn || command,
+    instanceId: instanceId.value ?? null,
+  }
+  launchVisible.value = true
+}
+
+async function submitLaunch() {
+  if (!launchForm.value.instanceId || !launchForm.value.command) return
+  const mapCode = launchForm.value.command.trim().replace(/^map\s+/i, '')
+  launching.value = true
+  try {
+    await rconApi.changeMap(launchForm.value.instanceId, mapCode)
+    ElMessage.success(`开图命令已发送到实例 ${launchForm.value.instanceId}`)
+    launchVisible.value = false
+  } catch (e: any) {
+    ElMessage.error('开图失败：' + (e?.message || e))
+  } finally {
+    launching.value = false
   }
 }
 
@@ -991,6 +1076,24 @@ onBeforeUnmount(() => {
       font-weight: 600;
       color: var(--platform-text-primary);
     }
+  }
+
+  .command-line-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .command-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .command-text {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--platform-cyan, #4dd0e1);
   }
 
   .command-block {
