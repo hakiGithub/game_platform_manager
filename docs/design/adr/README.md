@@ -35,6 +35,7 @@
 | [0024](0024-cloud-drive-host-capability.md) | 云盘能力上提为主应用宿主服务（clp-sdk 嵌入 + ExtensionClient 宿主化） | Accepted | 2026-09-15 |
 | [0025](0025-l4d2-cloud-map-install.md) | L4D2 地图中心云盘转存安装（主机直连优先、平台中转兜底） | Accepted | 2026-09-15 |
 | [0026](0026-host-tooling-container.md) | 工具容器宿主能力（platform-tools 临时容器通用化 + HostToolingService） | Accepted | 2026-09-15 |
+| [0027](0027-l4d2-map-recognition-launch-commands.md) | L4D2 地图识别与开图命令（analyzeVpk 语义方法 + 摘要键控共享识别 + 开图命令流） | Accepted | 2026-09-15 |
 
 ## 术语表
 
