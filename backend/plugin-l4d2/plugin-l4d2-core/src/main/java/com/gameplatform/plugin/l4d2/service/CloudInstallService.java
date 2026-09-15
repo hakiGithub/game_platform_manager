@@ -221,7 +221,9 @@ public class CloudInstallService {
             for (CloudDriveService.CloudFileInfo item : products) {
                 int base = 45 + (95 - 45) * i / total;
                 int slice = 45 + (95 - 45) * (i + 1) / total;
-                if (preferDirect) {
+                String lower = item.name().toLowerCase(Locale.ROOT);
+                // DIRECT 仅覆盖 vpk/zip（PatchInstall 无 rar 格式），rar 一律 RELAY 解压
+                if (preferDirect && !lower.endsWith(".rar")) {
                     DirectOutcome outcome = installDirect(context, accountName, instanceId, item, base, slice, updater);
                     if (outcome.fallbackToRelay()) {
                         preferDirect = false;
@@ -231,7 +233,7 @@ public class CloudInstallService {
                         installed.addAll(outcome.installed());
                     }
                 }
-                if (!preferDirect) {
+                if (!preferDirect || lower.endsWith(".rar")) {
                     installed.addAll(installRelay(context, accountName, instanceId, item, base, slice, updater));
                 }
                 i++;
@@ -315,16 +317,18 @@ public class CloudInstallService {
         return DirectOutcome.fallback();
     }
 
-    /** RELAY 通道：平台流式下载 → VPK/zip 处理 → uploadLocalFile（覆盖语义）；返回安装文件清单 */
+    /** RELAY 通道：平台流式下载 → VPK/压缩包处理 → uploadLocalFile（覆盖语义）；返回安装文件清单 */
     private List<String> installRelay(TaskContext context, String accountName, Long instanceId,
                                       CloudDriveService.CloudFileInfo item, int base, int slice,
                                       RecordUpdater updater) {
         String name = item.name();
-        boolean isZip = name.toLowerCase(Locale.ROOT).endsWith(".zip");
+        String lower = name.toLowerCase(Locale.ROOT);
+        boolean isArchive = lower.endsWith(".zip") || lower.endsWith(".rar");
         Path tempFile = null;
         try {
             context.reportProgress(base, "平台中转下载 " + name + "（" + humanSize(item.size()) + "）");
-            tempFile = Files.createTempFile("l4d2_cloud_", isZip ? ".zip" : ".vpk");
+            tempFile = Files.createTempFile("l4d2_cloud_",
+                    lower.endsWith(".zip") ? ".zip" : lower.endsWith(".rar") ? ".rar" : ".vpk");
             long bytes = cloudDriveService.download(accountName, item.path(),
                     new ProgressOutputStream(new FileOutputStream(tempFile.toFile()), item.size(),
                             pct -> context.reportProgress(base + (slice - base) * 2 / 3 * pct / 100,
@@ -333,7 +337,7 @@ public class CloudInstallService {
             context.log("下载完成 " + name + "，" + bytes + " 字节，推送到实例");
 
             List<String> uploaded = new ArrayList<>();
-            if (isZip) {
+            if (isArchive) {
                 Path extractDir = Files.createTempDirectory("l4d2_cloud_extract_");
                 List<File> vpks = ArchiveExtractUtil.extractVpks(tempFile.toFile(), name,
                         extractDir.toFile(), config.getArchive().getMaxExtractBytes(),
@@ -380,14 +384,14 @@ public class CloudInstallService {
 
     // ===== 工具 =====
 
-    /** 转存产物筛选：目录下 .vpk（直装）与 .zip（解压取 vpk）；目录不存在视为无产物 */
+    /** 转存产物筛选：目录下 .vpk（直装）与 .zip/.rar（RELAY 解压取 vpk）；目录不存在视为无产物 */
     private List<CloudDriveService.CloudFileInfo> listProducts(String accountName, String cloudPath) {
         try {
             return cloudDriveService.list(accountName, cloudPath, true).stream()
                     .filter(f -> !f.directory())
                     .filter(f -> {
                         String n = f.name().toLowerCase(Locale.ROOT);
-                        return n.endsWith(".vpk") || n.endsWith(".zip");
+                        return n.endsWith(".vpk") || n.endsWith(".zip") || n.endsWith(".rar");
                     })
                     .toList();
         } catch (Exception e) {
