@@ -207,3 +207,25 @@ CI 门禁自动执行的无主机 E2E 子集：登录认证、路由守卫、全
 
 ### 牺牲主机（Sacrificial Test Host）
 专供自动化折腾的测试 Linux 主机，授权全权限：部署、启停、备份还原、删除实例均可真实执行，测完自动清理。与开发/生产主机严格隔离，凭据经环境变量注入测试进程。
+
+---
+
+## 云盘能力领域（ADR-0024）
+
+### 云盘传输层（Cloud Drive Transport Layer）
+主应用嵌入 clp-sdk 提供的通用网盘能力：多 Provider（baidu/quark/aliyun/cloud189/xunlei/openlist）凭证执行、列目录、直链解析（url 与 headers 连带）、流式下载、同步转存。只认"凭证 + 路径 + 操作"，不理解任何游戏/地图语义。语义层（哪些地图、转存到哪、下载到主机何处）归插件。
+
+### 云盘账号（Cloud Account）
+平台级网盘凭证资产：providerType + 加密凭证（Cookie/token），落既有 `extensions` 共享表（`group="platform"`、`kind="cloud_account"`），管理员经主前端"云盘账号"页（`/system/accounts`）管理。凭证任何接口不回显明文。
+
+### 宿主保留命名空间（Host Namespace `platform`）
+core 以保留 pluginId `"platform"` 使用 ExtensionClient；插件绑定的 pluginId 与之互斥，按 group_name 过滤双向隔离。真实插件不得取该 ID。
+
+### 默认挂载点（Default Mount）
+账号的隐式挂载规则 `/{providerType}/{accountName}/`，由宿主派生，不做独立挂载管理；调用方以账号 name + 相对路径寻址。
+
+### 同步转存（Synchronous Transfer）
+`transfer(account, shareUrl, targetPath, timeout)` 阻塞契约：完成返回目标路径，超时尽力取消底层 Job（不留"调用方以为失败、网盘侧却成功"的脏状态）。任务状态机/重试/进度归业务方（插件 TaskHandler），SDK 异步 TransferJob 体系不使用。
+
+### clp-sdk
+本地姊妹项目 cloud_list_platform 的进程内 SDK（`com.haki.clouddrive:clp-sdk`），零 Spring、OkHttp/Jackson。索引/搜索/订阅能力被本平台明确排除（会引入索引表）。

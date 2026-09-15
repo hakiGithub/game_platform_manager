@@ -87,7 +87,13 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/ws/**"
                         ).permitAll()
-                        
+
+                        // 云盘账号管理（ADR-0024）：凭证类敏感资产，仅管理员
+                        // （context-path=/api 已剥离；内置 admin 用户持有 ROLE_ADMIN，见 UserDetailsServiceImpl）
+                        .requestMatchers(
+                                "/cloud/**"
+                        ).hasRole("ADMIN")
+
                         // 其他所有请求都需要认证
                         .anyRequest().authenticated()
                 )

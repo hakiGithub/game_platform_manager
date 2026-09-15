@@ -195,6 +195,12 @@ const routes = [
             name: 'SystemSettings',
             component: () => import('@/views/system/settings.vue'),
             meta: { title: '系统配置', navPath: '/system/configuration', requiresAuth: true }
+          },
+          {
+            path: 'accounts',
+            name: 'CloudAccounts',
+            component: () => import('@/views/system/accounts.vue'),
+            meta: { title: '云盘账号', navPath: '/system/accounts', requiresAuth: true }
           }
         ]
       },

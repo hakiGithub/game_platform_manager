@@ -148,7 +148,11 @@ public class PluginSpringContextFactory {
         // 注入 RconService（ADR-0016）：绑定 pluginId 的 RCON 宿主能力（审计调用方标识）
         RconService rconService = rconServiceFactory.forPlugin(pluginId);
         childContext.getBeanFactory().registerSingleton("rconService", rconService);
-        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService, RconService");
+        // 注入 CloudDriveService（ADR-0024）：绑定 pluginId 的云盘宿主能力（审计调用方标识）
+        com.gameplatform.plugin.service.CloudDriveService cloudDriveService =
+                mainContext.getBean(com.gameplatform.clouddrive.CloudDriveServiceFactory.class).forPlugin(pluginId);
+        childContext.getBeanFactory().registerSingleton("cloudDriveService", cloudDriveService);
+        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService, RconService, CloudDriveService");
 
         // 5. 扫描插件包路径
         childContext.scan(basePackage);

@@ -71,6 +71,7 @@ plugin:
 - **禁止**：`{gameCode}_*` 前缀的表（如 `l4d2_system_metric`）
 - **允许**：主应用核心表（`host`、`game_instance`、`task_record` 等）和插件框架表（`extension_resource`、`plugin_extension` 等框架基础设施）
 - **插件表来源**：ExtensionClient 自动管理的 `ext_plugin_{pluginId}_{resource}` 表（通过 `DdlTemplate` 动态建表）
+- **例外（ADR-0024）**：主应用可经宿主保留命名空间 `platform` 使用 ExtensionClient（SHARED 策略落全局 `extensions` 共享表，如云盘账号）；这不属于插件表，插件侧按 group 隔离不可见
 
 ### 规约 3：代码依赖隔离
 

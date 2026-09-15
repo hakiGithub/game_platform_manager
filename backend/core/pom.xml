@@ -193,6 +193,34 @@
             <version>1.17.2</version>
         </dependency>
 
+        <!-- 云盘宿主能力（ADR-0024）：clp-sdk 随源码分发，前置安装
+             cd cloud_list_platform && mvn -pl clp-sdk -am install -->
+        <dependency>
+            <groupId>com.haki.clouddrive</groupId>
+            <artifactId>clp-sdk</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.haki.clouddrive</groupId>
+            <artifactId>clp-provider-aliyun</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.haki.clouddrive</groupId>
+            <artifactId>clp-provider-cloud189</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.haki.clouddrive</groupId>
+            <artifactId>clp-provider-xunlei</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.haki.clouddrive</groupId>
+            <artifactId>clp-provider-openlist</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

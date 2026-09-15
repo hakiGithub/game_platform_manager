@@ -151,7 +151,17 @@ game-platform:
     default-port: 22
     # 会话超时时间(毫秒)
     session-timeout: 300000
-  
+
+  # 云盘宿主能力（ADR-0024）
+  cloud-drive:
+    # SDK 数据目录（账号/挂载/作业记录的引擎态落盘）
+    data-dir: ./data/cloud-drive
+    # 凭证加密主密钥（任意口令，SDK 内 SHA-256 派生）。密钥丢失 = SDK 数据目录内凭证
+    # 不可解密，需逐账号重贴凭证；扩展表侧凭证仍可正常解密，重贴即恢复
+    master-key: 1f6a63cf448386bf72f34fbfe880817a40829df399e4d29c
+    # 同步转存默认超时（毫秒，默认 10 分钟）
+    transfer-timeout-millis: 600000
+
   # Docker配置
   docker:
     # Docker Host

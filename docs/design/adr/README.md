@@ -32,6 +32,7 @@
 | [0021](0021-host-environment-tool-install.md) | 主机环境工具安装——白名单 + 发行版自适应 + 同步执行 | Accepted | 2026-09-07 |
 | [0022](0022-l4d2-plugin-market-unification.md) | L4D2 插件市场统一——三 Tab 页面化，取消弹窗与独立商店菜单 | Accepted | 2026-09-11 |
 | [0023](0023-container-adoption.md) | Docker 容器手动认领为游戏实例（Container Adoption） | Accepted | 2026-09-11 |
+| [0024](0024-cloud-drive-host-capability.md) | 云盘能力上提为主应用宿主服务（clp-sdk 嵌入 + ExtensionClient 宿主化） | Accepted | 2026-09-15 |
 
 ## 术语表
 

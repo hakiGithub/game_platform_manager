@@ -39,11 +39,17 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         }
 
         // 构建 UserDetails 对象
-        // 默认赋予 ROLE_USER 权限，后续可扩展为从数据库读取用户角色
+        // 默认赋予 ROLE_USER 权限；内置管理员 admin 额外授予 ROLE_ADMIN
+        // （云盘账号等敏感资产接口按 ROLE_ADMIN 收紧，见 SecurityConfig；完整 RBAC 待扩展）
+        java.util.List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+        if ("admin".equals(user.getUsername())) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getUsername())
                 .password(user.getPasswordHash())
-                .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")))
+                .authorities(authorities)
                 .accountExpired(false)
                 .accountLocked(false)
                 .credentialsExpired(false)

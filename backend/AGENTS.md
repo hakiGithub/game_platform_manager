@@ -1098,6 +1098,11 @@ class InstanceServiceTest extends BaseTest {
 ## 常用命令
 
 ```bash
+# 前置（一次性/上游变更后）：云盘宿主能力依赖 clp-sdk（ADR-0024），本地仓库无则编译失败
+cd ../cloud_list_platform 2>/dev/null || cd D:/program/ai/cloud_list_platform
+mvn -pl clp-sdk -am install -DskipTests
+cd - # 回到 backend
+
 # 编译
 mvn clean compile
 
