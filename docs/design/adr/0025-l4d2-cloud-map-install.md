@@ -31,6 +31,8 @@ L4D2 地图中心需要"一键转存后下载"：把网盘分享链接（夸克/
 - 网盘 Cookie 可能短暂存在于远程主机临时文件（0600、用完删），不再出现在命令行。
 - DownloadTaskSpec 增加 `accountName`/`cloudPath`/`transferMode(DIRECT|RELAY)` 字段。
 - RAR/7z 压缩包在中转路径由插件解（现有 extractVpks），直连路径交 PatchInstall 格式能力。
+- **2026-09-15 增补（工具容器通用化）**：PatchFormat 增补 RAR/7Z，直连路径覆盖全部压缩包格式（主机无原生工具时由 `platform-tools` 容器解压，`--rm` 即销毁）；`PatchInstallRequest.includePattern` 支持"只落 .vpk"语义（容器内两段 find：先列清单供 backup 预判、再平铺落位）；ADR-0006 决策 2/6 同步修订。插件自带的 Java 侧解压（sevenzipjbinding）保留为 RELAY 场景（主机无 Docker）兜底。
+- **2026-09-15 增补（宿主能力通用化）**：工具容器机制对插件以语义化 SDK 能力暴露（`HostToolingService.extractArchive(hostId, remoteArchive, destDir, includePattern)`），不暴露裸容器执行权；其他插件的同类需求按语义方法逐个扩展并过 ADR。见 ADR-0026。
 
 ## Alternatives
 

@@ -20,7 +20,7 @@
 
 ### 决策 2：请求形状
 
-`PatchInstallRequest`：`instanceId`、`url`、`targetPath`（safeRel 相对路径，相对实例安装路径/容器工作目录，复用现有路径安全校验与路由）、`format`（可选，缺省按 URL 扩展名推断）、`sha256`（可选校验）。`probeHost(hostId)` 作为独立接口暴露，供 UI 安装前预检主机能力。
+`PatchInstallRequest`：`instanceId`、`url`、`targetPath`（safeRel 相对路径，相对实例安装路径/容器工作目录，复用现有路径安全校验与路由）、`format`（可选，缺省按 URL 扩展名推断）、`sha256`（可选校验）、`headers`（可选 HTTP 请求头，仅远程下载路径生效，见 [ADR-0025](0025-l4d2-cloud-map-install.md)）、`includePattern`（可选，逗号分隔 glob 列表，大小写不敏感——仅解压匹配文件落 targetPath，供地图等"压缩包里只取 .vpk"场景；提供时先容器内 find 列产物清单做 backup 预判，空清单报错；不提供保持全量解压语义）。`probeHost(hostId)` 作为独立接口暴露，供 UI 安装前预检主机能力。
 
 ### 决策 3：能力探测只在宿主机执行
 
@@ -47,7 +47,7 @@ ADR-0004 未来工作中的「容器内 curl/wget 自治（docker exec）」分�
 
 ### 决策 6：格式全集
 
-按扩展名判定：tar.gz/tgz、tar.bz2/tbz2、tar.xz/txz、zip、gz/bz2/xz（单文件压缩）。「补丁包尽量统一 tar.gz」作为补丁源规范建议，不强制平台重打包（避免每个补丁多一次全量解压+重压缩）。
+按扩展名判定：tar.gz/tgz、tar.bz2/tbz2、tar.xz/txz、zip、gz/bz2/xz（单文件压缩）、**rar、7z**（ADR-0025 增补，云盘地图包常见 rar/7z：目标主机无原生工具时由 `platform-tools` 工具容器解压——镜像预装 unrar/p7zip/bsdtar，`docker run --rm` 用完即销毁；rar 用 `unrar x`、7z 用 `7z x`、其余 bsdtar）。「补丁包尽量统一 tar.gz」作为补丁源规范建议，不强制平台重打包（避免每个补丁多一次全量解压+重压缩）。
 
 ### 决策 7：校验、备份、回滚
 

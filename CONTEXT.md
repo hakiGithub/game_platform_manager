@@ -248,3 +248,9 @@ L4D2 地图中心的一键流程：分享链接 → 转存到平台云盘账号 
 
 ### 转存目录约定（Transfer Layout）
 账号挂载点内 `/maps/{source}-{sourceId}`（裸链接 `share-{hash8}`）。重复转存由 SDK Diff 引擎去重；"是否已转存"以 list 探测为准，MapResource 不回写状态。
+
+### 工具容器宿主能力（ADR-0026）
+platform-tools 镜像（unrar/p7zip/bsdtar 预装）+ `docker run --rm` 临时容器 = 主机侧通用解压机制。对插件以语义化能力 `HostToolingService.extractArchive(hostId, archive, dest, includePattern)` 暴露，不开放裸容器执行权；解压完成容器即销毁，宿主机不残留中间产物。includePattern 为逗号分隔 glob（大小写不敏感），空产物报错。
+
+### 产物筛选（includePattern）
+压缩包安装时"只落匹配文件"的语义（如地图包只取 *.vpk）：先列清单供备份预判，再平铺落位目标目录；与 RELAY 侧 extractVpks 的只提 vpk 语义对齐。
