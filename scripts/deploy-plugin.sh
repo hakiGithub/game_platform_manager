@@ -119,6 +119,16 @@ log "覆盖 plugins/${JAR_NAME}..."
 cp "${JAR_SRC}" "${BACKEND_DIR}/plugins/${JAR_NAME}" \
   || { echo "错误: 覆盖 JAR 失败（文件被占用？确认插件已卸载）"; exit 1; }
 
+# 清理同插件其他命名的 jar（如 SNAPSHOT 与标准名并存会导致 PF4J 重复加载只认旧包）
+plugin_stem="${JAR_NAME%%.jar}"
+for other in "${BACKEND_DIR}/plugins/${plugin_stem}"*.jar; do
+  [[ -f "${other}" ]] || continue
+  other_name="$(basename "${other}")"
+  [[ "${other_name}" == "${JAR_NAME}" ]] && continue
+  rm -f "${other}"
+  log "已清理重复插件包: ${other_name}"
+done
+
 log "加载并启动插件..."
 LOAD_RESULT="$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/pf4j/plugins/load?jarName=${JAR_NAME}" "${AUTH[@]}")"
 echo "${LOAD_RESULT}" | python -c "import sys,json;d=json.load(sys.stdin);exit(0 if d.get('code')==200 else (print('错误: '+d.get('message','加载失败')),1)[1])" \

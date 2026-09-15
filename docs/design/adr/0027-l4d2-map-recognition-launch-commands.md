@@ -12,7 +12,7 @@
 
 ## Decision
 
-1. **HostToolingService 新增语义方法 `analyzeVpk`**：`analyzeVpk(hostId, remoteVpkPath) → {title, chapters:[{code, title?, modes?}]}`（结构对齐现有 `MissionInfoVO`，复用前端展示组件）。实现：`platform-tools` 镜像增补 VPK 分析脚本，`docker run --rm` 临时容器只读挂载文件执行；主机无 Docker 时回退平台侧解析（现有 `VpkParserService`，文件拉回平台，慢但可用）。脚本实现与依赖归主应用维护。
+1. **HostToolingService 新增语义方法**：`analyzeVpk(instanceId, relativeVpkPath)` 与 `fileDigest(instanceId, relativePath)`——按**实例相对路径**寻址（与 InstanceFileService 同语义，插件无需感知主机/容器拓扑），返回 `{digest, title, chapters:[{code, title?, modes?}]}`（结构对齐现有 `MissionInfoVO`，复用前端展示组件）。实现路由：Native 实例直取 `installPath/<rel>`；Docker 实例 `docker cp` 物化到主机临时目录（通用适配卷/绑定挂载拓扑），分析后清理。分析通道：主机原生 python3 优先，缺失时 platform-tools 工具容器（镜像需含 python3）；两路皆缺时抛错。分析脚本由平台维护（classpath `tooling/vpk_analyze.py`）并调用时分发。
 
 2. **识别结果摘要键控、插件级共享**：识别记录表（插件 ext 表，如 `ext_plugin_l4d2_map_recognition`）以 **VPK sha-256 摘要**为主键，字段含 title / chapters / status（`OK | FAILED | INVALID`）/ analyzedAt / errorMessage / launchCommands。同一文件全平台只识别一次，跨实例复用；覆盖安装内容变化产生新摘要、自然失效旧记录；不校验重复、不清理孤儿记录（个人规模）。
 
