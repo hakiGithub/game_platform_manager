@@ -26,9 +26,10 @@
         <el-table-column prop="credentialHint" label="凭证" width="110" />
         <el-table-column prop="mountPath" label="挂载点" min-width="160" show-overflow-tooltip />
         <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleVerify(row)" :loading="row._verifying">探活</el-button>
+            <el-button size="small" @click="openRootDir(row)">起始目录</el-button>
             <el-button size="small" @click="openCredential(row)">重贴凭证</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -69,10 +70,10 @@
       </template>
     </el-dialog>
 
-    <!-- 重贴凭证 -->
+    <!-- 重贴凭证（仅凭证类字段；起始目录等其他字段由后端保留原值） -->
     <el-dialog v-model="credentialVisible" title="重贴凭证" width="560px">
       <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px"
-                :title="`账号 ${credentialTarget?.name}（${credentialTarget?.providerType}）凭证过期后在此重新粘贴`" />
+                :title="`账号 ${credentialTarget?.name}（${credentialTarget?.providerType}）凭证过期后在此重新粘贴，起始目录保持不变`" />
       <el-form label-width="90px">
         <el-form-item v-for="f in credentialFields" :key="f.name" :label="f.label" :required="f.required">
           <el-input v-model="credentialForm[f.name]" :type="f.secret ? 'password' : 'text'"
@@ -82,6 +83,25 @@
       <template #footer>
         <el-button @click="credentialVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="handleCredential">保存并验证</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 起始目录（懒加载目录树，ADR-0024 增补） -->
+    <el-dialog v-model="rootDirVisible" title="选择起始目录" width="560px">
+      <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 12px"
+                title="切换后路径命名空间随之变化，该账号已转存的产物需按新目录重新寻址/转存" />
+      <el-form label-width="90px">
+        <el-form-item label="目录">
+          <el-cascader v-model="rootDirSelection" :props="rootDirProps" style="width: 100%"
+                       placeholder="逐级选择，可选任意层级" clearable />
+        </el-form-item>
+        <el-form-item label="当前值">
+          <el-input v-model="rootDirValue" placeholder="（选择目录后自动回填，也可手输）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rootDirVisible = false">取消</el-button>
+        <el-button type="primary" :loading="rootDirSubmitting" @click="handleApplyRootDir">应用</el-button>
       </template>
     </el-dialog>
   </div>
@@ -97,6 +117,8 @@ import {
   deleteCloudAccount,
   verifyCloudAccount,
   listCloudProviders,
+  listAccountFolders,
+  setAccountRootDir,
 } from "@/api/cloud";
 
 const loading = ref(false);
@@ -120,8 +142,70 @@ const currentFields = computed(
   () => providers.value.find((p) => p.type === createForm.providerType)?.fields || []
 );
 const credentialFields = computed(
-  () => providers.value.find((p) => p.type === credentialTarget.value?.providerType)?.fields || []
+  () => (providers.value.find((p) => p.type === credentialTarget.value?.providerType)?.fields || [])
+    .filter((f) => f.secret)
 );
+
+// ===== 起始目录（懒加载级联，ADR-0024 增补） =====
+const rootDirVisible = ref(false);
+const rootDirSubmitting = ref(false);
+const rootDirTarget = ref(null);
+const rootDirSelection = ref([]);
+const rootDirValue = ref("");
+const rootDirIdBased = ref(false);
+
+const rootDirProps = {
+  lazy: true,
+  checkStrictly: true,
+  lazyLoad: async (node, resolve) => {
+    try {
+      const path = node.level === 0 ? "/" : node.data.path;
+      const res = await listAccountFolders(rootDirTarget.value?.name, path);
+      rootDirIdBased.value = !!res.idBased;
+      const items = (res.folders || []).map((f) => ({
+        value: f.value,
+        label: f.name,
+        path: f.path,
+        leaf: false,
+      }));
+      if (node.level === 0) {
+        // 根节点自身可选（整盘）：idBased → -11，路径语义 → /
+        items.unshift({ value: rootDirIdBased.value ? "-11" : "/", label: "（根目录/整盘）", path: "/", leaf: true });
+      }
+      resolve(items);
+    } catch (e) {
+      ElMessage.error("目录浏览失败（凭证可能失效）：" + (e.message || e));
+      resolve([]);
+    }
+  },
+};
+
+function openRootDir(row) {
+  rootDirTarget.value = row;
+  rootDirSelection.value = [];
+  rootDirValue.value = "";
+  rootDirVisible.value = true;
+}
+
+async function handleApplyRootDir() {
+  const sel = rootDirSelection.value;
+  const finalValue = Array.isArray(sel) ? sel[sel.length - 1] : (sel || rootDirValue.value);
+  if (!finalValue || !String(finalValue).trim()) {
+    ElMessage.warning("请选择目录或手输起始目录值");
+    return;
+  }
+  rootDirSubmitting.value = true;
+  try {
+    await setAccountRootDir(rootDirTarget.value.name, String(finalValue).trim());
+    ElMessage.success("起始目录已应用，默认挂载已重建");
+    rootDirVisible.value = false;
+    await load();
+  } catch (e) {
+    ElMessage.error(e.message || "应用失败");
+  } finally {
+    rootDirSubmitting.value = false;
+  }
+}
 
 async function load() {
   loading.value = true;

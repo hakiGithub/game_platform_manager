@@ -47,3 +47,13 @@ export function getCloudQuota(name) {
 export function listCloudProviders() {
   return request({ url: '/cloud/providers', method: 'get' })
 }
+
+/** 浏览账号目录（起始目录下拉用；value 已按 provider 语义解析） */
+export function listAccountFolders(name, path = '/') {
+  return request({ url: `/cloud/accounts/${name}/folders`, method: 'get', params: { path } })
+}
+
+/** 应用起始目录（更新 settings 并重建默认挂载） */
+export function setAccountRootDir(name, value) {
+  return request({ url: `/cloud/accounts/${name}/root-dir`, method: 'post', data: { value } })
+}

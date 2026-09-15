@@ -29,6 +29,13 @@ L4D2 地图中心需要"一键转存后下载"能力：从网盘分享链接（�
 
 6. **构建前置**：clp-sdk 0.1.0 未发布公共仓库，构建前需 `cd cloud_list_platform && mvn -pl clp-sdk -am install`；该步骤写入构建脚本说明。
 
+## 增补（2026-09-15）：起始目录下拉选择
+
+- **两段式交互**：SDK 目录浏览要求账号已存在（浏览即探活），新增账号时起始目录手填（默认整盘）；保存后在账号列表对该账号点「起始目录」→ 级联懒加载浏览（el-cascader + checkStrictly，任意层级可选，失败降级手输）→ 选中即生效。
+- **取值语义由服务端决定**：新增 `GET /api/cloud/accounts/{name}/folders`（管理员），返回目录项带 `value`——rootPath 类 provider（quark/baidu/uc）= 路径，rootFolderId 类（cloud189/aliyun/xunlei）= 文件夹 ID（clp-web 同类端点丢 id 导致路径/ID 错位，不复刻）。root 字段按 provider schema 字段名识别（`rootPath`/`rootFolderId`）。
+- **应用语义**：`POST /api/cloud/accounts/{name}/root-dir` = 更新 settings root 字段 + 重建默认挂载（rootPath=选中值）。路径命名空间随之切换，已转存产物需重新寻址——前端弹明确警告。
+- **ID 兼容**：clp `createMount` 会把 rootPath 规范化加前导斜杠（"-13"→"/-13"），cloud189 client 对斜杠+纯数字串剥斜杠还原真实 ID（上游同日修复）。
+
 ## Consequences
 
 - 主应用新增 OkHttp 依赖，Jackson 版本需与 clp-sdk 对齐；全 provider 依赖进入 core（parentFirst classloader），插件无需重复打包。

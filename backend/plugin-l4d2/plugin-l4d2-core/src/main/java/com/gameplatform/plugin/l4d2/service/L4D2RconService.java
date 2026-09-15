@@ -33,8 +33,9 @@ public class L4D2RconService {
     private static final Pattern USER_PATTERN = Pattern.compile(
             "^#\\s*(\\d+)\\s+(\\d+)\\s+\"([^\"]+)\"\\s+([A-Z_:0-9]+)\\s+(\\d+(?::\\d+)+)\\s+(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\d+)\\s+([0-9.]+:\\d+)"
     );
-    private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*=\\s*\"([^\"]+)\"");
+    // 兼容两种输出：引擎裸查 `"cvar" = "value"`；sm_cvar 查询 `[SM] Value of cvar "cvar": "value"`
+    private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*[=:]\\s*\"([^\"]+)\"");
+    private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*[=:]\\s*\"([^\"]+)\"");
 
     // 版本/系统/类型解析
     private static final Pattern VERSION_PATTERN = Pattern.compile("version\\s*:\\s*(\\S+)");

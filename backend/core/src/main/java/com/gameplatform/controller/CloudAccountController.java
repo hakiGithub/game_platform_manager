@@ -102,6 +102,20 @@ public class CloudAccountController {
         return Result.success(accountService.quota(name));
     }
 
+    @Operation(summary = "浏览账号目录（起始目录下拉用）", description = "只返回目录；value 已按 provider 语义解析（rootPath=path / rootFolderId=文件夹ID），前端直接回填")
+    @GetMapping("/accounts/{name}/folders")
+    public Result<Map<String, Object>> folders(@PathVariable String name,
+                                               @RequestParam(defaultValue = "/") String path) {
+        return Result.success(accountService.listFolders(name, path));
+    }
+
+    @Operation(summary = "应用起始目录", description = "更新 settings 起始目录字段并重建默认挂载；路径命名空间随之切换，已转存产物需重新寻址")
+    @PostMapping("/accounts/{name}/root-dir")
+    public Result<Map<String, Object>> applyRootDir(@PathVariable String name,
+                                                    @Valid @RequestBody RootDirDTO dto) {
+        return Result.success(toVo(accountService.applyRootDir(name, dto.getValue().trim())));
+    }
+
     @Operation(summary = "可用 Provider 及凭证表单元数据（动态表单用）")
     @GetMapping("/providers")
     public Result<List<Map<String, Object>>> providers() {
@@ -158,5 +172,11 @@ public class CloudAccountController {
     public static class UpdateAccountDTO {
         private String displayName;
         private String remark;
+    }
+
+    @Data
+    public static class RootDirDTO {
+        @NotBlank(message = "起始目录值不能为空")
+        private String value;
     }
 }
