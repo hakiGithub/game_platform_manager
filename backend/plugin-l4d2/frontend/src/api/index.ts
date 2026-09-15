@@ -830,6 +830,22 @@ export const cloudAccountApi = {
   list: () => getMain<CloudAccountVO[]>('/cloud/accounts'),
 }
 
+/** 主应用实例列表项（GET /api/instances，转存安装选择目标实例用） */
+export interface MainInstanceVO {
+  id: number
+  instanceName: string
+  hostIp?: string
+  gameCode?: string
+  runStatus?: number
+  runStatusDesc?: string
+}
+
+/** 主应用实例查询（宿主接口，分页结构只取 records） */
+export const mainInstanceApi = {
+  list: (params: { gameCode?: string; current?: number; size?: number }) =>
+    getMain<{ records: MainInstanceVO[]; total: number }>('/instances', params),
+}
+
 // === Phase 5: 数据采集模块（玩家统计 + 游玩时长 + 监控重构） ===
 
 /**

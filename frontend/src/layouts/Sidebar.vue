@@ -75,6 +75,7 @@ const systemMenuItems = [
     title: "系统设置",
     children: [
       { index: "/system/configuration", title: "系统配置" },
+      { index: "/system/accounts", title: "云盘账号" },
     ],
   },
 ];

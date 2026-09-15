@@ -337,14 +337,53 @@
     </el-dialog>
 
     <!-- 云盘转存安装（ADR-0025） -->
-    <el-dialog v-model="cloudInstallVisible" title="转存并安装到当前实例" width="520px">
+    <el-dialog v-model="cloudInstallVisible" title="转存并安装到实例" width="520px">
       <el-descriptions :column="1" border size="small" style="margin-bottom: 12px">
         <el-descriptions-item label="地图">{{ cloudInstallForm.title || '-' }}</el-descriptions-item>
         <el-descriptions-item label="分享链接">{{ cloudInstallForm.shareUrl }}</el-descriptions-item>
+        <el-descriptions-item label="网盘渠道">
+          <el-tag size="small" :type="providerSupported ? 'success' : 'danger'">
+            {{ linkProvider?.label || '未识别（可能不支持转存）' }}
+          </el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="转存目录">/maps/{{ cloudInstallForm.dirKey }}</el-descriptions-item>
       </el-descriptions>
+      <el-alert
+        v-if="!providerSupported"
+        type="error"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+        title="未识别到链接对应的网盘类型"
+        description="该链接可能暂不支持转存安装，请改用其他网盘渠道的分享链接，或手动下载后从「地图管理」上传"
+      />
+      <el-alert
+        v-else-if="!cloudAccountsLoading && matchedAccounts.length === 0"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+        :title="`暂无「${linkProvider?.label}」对应的云盘账号`"
+        description="请到主前端「系统设置 → 云盘账号」添加对应网盘账号后重试"
+      />
       <el-form label-width="90px">
-        <el-form-item label="云盘账号" required>
+        <el-form-item label="目标实例" required>
+          <el-select
+            v-model="targetInstanceId"
+            placeholder="选择要安装到的实例"
+            style="width: 100%"
+            :loading="installInstancesLoading"
+            filterable
+          >
+            <el-option
+              v-for="i in installInstances"
+              :key="i.id"
+              :value="i.id"
+              :label="i.instanceName + (i.runStatusDesc ? '（' + i.runStatusDesc + '）' : '')"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="providerSupported" label="云盘账号" required>
           <el-select
             v-model="cloudInstallForm.accountName"
             placeholder="选择云盘账号"
@@ -352,10 +391,10 @@
             :loading="cloudAccountsLoading"
           >
             <el-option
-              v-for="a in cloudAccounts"
+              v-for="a in matchedAccounts"
               :key="a.name"
               :value="a.name"
-              :label="(a.displayName || a.name) + '（' + a.providerType + (a.status === 'HEALTHY' ? '' : '，' + a.status) + '）'"
+              :label="(a.displayName || a.name) + (a.status === 'HEALTHY' ? '' : '（' + a.status + '）')"
             />
           </el-select>
         </el-form-item>
@@ -365,7 +404,12 @@
       </el-form>
       <template #footer>
         <el-button @click="cloudInstallVisible = false">取消</el-button>
-        <el-button type="primary" :loading="cloudInstalling" @click="submitCloudInstall">
+        <el-button
+          type="primary"
+          :loading="cloudInstalling"
+          :disabled="!canSubmitCloudInstall"
+          @click="submitCloudInstall"
+        >
           转存并安装
         </el-button>
       </template>
@@ -382,7 +426,7 @@ import {
   triggerCrawl,
   getCrawlStatus,
 } from '@/api/mapCenter'
-import { downloadApi, cloudAccountApi, type CloudAccountVO } from '@/api'
+import { downloadApi, cloudAccountApi, mainInstanceApi, type CloudAccountVO, type MainInstanceVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import type {
   MapCenterQuery,
@@ -408,6 +452,80 @@ const cloudInstallForm = ref({
   dirKey: '',
 })
 
+/** 当前链接识别出的网盘渠道（null 表示未识别/不支持转存） */
+const linkProvider = ref<{ providerTypes: string[]; label: string } | null>(null)
+const providerSupported = computed(() => linkProvider.value != null)
+/** 只显示与链接网盘匹配的账号 */
+const matchedAccounts = computed(() => {
+  if (!linkProvider.value) return []
+  return cloudAccounts.value.filter((a) => linkProvider.value!.providerTypes.includes(a.providerType))
+})
+const canSubmitCloudInstall = computed(
+  () => providerSupported.value && !(matchedAccounts.value.length === 0 && !cloudAccountsLoading.value)
+)
+
+function autoSelectAccount() {
+  const matched = matchedAccounts.value
+  if (matched.length === 1) {
+    cloudInstallForm.value.accountName = matched[0].name
+  } else if (!matched.some((a) => a.name === cloudInstallForm.value.accountName)) {
+    cloudInstallForm.value.accountName = ''
+  }
+}
+
+// ===== 转存安装目标实例（对话框内选择，仅一个时自动选中） =====
+const installInstances = ref<MainInstanceVO[]>([])
+const installInstancesLoading = ref(false)
+const targetInstanceId = ref<number | null>(null)
+
+// ===== 链接网盘类型识别（域名优先，渠道名兜底；providerType 与 clp-provider 对齐） =====
+const LINK_PROVIDER_RULES: Array<{ pattern: RegExp; providerTypes: string[]; label: string }> = [
+  { pattern: /pan\.baidu\.com/i, providerTypes: ['baidu', 'bdpan'], label: '百度网盘' },
+  { pattern: /pan\.quark\.cn/i, providerTypes: ['quark'], label: '夸克网盘' },
+  { pattern: /aliyundrive\.com|alipan\.com/i, providerTypes: ['aliyun'], label: '阿里云盘' },
+  { pattern: /cloud\.189\.cn/i, providerTypes: ['cloud189'], label: '天翼云盘' },
+  { pattern: /pan\.xunlei\.com/i, providerTypes: ['xunlei'], label: '迅雷云盘' },
+]
+
+const CHANNEL_PROVIDER_MAP: Record<string, { providerTypes: string[]; label: string }> = {
+  百度网盘: { providerTypes: ['baidu', 'bdpan'], label: '百度网盘' },
+  夸克网盘: { providerTypes: ['quark'], label: '夸克网盘' },
+  阿里云盘: { providerTypes: ['aliyun'], label: '阿里云盘' },
+  天翼云盘: { providerTypes: ['cloud189'], label: '天翼云盘' },
+  迅雷云盘: { providerTypes: ['xunlei'], label: '迅雷云盘' },
+}
+
+function detectLinkProvider(shareUrl: string, channel?: string) {
+  return (
+    LINK_PROVIDER_RULES.find((r) => r.pattern.test(shareUrl)) ||
+    (channel ? CHANNEL_PROVIDER_MAP[channel] : undefined) ||
+    null
+  )
+}
+
+async function loadInstallTargets() {
+  installInstancesLoading.value = true
+  try {
+    const data = await mainInstanceApi.list({ gameCode: 'l4d2', current: 1, size: 200 })
+    installInstances.value = data?.records || []
+    // 默认选中：优先当前实例；否则仅一台时自动选中
+    const currentId = instanceId.value
+    if (currentId != null && installInstances.value.some((i) => i.id === currentId)) {
+      targetInstanceId.value = currentId
+    } else if (installInstances.value.length === 1) {
+      targetInstanceId.value = installInstances.value[0].id
+    } else {
+      targetInstanceId.value = null
+    }
+  } catch (e: any) {
+    installInstances.value = []
+    targetInstanceId.value = null
+    ElMessage.warning('实例列表加载失败：' + (e?.message || e))
+  } finally {
+    installInstancesLoading.value = false
+  }
+}
+
 async function loadCloudAccounts() {
   cloudAccountsLoading.value = true
   try {
@@ -421,17 +539,12 @@ async function loadCloudAccounts() {
 }
 
 function openCloudInstall(map: MapCenterVO, link: DownloadLink) {
-  if (!instanceId.value) {
-    ElMessage.warning('请先选择实例')
-    return
-  }
-  if (cloudAccounts.value.length === 0) {
-    loadCloudAccounts()
-  }
+  loadInstallTargets()
+  linkProvider.value = detectLinkProvider(link.shareUrl, link.channel)
   const source = (map.source || 'map').toLowerCase()
   const sourceId = map.sourceId || map.id
   cloudInstallForm.value = {
-    accountName: cloudInstallForm.value.accountName,
+    accountName: '',
     shareUrl: link.shareUrl,
     passcode: link.accessCode || '',
     source,
@@ -439,19 +552,34 @@ function openCloudInstall(map: MapCenterVO, link: DownloadLink) {
     title: map.titleCn || map.titleEn || sourceId,
     dirKey: `${source}-${sourceId}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
   }
+  if (providerSupported.value) {
+    if (cloudAccounts.value.length === 0) {
+      loadCloudAccounts().then(autoSelectAccount)
+    } else {
+      autoSelectAccount()
+    }
+  }
   cloudInstallVisible.value = true
 }
 
 async function submitCloudInstall() {
   const form = cloudInstallForm.value
+  if (!targetInstanceId.value) {
+    ElMessage.warning('请选择目标实例')
+    return
+  }
   if (!form.accountName) {
-    ElMessage.warning('请选择云盘账号')
+    ElMessage.warning(
+      linkProvider.value
+        ? `请选择「${linkProvider.value.label}」云盘账号（可在主前端「系统设置 → 云盘账号」维护）`
+        : '未识别链接网盘类型，无法转存'
+    )
     return
   }
   cloudInstalling.value = true
   try {
     await downloadApi.createCloudTask({
-      instanceId: instanceId.value!,
+      instanceId: targetInstanceId.value,
       accountName: form.accountName,
       shareUrl: form.shareUrl,
       passcode: form.passcode.trim() || undefined,

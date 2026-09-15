@@ -127,8 +127,9 @@ async function load() {
   loading.value = true;
   try {
     const [accRes, provRes] = await Promise.all([listCloudAccounts(), listCloudProviders()]);
-    accounts.value = accRes.data || [];
-    providers.value = provRes.data || [];
+    // 主前端 request 拦截器已解包 Result.data，直接就是数组
+    accounts.value = accRes || [];
+    providers.value = provRes || [];
   } catch (e) {
     ElMessage.error(e.message || "加载失败");
   } finally {

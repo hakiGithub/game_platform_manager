@@ -56,6 +56,9 @@ function handleCommand(command) {
     case "profile":
       goToProfile();
       break;
+    case "cloudAccounts":
+      router.push("/system/accounts");
+      break;
     case "settings":
       router.push("/system/configuration");
       break;
@@ -190,6 +193,10 @@ function handleQuickAction(command) {
             <el-dropdown-item command="profile">
               <el-icon><User /></el-icon>
               账号与安全
+            </el-dropdown-item>
+            <el-dropdown-item command="cloudAccounts">
+              <el-icon><CreditCard /></el-icon>
+              云盘账号
             </el-dropdown-item>
             <el-dropdown-item command="settings">
               <el-icon><Setting /></el-icon>
