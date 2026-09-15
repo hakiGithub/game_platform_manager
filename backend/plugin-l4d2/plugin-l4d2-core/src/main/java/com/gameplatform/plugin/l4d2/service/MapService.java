@@ -62,6 +62,8 @@ public class MapService {
         requireInstance(instanceId);
         String addonsPath = pathResolver.getAddonsPath();
 
+        // 纯目录列举（不下载/不解析 vpk，ADR-0026 后续：深度解析移交工具容器）。
+        // 此前对每个 vpk 全量 SFTP 下载到平台再解析，394MB 的包耗时 20s 级且无缓存。
         List<MapListVO> voList = new ArrayList<>();
         List<FileAccessService.FileInfo> files = instanceFileService.listFiles(instanceId, addonsPath);
         for (FileAccessService.FileInfo file : files) {
@@ -69,28 +71,11 @@ public class MapService {
                 continue;
             }
             String filename = file.getName();
-            try {
-                // 下载到临时文件复用 VpkParser 完整解析（含 missions 提取）
-                Path tempVpk = Files.createTempFile("l4d2_list_", ".vpk");
-                try {
-                    instanceFileService.downloadFile(instanceId,
-                            addonsPath + "/" + filename, tempVpk.toString());
-                    VpkParser.VpkArchive archive = new VpkParser().parse(tempVpk.toFile());
-                    if (archive == null) {
-                        continue;
-                    }
-                    MapListVO vo = buildMapListVOFromArchive(archive, filename);
-                    boolean exists = voList.stream()
-                            .anyMatch(v -> v.getTitle().equals(vo.getTitle()));
-                    if (!exists) {
-                        voList.add(vo);
-                    }
-                } finally {
-                    Files.deleteIfExists(tempVpk);
-                }
-            } catch (Exception e) {
-                log.warn("解析 VPK 失败，跳过: {}, err={}", filename, e.getMessage());
-            }
+            MapListVO vo = new MapListVO();
+            vo.setVpkName(filename);
+            vo.setTitle(filename.substring(0, filename.length() - 4));
+            vo.setChapters(new ArrayList<>());
+            voList.add(vo);
         }
         return voList;
     }
