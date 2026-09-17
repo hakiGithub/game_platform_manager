@@ -85,6 +85,12 @@ public class MapSpec implements Serializable {
     /** 来源站点的更新时间（用于增量判断，如 2026-07-22） */
     private String sourceUpdateDate;
 
+    /**
+     * 列表页"更新时间"（YYYY-MM-DD，来源站点列表字段，ADR-0028）。
+     * 专用于增量爬取比较与水位线派生；sourceUpdateDate 保持展示语义不变。
+     */
+    private String listUpdateDate;
+
     /** 上次爬取时间戳 */
     private Long crawlTime;
 }
