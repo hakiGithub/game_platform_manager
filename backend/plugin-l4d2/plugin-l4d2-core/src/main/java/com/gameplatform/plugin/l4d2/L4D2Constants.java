@@ -52,6 +52,13 @@ public final class L4D2Constants {
     /** 任务中心：任务类型 - 地图批量识别（ADR-0027） */
     public static final String TASK_TYPE_MAP_RECOGNIZE = "map-recognize";
 
+    /** 爬取类型（ADR-0028）：全量 */
+    public static final String CRAWL_TYPE_FULL = "FULL";
+    /** 爬取类型（ADR-0028）：增量（水位线早停） */
+    public static final String CRAWL_TYPE_INCREMENTAL = "INCREMENTAL";
+    /** 爬取任务 payload 键：爬取类型 */
+    public static final String FIELD_CRAWL_TYPE = "crawlType";
+
     /** 内置插件安装任务短时防重提交窗口（毫秒） */
     public static final long INSTALL_SUBMIT_DEDUP_WINDOW_MS = 30_000L;
 }
