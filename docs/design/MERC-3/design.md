@@ -316,13 +316,132 @@ Designer 问 `status` / `statusText` / `stage` 三者取哪个。核对：`Deplo
 
 百分比区间（14.7）与这三者是独立的：P3 不依赖百分比，Designer 把原型数值标「示意」是对的。
 
-## 15. OP-04 脚本 `timeoutMs` 缺省值与上限（由 Architect 拍板）
+## 15. OP-04 脚本 `timeoutMs` 缺省值与上限（拍板）
 
-（待补）
+### 15.1 现有量级锚点（拍板依据，全部经代码核对）
 
-## 16. ADR-0008 声明机制落地（`getDeployConfigs()` 首个使用方）与 `GET` 侧契约
+| 锚点 | 值 | 出处 |
+| --- | --- | --- |
+| 宿主机命令通道默认超时 | 30 s | `plugin/.../service/FileAccessService.java:264`（`executeCommand(hostId, command)` 重载的字面量 `30_000L`） |
+| compose 容器内执行 | 60 s 硬编码 | `adapter/DockerComposeAdapter.java:728` |
+| docker 容器内执行 | 60 s 硬编码 | `adapter/DockerAdapter.java:476` |
+| 补丁链路 SSH 命令 | 600 s | `patch/PatchInstallExecutor.java:54`（`SSH_TIMEOUT_MS = 600_000L`） |
+| compose 起停 | 60 s / 120 s / 1200 s（`up -d` 用 shell `timeout`） | `DockerComposeAdapter.java:377`、`:395`、`:413`、`:260` |
+| 任务中心部署任务超时 | 30 min | `task/DeployTaskHandler.java:50`（`DEFAULT_TIMEOUT_MS = 30*60*1000`） |
 
-（待补）
+### 15.2 拍板结论
+
+| 项 | 值 | 理由 |
+| --- | --- | --- |
+| **缺省值** | **`600_000 ms`（10 分钟）** | 扩展阶段的两类步骤必须处在同一量级：补丁步骤的既有 SSH 预算是 600 s，脚本取同值使「一步最多占用多久」对运维是**一个数**；取 30 s（宿主机通道默认）会把正常的版本脚本判成超时，取 60 s（容器通道现状）无依据且本期该通道不用 |
+| **可声明上限** | **`1_800_000 ms`（30 分钟）** | 对齐仓内既有的最长部署预算锚点（`DeployTaskHandler:50` 的 30 min）。`deployAsync` 路径没有任何整体超时（F-04：不走任务中心），步骤级 `timeoutMs` 因此是**唯一**的上限护栏——不封顶就等于一个挂死的脚本能让部署永久停在 `INSTALLING(5)` |
+| 下限 | `> 0`，且 `>= 1_000 ms` | 1 s 以下的脚本预算必然是配置错误，按声明不合法暴露比按超时失败暴露更早 |
+| 越界处置 | **判声明不合法**，走 §8.1 → BR-12 既有处置（无键 → 默认版本 + 一条说明行；有键/显式选择 → 部署失败、`ERROR`） | 不做「静默夹到上限」。§8.1 的「禁止部分采纳」与 BR-04「主应用不得推断或覆盖声明」同口径：主应用替插件改超时就是覆盖声明 |
+| 超时后的判定 | 步骤失败，按该步 `fatal` 处置（默认致命 → 部署失败）；日志行 `stepEvent = FAILURE` + `level = ERROR/WARN`，原因段取 ui-spec 的 `原因：脚本执行超过 〈timeoutMs〉 未返回，判失败` | FR-15 / §12「脚本超时」行的既有口径 |
+| 生效范围 | 仅 `SCRIPT` 步骤（`position = host`）；`PATCH` 步骤的超时是执行器内部常量，本期不可声明 | 14.5 判定后 `container` 不存在；补丁链路的 600 s 是 `SSH_TIMEOUT_MS` 常量，参数化它属改 ADR-0006 既有行为，超出范围 |
+| 实现落点 | `FileAccessService.executeCommand(hostId, command, timeoutMs)` **已支持显式超时**（`:254`），本期**零通道改造** | 这正是行 3「容器通道本期不改」不阻塞 OP-04 的原因 |
+
+### 15.3 一条必须登记的诚实限制
+
+`FileAccessService` 的超时语义是「不再等待」，**不保证远端进程已被终止**（SSH 通道关闭后，宿主机上的脚本子进程可能继续跑）。因此：
+
+- 超时行日志必须写明「脚本可能仍在宿主机后台继续执行」，不得给运维一个「已终止」的错觉；
+- 声明侧脚本**必须自带幂等与锁**（BR-06 已由声明方负责幂等，此处只是把「超时不等于已停」这条写进插件声明规范）；
+- 本期**不**引入「扩展阶段结束时统一 kill 远端进程」的机制（需在宿主机维护 PID 台账，属新增能力）。登记为 RISK-D06。
+
+**须回写 PRD（交 Leader，随 v0.6）**：§8.3 `timeoutMs` 行的「默认：待定（OP-04）」改为 `600000`，校验列改为 `1000 ≤ x ≤ 1800000，越界即声明不合法`；§12「脚本超时」行的「阈值取值待 OP-04」改为该缺省值；§16.2 OP-04 标记已关闭。
+
+## 16. ADR-0008 声明机制落地与 `GET` 侧契约
+
+### 16.1 一条决定承载方式的新代码事实（必须先说）
+
+`getDeployConfigs()` 的读时合并**只作用于 VO 读取路径，不作用于部署执行路径**：
+
+| 读者 | 是否看到插件声明 | 证据 |
+| --- | --- | --- |
+| 向导 / `getDeployConfig(gameId, deployType)`（VO） | **看到**（整节替换、插件优先） | `GameServiceImpl.java:195-201` |
+| `GameVO.supportedDeployTypes` | 看到（选项合并） | 同上 `:237-255` |
+| **实际部署用的 config** | **看不到** | `InstanceServiceImpl.buildDeployConfig` `:690-699` 直接 `gameMetadataMapper.selectById(...).getDeployConfig().get(deployType)`，读的是 `game_metadata` 表里扫描器落库的 yml 快照，未经过 `GameServiceImpl` 的合并 |
+
+⇒ **结论：把版本目录挂进 `getDeployConfigs()` 会做出一个「向导看得见、部署看不见」的目录**，BR-12 / AC-20 / FR-12 全部落空（扩展阶段读不到条目，也就无从判定「所选 `versionId` 不在目录中」）。今天没人在这个坑里，只因为 F-08 说的「零使用者」。这是 ADR-0008 落地侧的既有不对称，本期把它登记出来（RISK-D07），并**不**沿用整节替换通道承载版本目录。
+
+### 16.2 声明模型：两类声明、一个归属键、一条解析顺序
+
+沿用 ADR-0008 的**体系**（同一扩展点、按 `gameCode` 归属、读取时合并、插件优先、不落库、热部署即生效），但为两类语义各给一个类型化入口，都加在 `GameEnhancementExtension`（`backend/plugin/.../extension/GameEnhancementExtension.java`，与 `getDeployConfigs()` L255-257 并列）：
+
+```java
+/** 静态目录：无实例上下文时（部署向导步骤 2）也要能读，故签名不含 instanceId */
+default List<DeployVersionDeclaration> getDeployVersions(String deployType) { return List.of(); }
+
+/** 动态步骤集：FR-05「可按实例配置动态计算」；默认返回空 ⇒ 由目录条目自带步骤承担 */
+default List<DeployExtensionStepDeclaration> getDeployExtensionSteps(DeployExtensionContext ctx) { return List.of(); }
+```
+
+```java
+record DeployVersionDeclaration(String versionId, String displayName, String imageTag,
+                                Boolean defaultEntry,
+                                List<PatchStepDeclaration> patches,
+                                List<ScriptStepDeclaration> scripts) {}
+record PatchStepDeclaration(String label, String url, String targetPath, String sha256,
+                            String includePattern, String format, boolean fatal) {}
+record ScriptStepDeclaration(String label, String content, String url, String sha256,
+                             ScriptPosition position, boolean fatal, Long timeoutMs) {}
+enum ScriptPosition { HOST, CONTAINER }   // CONTAINER 本期校验期拒绝（14.5）
+record DeployExtensionContext(Long instanceId, String gameCode, String deployType,
+                              String selectedVersionId, Map<String, Object> configInfo) {}
+```
+
+字段口径与 §8.1 / §8.2 / §8.3 一一对应，**SDK 层不含任何游戏语义**（G-01 / BR-01 / N-01：`core/` 内 `"dnf_tw"` 字面量命中数仍须为 0，AC-23 ③）。
+
+| 设计选择 | 判定 | 理由 |
+| --- | --- | --- |
+| 为什么是两个入口而不是一个 | 部署向导步骤 2 时**还没有实例**（`deploy.vue:206` 只带 `gameId`，实例在提交时才创建），而 FR-05 的步骤集要按实例配置算。一个签名无法同时服务「无实例可读」与「有实例才算」；硬塞 `instanceId` 可空参数会让校验时点（§8.1 声明读取期）在两个读者之间漂移 | 与 14.5 的判定同构：形状不同即入口不同 |
+| 步骤集的**唯一解析顺序** | ① `getDeployExtensionSteps(ctx)` 非空 → 用它（代码计算型插件）；② 否则取所选目录条目的 `patches ++ scripts`，按声明序编号（纯声明型插件，dnf-tw 走这条）；③ 都空 → 不进入扩展阶段 | 只有一条链、优先级确定，AC-18（两实例不同版本 → 两步集互不串用）在 ① ② 两条路上同时成立 |
+| 目录条目能不能既带步骤又不被选 | 能。`defaultEntry = true` 的条目带步骤 = 合法但**永不执行**（默认版本不写键、不进扩展阶段，BR-02 / §8.4.2 S2） | 不额外禁止，避免比 PRD 更严 |
+| 声明来源是代码还是配置 | 代码（插件 JAR 内），非运行时可配 | §4.2「声明只出自插件代码」、RISK-08 缓解 |
+| 桩插件的承载 | 同一个 `plugin-stub`（验收资产）实现 `getDeployVersions`，声明 ≥2 条目 + 混排步骤集；**不含任何游戏语义**、不进发布物 | FR-24 / AC-25 / AC-26 |
+
+### 16.3 单一读者：`DeployVersionCatalogService`（core）
+
+§8.1 的校验时点是「声明读取期」，而**三个地方**都要读目录。若各读各的，就会出现「向导以为可用 / 部署认为不合法」的分叉（RISK-13 的同类）。因此收敛成一个 core 侧组件，是三处唯一的读者：
+
+```
+DeployVersionCatalogService.read(gameCode, deployType) -> CatalogView
+  CatalogView { List<VersionEntry> entries;          // 合法条目，保持声明序
+                CatalogState state;                  // ABSENT | EMPTY | INVALID | AVAILABLE
+                String invalidReason;                // 仅 INVALID 非空
+                boolean availableForWizard(); }      // state == AVAILABLE && !entries.isEmpty()
+```
+
+| 状态 | 含义 | 后果（RISK-13 的分列要求） |
+| --- | --- | --- |
+| `ABSENT` | 无插件 / 未加载 / `getDeployVersions` 抛异常 | 向导不渲染（ui-spec 态 B）；无键 → 默认版本；有键 → BR-12 拦截 |
+| `EMPTY` | 读取成功、0 条目（**dnf-tw 本期态**） | 向导不渲染（态 A）；**不产生任何「不合法」提示行**（AC-24 ③⑤） |
+| `INVALID` | 有条目但未过 §8.1 校验 | 向导不渲染（态 C，解释行只在部署日志）；有键/显式选择 → BR-12 拦截 |
+| `AVAILABLE` | 合法且 ≥1 条目 | 渲染控件（态 D–H） |
+
+校验内容 = §8.1 全部规则（`versionId` 非空 / 唯一 / `[A-Za-z0-9._-]`、`default` 至多一条、条目内 §8.2 §8.3 必填与二选一）+ 本设计新增两条：`imageTag` ⇒ 该 deployType 的 `variables[]` 必含 `PLATFORM_IMAGE_TAG`（14.4）、`timeoutMs` ∈ `[1000, 1800000]`（15.2）、`position` 本期只允许 `HOST`（14.5）。**逐条校验、任一不合规即整目录 `INVALID`**（§8.1 禁止部分采纳）。`getDeployVersions` 抛异常归 `ABSENT`，不外泄到向导（AC-20 的构造手段之一）。
+
+### 16.4 `GET` 侧契约（向导读目录）
+
+沿用部署向导**已在调用**的那个接口（`deploy.vue:240` 取 `data.variables`，服务侧 `GameServiceImpl.getDeployConfig` → `DeployConfigVO`），**不新增接口**（FR-20「不新增前端拉取通道」的同一口径）：
+
+| 字段 | 类型 | 约定 |
+| --- | --- | --- |
+| `deployVersions` | `List<VersionEntryVO>` | 仅 `state == AVAILABLE` 时为合法条目；`ABSENT` / `EMPTY` / `INVALID` 时**为空数组**（不是 `null`，前端 `P1` 谓词因此是「条目数 ≥ 1」，与 ui-spec §5 一致） |
+| `versionCatalogState` | enum 字符串 `ABSENT/EMPTY/INVALID/AVAILABLE` | 让前端与验收脚本能区分「空」与「不合法」（RISK-13 的可核对前提）；**界面是否使用它由 @Designer 定**，本期 ui-spec 的 A/B/C 三态渲染相同，因此前端可不读，仅验收核对用 |
+| `versionCatalogReason` | String，仅 `INVALID` 非空 | 供部署日志说明行（§8.1 ① 的「校验失败要点」）与验收归因；不进界面 |
+| `VersionEntryVO` | `{versionId, displayName, isDefault, stepSummary}` | `stepSummary` = 该条目的步骤预览（`[{index, label, type, fatal}]`），Designer 态 G 的「步骤预览展开」需要它，且只能在服务端算（步骤集解析顺序 16.2 在 core 侧） |
+
+`POST` 侧（提交部署）：**无新增字段**——版本选择沿用 `configInfo` 扁平载荷，键 `deployVersion`（§8.4），由 `applyVersionSelection` 决定写/删/不写（14.10）。校验分界见 14.10 末段（提交期只做撞键校验，不做目录可用性校验）。
+
+### 16.5 对 FR-22 措辞的偏离与回写建议（不自行取舍，交 Leader）
+
+FR-22 字面是「通过 **ADR-0008 声明接口**提供 dnf-tw 版本目录」。本设计把它落在**同一扩展点的类型化入口**（`getDeployVersions`）而非 `getDeployConfigs()`，依据是 16.1 的代码不对称（整节替换 + 部署路径不读合并）：按字面做会得到一个部署期读不到的目录，AC-20 与 AC-24 同时不成立。这不是改写决策 1–9 中任何一条（九条决策都只说「版本目录放插件声明 / ADR-0008 读时合并体系」，未指定方法名），但对 FR-22 的读者是一次口径变化，建议回写：
+
+- FR-22 / §5.1 第 3 项：「通过 ADR-0008 声明接口」→「通过 ADR-0008 声明**体系**（同一扩展点 `GameEnhancementExtension`、按 `gameCode` 归属、读取时合并、插件优先、不落库、热部署即生效）」；
+- §14.1 的 ADR-0008 行与 F-08：补记 16.1 的不对称（`buildDeployConfig` 读表、不经合并），并把「首个使用方」的对象由 `getDeployConfigs()` 改述为「ADR-0008 体系的首个使用方」；
+- 是否同时把 `getDeployConfigs()` 的通道缺陷另立 Issue：**建议另立**（与 OP-07 同口径，与本期 AC 无耦合，本期无任何条目依赖它）。
 
 ## 17. 评审回应
 
