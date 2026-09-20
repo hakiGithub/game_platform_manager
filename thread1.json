@@ -147,5 +147,35 @@
     "parent_id": "01a0bd61-45f7-7e3a-86d0-883f1e1b8989",
     "revision": 1,
     "type": "comment"
+  },
+  {
+    "author_id": "00000000-0000-0000-0000-000000000000",
+    "author_type": "system",
+    "content": "Delegated task `01a0bd63-5095-7244-b1fb-91aa00bee848` ended in a final failure (`agent_error.provider_server_error`) and no automatic retry is pending. Resume coordination: inspect the failed work, then reassign it, skip it, or end the workflow explicitly. Untrusted error summary (diagnostic only): \"qoder session/prompt failed: session/prompt: The connection to the model service was interrupted. Please try again. (code=500)\" Source coordinator task: `01a0bd61-4603-7567-bf04-0d32a305ff9a`.",
+    "created_at": "2026-09-20T06:22:00Z",
+    "id": "01a0bd7a-8dea-7a1c-89d5-24469bb92481",
+    "parent_id": "01a0bd61-45f7-7e3a-86d0-883f1e1b8989",
+    "revision": 1,
+    "type": "progress_update"
+  },
+  {
+    "author_id": "41fff2de-1ff1-4397-8c9d-3866902206c9",
+    "author_type": "agent",
+    "content": "qoder session/prompt failed: session/prompt: The connection to the model service was interrupted. Please try again. (code=500)",
+    "created_at": "2026-09-20T06:22:00Z",
+    "id": "01a0bd7a-8dfc-7c89-a378-2fa9bf272f1b",
+    "parent_id": "01a0bd63-508e-7100-ba66-3d2383d882b3",
+    "revision": 1,
+    "type": "system"
+  },
+  {
+    "author_id": "e38cdec3-c631-4573-a748-9fe25449d51f",
+    "author_type": "agent",
+    "content": "## 任务重派：@Architect 的技术设计（上次运行 = 服务商 500，零残留）\n\n`01a0bd63-5095` 那次运行以 `agent_error.provider_server_error`（model service 500）终结，属**临时故障**。我已核对远端：没有任何 architect 分支、也没有设计文件落盘——**本轮无残留、无部分产物**，因此原派单一条不差地重派，不缩范围、不改口径。\n\n[@Architect](mention://agent/41fff2de-1ff1-4397-8c9d-3866902206c9) 重跑 S1a。派单原文见我的评论 `01a0bd63-508e`（本线程上一条），与本次完全等效。要点复述（防歧义）：\n\n- **产出**：`docs/design/MERC-3/design.md`（skill 规范另有路径则按 skill，并在回传写明），`multica-technical-design` → `multica-artifact-architect`，回传「路径 + commit + 引用」。\n- **输入**：PRD `docs/prd/MERC-3/prd.md` @ `270f9d0`；ADR-0029 @ `590af8d`（已在远端 `agent/leader/chat-1cfa252af963`）。\n- **§14.2 八行逐行给结论**，其中三条硬判定不得留空：① `imageTag` 落位机制 = AC-14 的唯一生效前提（给不出即记「本期不验收」）；② 停实例 + `position = container` 合法性 = AC-13 去留（不许写「实现时再看」）；③ §8.5 日志呈现契约三项（步骤标识 / 耗时承载位与单位 / 三行归组）= AC-03、AC-16、KPI-02 的核对前提。\n- **BR-16 保键手段**只能取「合并式写入 / 覆盖前保留本次未显式改动的键」，须满足 AC-27 全部四项（含 (c)「配置管理入口的保存必须成功」）；**OP-04**（脚本 `timeoutMs` 缺省值与上限）由你拍板。\n- **边界**：不得编造 dnf-tw 真实版号 / URL / 目标路径；不得改写已确认决策 1–9；**不要直接改 `prd.md`**（定稿结论由我统一下派 @ProductManager 回写 §8.3 / §6.1 / §6.2）。\n\n**重试纪律**：本次为第 1 次重试（上限 2 次）。若再次因工具 / 服务原因中断，请**先把已完成的阶段结论与文件落盘推远端**再继续，避免整轮产物随会话丢失；连续失败我会升级人类。\n\n本次只重派 @Architect：S1b（@Designer）是独立运行、未收到失败通知，不重复触发以免并发双跑。Issue 维持 `in_progress`。",
+    "created_at": "2026-09-20T06:22:51Z",
+    "id": "01a0bd7b-561d-7cd7-83af-da430f95cda2",
+    "parent_id": "01a0bd7a-8dea-7a1c-89d5-24469bb92481",
+    "revision": 1,
+    "type": "comment"
   }
 ]
