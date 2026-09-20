@@ -101,7 +101,7 @@ G0 裁决把本期定为「交付**框架 + 版本目录占位模板**，显式�
 
 （待补）
 
-## 14. §14.2 待改依赖逐行结论（十条，无留空）
+## 14. §14.2 待改依赖逐行结论（十一条，无留空）
 
 ### 14.0 结论速览
 
@@ -117,6 +117,7 @@ G0 裁决把本期定为「交付**框架 + 版本目录占位模板**，显式�
 | 8 | `configInfo` 覆盖式写入丢键 → BR-16 手段 | @Architect 定手段 / @BackendDev 落地 | **取「合并式写入」**：`updateInstance` 的整表替换改为「取库中既有值 → 逐键合并 → 本次载荷覆盖」。不需要任何「拒绝写入」分支即满足 AC-27 (a)(b)(c)(d)，配置管理入口照常成功 |
 | 9 | （S1b 门禁新增）`level → 视觉映射` 失效 | @Architect | **给**：前端归一化（`DeployProgress.vue:88-109` 先 `toLowerCase()` + 补 `warn → warning` 别名 + 补 `success` 分支）。后端 `level` 取值集合是 PRD §8.5 已固定口径，不改后端 |
 | 10 | （本设计新发现）AC-22 / §8.4.2 S2 的界面前提不成立 | 交 Leader 裁定 | **登记**：部署向导只创建新实例，既有实例的重部署入口不接受版本改选 ⇒ 「在向导改选默认版本并重新部署 → 删键」这条路径今天不存在。给出 A/B 两方案与推荐（B），见 14.10 |
+| 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | 交 Leader 确认（N-06 边界） | **给判定**：扩展分支内 `HEALTH_CHECK` 不做容器运行态探测，健康判定由 `START` 后既有 `retryHealthCheck`（`DeployService.java:231-236`）承担，**判据一字不改**；备选「扩展收尾把容器起回来」已一并定价（成本一行）。两案都可行，实现者不需要回来问。见 14.12 |
 
 ### 14.1 行 1：异步 → 阻塞桥接（RISK-03）
 
@@ -207,7 +208,7 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 | 停止判定 | 调适配器停止后以 `DeployAdapter.getStatus(instanceId)` 轮询（3 次 × 2s）判定非 RUNNING；成立才算停止完成 |
 | 不复用 `DeployService.stop()` | 现有 `stop`（`:418-430`）会把 `run_status` 回写 STOPPED，而 PRD §9 要求扩展阶段期间仍为 `INSTALLING(5)`。故新增私有 `ensureStoppedForExtension()`：只调适配器、不写状态 |
 | **停实例失败处置** | **致命**：记 ui-spec 状态 S 的失败行（`实例停止失败：…`，`level = ERROR`），部署判失败、实例 `ERROR`、不执行任何步骤、不进入 `HEALTH_CHECK` / `START`。理由：在未确认停止的实例上替换文件正是决策 3 要消除的中间态。ui-spec 的「预留文案，生效前提是 @Architect 定调」自此生效 |
-| 后续启动 | 停止与扩展完成后走既有 `HEALTH_CHECK → UPDATE_STATUS → START`（决策 3 的「再走启动」由既有流程承担，本期不新增启动代码） |
+| 后续启动与 `HEALTH_CHECK` | 停止与扩展完成后进入既有 `HEALTH_CHECK → UPDATE_STATUS → START`；但 **`HEALTH_CHECK` 在扩展分支内不做容器运行态探测**（否则停实例后必然失败），健康判定由 `START` 后既有 `retryHealthCheck`（`DeployService.java:231-236`，3 次 × 5s）承担。判据与时点为何必须这样分，见 **14.12** |
 
 ### 14.6 行 6（硬判定③）：日志呈现契约三项 ⇒ 定稿
 
@@ -315,6 +316,29 @@ Designer 问 `status` / `statusText` / `stage` 三者取哪个。核对：`Deplo
 | `mapStageToStatus` | 新增 `EXTENSION → "installing"` | 与 `DEPLOY` 同词，避免冒出「扩展阶段显示 preparing」的第三种状态 |
 
 百分比区间（14.7）与这三者是独立的：P3 不依赖百分比，Designer 把原型数值标「示意」是对的。
+
+### 14.12 行 11（阻断级新发现）：停实例与 `HEALTH_CHECK` 的时点冲突
+
+PRD §14.2 的八行、S1b 转来的三项都没覆盖这一条，但它是本期**能不能交付**的前提。代码事实三条：
+
+1. 插入点在 `notifyStageComplete(…, "DEPLOY")`（`DeployService.java:214`）之后、`updateTaskStatus("HEALTH_CHECK", 80)`（`:216`）之前——FR-10 要求的位置；
+2. `DockerComposeAdapter.healthCheck` 逐容器执行 `docker inspect -f '{{.State.Running}}'`，**任一容器不是 `true` 即返回 false**，`DeployService` 随即 `throw new DeployException("健康检查失败")`（`:217-219`）；
+3. FR-11 / 决策 3 要求进入扩展阶段前把实例停下，而 compose 类在 `DEPLOY` 的 `up -d` 里已经把容器起起来了。
+
+⇒ **三条同时成立时，任何带扩展步骤的 compose 部署都会在 `HEALTH_CHECK` 处必然失败**：停实例 → 探测 Running → false → 部署 `ERROR`。AC-04 / AC-05 / AC-03 / AC-08 全部无法通过，本期头号交付物直接归零。这不是实现细节，是 FR-10 + FR-11 与既有 `HEALTH_CHECK` 位置之间的口径冲突，PRD 与 ADR 都未预见。
+
+**判定（本设计据此实现）：扩展分支内，`HEALTH_CHECK` 不做容器运行态探测。**
+
+| 项 | 结论 |
+| --- | --- |
+| 改什么 | 有扩展步骤时，`HEALTH_CHECK` 阶段**保留**（阶段名、`stage` 值、`updateTaskStatus` 调用、进度值 `85 → 90` 全不变），其容器运行态探测在该分支内不执行，日志记一行 `NOTE`：`实例处于停止状态，健康判定交由启动后复检` |
+| 不改什么 | ① **判据一字不改**：健康仍然是「所有容器 `.State.Running == true`」，且仍然是既有 `retryHealthCheck` 的 3 次 × 5s（`:231-236`）——所以 N-06 的字面（不改动**判定标准**）成立；② `UPDATE_STATUS` 置 `STOPPED`、`START`、`COMPLETE = 100` 全不变（BR-10）；③ **无扩展步骤的游戏零改动**（AC-15）——本分支只在有步骤时进入 |
+| 决策 3 的口径是否仍成立 | 成立。「第一次启动即目标版本」指**打补丁后的第一次进程启动**：补丁在停止态落位，之后 `START` 的 `compose start` 是补丁后第一次起进程。`DEPLOY` 阶段 `up -d` 那次起进程是既有实现产物（今天所有 compose 部署都有），本设计不新增也不消除 |
+| 需要 Leader 确认的点 | PRD §9 那行「扩展判定完成 → `HEALTH_CHECK` → `UPDATE_STATUS` \| **既有语义不变**」在有扩展分支内做不到「探测动作不变」，只能做到「判据不变」。请裁定该差别是否触碰 N-06；若判触碰，见下方备选 |
+| **备选（已一并定价，不需要再回来问）** | 扩展阶段收尾追加一次 `adapter.start()` 把容器起回来（成本一行调用 + 一次容器启动，`DockerComposeAdapter:365-379` 已具备），`HEALTH_CHECK` 一字不动照常通过。代价：容器多一次起停、游戏进程在扩展后被起两次（第二次才是交付态）、RISK-01 的耗时成本上升。两案对 AC 集的影响**相同**（AC-04 的「进入扩展阶段前实例处于停止」在两案下都成立），Leader 选任一都不需要重做设计 |
+| 登记 | 需求侧应在 §14.2 增为第 9 行待改依赖（现由本设计代登记为行 11）；RISK-05 的「停失败无裁决」与本页同源，建议一并回写 |
+
+**实现者红线**：不许用「把插入点挪到 `HEALTH_CHECK` 之后」来绕过——那会引入决策 3 明确否掉的中间态；也不许把 `healthCheck` 改成容忍停止态（那是改判据，正面违反 N-06）。
 
 ## 15. OP-04 脚本 `timeoutMs` 缺省值与上限（拍板）
 
