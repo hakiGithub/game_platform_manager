@@ -4,15 +4,17 @@
 | --- | --- |
 | **创建者** | Architect-41fff2de |
 | **创建时间** | 2026-09-20 |
-| **版本** | v0.2 |
-| **状态** | 待 G1 门禁（§14 十一条逐行结论已定稿，无留空） |
+| **版本** | v0.3 |
+| **状态** | 待 ArchReviewer 第 2 轮复审（§17 已逐条填写 REV-1…REV-7 + SUG-1…SUG-9；§14 待改依赖扩至十四条，逐行带状态与证据指向） |
 | **Issue** | MERC-3 |
 | **上游 PRD** | docs/prd/MERC-3/prd.md @ 270f9d0（v0.5，双层门禁 PASS） |
 | **上游 ADR** | docs/design/adr/0029-deploy-extension-steps.md @ 590af8d（远端 `agent/leader/chat-1cfa252af963`，实现分支须 merge 带入） |
 | **平行输入** | docs/ui/MERC-3/ui-spec.md @ f6312ef（S1b；其 §10-B 三项界面侧前提由本文 §14.4 / §14.9 / §14.11 收口） |
 | **交付分支** | `release/MERC-3-deploy-extension-steps` |
 
-> 本文按「先落盘再细化」分次提交：v0.1 为骨架（§1/§2 + 待判定清单），v0.2 补齐 §3–§16 全部结论。**§14 的三条硬判定（`imageTag` / 停实例 + `container` / 日志呈现契约）逐条给了结论，全文无一处「实现时再看」**；交回 Leader 的待回写清单集中在 §13.1。
+> 本文按「先落盘再细化」分次提交：v0.1 骨架（§1/§2 + 待判定清单）→ v0.2 补齐 §3–§16 → **v0.3 并入架构评审第 1 轮（REV-1…REV-7 全采纳 + SUG-1…SUG-9）** 与 Leader 的两项范围裁定（每主机互斥取「补一层等价互斥」、EXTENSION 支持集合按 FR-11 字面收口为 compose 两类）。
+>
+> **v0.3 的三处实质变化**（其余为同步）：① §14.14 —— BR-09 的每主机互斥**过去被写错**：真实承担者是任务中心的内存互斥键，绕开任务中心即绕开它，本期由同步入口自行承键补上（不改 `PatchInstallExecutor`、不引入任务中心）；② §14.13 —— 扩展阶段收尾「把容器起回」原先**没有可调用的面**，且该结论对三类容器适配器同时成立，现定死为 `DeployAdapter` 一个 default 方法 + **逐类**收口形状，支持集合钉为 {`docker-compose`, `linuxgsm-docker`}，集合外声明不合法；③ §14.16 —— PRD 点名交本设计的 RISK-09（retry-deploy 先 `uninstall`）收口，`BR-14` 的「保留」自此显式限定为**当次部署内**、不跨 attempt。逐条处置见 §17。
 
 ## 1. 理解
 
@@ -414,7 +416,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 `deployVersion` 键名不改（§8.4 固定，无「最终名待定」）；OP-04 已拍板（§15.2）；三条硬判定（AC-14 / AC-13 / 呈现契约）逐条给了结论且**没有一处写「实现时再看」**。
 
-## 14. §14.2 待改依赖逐行结论（十一条，无留空）
+## 14. §14.2 待改依赖逐行结论（十四条 + 逐行状态收口，无留空）
 
 ### 14.0 结论速览
 
@@ -430,9 +432,34 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 8 | `configInfo` 覆盖式写入丢键 → BR-16 手段 | @Architect 定手段 / @BackendDev 落地 | **取「合并式写入」**：`updateInstance` 的整表替换改为「取库中既有值 → 逐键合并 → 本次载荷覆盖」。不需要任何「拒绝写入」分支即满足 AC-27 (a)(b)(c)(d)，配置管理入口照常成功 |
 | 9 | （S1b 门禁新增）`level → 视觉映射` 失效 | @Architect | **给**：前端归一化（`DeployProgress.vue:88-109` 先 `toLowerCase()` + 补 `warn → warning` 别名 + 补 `success` 分支）。后端 `level` 取值集合是 PRD §8.5 已固定口径，不改后端 |
 | 10 | （本设计新发现）AC-22 / §8.4.2 S2 的界面前提不成立 | 交 Leader 裁定 | **登记**：部署向导只创建新实例，既有实例的重部署入口不接受版本改选 ⇒ 「在向导改选默认版本并重新部署 → 删键」这条路径今天不存在。给出 A/B 两方案与推荐（B），见 14.10 |
-| 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | @Architect 判定 + 登记 | **给判定**：扩展阶段收尾以既有 `up -d` 形状把容器**按依赖顺序起回**，`HEALTH_CHECK` 的判据、动作、时点一字不改 ⇒ 不触碰 N-06/BR-10，PRD 正文无需改（只建议登记这一事实，D-P02）；顺带修掉 `compose start` 不处理 `depends_on` 的隐蔽失效（RISK-D11）。见 14.12 |
+| 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | @Architect 判定 + 登记 | **给判定**：扩展阶段收尾以既有 `up -d` 形状把容器**按依赖顺序起回**，`HEALTH_CHECK` 的判据、动作、时点一字不改 ⇒ 不触碰 N-06/BR-10，PRD 正文无需改（只建议登记这一事实，D-P02）；顺带修掉 `compose start` 不处理 `depends_on` 的隐蔽失效（RISK-D11）。见 14.12（**v0.3 修正：该结论对三类容器适配器同时成立，调用面与适用范围由 14.13 收口**） |
+| 12 | （ArchReviewer REV-1）BR-09 的每主机互斥**并未被同步入口继承** | @Architect（Leader 裁定取①） | **给**：互斥的真实承担者是任务中心的内存键 `taskType + ":" + scopeKey` = `PATCH_INSTALL:<hostId>`，绕开任务中心即绕开它。本期在 `installSync` 内用**同一个** `TaskMutexManager` 承同一个键（2 s 轮询、600 s 等待预算、`finally` 释放、锁粒度 = 单次 `execute()`），既补回 BR-09 又不引入任务中心、不改部署主流程（不违反 D-N05）。临时路径实例命名空间（③）本期不授权，登记为后续增量。见 14.14 |
+| 13 | （ArchReviewer REV-2 + REV-3）收尾动作**没有可调用的面**，且「停实例 → 必挂」是**三类**容器适配器共同的问题 | @Architect（Leader 裁定按 FR-11 字面收口） | **给**：① `DeployAdapter` 新增**一个 default 方法** `ensureRunningForExtension(instanceId, config)`（与既有 `stopServer` 同形），compose / linuxgsm-docker 各覆写，其余适配器继承「抛异常」默认值 ⇒ 三个适配器不再整体不进改动清单（§4 负向清单同步）；② 本期 **EXTENSION 支持集合 = {`docker-compose`, `linuxgsm-docker`}**，集合外（含 plain `docker`）带步骤或 `imageTag` 的声明**即不合法**，走 §8.1 → BR-12；③ **逐类**给出「起回」命令形状与就绪判定（两类的命令与判据都不同）。见 14.13 |
+| 14 | （ArchReviewer REV-7①）PRD 点名交 @Architect 的 **RISK-09**（retry-deploy 先 `adapter.uninstall`）| @Architect | **给**：`retryDeploy` 确实先 `uninstall`，而 compose 类的 `uninstall` = `down` + **`rm -rf <workDir>`** ⇒ retry = 干净重跑，**补丁必然全量重放**；故 BR-14 的「前序已成功步骤改动保留」**只在当次部署内成立，不跨 attempt**（v0.3 写死，防误读）。`configInfo` 那半边核对为**安全**（`DEPLOY` 末回写是既有值的拷贝再 put，`deployVersion` 不会被冲掉）。见 14.16 |
+
+### 14.0.1 逐行状态收口（v0.3 新增，供 PRD §14.2 与下游按此读，不再把已判定项当开环）
+
+> 本节是 §13.1 D-P14 的核对对象：PRD §14.2 原八行 + 本文新增六行，**每行都给状态与证据指向**。回写 PRD 时以本表为准逐行收口，不得保留「待定调」字样而不指向证据。
+
+| 行 | 待改依赖 | 状态 | 证据（本设计节号）| 回写项 |
+| --- | --- | --- | --- | --- |
+| 1 | 异步 → 阻塞桥接 | **已关闭**（含对 PRD 该前提的事实修正） | §14.1、§14.14 | D-P08、D-P16 |
+| 2 | `includePattern` / `headers` 透传 | **已关闭**（`includePattern` 生效；`headers` 结构性不可声明；异步路径丢字段本期不修 → RISK-D05） | §14.2、V-07 | 无需回写（RISK-02 的两个合法选项取其一） |
+| 3 | 容器内脚本执行通道（exitCode / timeoutMs） | **本期不适用**（因行 5 判 `container` 不合法 ⇒ 零使用方；恢复 `container` 的三项前置已登记） | §14.3、§14.5 末行 | D-P01（含恢复前置） |
+| 4 | `imageTag` 落位机制 | **已关闭**（机制给出 ⇒ AC-14 转可验收；v0.3 补判定通道绑定与取值由平台控制） | §14.4、§14.4.1、V-15 | D-P04、D-P05（v0.3 扩写）、D-P13 |
+| 5 | 停实例 + `position = container` 合法性 | **已关闭**（判不合法；AC-13 移出本期，属范围收缩须人类 G4 复核） | §14.5、§14.5.1 | D-P01、D-P12 |
+| 6 | §8.5 日志呈现契约三项 | **已关闭**（六字段 + 五条规则，v0.3 补 `exitCode` 与 `ROLLBACK` 判据） | §14.6、§6.3 | D-P09、D-P12 |
+| 7 | 扩展阶段进度百分比区间 | **已关闭**（条件分配；v0.3 把「进入行」订正为「顶层 `progress` 值」） | §14.7、V-10 | 无需回写（PRD 未规定数值区间） |
+| 8 | `configInfo` 覆盖式写入丢键 → BR-16 手段 | **已关闭**（合并式写入，无需拒绝分支） | §14.8、V-16 | 无需回写（BR-16 的两个许可手段之一） |
+| 9 | `level → 视觉映射` 失效（S1b 门禁转来） | **已关闭**（前端归一化，含 `warn ≠ warning` 补充事实） | §14.9、V-09 | D-P06 |
+| 10 | AC-22 / S2 删键缺真实入口（本文新发现） | **已关闭**（Leader 裁 B：服务层 + 单测验收，界面端到端记「前提不成立」） | §14.10、V-03 | D-P07 |
+| 11 | 停实例与 `HEALTH_CHECK` 时点冲突（本文新发现，阻断级）| **已关闭**（扩展阶段收尾起回容器；v0.3 补齐调用面与适用范围） | §14.12、§14.13 | D-P02、D-P15 |
+| 12 | BR-09 每主机互斥未被同步入口继承（ArchReviewer REV-1） | **已关闭**（同步入口自行承 `PATCH_INSTALL:<hostId>` 键，与任务中心互斥同源） | §14.14、V-26 | D-P16（事实修正）、RISK-D14 |
+| 13 | 收尾动作缺可调用面 + 适用范围未钉（ArchReviewer REV-2/REV-3） | **已关闭**（`DeployAdapter` 一个 default 方法 + 两类逐形状收口；支持集合 = compose 两类，集合外声明不合法） | §14.13、V-27 | D-P15 |
+| 14 | RISK-09 retry-deploy 与扩展阶段的先后关系（PRD 点名交 @Architect） | **已关闭**（retry-deploy = `uninstall`（含 `rm -rf workDir`）+ 全量重部署 ⇒ 补丁必然重放；`configInfo` 半边核对为安全） | §14.16、RISK-D12、V-28 | D-P10 |
 
 ### 14.1 行 1：异步 → 阻塞桥接（RISK-03）
+
 
 **事实修正（PRD §14.2 的缺口证据需更新）**：`PatchInstallService.install()` 确实是异步提交器（`core/.../patch/PatchInstallServiceImpl.java:58-70` 组 `TaskSubmitRequest` 后 `taskService.submit` 返回 taskId），但它只是执行器的外壳。真正的链路 `PatchInstallExecutor.execute(PatchInstallRequest, ProgressListener)`（`core/.../patch/PatchInstallExecutor.java:83-100`）**本来就是阻塞方法**，过程经 `ProgressListener{onProgress,onLog,isCancelled}`（`:70-74`）回调；全局并发闸 3（`:56`、`:86`）、自动重试 2 次退避 5s/20s（`:50-51`、`:794-801`）全在这个类内。任务中心那条路只是把它包了一层。「必须先解决异步→阻塞桥接」这个前提误判了层次。
 
@@ -450,7 +477,7 @@ default void installSync(PatchInstallRequest request, PatchInstallProgressListen
 | 要点 | 判定 |
 | --- | --- |
 | 是否另起一套补丁实现（FR-14 红线） | 否。同一个执行器、同一份代码路径，只是从「提交给任务中心」换成「调用方等待」 |
-| BR-09 资源约束（并发 3 / 每主机互斥 / 重试 2 / SSH 600s） | 原样继承——全部在 `PatchInstallExecutor` 内（`:50-56`、`:794-801`、`SSH_TIMEOUT_MS = 600_000L` 见 `:54`）。实现者不得在扩展阶段外面再套一层重试 |
+| BR-09 资源约束（并发 3 / 每主机互斥 / 重试 2 / SSH 600s） | **分两半，不是一句「原样继承」**（v0.3 修正，REV-1）：并发闸 3（`:56`、`:86`）、重试 2 次退避 5s/20s（`:50-51`、`:794-801`）、SSH 600s（`:54`）**确在 `PatchInstallExecutor` 内**，直调即继承；**每主机互斥不在该类内**——该类 Javadoc 自述「同主机互斥（由任务中心 `scopeKey=hostId` 承担）」（`:35`），类内只有 `globalSemaphore`，直调 `execute()` 恰好丢掉它。本期由 `installSync` 自行承同一个键，见 **§14.14**。实现者不得在扩展阶段外面再套一层重试 |
 | `isCancelled()` 语义 | 扩展阶段传 `() -> false`：部署路径今天没有取消入口（F-04 不走任务中心），造一个取消通道属扩范围 |
 | 阻塞性验收口径（FR-12 / AC-06） | 扩展阶段在 `deploy()` 的调用线程内顺序执行；`deploy()` 已由 `deployAsync` 置于异步线程（`DeployService.java:318-332`），故阻塞发生在部署 worker 线程，不阻塞 HTTP 线程 |
 | 双跳风险（顺带登记） | `deployAsync` 是 `@Async` 内再 `CompletableFuture.supplyAsync`（ForkJoinPool.commonPool）。扩展阶段引入的长阻塞步骤会占用 commonPool 线程；本期不为它改部署主流程（D-N05），登记为 RISK-D04 |
@@ -651,6 +678,109 @@ PRD §14.2 的八行、S1b 转来的三项都没覆盖这一条，但它是本�
 | 顺带修掉的一个更隐蔽的失效 | `DockerComposeAdapter.start` 走 `compose start`，而 **`start` 不处理 `depends_on` 顺序**（只有 `up` 处理）。dnf-tw 的 compose 项目里 MySQL 与多个游戏服务同在 `docker-compose.yml`，今天那一步是空操作；若把「真实启动」交给它，首启可能早于数据库就绪，表现为「部署成功但版本没生效」。用 `up -d` 收尾同时解决这条（RISK-D11） |
 | 实现红线 | **不得**把 `DockerComposeAdapter.start()` 全局改成 `up -d`（会改变既有实例启停语义，直接违反 AC-15 / N-06）。收尾动作是扩展阶段的内部步骤，与 `adapter.start()` 无关 |
 | 登记 | 建议作为 §14.2 第 9 行待改依赖正式登记，并在 PRD §9「进入扩展阶段」行补一句「阶段收尾容器恢复运行 ⇒ `HEALTH_CHECK` 语义与时点不变」（D-P02） |
+| **v0.3 修正（REV-2 / REV-3）** | 本节的三条代码事实**只对 compose 一类成立**：① 「起回」当时**没有可调用的面**（`DeployAdapter` 无该能力、`LinuxGsmDockerAdapter.ensureContainerRunning` 是 private 且其命令形状不可用）；② 「停实例 → `HEALTH_CHECK` 必挂」对 `docker` / `linuxgsm-docker` / `docker-compose` **三类容器适配器同时成立**，本节只论证了 `docker-compose`。两者一并由 **§14.13** 收口；本节结论（起停次数、`HEALTH_CHECK`/`START` 一字不改、收尾失败按致命）不变，适用范围收窄为 compose 两类 |
+
+### 14.13 行 13（REV-2 + REV-3）：收尾的调用面，与本期支持集合的逐类收口形状
+
+要收口的两件事来自同一处判断：**§14.12 说「收尾把容器起回」，但它既没说用哪个方法起（REV-2），也没说这条判定管到哪几类适配器（REV-3）。** 前者会让实现方自行决断（并在 `DeployExtensionExecutor` 里 `instanceof` 分派、自行拼 compose 命令），后者会让 `docker` 类游戏一上扩展步骤就必挂。
+
+#### 14.13.1 本期 EXTENSION 支持集合（Leader 裁定：按 FR-11 字面收口）
+
+| 项 | 判定 | 依据 |
+| --- | --- | --- |
+| 支持集合 | **`{docker-compose, linuxgsm-docker}` 两类，逐类收口**（形状见 14.13.3） | PRD FR-11 原文点名「对『部署动作即起容器』的适配器（**docker-compose / linuxgsm-docker**）」；AC-04 前置写「部署方式仍取 **compose 类**」。集合与 PRD 字面一致，**不是本设计自行收窄** |
+| 集合外的 deployType（`docker`、`linuxgsm`，含将来新增的适配器） | **该 deployType 的版本目录若含任何扩展步骤或 `imageTag` ⇒ 声明不合法**，走 §8.1 → BR-12 既有处置（无键 → 默认版本 + 一条说明行；有键 / 显式选择 → 部署失败、实例 `ERROR`）。**不是**「忽略该字段继续」，也不是运行期才炸 | §8.1「禁止部分采纳」+ BR-04「主应用不得推断或覆盖声明」；判定发生在 `DeployVersionCatalogService.read(gameCode, deployType)`，本就以 deployType 为键（§16.3），**无需新增任何上下文** |
+| 为什么 plain `docker` 不顺手支持（成本核对，不是留白） | 核对为真：`DockerAdapter.deploy`（`:135`）走 `docker run -d`（`buildDockerRunCommand`，`:741-742`），`healthCheck` 第一件事就是 `isContainerRunning` 判 false 即 return false（`:274-277`）⇒ 与 §14.12 **同构，必挂**。它的「起回」两条形状都不清白：`docker start <name>` 只恢复既有容器（`DEPLOY` 后若容器被删则无对象，且要外推 `getContainerName`——也是 private，`:629`）；`docker run -d` 重跑则要把挂载 / 端口 / 网络 / 重启策略全套 argv 重新推导——**正是 §14.5 判 `position = container` 不合法时用的同一条理由（新造执行模型）**。支持它的成本**高于**回写 FR-11 / AC-04 的成本，故取回写（D-P15） | Leader 给出的改判条件（「某类收口成本低于回写成本可提」）经核对不成立，故按裁定执行 |
+| `linuxgsm`（非容器）为什么也不支持 | FR-11 的三段式对它是 `linuxgsm stop`（**进程级**）→ 步骤 → `linuxgsm start`（**会真实启动游戏服务器**），与 compose 类「容器级停止 + `HEALTH_CHECK` 只看容器态」的语义不同；PRD 未点名它，本期不自行扩集合。**诚实登记**：技术上它可能可用（宿主脚本 + SSH 步骤天然搭），但「可能可用而未验证」不构成把它放进集合的理由 | 裁定原文；`LinuxGsmAdapter` 本期零改动 |
+| 桩插件承载 AC-04 / V-11 / V-12 的部署方式 | **取 `docker-compose`**（与 AC-04 前置同口径），`linuxgsm-docker` 由 **V-27 单独一行**承载，不用「同类所以不测」糊过去 | 消除「集合内一类无证据」的空档 |
+
+#### 14.13.2 收尾动作的调用面（定死落点，回应 REV-2）
+
+`DeployAdapter` 新增**一个 default 方法**。这不是无先例的发明：本接口已有同形先例 `stopServer`（`:185-187`，default 直接抛 `UnsupportedOperationException`，只由需要的适配器覆写）。
+
+```java
+/** 扩展阶段收尾：把「部署动作即起容器」的实例恢复到运行态，供后续 HEALTH_CHECK 按既有判据探测。
+ *  默认不支持：本期仅 docker-compose / linuxgsm-docker 覆写（§14.13.1），
+ *  集合外的声明已在 §8.1 判不合法，走到这里属实现缺陷 ⇒ 抛异常，绝不静默返回 true。 */
+default boolean ensureRunningForExtension(Long instanceId, Map<String, Object> config) {
+    throw new UnsupportedOperationException("该部署方式不支持扩展阶段收尾起回");
+}
+```
+
+| 要点 | 判定 |
+| --- | --- |
+| 调用方 | `DeployExtensionExecutor` 收尾一行调 `adapter.ensureRunningForExtension(instanceId, config)`。`DeployService:163` 已按 deployType 解析好 adapter ⇒ **禁止**在 executor 里 `instanceof` 分派或自行拼 compose 命令（`getProjectName` / `getWorkDir` 两类里都是 private：compose `:1101`/`:1113`、lgsm-docker `:817`/`:829`） |
+| 为什么不按评审建议在 `AbstractDeployAdapter` 给空实现 | 空实现 = 返回 `true` = **静默假装已起回**，恰好制造 §14.12 判掉的那个失效（`HEALTH_CHECK` 必挂）且无归因。抛异常是这条判定唯一诚实的默认值。**此项按「不采纳其形状、采纳其结论」处理**（§17 REV-2） |
+| 接口面扩大的代价与封套 | 代价登记为 **RISK-D13（高）**：新增 default 方法对**实现者**二进制兼容（4 个既有适配器不改即可编译），但对调用者新增一个「只有两类能用」的能力位。封套 = 14.13.1 的声明期支持集合校验：集合外进不到这里。红线：**不得**把默认实现改成 `return true`，**不得**把 `adapter.start()` 全局改成 `up -d`（§14.12 实现红线延续） |
+| §4 负向清单同步 | 原「三个适配器不改动」**作废**：compose / lgsm-docker 各 +1 覆写（既有方法一字不改），`DockerAdapter` / `LinuxGsmAdapter` 仍零改动。见 §3.3 组 L、§4 |
+| 「无扩展部署行为不变」的落点 | 该方法**只被扩展分支调用** ⇒ 无步骤的游戏一行都不执行；判据写进 AC-15 / V-10（新增子项：`ensureRunningForExtension` 在无扩展部署中的调用次数 = 0）与 V-27 |
+
+#### 14.13.3 两类各自的「起回」形状（逐类，不共用一段话）
+
+| 项 | `docker-compose` | `linuxgsm-docker` |
+| --- | --- | --- |
+| 命令 | `cd <workDir> && COMPOSE_HTTP_TIMEOUT=300 timeout 1200 <composeCmd> -p <projectName> up -d`，与 `DEPLOY` 的 `:259-261` **逐字同形**（含 env 前缀与 shell `timeout` 兜底：`SshUtil` 的 `timeoutMs` 只作用于建连，命令本身无超时会永久阻塞部署线程），SSH 超时 `1200000` | `cd <workDir> && timeout 1200 <composeCmd> -p <projectName> up -d`，与该类 `deploy()` 的 `:222-223` 同形，SSH 超时 `1200000`。**两类不是同一条命令**：lgsm-docker 的既有 `up -d` 不带 `COMPOSE_HTTP_TIMEOUT=300`（该类只有 `stop()` 带）。本设计**逐类照抄各自 `DEPLOY` 已在用的形状**，不做统一——统一即改动既有类别的行为 |
+| 就绪判定 | `sleep 5000` → `<composeCmd> -p … ps` 输出含 `running` 或 `Up`（镜像 `:270-287` 既有判定；V1 输出 `Up`、V2 输出 `running`，两者都要认），失败时取 `logs --no-color --tail 50` 并经 `stripAnsiCodes` 后写进失败原因 | `sleep 8000`（镜像该类 `deploy()` `:229-231` 的 entrypoint 等待）→ `ps -q` + **逐个**容器 `docker inspect -f '{{.State.Running}}'` 全为 `true`（镜像该类 `healthCheck` `:446-468` 的判据）。**判据必须与该类自己的 `HEALTH_CHECK` 同形**，否则收尾判过而 `HEALTH_CHECK` 判不过 |
+| **禁止**复用 `ensureContainerRunning` | — | 该类 private `ensureContainerRunning`（`:955-993`）在「容器存在但已停止」分支走的是 **`compose start`**（`:970-973`）而非 `up -d`——正是 RISK-D11 否掉的形状；且它对 `ps -q` 的**第一个**容器判完即 `return`（`:979`），多容器项目根本不会逐个确认。所以本类的收尾**不复用它**。同时订正 §14.12 早先的表述：把它当「先例」指的只是「停后再起」这个动作存在，**不是**它的命令形状可用 |
+| 起停次数 | `up -d`（DEPLOY）起 → 停 → 起 各一次（§14.12 结论不变） | 同左（`deploy()` 的 `up -d` 起 → `stop()` 停 → 收尾 `up -d` 起） |
+| 后续阶段 | `HEALTH_CHECK` / `UPDATE_STATUS` / `START` / `retryHealthCheck` / `COMPLETE` 一字不改；`START` 面对已运行容器 = 今天的「空操作 + 复检」 | 同左；`START` 的 `adapter.start()` 仍 = `ensureContainerRunning`（此时容器已运行 → 短路）+ `linuxgsm start`，与今天 `DEPLOY` 之后的行为逐字相同 |
+| 收尾是否重做 `DEPLOY` 末的回写 | **不重做**：`DEPLOY` 已写 `installPath` / `startCommand` / `stopCommand` / `runtimeMetadata`（`:291-300`），收尾只负责「运行态」这一件事 | 同左 |
+| 失败处置 | **致命**：记 `stepEvent = FAILURE` + `level = ERROR` 的收尾行（收尾行归组规则见 §14.6 规则 5），部署判失败、实例 `ERROR`、不进入 `HEALTH_CHECK`。与 §14.5 停实例失败同口径；BR-14 只约束失败步骤的回滚边界，收尾不是补丁步骤、无回滚诉求 | 同左 |
+| 幂等 | `up -d` 对已运行服务是空操作 ⇒ 即便「实例其实没被停下」这一病态情形，收尾也不会二次启动 | 同左 |
+| 耗时预算 | 计入 §8.1 阶段预算：compose 类 ≤ 1200 s（shell `timeout`）+ 5 s；lgsm-docker 类 ≤ 1200 s + 8 s | 同左（数字不同） |
+
+### 14.14 行 12（REV-1）：每主机互斥的真实承担者，与本期补法（Leader 裁定取 ①）
+
+**先把事实钉正**（评审与 Leader 均已复跑）：`PatchInstallExecutor` 类头 Javadoc 原话是「同主机互斥（**由任务中心 `scopeKey=hostId` 承担**）」（`:35`），类内只有 `globalSemaphore`（`:56`）。互斥真正发生在 `TaskServiceImpl.submit`：`computeMutexKey` 默认规则 `taskType + ":" + scopeKey`（`:566-578`）+ 内存管理器 `taskMutexManager.putIfAbsent`（`:151`）。而 §14.1 的机制**恰恰是绕开 `submit` 直调 `execute()`**——被绕掉的正是这条互斥。v0.2 写成「原样继承」不成立。
+
+**后果是具体的**（不是理论风险）：执行器在宿主机使用**非命名空间化**的共享临时路径——`/tmp/patch_install_<millis>`（`:141`，步骤末 `rm -rf`，`:227`）与 `/tmp/patch_push/<fileName>`（`:637`、`:649`，**仅按文件名**）。同主机两实例并发跑扩展步骤、或扩展步骤与用户手工发起的 `PATCH_INSTALL` 任务并发（**今天后者会被互斥键挡住，绕开后就挡不住了**），可互相覆盖同名文件 / 删掉对方正在使用的目录 ⇒ 交付错文件。
+
+**修法取 Leader 裁定的 ①**，且**不新造一把锁**——复用既有的承键者：
+
+```java
+// core PatchInstallServiceImpl.installSync（v0.2 已定的「直调执行器」实现点，本期新增注入 TaskMutexManager）
+String hostId = String.valueOf(instanceQueryService.getInstanceById(request.getInstanceId()).getHostId());
+String mutexKey = "PATCH_INSTALL:" + hostId;      // 与任务中心默认规则算出的键逐字相同
+String holder   = "EXT:" + instanceId + ":" + stepIndex;   // 非任务 ID，见下行「与任务中心的边界」
+// 2 s 轮询占用，等待预算 600 s；等满 → 抛业务异常（步骤按 fatal 处置）
+boolean held = false;
+for (long waited = 0; waited < 600_000L; waited += 2_000L) {
+    if ((held = taskMutexManager.putIfAbsent(mutexKey, holder))) break;
+    Thread.sleep(2_000L);
+}
+if (!held) throw new BusinessException("等待同主机补丁互斥超时（600s），实例 hostId=" + hostId);
+try { executor.execute(request, listener); } finally { taskMutexManager.remove(mutexKey, holder); }
+```
+
+| 要点 | 判定 / 依据 |
+| --- | --- |
+| 为什么用同一个 `TaskMutexManager` 而不是自建 `Map<hostId, Lock>` | 键与持键者同源，才谈得上「等价」：本设计起的锁**同时挡住**另一路扩展步骤与任务中心提交的 `PATCH_INSTALL` 任务；自建锁只能挡住前者，等于「每主机互斥」仍不成立（BR-09 字面要求即落空）。`TaskMutexManager` 是独立 `@Component`（`task/TaskMutexManager.java`），公开 `putIfAbsent` / `remove` / `isHeld`，**本期零改动** |
+| 键格式的来源 | `scopeKey = String.valueOf(instance.getHostId())`（`PatchInstallServiceImpl:60`）+ 默认规则 `taskType + ":" + scopeKey` ⇒ `"PATCH_INSTALL:" + hostId`。**红线**：实现者必须逐字复用该拼接，不得改用 `hostId` 数字形式或带 source 前缀，否则与任务中心不同源、互斥失效 |
+| 与任务中心的边界（不违反 D-N05） | 只借**内存键管理器**，不 `TaskService.submit`、不建 `TaskRecord`、不占任务中心线程池、不注册 Handler ⇒ 部署主流程与任务中心都不改。holder 用 `"EXT:…"` 前缀的**非任务 ID** 字符串：`removeByTaskId` 只由 DB 任务记录驱动（`TaskServiceImpl:325/:426`、`TaskPendingTimeoutScheduler:75`），拿不到这个键 ⇒ 不会把部署中的锁误释放 |
+| 锁粒度 = 共享资源的粒度 | 只包住**单次 `execute()` 调用**，不跨整个扩展阶段、不跨 `SCRIPT` 步骤：两个共享路径都在一次调用内创建、消费、`finally` 清理 ⇒ 锁覆盖范围与资源生命周期一致。**红线**：不得「为省一次轮询」把锁提到阶段级——那会把 30 min 的脚本步骤算进持锁时间，把同主机的补丁能力拖死（登记 RISK-D14） |
+| 等待预算取 600 s | 与等对象同量级：一个补丁任务自身的最坏耗时就是 `SSH_TIMEOUT_MS = 600_000`（`:54`）这一档（任务中心给该任务的总超时是 1 h，见 `PatchInstallHandler:33`）。取 30 s / 60 s 会把「同主机正在跑一个正常补丁」判成失败；不封顶则挂键不放。等满 → 该步 `FAILURE`（默认致命 → 部署失败），日志原因段指名「等待同主机补丁互斥超时」——**与超时失败同类可读，不静默降级为「跳过该步」** |
+| 失败语义不新造闸门 | 这是 BR-09 已要求的互斥，不是 PRD 未要求的总耗时闸门，故不适用 §8.1「本期不加聚合上限」的理由 |
+| 诚实限制（四条，全部进 RISK-D14） | ① 内存键、单进程有效（与 ADR-018 现状同，非本期新增缺口）；② 崩溃后 `TaskCrashRecoveryRunner.clear()` 启动时清空 ⇒ 重启即释放，与既有一致；③ **无排队公平保证**——多部署线程竞争同键可能饿（实际面受全局并发闸 3 约束）；④ 等待期间该部署线程被占住，叠加 RISK-D04 的 commonPool 长阻塞 |
+| 评审的 ②（改判「本期不提供」） | **不取**（Leader 裁定）：那是需求口径收缩，须走人类，而无需收缩 |
+| 评审的 ③（给临时路径加实例命名空间） | **本期不授权**（Leader 裁定）：动的是 ADR-0006 既有行为、风险半径超出本期。登记为**后续增量建议**（`/tmp/patch_install_<ts>` 加 `_<instanceId>`、`/tmp/patch_push/` 加实例子目录），交人类 Owner 决定是否另立 Issue；本设计不把它算作本期交付 |
+
+### 14.15 行 14（REV-7①）：RISK-09 —— retry-deploy 会先 `uninstall`（含 `rm -rf workDir`）
+
+PRD §15 RISK-09 明写「交 @Architect 明确」，v0.2 全文 0 次提到它。核对为真，且比 PRD 的转述更硬：
+
+| 事实 | 证据 |
+| --- | --- |
+| `retryDeploy` 在重新部署前先调 `adapter.uninstall(...)`（忽略失败），再 `deployAsync` 全量重跑 | `InstanceServiceImpl:791-798`、`:809` |
+| compose 类 `uninstall` = `compose down` → （可选 `down -v`）→ **`rm -rf <workDir>`** | `DockerComposeAdapter:555-573` |
+| lgsm-docker 类同样 `rm -rf workDir` | `LinuxGsmDockerAdapter:541` |
+| `configInfo` 那半边**安全**：`DEPLOY` 末的回写是既有 map 的拷贝再 put 系统键，不会冲掉 `deployVersion` | `DockerComposeAdapter:329`（`new HashMap<>(instance.getConfigInfo())`）、`:349` |
+
+**四条结论**：
+
+1. **retry-deploy = 干净重跑，补丁必然全量重放。** 宿主机工作目录被删空后重新 `up -d` 起容器，前一次扩展阶段落位的文件**不存在了**——所以本期不需要「跳过已执行步骤」的任何机制，也**不可能**有。幂等前提（BR-06）由此更吃紧：声明侧脚本必须能在「空目录 + 首次落位」与「已落位 + 重放」两种起点上都得到同一终态。
+2. **BR-14 的「前序已成功步骤改动一律保留」显式限定为「当次部署内」**，**不跨 attempt**。v0.2 及 PRD 原文若不写这句，AC-21 / AC-09 的验收者在 retry-deploy 语境下会把「保留」读成跨 attempt 保留并判 FAIL。回写项 D-P10。
+3. **`configInfo.deployVersion` 跨 retry 存续**（上表第 4 行已核对），故 §5.3 的 S3「既存键被重放」在 retry-deploy 上成立，AC-07 的判定对象不变；retry 后进入扩展阶段的次数 = 每次 retry 一次（起停次数与 §14.12/14.13.3 同形叠加，不新增语义）。
+4. **不做任何「retry 前保留扩展产物」的手段**：那需要新造一套 stage 外缓存，PRD 未要求（N-08 已排除撤销/恢复控件），且与「retry = 干净重跑」这一既有语义相对抗。登记为 RISK-D12 的敞口说明。
 
 ## 15. OP-04 脚本 `timeoutMs` 缺省值与上限（拍板）
 
