@@ -909,14 +909,44 @@ record DeployVersionDeclaration(String versionId, String displayName, String ima
                                 Boolean defaultEntry,
                                 List<PatchStepDeclaration> patches,
                                 List<ScriptStepDeclaration> scripts) {}
+
+/** 步骤集的公共上界（v0.3 新增定义体，回应 REV-4）：§16.2 的动态入口返回类型、
+ *  BR-08 / AC-06 要求的「PATCH 与 SCRIPT 混排于同一有序清单」都由它承载。
+ *  两个实现者就是已有的那两个 record ⇒ 目录条目的 patches ++ scripts 零转换即得一个有序混合清单。 */
+public sealed interface DeployExtensionStepDeclaration
+        permits PatchStepDeclaration, ScriptStepDeclaration {
+    String label();          // 展示位（§14.6 stepLabel）
+    boolean fatal();         // 致命性，默认 true（BR-04：主应用不推断不覆盖）
+    StepKind kind();         // 执行器分派位（Java 17 无 pattern-matching switch，用显式 kind() 而非 instanceof 链）
+}
+
+enum StepKind { PATCH, SCRIPT }
+
 record PatchStepDeclaration(String label, String url, String targetPath, String sha256,
-                            String includePattern, String format, boolean fatal) {}
+                            String includePattern, String format, boolean fatal)
+        implements DeployExtensionStepDeclaration {
+    @Override public StepKind kind() { return StepKind.PATCH; }
+}
+
 record ScriptStepDeclaration(String label, String content, String url, String sha256,
-                             ScriptPosition position, boolean fatal, Long timeoutMs) {}
+                             ScriptPosition position, boolean fatal, Long timeoutMs)
+        implements DeployExtensionStepDeclaration {
+    @Override public StepKind kind() { return StepKind.SCRIPT; }
+}
+
 enum ScriptPosition { HOST, CONTAINER }   // CONTAINER 本期校验期拒绝（14.5）
 record DeployExtensionContext(Long instanceId, String gameCode, String deployType,
                               String selectedVersionId, Map<String, Object> configInfo) {}
 ```
+
+**新增类型清单（A 组，v0.3 计数订正）**：**7 个**——4 record（`DeployVersionDeclaration` / `PatchStepDeclaration` / `ScriptStepDeclaration` / `DeployExtensionContext`）+ 1 sealed interface（`DeployExtensionStepDeclaration`）+ 2 enum（`StepKind` / `ScriptPosition`）。v0.2 写「4 类型」是把 sealed interface 漏计、并把 `ScriptPosition` 与 `DeployExtensionContext` 少算，§3.3 组 A / §4 / §7.1 B-01 的清单同步改正。全部落在 `backend/plugin` 的 `extension.deploy` 包内（sealed 的 `permits` 要求同包），SDK 层零游戏语义。
+
+| 关系与转换 | 判定 |
+| --- | --- |
+| 与 `DeployVersionDeclaration.patches` / `scripts` 的关系 | 两者元素类型即 sealed 的两个 permitted 子类型 ⇒ `Stream.concat(patches.stream(), scripts.stream()).toList()` **直接得到 `List<DeployExtensionStepDeclaration>`**，无包装、无适配层、无字段复制。v0.2 的「② 取条目 `patches ++ scripts` 按声明序编号」在缺这个上界时**拼不成一个 list**（只能拼成 `List<Object>`），这正是悬空类型的根因 |
+| 与动态入口 ① 的关系 | `getDeployExtensionSteps(ctx)` 返回同一类型 ⇒ 解析顺序 ①② 两路汇入**同一个消费者**（`DeployExtensionExecutor` 按 `kind()` 分派），AC-18「两实例步骤集互不串用」在两条路上由同一套判定核对（V-24） |
+| 为什么不用评审给的另一形态（单一 record + `type` 判别位） | 那样 `url` / `content` / `targetPath` / `position` / `timeoutMs` / `includePattern` / `format` 全挤进一个可选位大杂烩，§8.2 / §8.3 的两套必填与「正文 / URL 二选一」规则在同一个构造器上无法用类型表达，只能整体推到运行期校验。本期口径是「不合法即整目录 `INVALID`」，**能在编译期挡住的非法组合不该留到运行期**；sealed 之后插件侧写不出「PATCH 步骤带 position」这类形状 |
+| 二进制兼容 | 纯加法；`DeployVersionDeclaration` 的两个 list 字段类型不变（仍是那两个 record），已按 v0.2 写过声明的桩插件 / `plugin-dnf-tw` 无需改动 |
 
 字段口径与 §8.1 / §8.2 / §8.3 一一对应，**SDK 层不含任何游戏语义**（G-01 / BR-01 / N-01：`core/` 内 `"dnf_tw"` 字面量命中数仍须为 0，AC-23 ③）。
 
@@ -947,7 +977,17 @@ DeployVersionCatalogService.read(gameCode, deployType) -> CatalogView
 | `INVALID` | 有条目但未过 §8.1 校验 | 向导不渲染（态 C，解释行只在部署日志）；有键/显式选择 → BR-12 拦截 |
 | `AVAILABLE` | 合法且 ≥1 条目 | 渲染控件（态 D–H） |
 
-校验内容 = §8.1 全部规则（`versionId` 非空 / 唯一 / `[A-Za-z0-9._-]`、`default` 至多一条、条目内 §8.2 §8.3 必填与二选一）+ 本设计新增两条：`imageTag` ⇒ 该 deployType 的 `variables[]` 必含 `PLATFORM_IMAGE_TAG`（14.4）、`timeoutMs` ∈ `[1000, 1800000]`（15.2）、`position` 本期只允许 `HOST`（14.5）。**逐条校验、任一不合规即整目录 `INVALID`**（§8.1 禁止部分采纳）。`getDeployVersions` 抛异常归 `ABSENT`，不外泄到向导（AC-20 的构造手段之一）。
+校验内容 = §8.1 全部规则（`versionId` 非空 / 唯一 / `[A-Za-z0-9._-]`、`default` 至多一条、条目内 §8.2 §8.3 必填与二选一）+ 本设计新增**五条**（v0.3 计数订正，并按 REV-5 / REV-3 补三条）：
+
+| # | 规则 | 判定通道 | 出处 |
+| --- | --- | --- | --- |
+| N1 | `imageTag` 存在 ⇒ 该 deployType 的 `variables[]` 必含保留键 `PLATFORM_IMAGE_TAG` | **`game_metadata` 表快照**（与 `buildDeployConfig` 同一读法、同一 map；禁止走 `GameServiceImpl` 合并视图） | §14.4、§14.4.1 R1 |
+| N2 | 表侧该 deployType 的 `composeTemplate` 必含字面量 `${PLATFORM_IMAGE_TAG`（不认 `$PLATFORM_IMAGE_TAG` 简写） | 同上（表快照） | §14.4.1 R3 |
+| N3 | `imageTag` 与保留变量的 `defaultValue` 匹配 `[A-Za-z0-9][A-Za-z0-9._@/-]{0,127}`，禁空白 / 换行 / `${` / `}` | 声明侧（插件代码给出的值） | §14.4.1 R4 |
+| N4 | `timeoutMs ∈ [1000, 1800000]`；`position` 本期只允许 `HOST` | 声明侧 | §15.2、§14.5 |
+| N5 | **deployType 支持集合**：`deployType ∉ {docker-compose, linuxgsm-docker}` 而目录含任何条目带 `patches` / `scripts` / `imageTag` ⇒ 不合法 | 入参 `deployType`（本服务签名已有） | §14.13.1 |
+
+**逐条校验、任一不合规即整目录 `INVALID`**（§8.1 禁止部分采纳）。`getDeployVersions` 抛异常归 `ABSENT`，不外泄到向导（AC-20 的构造手段之一）。N1/N2 的存在理由是 §16.1 那条通道不对称：**校验与部署必须读同一份数据，否则「校验通过而部署无效」在本期是可达状态**（v0.2 未钉通道时的缺陷，REV-5）。
 
 ### 16.4 `GET` 侧契约（向导读目录）
 
