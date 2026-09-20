@@ -288,10 +288,17 @@ tr.hl-row td{background:rgba(39,181,243,.05)}
 .logs-header .acts button{font-size:12px;color:var(--platform-text-secondary)}
 .logs-container{max-height:340px;overflow:auto;padding:12px 16px;background:var(--platform-surface-0);
   font:13px/1.6 var(--font-mono)}
-/* S-12（v0.4）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报），
-   另设视觉隐藏区 role=status + aria-live=polite，只承载阶段级事件与 ERROR 行。 */
+/* S-12（v0.4）/ MF-6（v0.5）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报），
+   另设视觉隐藏区 role=status + aria-live=polite + aria-atomic=false，只承载阶段级事件与 ERROR 行。
+   aria-atomic 必须显式写 false：role=status 的隐含值是 true，与「累积队列 + 追加式写入」相乘
+   会让每次变更重播整段（= §9.4 红线要禁的事）。队列按「一条一个节点」组织，配合宿主增量 append，
+   判据即「每次变更只播新增的那一条」。 */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+/* MF-7（v0.5）：G2「目录可用但载荷版本不在条目中」的取值区 —— amber 图标 + 文字，不是红色（红色专属失败行） */
+.ep-select.off .val{color:var(--platform-amber)}
+.ep-select.off .val>span:first-child{color:var(--platform-amber)}
+.ep-select.off .val .vfm{font:11px/1 var(--font-mono);font-weight:650}
 .log-item{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:2px 0}
 .log-item .ic{flex:0 0 auto;width:14px;margin-top:4px}
 .log-time{flex:0 0 auto;min-width:64px;color:var(--platform-text-muted)}
@@ -339,7 +346,7 @@ tr.hl-row td{background:rgba(39,181,243,.05)}
   </div>
   <div class="proto-legend">
     <b>〈…〉</b> 一律为字段占位符，不对应任何真实版号 / 下载来源 / 目标路径（PRD BR-15 ①、N-12）。
-    左侧切换 <b>27</b> 个状态；仅覆盖本期新增与受影响界面，未列出的界面一律保持现状。
+    左侧切换 <b>30</b> 个状态；仅覆盖本期新增与受影响界面，未列出的界面一律保持现状。
     虚线元素与「<b>评审标记·非产品元素</b>」标签是原型脚手架，实现侧不输出（ui-spec.md §8.4）。
   </div>
 </header>
@@ -447,8 +454,16 @@ var CAT_NODEF = [
   {vid:'〈versionId ③〉', dn:null, def:false, steps:2}
 ];
 var SYNTH = {vid:null, dn:null, def:true, synth:true, steps:0};
+/* S-17（v0.5）：已选条目两栈皆空（steps:0）——步数词面一律走「不执行」档，不显 0（§6.4 禁止 0 值提示）。 */
+var CAT_S0  = {vid:'〈versionId ①〉', dn:'〈展示名 ①〉', def:false, steps:0};
+/* MF-7（v0.5）G2 态：载荷里的 deployVersion 在目录中取不到任何条目。该串用独立槽位
+   〈目录外 versionId〉，以区别于本屏下拉里真的存在的〈versionId ①〉——它「不是某个可选条目」。 */
+var OFFCAT  = {vid:'〈目录外 versionId〉', dn:null, def:false, off:true, steps:null};
 function optMain(e){return e.def ? '默认版本' : (e.dn || e.vid);}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+/* 步数词面（§6.1「↳ 步数徽标与选项行右侧步数」）：0 值一律走「不执行」档 */
+function stepNote(e){return (e.def||!e.steps)?'不执行部署扩展':'含 '+e.steps+' 个部署扩展步骤';}
+function stepBadge(e){return (e.def||!e.steps)?'不执行部署扩展步骤':'将执行 '+e.steps+' 个部署扩展步骤';}
 function versionBlock(cat,keyPresent,open){
   if(cat==='empty'||cat==='invalid-nodata'){
     // S1：控件不渲染 —— 与改造前逐字节一致（FR-02 / AC-24 ①）
@@ -459,25 +474,34 @@ function versionBlock(cat,keyPresent,open){
   const loading = cat==='loading';
   const single  = cat==='ready-single';
   const nodefault = cat==='ready-nodefault';
+  const nosteps = cat==='ready-nosteps';   // W4b（S-17）
+  const notin   = cat==='ready-notin';     // W9b（MF-7 · G2 态）
   const entries = single ? CAT.filter(function(e){return e.def;})
-                  : (nodefault ? [SYNTH].concat(CAT_NODEF) : CAT);
-  const selEntry = cat==='ready-nondefault' ? entries[1] : entries[0];
+                  : (nodefault ? [SYNTH].concat(CAT_NODEF)
+                  : (nosteps ? [CAT[0], CAT_S0] : CAT));
+  const selEntry = notin ? OFFCAT
+                   : ((cat==='ready-nondefault'||nosteps) ? entries[1] : entries[0]);
   const opts = entries.map(function(e){
-    return {e:e, on:(e===selEntry),
-      note:(e.def?'不执行部署扩展':'含 '+e.steps+' 个部署扩展步骤')};
+    return {e:e, on:(e===selEntry), note:stepNote(e)};
   });
-  const sel = '<div class="ep-select'+(open?' open is-focus':'')+(loading?' is-disabled':'')+'">'
+  /* S-13②（v0.5）：稳定锚点 data-ext-version-select + aria-label="目标版本"——
+     实现侧的下拉可能被传送到 body 下、页面上另有 el-select（deploy.vue:1421），
+     AC-01 的核对必须按「该锚点控件对应 popper 内的 item」取集合。 */
+  const sel = '<div class="ep-select'+(open?' open is-focus':'')+(loading?' is-disabled':'')+(notin?' off':'')+'"'
+    +' data-ext-version-select aria-label="目标版本">'
     + (loading? '<span class="placeholder" style="display:flex;align-items:center;gap:8px">'+svg('loading',13)+'版本目录读取中…</span>'
-              : '<span class="val"><span title="'+esc(optMain(selEntry))+'">'+optMain(selEntry)+'</span>'
-                +(selEntry.vid?'<span class="vid">'+selEntry.vid+'</span>':'')+'</span>')
+              : (notin
+                 ? '<span class="val"><span title="'+esc(selEntry.vid)+' · 不在当前可选版本中">'+svg('warning',13)
+                   +'<span class="vfm">'+selEntry.vid+'</span> · 不在当前可选版本中</span></span>'
+                 : '<span class="val"><span title="'+esc(optMain(selEntry))+'">'+optMain(selEntry)+'</span>'
+                   +(selEntry.vid?'<span class="vid">'+selEntry.vid+'</span>':'')+'</span>'))
     + svg('bottom',12).replace('class="','class="caret ')+'</div>';
   const dd = open? '<div class="ep-dropdown">'+opts.map(function(o){
       return '<div class="ep-option'+(o.on?' on':'')+'"><div class="col"><span class="t" title="'+esc(optMain(o.e))+'">'+optMain(o.e)+'</span>'
         +(o.e.vid?'<span class="vid">'+o.e.vid+'</span>':'')+'</div>'
         +'<small>'+(o.on?svg('check',13):o.note)+'</small></div>';}).join('')+'</div>' : '';
-  const badge = cat==='ready-nondefault'
-      ? '<span class="ep-tag ep-tag--primary">'+svg('info',12)+'将执行 '+selEntry.steps+' 个部署扩展步骤</span>'
-      : '<span class="ep-tag">'+svg('info',12)+'不执行部署扩展步骤</span>';
+  /* G2（notin）：步数徽标与步骤预览一律不渲染——该值在目录里没有条目，无从解析出步骤集（§6.1 G2 行 / §7 X-11） */
+  const badge = notin ? '' : '<span class="ep-tag'+(cat==='ready-nondefault'?' ep-tag--primary':'')+'">'+svg('info',12)+stepBadge(selEntry)+'</span>';
   const preview = cat==='ready-nondefault' ? '<div class="version-preview"><div class="h"><span>部署扩展步骤预览 · 按声明顺序执行，只读展示，<b>不探测来源可达性</b>（N-09）</span>'
       +'<button class="ep-btn ep-btn--sm" style="padding:2px 8px">收起</button></div>'
       +'<ul class="step-list">'
@@ -489,12 +513,33 @@ function versionBlock(cat,keyPresent,open){
       ? '<div class="field-description">该游戏当前只声明了默认版本，没有可切换的其它版本；控件仍渲染（定稿见 §2-①）。</div>'
       : (nodefault
         ? '<div class="field-description">该游戏的目录<b>未声明</b> <code>default = true</code> 条目（§8.1 校验＝「至多一条」⇒ 0 条合法）。首位「默认版本」是<b>合成项、不是目录条目</b>，因此<b>没有 <code>versionId</code> 副标可渲染</b>；选中它即 S2：不写键、行为与改造前一致。其余三项各带自己条目的 <code>versionId</code> 副标（§6.1 默认项副标取值 支②）。</div>'
-        : '<div class="field-description">未选择时按该游戏的默认版本部署，行为与改造前一致。所选版本随实例配置保存，重新部署会重放同一份版本配方。</div>');
+        : (notin
+          ? '<div class="field-description">实例配置要求的版本 <code>〈目录外 versionId〉</code> <b>由既往部署写入实例配置、本次未改选，而它不在当前目录的可选版本中</b>。可在此<b>改选下列任一条目</b>；不改选直接提交时，本次提交<b>仍携带该版本要求</b>、不会被静默改为默认版本、也不会清除该键，判定发生在扩展阶段入口（§6.3 分支 ②）。该值在目录里没有条目，因此<b>没有步数徽标、没有步骤预览</b>——不是「它不需要扩展」，而是<b>无从解析</b>（§6.1「↳ 控件当前值 G2」/ §7 X-11）。</div>'
+          : (nosteps
+            ? '<div class="field-description">本屏的已选条目在目录里<b>真实存在</b>，但它的补丁集与脚本集<b>皆为空</b>：徽标与选项行右侧步数因此一律走<b>「不执行」档</b>（<code>不执行部署扩展步骤</code> / <code>不执行部署扩展</code>），步骤预览<b>不渲染</b>。<b>不得</b>把步骤数渲染成零（§6.4 的 0 值禁令；本文件与 ui-spec.md 都不复制那句被禁的零值字面量，判据即「步骤数出现在界面上时必 ≥ 1」）。该条目是否需要额外标注或干脆不展示，属<b>未定稿</b>的 §10-B2，本屏不预判（词面册见 §6.1「↳ 步数徽标与选项行右侧步数」）。</div>'
+            : '<div class="field-description">未选择时按该游戏的默认版本部署，行为与改造前一致。所选版本随实例配置保存，重新部署会重放同一份版本配方。</div>')));
   return '<div class="detail-section" data-block="target-version">'
     +'<div class="section-title">'+svg('collection',13)+'目标版本<span class="review-flag">评审标记·非产品元素</span></div>'
     +'<div class="version-row">'+sel+badge+'</div>'+dd+preview+footnote
-    +(keyPresent?'<div class="note-inline warn">'+svg('warning',11)+' 实例配置中已存在版本要求，但本游戏当前无可选版本目录，此处不可改选。</div>':'')
+    +(keyPresent&&!notin?'<div class="note-inline warn">'+svg('warning',11)+' 实例配置中已存在版本要求，但本游戏当前无可选版本目录，此处不可改选。</div>':'')
     +'</div>';
+}
+/* MF-7（v0.5）W9b：G2 态的步骤 5 摘要行，与步骤 2 的控件同屏呈现（Leader 要求「一屏能看见」该合法形态）。
+   取值与 W9 同款（versionId + 「沿用实例配置」）：该条目的 displayName 与目录不可用时一样无从解析。 */
+function g2SummaryBlock(){
+  return '<div class="confirm-section" data-block="target-version-summary"><div class="section-title">'+svg('document',13)
+    +'配置摘要 · 步骤 5 的同一条载荷<span class="review-flag">评审标记·非产品元素</span>'
+    +'<span class="text-secondary" style="margin-left:auto;font-size:11px">实际渲染在步骤 5；此处与上方控件同屏，为的是让「G2 在两处都诚实」可一屏核对（实现侧不要照抄这个并置）</span></div>'
+    +'<table class="ep-desc"><tbody>'
+    +'<tr class="hl-row"><th>游戏</th><td>'+svg('grid',13)+' DNF台服</td></tr>'
+    +'<tr class="hl-row"><th>目标版本<span class="review-flag">评审标记·非产品元素</span></th><td>〈目录外 versionId〉'
+    +' <span class="ep-tag ep-tag--warning">'+svg('warning',12)+'沿用实例配置</span>'
+    +' <span class="ep-tag">'+svg('warning',12)+'不在当前可选版本中</span>'
+    +'<div class="note-inline warn">与 W9 同款的取值：目录<b>可用</b>但该条目的 <code>displayName</code> 无从解析（目录里没有这个条目），因此两处都只能报出载荷里真实存在的那个字符串——'
+    +'提交前（本行）与失败后（§6.3 分支 ② 的日志行）报的是<b>同一个值</b>，用户才可能对得上。</div>'
+    +'<div class="note-inline">与 W9 的<b>唯一</b>差别：本态目录可用，所以步骤 2 的控件<b>仍在</b>、用户能改选回目录内条目（W9 是无控件可改选）。'
+    +'不改选直接提交 ⇒ 载荷原样携带该键，扩展阶段入口按 BR-12 拦截；<b>不得</b>回落为「默认版本」、<b>不得</b>清除该键（§7 X-11）。</div></td></tr>'
+    +'</tbody></table></div>';
 }
 function wizardStep2(o){
   return '<div class="grid2"><div>'+panelTitle('选择游戏')+gameList()+'</div><div>'+
@@ -512,6 +557,7 @@ function wizardStep2(o){
     +'<span class="ep-tag ep-tag--lg">relay: 〈端口〉</span><span class="ep-tag ep-tag--lg">stun_start: 〈端口〉</span></div></div>'
     +'<div class="detail-section" style="margin-bottom:0"><div class="section-title">'+svg('cpu',13)+'环境依赖</div>'
     +'<div class="port-tags"><span class="ep-tag">memory: 2G</span><span class="ep-tag">disk: 20G</span><span class="ep-tag">cpu: 1核</span></div></div>'
+    +(o.embed5?g2SummaryBlock():'')
     +'</div></div></div>';
 }
 function panelTitle(t){return '<div class="panel-title">'+svg('grid',13)+t+'</div>';}
@@ -592,11 +638,13 @@ function logDialog(o){
       +'<span class="log-message">'+l.m+'</span></div>';
   });
   if(!o.completed) lines+='<div class="log-item log-pending"><span class="ic spin">'+svg('loading',14)+'</span><span class="log-time">--:--:--</span><span class="log-message">等待更多输出...</span></div>';
-  /* S-12（v0.4）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报）；
-     另设视觉隐藏区 role=status + aria-live=polite，只承载 ① 阶段级事件 ② ERROR 行全文。
-     该隐藏区不是日志全文的镜像（INFO / WARN 一律不进队列）。 */
+  /* S-12（v0.4）/ MF-6（v0.5）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报）；
+     另设视觉隐藏区 role=status + aria-live=polite + aria-atomic=false，只承载 ① 阶段级事件 ② ERROR 行全文。
+     该隐藏区不是日志全文的镜像（INFO / WARN 一律不进队列）；「一条一个节点」是判据②的结构前提，
+     宿主侧写入方式 = 增量 append 单个节点（不清空、不整体重建）——静态帧的等价物即此逐行 <div> 形状。
+     收尾行两支的归属（v0.5，⑧a）：失败支是 ERROR 行 ⇒ 进队列；成功支是阶段级 SUCCESS 行 ⇒ 不进（该阶段的成功由紧随的完成行播报）。 */
   var srLines=(o.lines||[]).filter(function(l){
-    return l.m && (l.lv==='ERROR' || /^(进入部署扩展阶段|部署扩展阶段)/.test(l.m));
+    return l.m && (l.lv==='ERROR' || /^(进入部署扩展阶段|部署扩展阶段完成|部署扩展阶段结束)/.test(l.m));
   }).map(function(l){return '<div>'+l.m+'</div>';}).join('');
   return '<div class="dialog-mask"><div class="ep-dialog">'
    +'<div class="ep-dialog__header">部署进度<span style="color:var(--platform-text-muted)">'+svg('circle-close',16)+'</span></div>'
@@ -615,7 +663,7 @@ function logDialog(o){
    +'<div class="logs-section"><div class="logs-header"><span>'+svg('tickets',13)+' 部署日志</span>'
    +'<span class="acts"><button>'+svg('delete',12)+' 清空</button><button>'+svg('bottom',12)+' 到底部</button></span></div>'
    +'<div class="logs-container" role="log" aria-live="off" aria-label="部署日志">'+(o.lines&&o.lines.length?lines:'<div class="ep-empty">暂无日志</div>')+'</div>'
-   +'<div class="sr-only" role="status" aria-live="polite" aria-label="部署状态播报">'+srLines+'</div></div>'
+   +'<div class="sr-only" role="status" aria-live="polite" aria-atomic="false" aria-label="部署状态播报">'+srLines+'</div></div>'
    +'</div>'
    +'<div class="ep-dialog__footer">'+(o.completed?(o.success?'<span class="ep-btn">完成</span>'
         :'<span class="ep-btn ep-btn--primary">'+svg('refresh',13)+'重试</span><span class="ep-btn">关闭</span>')
@@ -650,7 +698,7 @@ const SC = [
   ac:['AC-01','AC-02','AC-22','FR-01','FR-04'],state:'S2',
   diff:'区块出现，停在「默认版本」；提交不写 deployVersion 键；日志不出现扩展阶段。',
   catalog:'ready-default',keyPresent:false,open:true,
-  annot:[['默认项文案','固定为「默认版本」四字，<b>不显示镜像 tag 字面量</b>——BR-02 下默认版本沿用游戏模板内既有 tag，没有独立 <code>imageTag</code> 可展示（<b>没有的是 tag，不是 <code>versionId</code></b>：§8.1 里 <code>versionId</code> 对每条目录条目必填）。该条目即使声明了 displayName 也<b>有意不采用</b>（§6.1）。'],['默认项副标取值（本屏＝支①）','本屏的目录<b>存在</b> <code>default = true</code> 条目 → 首位「默认版本」的副标 = <b>该条目的 <code>versionId</code></b>（原型内为 <code>〈默认条目 versionId〉</code>）。目录<b>无</b>该条目时首位没有副标（支②，见 <b>W3b / W8c</b>）——两支定稿于 §6.1「默认项副标取值」。'],['选项文本','主文本 = <code>displayName</code>，缺省回退 <code>versionId</code>；<b>versionId 恒以 mono 副标呈现</b>，displayName 缺省时主文本与副标同值（照常双行）。本屏第 3 项即为「无 displayName → 同值双行」的样例。超长 <code>displayName</code> 按 §8.2 截断（主文本 ellipsis + <code>title</code> 兜底，副标恒可见）。'],['AC-01 核对口径（两句）','<b>句一</b>：<b>非默认选项</b>内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰出现 1 次）⇒ 本屏 {①,②} = {①,②} 成立。<b>句二</b>：首位显示「默认版本」，副标按上一行两支。默认项<b>不</b>进句一的等式（否则在无 <code>default=true</code> 条目的合法目录下无解）。'],['核对程序三条前提','① 核对前<b>须展开下拉</b>（本屏 <code>open:true</code>；收起态不渲染选项节点）；② 作用域只取 <code>.ep-dropdown .ep-option .vid</code>，<b>不得</b>按 <code>class="vid"</code> 全量扫——本屏全文 <code>.vid</code> = 4（3 选项 + 1 收起态取值区），全扫会把默认条目重复计入；③ 「相等」＝去重集合相等且每元素恰 1 次，非序列比对。'],['选项排序','默认版本恒在首位，其余按目录声明顺序，不做字典序重排（用户/插件维护者的心智与声明一致）。'],['步数副标','每个条目在右侧以 10px mono 显示其步骤数量或「不执行部署扩展」，帮助用户理解代价（只读声明，不探测可达性）。']]},
+  annot:[['默认项文案','固定为「默认版本」四字，<b>不显示镜像 tag 字面量</b>——BR-02 下默认版本沿用游戏模板内既有 tag，没有独立 <code>imageTag</code> 可展示（<b>没有的是 tag，不是 <code>versionId</code></b>：§8.1 里 <code>versionId</code> 对每条目录条目必填）。该条目即使声明了 displayName 也<b>有意不采用</b>（§6.1）。'],['默认项副标取值（本屏＝支①）','本屏的目录<b>存在</b> <code>default = true</code> 条目 → 首位「默认版本」的副标 = <b>该条目的 <code>versionId</code></b>（原型内为 <code>〈默认条目 versionId〉</code>）。目录<b>无</b>该条目时首位没有副标（支②，见 <b>W3b / W8c</b>）——两支定稿于 §6.1「默认项副标取值」。'],['选项文本','主文本 = <code>displayName</code>，缺省回退 <code>versionId</code>；<b>versionId 恒以 mono 副标呈现</b>，displayName 缺省时主文本与副标同值（照常双行）。本屏第 3 项即为「无 displayName → 同值双行」的样例。超长 <code>displayName</code> 按 §8.2 截断（主文本 ellipsis + <code>title</code> 兜底，副标恒可见）。'],['AC-01 核对口径（两句）','<b>句一</b>：<b>非默认选项</b>内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰出现 1 次）⇒ 本屏 {①,②} = {①,②} 成立。<b>句二</b>：主文本为「默认版本」的那一行显示「默认版本」，副标按两支。默认项<b>不</b>进句一的等式（否则在无 <code>default=true</code> 条目的合法目录下无解）。<b>v0.5（S-16）：句一的锚点已改为内容式</b>——「非默认选项」= <b>主文本不为「默认版本」的那些选项行</b>，不再写成「除首位以外」（那会把下一条的排序规则变成 AC-01 的前提）。'],['核对程序三条前提（v0.5 按 S-13 订正）','① <b>展开该控件之后再取选项集合</b>；本设计<b>不</b>把「收起态应取到空集」写成断言——选项节点是否随收起销毁由组件版本与 <code>persistent</code> 一类配置决定，判据不绑库默认值（原型内收起态确实不渲染选项节点，故只有 <code>open:true</code> 的屏有权做句一核对）。② <b>作用域只取「该 <code>el-select</code> 对应 popper 内的 item」</b>：(a) <b>不得</b>把作用域限定在向导容器内——下拉可能被传送到 <code>&lt;body&gt;</code> 下，容器内选择器取不到它；(b) 必须按<b>稳定锚点</b>归属：本控件固定 <code>data-ext-version-select</code> + <code>aria-label="目标版本"</code>（页面上另有 <code>el-select</code>：步骤 3 的 <code>deploy.vue:1421</code>，不按锚点就会混入）。原型内可执行选择器 <code>.ep-dropdown .ep-option .vid</code>，<b>不得</b>全量扫 <code>class="vid"</code>——本屏全文 <code>.vid</code> = 4（3 选项 + 1 收起态取值区）。③ 「相等」＝去重<b>集合</b>相等且每元素恰 1 次，非序列比对。'],['选项排序','合成/默认的「默认版本」<b>恒在首位</b>；若目录把 <code>default = true</code> 的条目声明在非首位，<b>渲染时上提</b>（声明本身不动，故不违反 BR-04），其余保持声明序、不做字典序重排。<b>v0.5（S-16）：该规则已提进规则正文</b>（§6.1「↳ 选项排序」+ §7 X-10），本格降为其实例说明。'],['步数副标','每个条目在右侧以 10px mono 显示其步骤数量或「不执行部署扩展」，帮助用户理解代价（只读声明，不探测可达性）。']]},
 
  {g:'向导 · 目标版本区块',id:'w3b',name:'W3b 目录可用 · 无 default=true 条目（S2 支②）',screen:'wizard',step:2,stepTitle:'选择游戏',
   stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
@@ -658,7 +706,7 @@ const SC = [
   ac:['AC-01','AC-02','FR-01','FR-04'],state:'S2（支②）',
   diff:'与 W3 的唯一差别在首位选项：本屏的「默认版本」是<b>合成项</b>，只渲染四字、<b>不渲染 <code>versionId</code> 副标</b>；其后三条目录条目各带自己条目的副标，各出现 1 次。',
   catalog:'ready-nodefault',keyPresent:false,open:true,
-  annot:[['这一屏为什么必须存在','评审 MF-5：把默认项写进 AC-01 的集合等式，在「无 <code>default = true</code> 条目」的合法目录下就没有条目可取值、该口径无解。本屏与 W8c 即该形态的实物，缺它则该合法配置在原型里不可见。'],['默认项副标取值（支②）','首位「默认版本」<b>不是目录条目</b>，没有 <code>versionId</code> 可取 ⇒ <b>不渲染副标</b>。<b>禁止</b>为它编一个目录里不存在的字符串（如「沿用模板版本」）：那是 §6.1「凭空造词」禁令的对象，也会让集合等式重新无解；也禁止改显镜像 tag（N-12 / BR-15 ①）。'],['AC-01 两句口径','<b>句一</b>：非默认选项内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰 1 次）⇒ 本屏 {①,②,③} = {①,②,③} 成立。<b>句二</b>：首位显示「默认版本」，副标按支② 省略。'],['核对程序三条前提','① 本屏 <code>open:true</code>（收起态不渲染选项节点，核对前须展开下拉）；② 作用域只取 <code>.ep-dropdown .ep-option .vid</code>，<b>不得</b>按 <code>class="vid"</code> 全量扫；③ 「相等」＝去重集合相等且每元素恰出现 1 次，不做序列比对。'],['选项排序','合成「默认版本」恒在首位，其后按目录声明顺序（与 W3 同规则），不做字典序重排。'],['无副作用','停在首位即 S2：提交载荷不含 <code>deployVersion</code>、不进入扩展阶段 —— 与支① 行为相同，两支的界面差别只在首位副标的有无。']]},
+  annot:[['这一屏为什么必须存在','评审 MF-5：把默认项写进 AC-01 的集合等式，在「无 <code>default = true</code> 条目」的合法目录下就没有条目可取值、该口径无解。本屏与 W8c 即该形态的实物，缺它则该合法配置在原型里不可见。'],['默认项副标取值（支②）','首位「默认版本」<b>不是目录条目</b>，没有 <code>versionId</code> 可取 ⇒ <b>不渲染副标</b>。<b>禁止</b>为它编一个目录里不存在的字符串（如「沿用模板版本」）：那是 §6.1「凭空造词」禁令的对象，也会让集合等式重新无解；也禁止改显镜像 tag（N-12 / BR-15 ①）。'],['AC-01 两句口径','<b>句一</b>：非默认选项（<b>内容式锚点</b>：主文本不为「默认版本」的那些选项行，v0.5 / S-16）内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰 1 次）⇒ 本屏 {①,②,③} = {①,②,③} 成立。<b>句二</b>：主文本为「默认版本」的那一行按其支② 形态<b>无副标</b>。'],['核对程序三条前提','与 W3 同（v0.5 按 S-13 订正）：① <b>展开该控件之后再取</b>，<b>不</b>把「收起 ⇒ 空集」写成断言（该事实随组件版本与 <code>persistent</code> 一类配置变，判据不绑它；本屏 <code>open:true</code> 因此有权做句一核对）；② 作用域按<b>该控件对应 popper 内的 item</b> 取、锚点 <code>data-ext-version-select</code> + <code>aria-label="目标版本"</code>，<b>不</b>限定在向导容器内（下拉可能被传送到 <code>&lt;body&gt;</code> 下，容器内选择器取不到）、<b>不</b>全量扫 <code>class="vid"</code>；本屏全文 <code>.vid</code> = 3 = 限定后 3，恰因首位合成项<b>没有</b>副标——这是支② 与句一同构的证据；③ 「相等」＝去重集合相等且每元素恰出现 1 次，不做序列比对。'],['选项排序','合成「默认版本」恒在首位，其后按目录声明顺序。<b>规则本体自 v0.5 起在 §6.1「↳ 选项排序」与 §7 X-10</b>，本格只是实例（S-16：句二的判据依赖这条，它不能只活在标注卡里）。'],['无副作用','停在首位即 S2：提交载荷不含 <code>deployVersion</code>、不进入扩展阶段 —— 与支① 行为相同，两支的界面差别只在首位副标的有无。']]},
 
  {g:'向导 · 目标版本区块',id:'w4',name:'W4 目录可用 · 选非默认版本（S3）',screen:'wizard',step:2,stepTitle:'选择游戏',
   stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
@@ -717,13 +765,29 @@ const SC = [
   catalog:'ready-nodefault',keyPresent:false,
   annot:[['与 W8b 的分界','两屏都是「无键 + P1 真」，唯一差别在目录形态：W8b 有 <code>default=true</code> 条目 → 副标取该条目的 <code>versionId</code>（支①）；本屏无该条目 → <b>不渲染副标</b>（支②）。两支在 §5 取值表各占一行。'],['不得编造','禁止为此项显式补一个目录里不存在的字符串（§1 槽位表已把 <code>〈沿用模板版本〉</code> 标为<b>禁止启用</b>槽位），也禁止改显镜像 tag（N-12 / BR-15 ①）。'],['与下拉同源','本屏与 W3b 首位是同一口径：主文本「默认版本」、副标缺席。用户改选任一条目后，摘要回到「主文本 + 该条目 <code>versionId</code> 副标」的 W8 形态，句一的核对在步骤 2 与步骤 5 取同一个机械核对对象。'],['不写键','载荷不含 <code>deployVersion</code>（§8.4.2 S2）⇒ BR-12 不触发、不进入扩展阶段；这也是 AC-24 ② 的核对对象。']]},
 
+ {g:'向导 · 目标版本区块',id:'w4b',name:'W4b 已选条目两栈皆空（步数 0 值档）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录可用，用户选的条目<b>真实存在</b>于目录里，但该条目的补丁集与脚本集<b>皆为空</b>（§10-B2 讨论的那一类条目）。',
+  ac:['AC-16','FR-05','FR-06','§6.4 的 0 值禁令'],state:'S3 · 解析出的步骤集为空',
+  diff:'步数词面走<b>「不执行」档</b>（徽标 <code>不执行部署扩展步骤</code>、选项行右侧 <code>不执行部署扩展</code>），步骤预览<b>不渲染</b>；界面上<b>不出现</b>任何以零为步骤数的提示（§6.4 已禁，v0.5 起该分支有词面册与实物帧）。',
+  catalog:'ready-nosteps',keyPresent:false,
+  annot:[['这一屏为什么必须存在','评审 S-17：§10-B2 曾引用一个「既不在文案矩阵、也无实物屏」的零值提示词面。本屏是该情形的<b>真实形态</b>——处置是把产物里<b>早已存在</b>的词面的 0 值分支定死并登记进 §6.1，<b>不新造</b>那条被 §6.4 禁止的零值字面量（详见 ui-spec.md §13.3 的 S-17 行）。'],['处置（取评审给的「引用真实存在的词面」一支）','<b>不新增</b>该词面：它就是「步骤总数为 0 的提示」，而 §6.4 自 v0.1 起明令禁止该形态，补进矩阵等于在产物里留一条自相矛盾。改为把<b>已有</b>词面的 0 值分支定死并登记进 §6.1「↳ 步数徽标与选项行右侧步数（含 0 值规则）」，本屏即其实物。'],['与 §10-B2 的分工','该条目<b>是否需要额外标注不生效、或干脆不展示</b>仍是 B2 的待决问题（未定稿、本轮不并收）；本屏只固定「已选它之后界面长什么样」，不预判那个结论。'],['键仍写','选了非默认条目就写 <code>deployVersion</code> 键（§8.4.2 S3），只是本次不进入扩展阶段——与停在默认版本（S2）的区别在键的存在，不在界面词面。']]},
+
  {g:'向导 · 提交前可见性',id:'w9',name:'W9 摘要 · 键既存但目录不可用（BR-12 ②）',screen:'wizard',step:5,stepTitle:'确认部署',
   stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
   trigger:'插件被卸载 / 声明异常，而实例配置中已存在非默认 deployVersion（重部署重放，FR-13）。',
   ac:['AC-20 (b)','BR-12','§12「向导不展示但键已存在」行'],state:'S3（不可改选）',
   diff:'步骤 2 无控件；摘要仍以「沿用实例配置」标出该版本要求，不做任何可用性判断、不阻断提交。',
   catalog:'empty',keyPresent:true,
-  annot:[['为什么必须显示','此处若显示「默认版本」或干脆不显示，等于界面上把一次「要求非默认版本」的部署伪装成默认版本部署 —— 正是 BR-12 要杜绝的结果。值取自提交载荷，与目录是否可读无关。'],['不得越界','不得提供「一键清除版本要求」「改回默认版本」的任何控件（§12：本期不提供）。措辞用「无法在此改选」而非「请选择默认版本」。'],['不阻断','提交照常放行，判定发生在扩展阶段入口（N-09）。']]},
+  annot:[['为什么必须显示','此处若显示「默认版本」或干脆不显示，等于界面上把一次「要求非默认版本」的部署伪装成默认版本部署 —— 正是 BR-12 要杜绝的结果。值取自提交载荷，与目录是否可读无关。'],['不得越界','不得提供「一键清除版本要求」「改回默认版本」的任何控件（§12：本期不提供）。措辞用「无法在此改选」而非「请选择默认版本」。'],['不阻断','提交照常放行，判定发生在扩展阶段入口（N-09）。'],['与 W9b 的分界（v0.5）','本屏是「目录<b>不可用</b> + 键既存」——<b>没有</b>控件可改选，可见性只能靠这一行摘要承载；W9b 是「目录<b>可用</b> + 载荷值不在条目中」（G2）——控件仍在、用户能改选回目录内条目。两屏的摘要取值同为「<code>versionId</code> + 沿用实例配置」，理由同一：<code>displayName</code> 无从解析（一个是目录读不到，一个是目录里没有那个条目）。']]},
+
+ {g:'向导 · 提交前可见性',id:'w9b',name:'W9b 目录可用 · 载荷版本不在条目中（G2）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录<b>可用</b>（P1 真）、提交载荷含 <code>deployVersion</code>，但该 <code>versionId</code> <b>不在目录条目中</b>（既存键 + 目录内容其后变化：条目被删 / <code>versionId</code> 被改 / 插件重新声明）。PRD BR-12 明列该触发条件。',
+  ac:['AC-20 (b)','BR-12','FR-13','§8.4.2','AC-01'],state:'S3 的第四支（G2）',
+  diff:'与 W9 的<code>唯一</code>差别是「目录可用」⇒ <b>控件仍在、能改选</b>；取值区以诚实形态显示「<code>〈目录外 versionId〉</code> · 不在当前可选版本中」，<b>不回落为「默认版本」、不伪装成某个可选条目、不为它新增合成选项</b>；步数徽标与步骤预览都不渲染（无从解析）。本屏同时给出该态的<b>步骤 5 摘要行</b>（同屏下半）。',
+  catalog:'ready-notin',keyPresent:true,embed5:true,
+  annot:[['这一屏为什么必须存在','评审 MF-7：§5 的 P1 只判「目录是否可用」，而取值表第 3 行的 <code>displayName</code> 解析前提是「该条目在目录里」——该态下规则落空、全文无落点。不定的话实现侧只能自己发明，最坏分支是<b>回落默认版本 + 提交时删键 ⇒ 静默按默认版本交付，且键已删连 BR-12 都不再触发</b>，正是 D-04 / W9 整套设计要防的结果。'],['处置一：控件仍渲染（按 Leader 口径裁定）','出现与否<b>只由「目录是否可用」一个谓词决定</b>（§2-① 已定稿原则的延伸）——该态下用户恰恰需要<b>改选回目录内的条目</b>，隐藏控件等于剥夺改正能力。'],['处置二：两条硬规则入 §7 X-11','① <b>不得回落为「默认版本」</b>；② <b>不得清除或改写已有的 <code>deployVersion</code> 键</b>。未改选直接提交时载荷必须原样携带该键，由扩展阶段入口按 <b>§6.3 分支 ②</b> 拦截。边界：随后改选目录内任一条目属正常改选，键被该条目覆盖，不在禁止范围内。'],['处置三：当前值怎么显示','取值区主文本 = <code>〈目录外 versionId〉 · 不在当前可选版本中</code>（amber 图标 + 文字，与既存键提示同族；<b>不用红色</b>——它不是失败终态而是可改选的异常取值，§8.2「G2 取值区」行），<b>不</b>渲染 <code>versionId</code> mono 副标（该串已在主文本里完整出现一次，再补副标等于把「伪装成正常取值」的形状做回来）。槽位 <code>〈目录外 versionId〉</code> 已登记进 §1 表：它故意与本屏下拉里真实存在的 <code>〈versionId ①〉</code> 不同串，否则「不在目录中」这件事在画面上就被自己抹掉了。'],['AC-01 不受影响','句一只取<b>下拉面板内</b>选项行的副标集合：本屏选项仍是「默认版本（支① 副标）+ ①+ ②」，与目录非默认条目 {①,②} 相等 ⇒ 照常通过。载荷里那个目录给不出的值<b>只出现在收起态取值区</b>，按 §6.1 前提② 的作用域规则它本就不在核对集合内；也正因如此，<b>禁止</b>为它新增一个合成选项（那会把一个目录外的字符串塞进句一的集合，等式当场无解）。'],['与 W9 的分工','W9 = 目录<b>不可用</b>（无控件、只能靠摘要行承载可见性）；W9b = 目录<b>可用但值对不上</b>（控件在、能改正）。两屏的摘要取值同为「<code>versionId</code> + 沿用实例配置」，理由同一：<code>displayName</code> 无从解析。']]},
 
  {g:'向导 · 不改动项',id:'wa',name:'WA 环境校验（步骤 4）不变',screen:'wizard',step:4,stepTitle:'环境校验',
   stepDesc:'在真正执行前检查节点环境、端口占用和运行时条件。',
@@ -749,10 +813,11 @@ const SC = [
     L('14:04:20','SUCCESS','步骤 2/3 〈步骤标签〉 · 脚本执行 · 成功 · 耗时 7秒'),
     L('14:04:21','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
     L('14:04:39','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
-    L('14:04:39','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 58秒'),
-    L('14:04:40','INFO','部署扩展阶段结束，进入健康检查与启动'),
-    L('14:04:41','INFO','[HEALTH_CHECK] 执行健康检查')],
-  annot:[['阶段带','扩展阶段的第一行之前插入一条「部署扩展」分组带（mono 10px + 细线），使「哪一段属于扩展阶段」可被机械判定，也满足 AC-16 的可辨识要求。<b>顺序即核对对象：带 → 进入部署扩展阶段</b>，任何屏不得例外（X-07）。'],['插入时机','分组带只在真正进入扩展阶段时渲染；未声明扩展 / 停在默认版本的部署完全不出现该带与「扩展」步骤点 —— 这是 AC-15 / AC-24 的回归前提。'],['耗时格式','直接复用 DeployProgress.vue 既有 formattedElapsedTime：N秒 / N分N秒 / N小时N分，不引入 ms 裸数值。'],['步骤行','「步骤 序号/总数 · 标签 · 种类 · 状态 · 耗时」；标识与耗时的承载字段由 §8.5 日志呈现契约定，本原型规定词面。']]},
+    L('14:04:40','SUCCESS','部署扩展阶段收尾 · 容器已恢复到运行态 · 成功 · 耗时 1秒'),
+    L('14:04:40','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 59秒'),
+    L('14:04:41','INFO','部署扩展阶段结束，进入健康检查与启动'),
+    L('14:04:42','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['阶段带','扩展阶段的第一行之前插入一条「部署扩展」分组带（mono 10px + 细线），使「哪一段属于扩展阶段」可被机械判定，也满足 AC-16 的可辨识要求。<b>顺序即核对对象（v0.5 起两级、同权）：① 带 → 进入部署扩展阶段；② 收尾行 → 在最后一步终态行之后、阶段完成行之前</b>，任何屏不得例外（X-07）。'],['收尾行（v0.5，⑧）','本屏三步已逐条判成功 ⇒ 全部步骤判定完成，故必有一条 <code>部署扩展阶段收尾 · 容器已恢复到运行态 · 成功 · 耗时 〈时长〉</code>（SUCCESS），位置就钉在第三步终态行与阶段完成行之间。它是<b>阶段级行</b>（无步骤标识、不进 KPI-02 分母，该口径归技术设计 §14.6 / V-08），词面见 §6.2。'],['耗时归属','阶段完成行的 <code>〈总耗时〉</code> <b>含收尾那一段</b>（进入行 → 完成行的整段），收尾行的 <code>〈时长〉</code> 只计收尾本身；示意值不作验收，但产物内部必须自洽（本屏 8+22+7+18+1 与墙上时钟 14:03:41→14:04:40 = 59 秒对齐）。'],['插入时机','分组带只在真正进入扩展阶段时渲染；未声明扩展 / 停在默认版本的部署完全不出现该带与「扩展」步骤点 —— 这是 AC-15 / AC-24 的回归前提。'],['耗时格式','直接复用 DeployProgress.vue 既有 formattedElapsedTime：N秒 / N分N秒 / N小时N分，不引入 ms 裸数值。'],['步骤行','「步骤 序号/总数 · 标签 · 种类 · 状态 · 耗时」；标识与耗时的承载字段由 §8.5 日志呈现契约定，本原型规定词面。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l9',name:'LJ 扩展全部成功并完成（部署终态）',screen:'log',
   trigger:'选择非默认版本、3 步全部成功、健康检查与启动完成后整单部署成功。',
@@ -770,10 +835,11 @@ const SC = [
     L('14:04:20','SUCCESS','步骤 2/3 〈步骤标签〉 · 脚本执行 · 成功 · 耗时 7秒'),
     L('14:04:21','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
     L('14:04:39','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
-    L('14:04:39','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 58秒'),
-    L('14:04:40','INFO','部署扩展阶段结束，进入健康检查与启动'),
-    L('14:04:41','INFO','[HEALTH_CHECK] 执行健康检查')],
-  annot:[['为什么单独成屏','§4.2 M「全部成功」需要一个 completed ∧ success 的真帧，否则「扩展阶段不改变成功语义」这句话在原型里没有任何可核对对象。'],['成功语义不改','状态区文案、进度条配色、页脚「完成」按钮全部沿用既有实现（§3.3 / BR-10）——本屏新增的只有阶段带、「扩展」步骤点与逐步三行。'],['启动 / 健康检查行','属既有实现，本屏只画到既有的 [HEALTH_CHECK] 行为止；健康检查之后的行不由本期设计。']]},
+    L('14:04:40','SUCCESS','部署扩展阶段收尾 · 容器已恢复到运行态 · 成功 · 耗时 1秒'),
+    L('14:04:40','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 59秒'),
+    L('14:04:41','INFO','部署扩展阶段结束，进入健康检查与启动'),
+    L('14:04:42','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['为什么单独成屏','§4.2 M「全部步骤成功 + <b>收尾成功</b> + 部署完成」需要一个 completed ∧ success 的真帧，否则「扩展阶段不改变成功语义」这句话在原型里没有任何可核对对象。'],['收尾行（v0.5，⑧）','三步全部判成功 ⇒ 必带 <code>SUCCESS</code> 收尾行，位置 = 第三步终态行之后、阶段完成行之前（X-07 锚点二）。本屏是该锚点<b>成功支</b>的完成终态实物帧（与 LA 同一段日志，LA 是进行中帧）。'],['成功语义不改','状态区文案、进度条配色、页脚「完成」按钮全部沿用既有实现（§3.3 / BR-10）——本屏新增的只有阶段带、「扩展」步骤点、逐步三行与收尾行。'],['启动 / 健康检查行','属既有实现，本屏只画到既有的 [HEALTH_CHECK] 行为止；健康检查之后的行不由本期设计。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l0',name:'LB 未进入扩展阶段（对照）',screen:'log',
   trigger:'停在默认版本，或该游戏未声明扩展步骤（含 dnf-tw 未填充态）。',
@@ -802,7 +868,7 @@ const SC = [
     L('14:04:33','SUCCESS','目标路径已回滚到本次改动前状态（备份：〈备份标识〉）'),
     L('14:04:33','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
     L('14:04:33','WARN','此前已成功步骤的改动与脚本副作用一律保留，本期不提供撤销')],
-  annot:[['失败行','ERROR + 行底浅红高亮（对齐 ui-design-spec「异常/故障：红色图标+文字，整行浅红色背景高亮」）。原因段必须以「原因：」引导，可直接归因到步骤（AC-08）。'],['回滚边界','回滚只覆盖失败步骤自身；成功步骤与脚本副作用一律保留（BR-14 ②③），该事实必须成行，不能只在文档里。'],['顶部错误条','沿用既有 el-alert error + title=data.error；错误条给结论，日志给归因，两处措辞不得互相矛盾。']]},
+  annot:[['失败行','ERROR + 行底浅红高亮（对齐 ui-design-spec「异常/故障：红色图标+文字，整行浅红色背景高亮」）。原因段必须以「原因：」引导，可直接归因到步骤（AC-08）。'],['回滚边界','回滚只覆盖失败步骤自身；成功步骤与脚本副作用一律保留（BR-14 ②③），该事实必须成行，不能只在文档里。'],['顶部错误条','沿用既有 el-alert error + title=data.error；错误条给结论，日志给归因，两处措辞不得互相矛盾。'],['为什么不产收尾行（v0.5，⑧b）','步骤 2 <b>致命失败</b> ⇒ 后续步骤不再执行 ⇒ <b>未判完全部步骤</b> ⇒ 收尾动作根本不发生（技术设计 §14.12：收尾只在「全部步骤判定完成后」追加）。本屏因此<b>不得</b>出现收尾行，也没有完成行与交棒行——这是 X-07 锚点二的<b>反面用例</b>，与 LA / LJ / LD 配对才把规则覆盖完。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l3',name:'LD 非致命步骤失败 → 部署照常完成',screen:'log',
   trigger:'步骤 2/3 显式声明 fatal = false 且失败；其余致命步骤成功。',
@@ -821,10 +887,11 @@ const SC = [
     L('14:04:18','INFO','该步骤声明为非致命，继续执行后续步骤'),
     L('14:04:19','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
     L('14:04:37','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
-    L('14:04:37','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 56秒'),
-    L('14:04:38','INFO','部署扩展阶段结束，进入健康检查与启动'),
-    L('14:04:38','INFO','[HEALTH_CHECK] 执行健康检查')],
-  annot:[['WARN 视觉','必须为黄色图标 + 黄色文本，与 INFO 可一眼区分 —— FR-18 的「仅记日志、照常完成」是否成立，界面上就靠这一处颜色差别。'],['「失败（非致命）」','状态词固定「失败（非致命）」，不得只写「失败」让人以为部署终止，也不得写「跳过」（它真的执行过）。'],['阶段带顺序','带 → 进入部署扩展阶段 → 停实例两行 → 步骤行：与其他扩展阶段屏完全同构（X-07 无例外）。'],['完成态','成功语义不改（§3.3）：非致命失败不影响 completed / success 的既有判定，页脚仍是既有的「完成」按钮。']]},
+    L('14:04:38','SUCCESS','部署扩展阶段收尾 · 容器已恢复到运行态 · 成功 · 耗时 1秒'),
+    L('14:04:38','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 57秒'),
+    L('14:04:39','INFO','部署扩展阶段结束，进入健康检查与启动'),
+    L('14:04:39','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['WARN 视觉','必须为黄色图标 + 黄色文本，与 INFO 可一眼区分 —— FR-18 的「仅记日志、照常完成」是否成立，界面上就靠这一处颜色差别。'],['「失败（非致命）」','状态词固定「失败（非致命）」，不得只写「失败」让人以为部署终止，也不得写「跳过」（它真的执行过）。'],['阶段带顺序','带 → 进入部署扩展阶段 → 停实例两行 → 步骤行 → <b>收尾行</b> → 完成行：与其他「全部步骤已判完」的扩展阶段屏完全同构（X-07 两级锚点，v0.5）。'],['收尾行为什么在本屏出现','非致命失败<b>不算「未判完</b>」：步骤 2 已写出终态行（WARN 失败），步骤 3 照常执行并判成功 ⇒ 三步全部判定完成 ⇒ 收尾必产行。这正是 AC-10「照常完成」在<b>行序列</b>上的证据：一路走到收尾与完成行，只是中间多一条 WARN。播报侧该 WARN 行不进队列（§9.4 ERROR-only），收尾成功行也不进（§9.4 v0.5 归属）。'],['完成态','成功语义不改（§3.3）：非致命失败不影响 completed / success 的既有判定，页脚仍是既有的「完成」按钮。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l4',name:'LE BR-12 拦截 · 本次所选',screen:'log',
   trigger:'本次部署显式选择了非默认版本，而该游戏版本目录不可用（分支 ①）。',
@@ -837,7 +904,7 @@ const SC = [
     L('14:03:41','INFO','进入部署扩展阶段'),
     L('14:03:41','ERROR','部署终止：本次所选版本 〈versionId〉 不可用 —— 该游戏的版本目录当前不可读取或未通过声明校验'),
     L('14:03:41','ERROR','实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本')],
-  annot:[['可辨识性要求','两分支的区别只在两处长：来源短语（「本次所选」/「实例配置要求的…由既往部署写入」）与恢复路径段是否出现。AC-20 要求「区分是本次所选还是配置既存键」，靠这两处即成立。'],['不执行任何步骤','拦截发生在读取目录时，因此本屏不得出现任何「步骤 x/y」行（§9 状态机行）。']]},
+  annot:[['可辨识性要求','两分支的区别只在两处长：来源短语（「本次所选」/「实例配置要求的…由既往部署写入」）与恢复路径段是否出现。AC-20 要求「区分是本次所选还是配置既存键」，靠这两处即成立。'],['不执行任何步骤','拦截发生在读取目录时，因此本屏不得出现任何「步骤 x/y」行（§9 状态机行）。'],['也不产收尾行（v0.5，⑧b）','零步骤 ⇒ 谈不上「全部步骤判定完成」⇒ 收尾动作根本不执行（技术设计 §14.13.2：收尾只被扩展分支调用，且在各步判定完之后）。本屏的终止行就是那两条 ERROR，<b>其后不得有完成行 / 交棒行 / <code>[HEALTH_CHECK]</code> 行</b>。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l5',name:'LF BR-12 拦截 · 配置既存键',screen:'log',
   trigger:'界面上无版本选择项、无法改选（目录不可用），而实例配置中已存在非默认 deployVersion（分支 ②）。',
@@ -851,7 +918,7 @@ const SC = [
     L('14:03:41','ERROR','部署终止：实例配置要求的版本 〈versionId〉 不可用 —— 该版本要求由既往部署写入实例配置，本次未改选；而该游戏的版本目录当前不可读取或未通过声明校验'),
     L('14:03:41','ERROR','实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本'),
     L('14:03:41','WARN','恢复路径：先恢复该游戏的版本目录（重新启用插件，或由插件维护者修复声明）后重新部署；目录恢复后如不再需要该版本，请在「选择游戏」步骤改选「默认版本」再部署（目录未恢复时该选项不存在）')],
-  annot:[['措辞红线','不得表述为「在向导改选默认版本即可解锁」——本场景向导内没有任何可操作的版本控件（§12 v0.4 修正）。恢复路径必须先落到「恢复目录」，改选默认版本是其后续分支。'],['与摘要呼应','本屏与 W9 使用同一来源短语「由既往部署写入」，让用户在提交前与失败后读到的是同一句话。']]},
+  annot:[['措辞红线','不得表述为「在向导改选默认版本即可解锁」——本场景向导内没有任何可操作的版本控件（§12 v0.4 修正）。恢复路径必须先落到「恢复目录」，改选默认版本是其后续分支。'],['与摘要呼应','本屏与 W9 <b>及 W9b</b> 使用同一来源短语「由既往部署写入」，让用户在提交前与失败后读到的是同一句话。<b>W9b（v0.5，MF-7 的 G2 态）也走本分支</b>：该态的 <code>versionId</code> 只可能来自既存键——步骤 2 的控件只提供目录内的条目，用户无法「本次显式选出一个不在目录里的值」，故分支 ① 的「本次所选」措辞在这里不适用（§6.3 区分锚点不变）。'],['也不产收尾行（v0.5，⑧b）','与 LE 同：零步骤 ⇒ 收尾动作不执行；本屏的终止行是那两条 ERROR + 一条恢复路径 WARN，其后不得出现完成行 / 交棒行。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l6',name:'LG 目录不合法 + 无键（S1 + 说明行）',screen:'log',
   trigger:'该游戏版本目录未通过 §8.1 校验，且实例配置中不存在 deployVersion 键。',
@@ -881,7 +948,7 @@ const SC = [
     L('14:05:45','ERROR','回滚失败：〈原因〉（备份 〈备份标识〉）。目标路径未恢复到本次改动前状态'),
     L('14:05:45','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
     L('14:05:45','WARN','步骤 1 的落位结果与步骤 2 的脚本副作用一律保留；平台侧不提供撤销或恢复入口，需在宿主机上手工处理后重新部署')],
-  annot:[['不得暗示有恢复控件','不得出现「点击恢复」「还原备份」类措辞（N-08 / §12：平台侧不存在恢复控件）。只能指向宿主机手工处理 + 重新部署。'],['归因四选一','摘要与日志都要能支撑 KPI-03 的归因（实现缺陷 / 排除项 ①②③）：本屏的原因行给出「摘要不符」= 排除项 ③，回滚失败 = 实现缺陷或外部资源，不得含糊。']]},
+  annot:[['不得暗示有恢复控件','不得出现「点击恢复」「还原备份」类措辞（N-08 / §12：平台侧不存在恢复控件）。只能指向宿主机手工处理 + 重新部署。'],['归因四选一','摘要与日志都要能支撑 KPI-03 的归因（实现缺陷 / 排除项 ①②③）：本屏的原因行给出「摘要不符」= 排除项 ③，回滚失败 = 实现缺陷或外部资源，不得含糊。'],['为什么不产收尾行（v0.5，⑧b）','本屏步骤 3/3 致命失败 ⇒ 未判完全部步骤 ⇒ 收尾动作不发生（§14.12 的收尾在「全部步骤判定完成后」）。<b>速查帧也不例外</b>：X-07 的两级锚点在本屏读作「带 → 进入行」必须有、「收尾行」必须无——与 LK（收尾失败支）的区别就在这里：LK 的步骤全部判完、失败发生在收尾。']]},
 
  {g:'部署日志 · 扩展阶段',id:'l8',name:'LI 脚本超时 / 退出码 / SSH 不可达',screen:'log',
   trigger:'脚本步骤的三类失败原因（§8.3 timeoutMs、FR-15 exitCode、宿主机通道异常）。',
@@ -899,7 +966,27 @@ const SC = [
     L('14:08:01','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
     L('14:09:12','ERROR','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败 · 耗时 3秒 · 原因：脚本退出码 7（非 0 即判失败）'),
     L('14:10:04','ERROR','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败 · 耗时 9秒 · 原因：宿主机 〈主机名〉 SSH 通道不可用 —— 〈原因〉')],
-  annot:[['timeoutMs 数值','超时阈值本身归 OP-04（@Architect 拍板），本原型只固定「超过 〈timeoutMs〉 未返回」这一措辞，不出现任何具体秒数。'],['退出码必现','exitCode 必须以裸数字出现在原因段（AC-12 的可判定要求）。既有容器执行通道会丢弃退出码（F-16），该改造属 §14.2 待改依赖。']]},
+  annot:[['timeoutMs 数值','超时阈值本身归 OP-04（@Architect 拍板），本原型只固定「超过 〈timeoutMs〉 未返回」这一措辞，不出现任何具体秒数。'],['退出码必现','exitCode 必须以裸数字出现在原因段（AC-12 的可判定要求）。既有容器执行通道会丢弃退出码（F-16），该改造属 §14.2 待改依赖。'],['为什么不产收尾行（v0.5，⑧b）','三条 ERROR 各来自<b>一次</b>致命失败的部署：每次都在步骤终态处判失败、后续不再执行 ⇒ 三次都<b>未判完全部步骤</b> ⇒ 收尾动作都不发生。所以本屏没有收尾行、也没有完成行与交棒行，<b>这是规则要求的，不是遗漏</b>；成功支的实物见 LA / LJ / LD，失败支见 LK。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'lk',name:'LK 收尾失败（全部步骤判完，实例未恢复到运行态）',screen:'log',
+  trigger:'三个步骤全部判定成功，但扩展阶段<b>收尾</b>把实例恢复到运行态的动作失败（技术设计 §14.12 / §14.13.3「失败处置」：按致命处理）。',
+  ac:['AC-04','AC-08','AC-16','FR-10','BR-10'],state:'扩展阶段 · 收尾失败 · 部署终止',
+  diff:'收尾行取<b>失败支</b>（ERROR + 行底浅红），且它是该阶段的<b>终止行</b>：其后<b>没有</b>阶段完成行、<b>没有</b>交棒行、<b>没有</b> <code>[HEALTH_CHECK]</code> 行。对话框错误条走 §6.3 的收尾形态，不是「致命步骤失败」那条。',
+  progress:78,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'2分52秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署扩展阶段收尾失败：容器未能恢复到运行态。实例状态已置为异常，未启动。',
+  lines:[L('14:02:11','INFO','开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','INFO','正在停止实例，确保扩展步骤在实例未运行时执行'),
+    L('14:03:49','SUCCESS','实例已停止'),
+    L('14:03:50','INFO','步骤 1/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:12','SUCCESS','步骤 1/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 22秒'),
+    L('14:04:13','INFO','步骤 2/3 〈步骤标签〉 · 脚本执行 · 开始'),
+    L('14:04:20','SUCCESS','步骤 2/3 〈步骤标签〉 · 脚本执行 · 成功 · 耗时 7秒'),
+    L('14:04:21','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:39','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
+    L('14:04:52','ERROR','部署扩展阶段收尾 · 容器未能恢复到运行态 · 失败 · 原因：〈原因〉')],
+  annot:[['为什么必须单独成屏','⑧b 的硬要求：设计把收尾定死为「<b>两支都产行</b>」，UI 侧若只画成功支，就等于「规则写了、屏里没有」——那是本项目 v0.2 就被判过的缺陷类（LD 的阶段带顺序）。失败支从此有实物可指。'],['位置（X-07 锚点二）','本屏同时是锚点二的<b>正面用例</b>与<b>边界用例</b>：收尾行确在最后一步终态行之后（14:04:39 → 14:04:52），但因走失败支，它<b>取代</b>了「阶段完成行 + 交棒行」的位置，两者在本屏都不存在。'],['与 LC / LH 的分工','那两屏是<b>某一步失败</b> ⇒ 后续步骤不执行 ⇒ 未判完全部步骤 ⇒ 根本不产收尾行；本屏是<b>步骤全判完、失败发生在收尾</b> ⇒ 必产收尾失败行。四类行（步骤失败 / 回滚失败 / 收尾失败 / 停实例失败）词面互斥，不得互相冒充。'],['与 E1 的分工','E1 是「<b>停不下来</b>」（进入扩展阶段的前置失败、零步骤），本屏是「<b>起不回去</b>」（全部步骤判完后的收尾失败）。两屏都有阶段带与进入行，但 E1 无任何步骤行、本屏有完整三步终态行。'],['错误条归属','§6.3 表内 <code>data.error</code> 现有两行：本屏取第二行（收尾形态）。若沿用第一行「致命步骤失败：〈步骤标签〉 · 〈种类〉」，会把一次<b>没有任何步骤失败</b>的部署写成步骤失败，与日志自相矛盾。'],['播报队列（v0.5，MF-6 归属）','本屏 <code>.sr-only</code> 队列<b>恰两条</b>：「进入部署扩展阶段」（阶段级事件）+ 本条 ERROR 收尾行；<b>不含</b>完成行与交棒行（本阶段没有这两行），停实例两行的 SUCCESS 也不进（非 ERROR、非阶段级三条事件）。'],['阶段级身份','收尾行不带步骤标识，故不进 KPI-02 的分母、也不参与「一步一组」的归组判读（承载字段与统计口径归技术设计 §14.6 / V-08）；本设计只固定它的<b>词面</b>与<b>位置</b>。']]},
 
  {g:'全状态与边界',id:'e1',name:'E1 停实例失败（前提未定稿）',screen:'log',
   trigger:'FR-11 要求进入扩展阶段前实例处于停止；停止动作本身失败。',
@@ -912,7 +999,7 @@ const SC = [
     L('14:03:41','INFO','正在停止实例，确保扩展步骤在实例未运行时执行'),
     L('14:03:58','ERROR','实例停止失败：〈原因〉 —— 扩展步骤不得在实例仍运行时执行，部署终止'),
     L('14:03:58','ERROR','实例未启动、未交付，状态置为异常')],
-  annot:[['定位','这是预留文案，不构成需求主张：PRD 明确「停失败无裁决语义」交 @Architect 定调（§14.2 行 5）。定调为「可容忍」则该行降级为 WARN，定调为「致命」则按本屏措辞。'],['为什么先出稿','避免 Architect 定调后再补一版界面文案造成设计漂移；词面已按本屏矩阵统一。']]},
+  annot:[['定位','这是预留文案，不构成需求主张：PRD 明确「停失败无裁决语义」交 @Architect 定调（§14.2 行 5）。定调为「可容忍」则该行降级为 WARN，定调为「致命」则按本屏措辞。'],['为什么先出稿','避免 Architect 定调后再补一版界面文案造成设计漂移；词面已按本屏矩阵统一。'],['也不产收尾行（v0.5，⑧b）','停止动作失败即终止 ⇒ <b>零步骤执行</b> ⇒ 收尾（把容器起回）根本不发生：本屏不得出现收尾行、完成行与交棒行。注意它与 LK 的分工——<b>E1 是「停不下来」</b>（进入扩展阶段的前置失败）、<b>LK 是「起不回去」</b>（全部步骤判完后的收尾失败），两屏的词面与位置都不同，不可互相冒充。']]},
 
  {g:'全状态与边界',id:'e2',name:'E2 无权限 / 未登录',screen:'log',
   trigger:'部署或日志接口返回 401 / 403。',
@@ -968,7 +1055,7 @@ function annot(s){
     +'<li>色值：<b>本期新增使用</b>（token 本身早已定义于 <code>variables.scss</code>，本期不新增任何色值） <span class="sw" style="background:var(--platform-amber)"></span><code>--platform-amber #f2b84b</code> 用于「部署扩展」阶段带与既存键提示；<span class="sw" style="background:var(--platform-cyan)"></span><code>--platform-cyan #27b5f3</code> 用于选中态；<span class="sw" style="background:var(--platform-green)"></span><code>#52cf82</code> 成功；<span class="sw" style="background:var(--platform-red)"></span><code>#f0646a</code> 失败</li>'
     +'<li><b>不实现清单</b>：<code>.review-flag</code>（虚线「评审标记·非产品元素」）、W1 的虚线占位框、本右侧标注栏与左侧导航、以及本文件 <code>:root</code> 自补的 <code>--platform-accent</code> / <code>--platform-accent-soft</code> 都只是<b>原型脚手架</b>；实现侧一律不输出（见 ui-spec.md §8.4）。</li>'
     +'<li>间距全部为 8px 网格倍数（4 / 8 / 12 / 16 / 20 / 24），禁零散值 —— ui-design-spec 2.2.4</li>'
-    +'<li>无障碍：控件带 <code>aria-labelledby</code> 指向区块标题；阶段带不仅靠颜色，同时提供文字「部署扩展」；状态三重标识 = 颜色 + 图标 + 文字</li>';
+    +'<li>无障碍：控件带 <code>aria-labelledby</code> 指向区块标题（v0.5 起另带 <code>data-ext-version-select</code> + <code>aria-label="目标版本"</code> 两个稳定锚点，供 AC-01 的核对程序按「该控件对应 popper」取集合）；阶段带不仅靠颜色，同时提供文字「部署扩展」；状态三重标识 = 颜色 + 图标 + 文字；<b>日志播报分工（v0.5，MF-6）</b>= 滚动容器 <code>role=log + aria-live=off</code>，隐藏区 <code>role=status + aria-live=polite + <b>aria-atomic=false</b></code> 且<b>一条一个节点</b>，判据是「<b>每次变更只播新增的那一条</b>」（<code>status</code> 的隐含 <code>atomic=true</code> 会让累积队列整段重播）</li>';
   return '<div class="box"><h4>交互与文案规则</h4><ul>'+items+'</ul></div>'
        +'<div class="box"><h4>设计标注（token / 尺寸 / 无障碍）</h4><ul>'+token+'</ul></div>';
 }
