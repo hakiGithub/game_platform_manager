@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MERC-3 · 部署扩展步骤与目标版本选择 · UI 原型</title>
+<style>
+/* ============================================================
+   MERC-3 UI 原型 · 部署扩展步骤 / 目标版本选择
+   事实来源：PRD v0.5 @ 270f9d0 §6.1 §6.2 §8.4.2 §8.5 §12 §16.2
+   视觉 token 与组件形态取自仓内真实实现：
+     frontend/src/views/instance/deploy.vue（含 "Deployment Bay overrides" 生效块）
+     frontend/src/components/DeployProgress.vue
+     frontend/src/styles/variables.scss
+   本文件是设计产物，不是功能代码；不接入后端、不发请求。
+   ============================================================ */
+
+:root{
+  /* 平台深色主题实际生效值（frontend/src/styles/variables.scss:212-227） */
+  --platform-surface-0:#0b1722;
+  --platform-surface-1:#10202d;
+  --platform-surface-2:#142735;
+  --platform-surface-3:#1a3040;
+  --platform-line:#263847;
+  --platform-cyan:#27b5f3;
+  --platform-amber:#f2b84b;
+  --platform-red:#f0646a;
+  --platform-green:#52cf82;
+  --platform-text-primary:#e7eef5;
+  --platform-text-regular:#c1ceda;
+  --platform-text-secondary:#8d9cac;
+  --platform-text-muted:#68788a;
+  /* deploy.vue 使用但仓内未定义的两个 token（已知缺陷）；原型内按意图取 cyan */
+  --platform-accent:#27b5f3;
+  --platform-accent-soft:rgba(39,181,243,.14);
+  --border-radius-base:5px;
+  --platform-card-radius:6px;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--platform-surface-0);color:var(--platform-text-primary);font:14px/1.6 var(--font-sans)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+svg{display:block}
+
+/* ---------- 原型外框（非产品 UI） ---------- */
+.proto-bar{position:sticky;top:0;z-index:40;display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  padding:12px 20px;background:var(--platform-surface-2);border-bottom:1px solid var(--platform-line)}
+.proto-bar h1{margin:0;font-size:15px;font-weight:650;letter-spacing:-.01em}
+.proto-bar .k{font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)}
+.proto-legend{margin-left:auto;font-size:11px;color:var(--platform-text-secondary);max-width:520px}
+.proto-legend b{color:var(--platform-amber);font-weight:600}
+.proto-body{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;align-items:start}
+.proto-nav{position:sticky;top:53px;max-height:calc(100vh - 53px);overflow:auto;padding:16px 12px 32px;
+  border-right:1px solid var(--platform-line);background:var(--platform-surface-1)}
+.proto-nav h2{margin:14px 0 6px;font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)}
+.proto-nav h2:first-child{margin-top:0}
+.nav-item{display:block;width:100%;text-align:left;padding:7px 9px;margin-bottom:2px;border-radius:4px;
+  font-size:12px;color:var(--platform-text-secondary);border:1px solid transparent}
+.nav-item:hover{background:var(--platform-surface-2);color:var(--platform-text-primary)}
+.nav-item.on{background:var(--platform-accent-soft);border-color:rgba(39,181,243,.5);color:var(--platform-text-primary);font-weight:600}
+.proto-stage{padding:20px 24px 64px;min-width:0}
+
+/* ---------- 状态说明卡（非产品 UI） ---------- */
+.state-card{margin-bottom:16px;padding:14px 16px;border:1px solid var(--platform-line);border-left:3px solid var(--platform-cyan);
+  border-radius:var(--border-radius-base);background:var(--platform-surface-1)}
+.state-card h3{margin:0 0 6px;font-size:14px;font-weight:650}
+.state-card dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:4px 12px;margin:0;font-size:12px}
+.state-card dt{color:var(--platform-text-muted);font:9px/1.9 var(--font-mono);letter-spacing:.06em;text-transform:uppercase}
+.state-card dd{margin:0;color:var(--platform-text-secondary)}
+.chip{display:inline-block;padding:1px 7px;margin:0 4px 3px 0;border:1px solid var(--platform-line);border-radius:10px;
+  font:10px/1.7 var(--font-mono);color:var(--platform-text-secondary);background:var(--platform-surface-2)}
+.chip.ac{border-color:rgba(82,207,130,.45);color:var(--platform-green)}
+
+/* ---------- 产品外壳：el-card / 页头 ---------- */
+.deploy-container{padding:4px 2px 28px}
+.deploy-shell{border:1px solid var(--platform-line);border-radius:var(--platform-card-radius);
+  background:var(--platform-surface-1);box-shadow:0 16px 32px rgba(0,0,0,.14);overflow:hidden}
+.card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;
+  padding:20px 24px;border-bottom:1px solid var(--platform-line);
+  background:linear-gradient(115deg,rgba(67,184,232,.14),transparent 45%),var(--platform-surface-2)}
+.header-copy .title{font-size:22px;font-weight:700;letter-spacing:-.025em}
+.header-copy p{margin:0;color:var(--platform-text-muted);font-size:11px}
+.header-context{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.header-status{display:flex;align-items:center;gap:6px;font:10px/1 var(--font-mono);color:var(--platform-text-secondary)}
+.header-status i{width:7px;height:7px;border-radius:50%;background:var(--platform-accent);box-shadow:0 0 0 4px var(--platform-accent-soft)}
+
+/* ---------- 工作台区（grid 232px | 1fr） ---------- */
+.deploy-workbench{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:620px}
+.deploy-rail{display:flex;flex-direction:column;padding:22px 18px 18px;border-right:1px solid var(--platform-line);background:var(--platform-surface-0)}
+.rail-caption{font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)}
+.rail-context{display:grid;gap:4px;margin-top:18px;padding:12px;border:1px solid var(--platform-line);border-radius:4px;background:var(--platform-surface-2)}
+.rail-context span{font-size:10px;color:var(--platform-text-muted)}
+.rail-context strong{font-size:12px;font-weight:600;color:var(--platform-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-divider{height:1px;margin:8px 0 5px;background:var(--platform-line)}
+.rail-note{margin-top:auto;padding-top:16px;border-top:1px solid var(--platform-line);font-size:10px;line-height:1.55;color:var(--platform-text-muted)}
+.steps{margin-top:24px;list-style:none;padding:0}
+.steps li{display:flex;gap:10px;min-height:57px;position:relative}
+.steps .dot{flex:0 0 auto;width:22px;height:22px;border:1px solid var(--platform-line);border-radius:50%;
+  background:var(--platform-surface-0);display:grid;place-items:center;color:var(--platform-text-muted);z-index:1}
+.steps li:not(:last-child)::after{content:"";position:absolute;left:11px;top:23px;bottom:-1px;width:1px;background:var(--platform-line)}
+.steps .lbl{padding-top:2px;font-size:12px;line-height:18px;color:var(--platform-text-muted)}
+.steps li.done .dot{border-color:var(--platform-green);color:var(--platform-green)}
+.steps li.done .lbl{color:var(--platform-text-primary);font-weight:650}
+.steps li.cur .dot{border-color:var(--platform-accent);color:var(--platform-accent);box-shadow:0 0 0 3px var(--platform-accent-soft)}
+.steps li.cur .lbl{color:var(--platform-text-primary);font-weight:650}
+
+.deploy-main{min-width:0;background:var(--platform-surface-1);display:flex;flex-direction:column}
+.stage-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:22px 24px 18px;
+  border-bottom:1px solid var(--platform-line);background:linear-gradient(90deg,rgba(67,184,232,.06),transparent 58%)}
+.stage-header h2{margin:6px 0 4px;font-size:20px;font-weight:650;letter-spacing:-.02em}
+.stage-header p{margin:0;max-width:560px;font-size:11px;line-height:1.6;color:var(--platform-text-secondary)}
+.stage-index{font:600 28px/1 var(--font-mono);color:var(--platform-accent);opacity:.7}
+.step-content{flex:1;padding:22px 24px 24px}
+.step-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid var(--platform-line);background:var(--platform-surface-2)}
+
+/* ---------- Element Plus 形制（原型内复刻） ---------- */
+.ep-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border:1px solid var(--platform-line);
+  border-radius:var(--border-radius-base);background:var(--platform-surface-2);font-size:14px;color:var(--platform-text-regular)}
+.ep-btn:hover{border-color:var(--platform-cyan);color:var(--platform-cyan)}
+.ep-btn--primary{background:#27b5f3;border-color:#27b5f3;color:#04131d;font-weight:600}
+.ep-btn--primary:hover{background:#49c4f7;border-color:#49c4f7;color:#04131d}
+.ep-btn--sm{padding:5px 11px;font-size:12px}
+.ep-btn[disabled]{opacity:.5;pointer-events:none}
+.ep-input{display:flex;align-items:center;gap:8px;width:100%;padding:6px 11px;border:1px solid var(--platform-line);
+  border-radius:var(--border-radius-base);background:var(--platform-surface-0);color:var(--platform-text-regular);font-size:13px}
+.ep-tag{display:inline-flex;align-items:center;gap:4px;padding:0 8px;border:1px solid var(--platform-line);border-radius:4px;
+  background:var(--platform-surface-2);font-size:12px;line-height:22px;color:var(--platform-text-secondary);white-space:nowrap}
+.ep-tag--primary{border-color:rgba(39,181,243,.5);color:var(--platform-cyan);background:var(--platform-accent-soft)}
+.ep-tag--success{border-color:rgba(82,207,130,.5);color:var(--platform-green);background:rgba(82,207,130,.1)}
+.ep-tag--warning{border-color:rgba(242,184,75,.5);color:var(--platform-amber);background:rgba(242,184,75,.1)}
+.ep-tag--danger{border-color:rgba(240,100,106,.5);color:var(--platform-red);background:rgba(240,100,106,.1)}
+.ep-tag--lg{line-height:26px;padding:0 10px}
+.ep-radio{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border:1px solid var(--platform-line);
+  background:var(--platform-surface-0);font-size:13px;color:var(--platform-text-secondary)}
+.ep-radio+.ep-radio{border-left-width:0}
+.ep-radio:first-child{border-radius:var(--border-radius-base) 0 0 var(--border-radius-base)}
+.ep-radio:last-child{border-radius:0 var(--border-radius-base) var(--border-radius-base) 0}
+.ep-radio.on{background:var(--platform-accent-soft);color:var(--platform-cyan);font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(39,181,243,.55)}
+.ep-select{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;width:300px;max-width:100%;
+  padding:6px 11px;border:1px solid var(--platform-line);border-radius:var(--border-radius-base);
+  background:var(--platform-surface-0);font-size:14px;color:var(--platform-text-primary)}
+.ep-select.is-focus{border-color:var(--platform-cyan)}
+.ep-select.is-disabled{color:var(--platform-text-muted);background:var(--platform-surface-2)}
+.ep-select .caret{color:var(--platform-text-muted);transition:transform .2s}
+.ep-select.open .caret{transform:rotate(180deg)}
+.ep-select .placeholder{color:var(--platform-text-muted)}
+.ep-dropdown{position:relative;margin-top:4px;width:300px;max-width:100%;padding:4px 0;border:1px solid var(--platform-line);
+  border-radius:var(--border-radius-base);background:var(--platform-surface-2);box-shadow:0 12px 24px rgba(0,0,0,.4)}
+.ep-option{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 12px;font-size:13px;color:var(--platform-text-regular)}
+.ep-option:hover{background:var(--platform-surface-3)}
+.ep-option.on{color:var(--platform-cyan);font-weight:650;background:var(--platform-accent-soft)}
+.ep-option small{font:10px/1 var(--font-mono);color:var(--platform-text-muted)}
+.ep-alert{display:flex;gap:10px;padding:10px 14px;border-radius:var(--border-radius-base);border:1px solid transparent;font-size:13px}
+.ep-alert .t{font-weight:650;font-size:14px}
+.ep-alert .d{font-size:12px;line-height:1.6;opacity:.9}
+.ep-alert--warning{background:rgba(242,184,75,.08);border-color:rgba(242,184,75,.35);color:var(--platform-amber)}
+.ep-alert--error{background:rgba(240,100,106,.08);border-color:rgba(240,100,106,.35);color:var(--platform-red)}
+.ep-alert--info{background:rgba(39,181,243,.07);border-color:rgba(39,181,243,.3);color:var(--platform-text-secondary)}
+.ep-divider{height:1px;margin:16px 0;background:var(--platform-line)}
+.ep-empty{padding:28px 0;text-align:center;font-size:12px;color:var(--platform-text-muted)}
+.skeleton{height:12px;margin:10px 0;border-radius:3px;background:linear-gradient(90deg,var(--surface,#142735),var(--platform-surface-3),var(--surface,#142735));
+  background-size:200% 100%;animation:sk 1.2s infinite}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.spin{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---------- 向导步骤 2 ---------- */
+.grid2{display:grid;grid-template-columns:minmax(0,10fr) minmax(0,14fr);gap:24px}
+.panel-title{margin-bottom:12px;font-size:13px;font-weight:650;color:var(--platform-text-primary);display:flex;align-items:center;gap:6px}
+.list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.game-list{max-height:540px;padding-right:8px;overflow:auto}
+.game-item{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border:1px solid var(--platform-line);
+  border-radius:4px;background:var(--platform-surface-0);cursor:pointer}
+.game-item:hover{border-color:var(--platform-accent);background:var(--platform-accent-soft)}
+.game-item.on{border-color:var(--platform-accent);background:var(--platform-accent-soft)}
+.game-item .av{flex:0 0 auto;width:40px;height:40px;display:grid;place-items:center;border-radius:50%;
+  background:var(--platform-surface-3);color:var(--platform-text-secondary)}
+.game-item .nm{font-size:13px;font-weight:600;color:var(--platform-text-primary)}
+.game-item .cd{font:10px/1.4 var(--font-mono);color:var(--platform-text-muted)}
+.game-detail{padding:16px;border:1px solid var(--platform-line);border-radius:4px;background:var(--platform-surface-0)}
+.detail-header{display:flex;align-items:center;gap:14px}
+.detail-header .av{width:64px;height:64px;display:grid;place-items:center;border-radius:50%;background:var(--platform-surface-3);color:var(--platform-text-secondary)}
+.detail-header h3{margin:0 0 2px;font-size:16px;font-weight:650}
+.detail-header .gc{font:10px/1.5 var(--font-mono);color:var(--platform-text-muted)}
+.detail-header .gd{margin-top:4px;font-size:11px;color:var(--platform-text-secondary)}
+.detail-section{margin-bottom:20px}
+.detail-section>.section-title{display:flex;align-items:center;gap:6px;margin-bottom:12px;padding-bottom:8px;
+  border-bottom:1px solid var(--platform-line);font-size:13px;font-weight:650;color:var(--platform-text-primary)}
+.method-description{margin-top:12px;padding:12px;border-radius:4px;background:var(--platform-surface-2);font-size:11px;color:var(--platform-text-secondary)}
+.port-tags{display:flex;flex-wrap:wrap;gap:8px}
+.text-secondary{font-size:12px;color:var(--platform-text-secondary)}
+.field-description{margin-top:4px;font-size:11px;color:var(--platform-text-secondary)}
+
+/* 本次新增：目标版本区 */
+.version-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.version-preview{margin-top:10px;padding:10px 12px;border:1px dashed var(--platform-line);border-radius:4px;background:var(--platform-surface-2)}
+.version-preview .h{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--platform-text-secondary)}
+.version-preview .h b{color:var(--platform-cyan);font-weight:650}
+.step-list{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px}
+.step-list li{display:flex;align-items:center;gap:8px;font:11px/1.5 var(--font-mono);color:var(--platform-text-regular)}
+.step-list .no{flex:0 0 auto;min-width:32px;color:var(--platform-text-muted)}
+.step-list .kind{flex:0 0 auto;padding:0 6px;border-radius:3px;font-size:10px;border:1px solid var(--platform-line);background:var(--platform-surface-3);color:var(--platform-text-secondary)}
+.step-list .pos{margin-left:auto;font-size:10px;color:var(--platform-text-muted)}
+
+/* ---------- 向导步骤 3 / 4 ---------- */
+.config-section{margin-bottom:12px;padding:17px;border:1px solid var(--platform-line);border-radius:4px;background:var(--platform-surface-0)}
+.config-section>.section-title{display:flex;align-items:center;gap:6px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--platform-line);font-size:13px;font-weight:650}
+.form-row{display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px;align-items:start;margin-bottom:18px}
+.form-row .lab{padding-top:7px;text-align:right;font-size:13px;color:var(--platform-text-secondary)}
+.form-row .lab.req::before{content:"* ";color:var(--platform-red)}
+.env-check-item{display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:12px 14px;
+  border:1px solid var(--platform-line);border-left-width:3px;border-radius:4px;background:var(--platform-surface-0)}
+.env-check-item.success{border-left-color:var(--platform-green);background:rgba(82,207,130,.07)}
+.env-check-item .cl{font-size:13px;font-weight:600}
+.env-check-item .cm{margin-left:auto;font:11px/1 var(--font-mono);color:var(--platform-text-secondary)}
+.env-result{margin-top:20px;padding:18px;text-align:center;border-radius:var(--border-radius-base);background:var(--platform-surface-2)}
+.env-result .t{font-size:16px;font-weight:650;color:var(--platform-green)}
+.env-result .s{font-size:12px;color:var(--platform-text-secondary)}
+
+/* ---------- 向导步骤 5：摘要 ---------- */
+.confirm-section{margin-bottom:12px;padding:17px;border:1px solid var(--platform-line);border-radius:4px;background:var(--platform-surface-0)}
+.confirm-section>.section-title{display:flex;align-items:center;gap:6px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--platform-line);font-size:13px;font-weight:650}
+.ep-desc{width:100%;border-collapse:collapse;font-size:13px;background:var(--platform-surface-2)}
+.ep-desc th,.ep-desc td{padding:9px 12px;border:1px solid var(--platform-line);text-align:left;vertical-align:top}
+.ep-desc th{width:140px;background:var(--platform-surface-3);font-weight:500;color:var(--platform-text-secondary)}
+.ep-desc td{color:var(--platform-text-regular)}
+tr.hl-row th{color:var(--platform-cyan);background:rgba(39,181,243,.1);font-weight:650}
+tr.hl-row td{background:rgba(39,181,243,.05)}
+.new-flag{margin-left:6px;padding:0 5px;border-radius:3px;font:9px/16px var(--font-mono);letter-spacing:.06em;
+  background:var(--platform-cyan);color:#04131d}
+.note-inline{margin-top:6px;font-size:11px;line-height:1.55;color:var(--platform-text-muted)}
+.note-inline.warn{color:var(--platform-amber)}
+
+/* ---------- 部署日志对话框 ---------- */
+.dialog-mask{padding:24px;border:1px dashed var(--platform-line);border-radius:var(--platform-card-radius);background:rgba(0,0,0,.25)}
+.ep-dialog{width:700px;max-width:100%;border:1px solid var(--platform-line);border-radius:var(--platform-card-radius);
+  background:var(--platform-surface-1);box-shadow:0 24px 48px rgba(0,0,0,.5);overflow:hidden}
+.ep-dialog__header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--platform-line);
+  background:var(--platform-surface-2);font-size:16px;font-weight:650}
+.ep-dialog__body{padding:20px}
+.ep-dialog__footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--platform-line);background:var(--platform-surface-2)}
+.progress-overview{margin-bottom:20px;padding:20px;border:1px solid var(--platform-line);border-radius:var(--border-radius-base);background:var(--platform-surface-2)}
+.progress-status{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+.progress-status .big{width:48px;height:48px;display:grid;place-items:center}
+.status-text{font-size:18px;font-weight:650}
+.status-detail{font-size:12px;color:var(--platform-text-secondary)}
+.tone-primary{color:var(--platform-cyan)}.tone-warning{color:var(--platform-amber)}
+.tone-success{color:var(--platform-green)}.tone-danger{color:var(--platform-red)}.tone-info{color:var(--platform-text-secondary)}
+.ep-progress{height:12px;border-radius:6px;background:var(--platform-surface-3);overflow:hidden}
+.ep-progress>span{display:block;height:100%;border-radius:6px;background:var(--platform-cyan)}
+.ep-progress.is-exception>span{background:var(--platform-red)}
+.ep-progress.is-success>span{background:var(--platform-green)}
+.progress-pct{text-align:right;font:11px/1 var(--font-mono);color:var(--platform-text-secondary);margin:6px 0 12px}
+.progress-steps{position:relative;display:flex;justify-content:space-between;padding:0 10px}
+.progress-steps::before{content:"";position:absolute;top:5px;left:20px;right:20px;height:2px;background:var(--platform-line)}
+.progress-step{position:relative;text-align:center}
+.step-dot{width:12px;height:12px;margin:0 auto;border:2px solid var(--platform-surface-2);border-radius:50%;background:var(--platform-line);transition:all .3s}
+.step-label{margin-top:6px;font-size:11px;color:var(--platform-text-muted)}
+.progress-step.is-active .step-dot{background:#27b5f3;box-shadow:0 0 0 3px rgba(39,181,243,.18)}
+.progress-step.is-active .step-label{color:var(--platform-cyan);font-weight:500}
+.progress-step.is-completed .step-dot{background:var(--platform-green)}
+.progress-step.is-completed .step-label{color:var(--platform-green)}
+.progress-step.ext{outline:1px dashed rgba(242,184,75,.6);outline-offset:4px;border-radius:4px}
+.error-alert{margin-bottom:16px}
+.logs-section{border:1px solid var(--platform-line);border-radius:var(--border-radius-base);overflow:hidden}
+.logs-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--platform-line);background:var(--platform-surface-2);font-size:13px;font-weight:650}
+.logs-header .acts{display:flex;gap:14px}
+.logs-header .acts button{font-size:12px;color:var(--platform-text-secondary)}
+.logs-container{max-height:340px;overflow:auto;padding:12px 16px;background:var(--platform-surface-0);
+  font:13px/1.6 var(--font-mono)}
+.log-item{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:2px 0}
+.log-item .ic{flex:0 0 auto;width:14px;margin-top:4px}
+.log-time{flex:0 0 auto;min-width:64px;color:var(--platform-text-muted)}
+.log-level{flex:0 0 auto;min-width:50px;color:var(--platform-text-secondary)}
+.log-message{color:var(--platform-text-regular);word-break:break-word}
+.log-info .ic{color:var(--platform-cyan)}
+.log-success .ic{color:var(--platform-green)}
+.log-warning .ic{color:var(--platform-amber)}
+.log-warning .log-message{color:var(--platform-amber)}
+.log-error .ic,.log-error .log-message{color:var(--platform-red)}
+.log-error{background:rgba(240,100,106,.07);border-radius:3px}
+.log-pending .log-message{font-style:italic;color:var(--platform-text-secondary)}
+/* 本次新增：阶段分组带（仅扩展阶段运行时渲染） */
+.log-stage-band{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font:10px/1 var(--font-mono);
+  letter-spacing:.09em;text-transform:uppercase;color:var(--platform-amber)}
+.log-stage-band::after{content:"";flex:1;height:1px;background:rgba(242,184,75,.35)}
+.log-stage-band.done{color:var(--platform-green)}
+.log-stage-band.done::after{background:rgba(82,207,130,.35)}
+
+/* ---------- 右侧标注栏 ---------- */
+.annot{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.annot .box{padding:14px 16px;border:1px solid var(--platform-line);border-radius:4px;background:var(--platform-surface-1)}
+.annot h4{margin:0 0 8px;font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)}
+.annot ul,.annot ol{margin:0;padding-left:18px;font-size:12px;line-height:1.75;color:var(--platform-text-secondary)}
+.annot code{padding:1px 5px;border-radius:3px;background:var(--platform-surface-3);font:11px/1.6 var(--font-mono);color:var(--platform-text-regular)}
+.sw{display:inline-block;width:10px;height:10px;margin-right:5px;border-radius:2px;vertical-align:-1px}
+
+@media (max-width:1180px){
+  .proto-body{grid-template-columns:1fr}
+  .proto-nav{position:static;display:flex;flex-wrap:wrap;gap:6px;max-height:none;border-right:0;border-bottom:1px solid var(--platform-line)}
+  .proto-nav h2{width:100%}
+}
+@media (max-width:900px){
+  .deploy-workbench{grid-template-columns:190px minmax(0,1fr)}
+  .grid2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="proto-bar">
+  <div>
+    <div class="k">MERC-3 · UI prototype</div>
+    <h1>部署扩展步骤 / 目标版本选择 · 交互原型</h1>
+  </div>
+  <div class="proto-legend">
+    <b>〈…〉</b> 一律为字段占位符，不对应任何真实版号 / 下载来源 / 目标路径（PRD BR-15 ①、N-12）。
+    左侧切换状态；仅覆盖本期新增与受影响界面，未列出的界面一律保持现状。
+  </div>
+</header>
+
+<div class="proto-body">
+  <nav class="proto-nav" id="nav"></nav>
+  <main class="proto-stage">
+    <div class="state-card" id="state"></div>
+    <div id="screen"></div>
+    <div class="annot" id="annot"></div>
+  </main>
+</div>
+
+<script>
+/* ================= 图标（Element Plus 形制复刻，名称见 ui-spec.md 标注） ================= */
+const I = {
+  check:'M339 459l144 144 260-260 56 56-316 316-200-200z',
+  'circle-check':'M512 64a448 448 0 100 896 448 448 0 000-896zm0 64a384 384 0 110 768 384 384 0 010-768zm192 272l-45-45-171 171-85-85-45 45 130 130z',
+  'circle-close':'M512 64a448 448 0 100 896 448 448 0 000-896zm0 64a384 384 0 110 768 384 384 0 010-768zm147 209l45 45-99 99 99 99-45 45-99-99-99 99-45-45 99-99-99-99 45-45 99 99z',
+  warning:'M512 64a448 448 0 100 896 448 448 0 000-896zm-64 224h128v320H448zm0 384h128v96H448z',
+  info:'M512 64a448 448 0 100 896 448 448 0 000-896zm-64 320h128v384H448zm0-160h128v96H448z',
+  timer:'M512 96a416 416 0 100 832 416 416 0 000-832zm0 64a352 352 0 110 704 352 352 0 010-704zm-32 96h64v176l144 86-32 55-176-105z',
+  loading:'M512 96a416 416 0 100 832 416 416 0 000-832zm0 96a320 320 0 110 640 320 320 0 010-640z',
+  'arrow-left':'M608 208l-320 304 320 304 56-56-264-248 264-248z',
+  'arrow-right':'M416 208l264 248-264 248 56 56 320-304-320-304z',
+  monitor:'M128 128h768v512H128zm64 64v384h640V192zm192 576h256v64H384z',
+  grid:'M128 128h320v320H128zm448 0h320v320H576zM128 576h320v320H128zm448 0h320v320H576z',
+  setting:'M512 320a192 192 0 100 384 192 192 0 000-384zm0 64a128 128 0 110 256 128 128 0 010-256z',
+  document:'M256 96h384l192 192v544H256zm64 64v576h448V320l-160-160z',
+  box:'M512 64l384 192v512L512 960 128 768V256zm0 76L224 296v432l288 144 288-144V296z',
+  download:'M480 128h64v384h160L512 768 320 512h160zM160 832h704v64H160z',
+  setup:'M384 128l128 128-96 96-128-128zM576 320l128 128-96 96-128-128zM192 736l352-352 96 96-352 352z',
+  tools:'M640 96l288 288-144 144-96-96-352 352-96 96-144-144 352-352-96-96z',
+  search:'M448 128a320 320 0 100 640 320 320 0 000-640zm0 64a256 256 0 110 512 256 256 0 010-512zm230 442l192 192-45 45-192-192z',
+  tickets:'M192 128h640v768H192zm64 64v640h512V192zm64 96h384v64H320zm0 128h384v64H320zm0 128h256v64H320z',
+  delete:'M320 96h384l64 96h192v64H128v-64h192zm-32 160h448l-48 608H336z',
+  bottom:'M480 128h64v480h160L512 896 320 608h160z',
+  collection:'M256 96h512v832L512 768 256 928z',
+  cpu:'M288 288h448v448H288zm64 64v320h320V352zM96 448h128v64H96zm0 160h128v64H96zm704-160h128v64H800zm0 160h128v64H800zM448 96h64V224h-64zm-160 0h64V224h-64zm320 0h64V224h-64z',
+  link:'M544 224l96-96a160 160 0 01226 226l-96 96-64-64 96-96a96 96 0 00-132-132l-96 96zm-64 576l-96 96A160 160 0 01158 670l96-96 64 64-96 96a96 96 0 00132 132l96-96zM320 448l384 128-96 96-128-96-160-128z',
+  refresh:'M512 128a384 384 0 10384 384h-64a320 320 0 11-320-320v160l224-192L512 64v64z'
+};
+function svg(n,size){const d=I[n]||I.info;return '<svg class="'+(n==='loading'?'spin':'')+'" width="'+(size||14)+'" height="'+(size||14)+'" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true"><path d="'+d+'"/></svg>';}
+
+/* ================= 通用片段 ================= */
+function steps(active){
+  const titles=[['选择主机','monitor'],['选择游戏','grid'],['配置参数','setting'],['环境校验','circle-check'],['确认部署','check']];
+  return '<ol class="steps">'+titles.map(function(t,i){
+    const cls=i<active?'done':(i===active?'cur':'');
+    return '<li class="'+cls+'"><span class="dot">'+svg(i<active?'check':t[1],13)+'</span><span class="lbl">'+t[0]+'</span></li>';
+  }).join('')+'</ol>';
+}
+function shell(o){
+  return '<div class="deploy-container"><div class="deploy-shell">'
+   + '<div class="card-header"><div class="header-copy">'
+   + '<div class="section-kicker" style="font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)">PROVISIONING BAY / INSTANCE DEPLOYMENT</div>'
+   + '<div class="title">部署游戏实例</div><p>从节点选择到环境校验，建立一条可回溯的实例部署链路。</p></div>'
+   + '<div class="header-context"><span class="ep-tag ep-tag--info">'+svg('monitor',12)+' 〈主机名〉</span>'
+   + '<span class="ep-tag ep-tag--primary">'+svg('grid',12)+' DNF台服</span>'
+   + '<div class="header-status"><i></i>0'+o.step+' / 05 STAGES</div></div></div>'
+   + '<div class="deploy-workbench"><aside class="deploy-rail">'
+   + '<div class="rail-caption">DEPLOYMENT FLOW</div>'
+   + '<div class="rail-context"><span>当前目标</span><strong>dnf-tw-service-01</strong>'
+   + '<div class="rail-divider"></div><span>节点</span><strong>〈主机名〉 · 在线</strong></div>'
+   + steps(o.step-1)
+   + '<div class="rail-note">'+svg('info',11)+' 每个阶段都可以返回调整，部署任务只会在最后确认后创建。</div>'
+   + '</aside><section class="deploy-main">'
+   + '<div class="stage-header"><div>'
+   + '<span style="font:9px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--platform-text-muted)">STAGE 0'+o.step+' / '+o.stepTitle+'</span>'
+   + '<h2>'+o.stepTitle+'</h2><p>'+o.stepDesc+'</p></div>'
+   + '<span class="stage-index">0'+o.step+'</span></div>'
+   + '<div class="step-content">'+o.body+'</div>'
+   + '<div class="step-actions">'+ (o.step>1?'<span class="ep-btn">'+svg('arrow-left',13)+'上一步</span>':'')
+   + (o.step<5?'<span class="ep-btn ep-btn--primary">下一步 '+svg('arrow-right',13)+'</span>'
+             :'<span class="ep-btn ep-btn--primary">'+svg('circle-check',13)+'开始部署</span>')
+   + '<span class="ep-btn">取消</span></div>'
+   + '</section></div></div></div>';
+}
+function gameList(){
+  const g=[['DNF台服','dnf_tw',true],['求生之路2','l4d2',false],['Minecraft Server','minecraft',false]];
+  return '<div class="game-list">'
+   +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="ep-input" style="width:auto;flex:1">'+svg('search',13)+'<span style="color:var(--platform-text-muted);font-size:12px">搜索游戏名称或编码</span></div>'
+   +'<span class="ep-tag">3 / 12</span></div>'
+   + g.map(function(x){return '<div class="game-item'+(x[2]?' on':'')+'"><span class="av">'+svg('box',18)+'</span>'
+     +'<div style="min-width:0"><div class="nm">'+x[0]+'</div><div class="cd">'+x[1]+'</div></div>'
+     +(x[2]?'<span style="margin-left:auto;color:var(--platform-cyan)">'+svg('check',16)+'</span>':'')
+     +'</div>';})
+     .join('')+'</div>';
+}
+/* ---- 本次新增：目标版本区（三种可见性） ---- */
+function versionBlock(cat,keyPresent,open){
+  if(cat==='empty'||cat==='invalid-nodata'){
+    // S1：控件不渲染 —— 与改造前逐字节一致（FR-02 / AC-24 ①）
+    return '<div class="detail-section" style="opacity:.55;border:1px dashed var(--platform-line);padding:12px 14px;border-radius:4px">'
+      +'<div class="section-title" style="margin-bottom:6px;padding-bottom:6px;color:var(--platform-text-muted)">'+svg('info',13)+'目标版本 · 本状态不渲染</div>'
+      +'<div class="field-description">此处为本期唯一新增区块。目录读取结果为空（含 dnf-tw 占位模板未填充）时，整个区块连同其标题、提示与占位空间一概不输出，面板与改造前完全一致 —— 右侧虚线框仅为原型标注，不属于产品界面。</div></div>';
+  }
+  const loading = cat==='loading';
+  const single  = cat==='ready-single';
+  const chosen  = cat==='ready-nondefault' ? '〈非默认版本 ①〉' : '默认版本';
+  const opts = single ? [['默认版本','目录内唯一条目',true]]
+    : [['默认版本','不执行部署扩展',cat!=='ready-nondefault'],['〈非默认版本 ①〉','含 3 个部署扩展步骤',cat==='ready-nondefault'],['〈非默认版本 ②〉','含 1 个部署扩展步骤',false]];
+  const sel = '<div class="ep-select'+(open?' open is-focus':'')+(loading?' is-disabled':'')+'">'
+    + (loading? '<span class="placeholder" style="display:flex;align-items:center;gap:8px">'+svg('loading',13)+'版本目录读取中…</span>'
+              : '<span>'+chosen+'</span>')
+    + svg('bottom',12).replace('class="','class="caret ')+'</div>';
+  const dd = open? '<div class="ep-dropdown">'+opts.map(function(o){
+      return '<div class="ep-option'+(o[2]?' on':'')+'"><span>'+o[0]+'</span><small>'+(o[2]?svg('check',13):o[1])+'</small></div>';}).join('')+'</div>' : '';
+  const badge = cat==='ready-nondefault'
+      ? '<span class="ep-tag ep-tag--primary">'+svg('info',12)+'将执行 3 个部署扩展步骤</span>'
+      : '<span class="ep-tag">'+svg('info',12)+'不执行部署扩展步骤</span>';
+  const preview = cat==='ready-nondefault' ? '<div class="version-preview"><div class="h"><span>部署扩展步骤预览 · 按声明顺序执行，只读展示，<b>不探测来源可达性</b>（N-09）</span>'
+      +'<button class="ep-btn ep-btn--sm" style="padding:2px 8px">收起</button></div>'
+      +'<ul class="step-list">'
+      +'<li><span class="no">1/3</span><span class="kind">补丁替换</span>〈步骤标签〉<span class="pos">失败即终止</span></li>'
+      +'<li><span class="no">2/3</span><span class="kind">脚本执行</span>〈步骤标签〉<span class="pos">宿主机 · 失败可继续</span></li>'
+      +'<li><span class="no">3/3</span><span class="kind">补丁替换</span>〈步骤标签〉<span class="pos">失败即终止</span></li>'
+      +'</ul></div>' : '';
+  const footnote = single
+      ? '<div class="field-description">该游戏当前只声明了默认版本，没有可切换的其它版本。</div>'
+      : '<div class="field-description">未选择时按该游戏的默认版本部署，行为与改造前一致。所选版本随实例配置保存，重新部署会重放同一份版本配方。</div>';
+  return '<div class="detail-section" data-block="target-version">'
+    +'<div class="section-title">'+svg('collection',13)+'目标版本<span class="new-flag">NEW</span></div>'
+    +'<div class="version-row">'+sel+badge+'</div>'+dd+preview+footnote
+    +(keyPresent?'<div class="note-inline warn">'+svg('warning',11)+' 实例配置中已存在版本要求，但本游戏当前无可选版本目录，此处不可改选。</div>':'')
+    +'</div>';
+}
+function wizardStep2(o){
+  return '<div class="grid2"><div>'+panelTitle('选择游戏')+gameList()+'</div><div>'+
+    '<div class="game-detail">'
+    +'<div class="detail-header"><span class="av">'+svg('box',28)+'</span><div style="min-width:0">'
+    +'<h3>DNF台服</h3><div class="gc">dnf_tw</div><div class="gd">地下城与勇士台服社区服务端（Docker Compose 部署，自带 MySQL 与网关）</div></div></div>'
+    +'<div class="ep-divider"></div>'
+    +'<div class="detail-section"><div class="section-title">'+svg('setup',13)+'部署方式</div>'
+    +'<div><span class="ep-radio on">'+svg('box',13)+'Docker Compose</span></div>'
+    +'<div class="method-description">使用 Docker Compose 部署，适合多容器应用。</div></div>'
+    + versionBlock(o.catalog,o.keyPresent,o.open)
+    +'<div class="detail-section"><div class="section-title">'+svg('link',13)+'默认端口</div>'
+    +'<div class="port-tags"><span class="ep-tag ep-tag--primary ep-tag--lg">game: 〈端口〉</span>'
+    +'<span class="ep-tag ep-tag--lg">mysql: 〈端口〉</span><span class="ep-tag ep-tag--lg">gate: 〈端口〉</span>'
+    +'<span class="ep-tag ep-tag--lg">relay: 〈端口〉</span><span class="ep-tag ep-tag--lg">stun_start: 〈端口〉</span></div></div>'
+    +'<div class="detail-section" style="margin-bottom:0"><div class="section-title">'+svg('cpu',13)+'环境依赖</div>'
+    +'<div class="port-tags"><span class="ep-tag">memory: 2G</span><span class="ep-tag">disk: 20G</span><span class="ep-tag">cpu: 1核</span></div></div>'
+    +'</div></div></div>';
+}
+function panelTitle(t){return '<div class="panel-title">'+svg('grid',13)+t+'</div>';}
+
+/* ---- 步骤 4 环境校验：明确不改动（N-09 / §6.1 步骤4） ---- */
+function wizardStep4(){
+  const rows=[['box','Docker 环境','〈运行时版本〉已安装并运行','success'],['link','端口可用性','所有端口可用（共 N 个）','success'],
+    ['tools','磁盘空间','剩余空间 〈值〉，满足要求','success'],['cpu','内存资源','可用内存 〈值〉，满足最低要求','success'],
+    ['collection','依赖检查','所有依赖已安装','success']];
+  return '<div class="panel-title" style="display:flex;align-items:center;gap:10px">'+svg('circle-check',13)+'环境校验'
+    +'<span class="ep-tag ep-tag--warning" style="margin-left:auto">'+svg('info',12)+'本步骤本期不新增任何检查项，也不校验所选版本的可用性</span></div>'
+    + rows.map(function(r){return '<div class="env-check-item '+r[3]+'"><span class="ic">'+svg(r[0],16)+'</span>'
+      +'<span class="cl">'+r[1]+'</span><span class="cm">'+r[2]+'</span></div>';}).join('')
+    +'<div class="env-result"><div class="t">'+svg('circle-check',16)+' 环境校验通过</div><div class="s">可以开始部署</div></div>';
+}
+
+/* ---- 步骤 5 确认部署：摘要行（谓词与控件同现） ---- */
+function wizardStep5(o){
+  const c=o.catalog, k=o.keyPresent;
+  const showLine = (c==='ready-default'||c==='ready-nondefault'||c==='ready-single') || k;
+  let val='';
+  if(c==='ready-nondefault') val='〈非默认版本 ①〉<span class="ep-tag ep-tag--primary" style="margin-left:8px">将执行 3 个部署扩展步骤</span>';
+  else if(k) val='〈非默认版本 ①〉<span class="ep-tag ep-tag--warning" style="margin-left:8px">'+svg('warning',12)+'沿用实例配置</span>'
+      +'<div class="note-inline warn">本游戏当前无可选版本目录，此项无法在此改选，也不会被静默替换为默认版本。恢复版本目录后可在「选择游戏」步骤调整。</div>';
+  else val='默认版本';
+  if(!showLine) val='';
+  const rows=[
+    ['目标主机','〈主机名〉 (〈IP〉)','monitor'],
+    ['游戏','DNF台服','grid'],
+    ['部署方式','Docker Compose','box'],
+    ['实例名称','dnf-tw-service-01',null],
+    ['部署路径','〈部署路径〉',null],
+    ['端口号','〈端口〉',null],
+    ['自动启动','是',null]
+  ];
+  let html='';
+  function cell(lab,v,ic,hl){
+    return '<tr'+(hl?' class="hl-row"':'')+'><th>'+lab+(hl?'<span class="new-flag">NEW</span>':'')+'</th><td>'
+      +(ic?svg(ic,13)+' ':'')+v+'</td></tr>';
+  }
+  var t=rows.map(function(r){return cell(r[0],r[1],r[2],false);});
+  // 两列表格：用 CSS column-count 不适用，改为按 PRD 既有 :column="2" 结构 —— 原型内以单列清晰呈现，标注栏说明实际为 2 列
+  html='<div class="confirm-section"><div class="section-title">'+svg('document',13)+'配置摘要'
+    +'<span class="text-secondary" style="margin-left:auto;font-size:11px">实现按 el-descriptions :column="2" border 渲染，此处为逐行呈现</span></div>'
+    +'<table class="ep-desc"><tbody>';
+  html+=t[0]+t[1]+t[2];
+  if(showLine) html+=cell('目标版本',val,null,true);
+  html+=t[3]+t[4]+t[5]+t[6];
+  html+='</tbody></table></div>';
+  html+='<div class="confirm-section"><div class="section-title">'+svg('setup',13)+'Compose 变量</div>'
+    +'<table class="ep-desc"><tbody>'+cell('MySQL 端口','〈值〉',null,false)+cell('数据库 root 密码','******',null,false)+cell('对外 IP','〈值〉',null,false)+'</tbody></table></div>';
+  html+='<div class="ep-alert ep-alert--warning" style="margin-top:24px">'+svg('warning',16)
+    +'<div><div class="t">部署确认</div><div class="d">部署过程可能需要几分钟时间，请耐心等待。部署完成后，实例将自动启动。</div></div></div>';
+  return html;
+}
+
+/* ================= 部署日志对话框 ================= */
+function logDialog(o){
+  const base=['准备','下载','安装','配置','启动'];
+  var labels = o.extInStepper ? ['准备','下载','安装','配置','扩展','启动'] : base;
+  var doneIdx = o.doneIdx;
+  var pct = o.progress;
+  var stepper = labels.map(function(l,i){
+    var cls = i<doneIdx?'is-completed':(i===doneIdx?'is-active':'');
+    var isExt = o.extInStepper && l==='扩展';
+    return '<div class="progress-step '+cls+(isExt?' ext':'')+'"><div class="step-dot"></div><div class="step-label">'+l+'</div></div>';
+  }).join('');
+  var lines='';
+  (o.lines||[]).forEach(function(l){
+    if(l.band){ lines+='<div class="log-stage-band">部署扩展</div>'; return; }
+    var lvl=(l.lv||'INFO').toLowerCase()==='warn'?'warning':(l.lv||'INFO').toLowerCase();
+    var ic={info:'info',success:'circle-check',warning:'warning',error:'circle-close',debug:'info'}[lvl]||'info';
+    lines+='<div class="log-item log-'+lvl+'"><span class="ic">'+svg(ic,14)+'</span>'
+      +'<span class="log-time">'+l.t+'</span><span class="log-level">['+l.lv+']</span>'
+      +'<span class="log-message">'+l.m+'</span></div>';
+  });
+  if(!o.completed) lines+='<div class="log-item log-pending"><span class="ic spin">'+svg('loading',14)+'</span><span class="log-time">--:--:--</span><span class="log-message">等待更多输出...</span></div>';
+  return '<div class="dialog-mask"><div class="ep-dialog">'
+   +'<div class="ep-dialog__header">部署进度<span style="color:var(--platform-text-muted)">'+svg('circle-close',16)+'</span></div>'
+   +'<div class="ep-dialog__body">'
+   +'<div class="progress-overview"><div class="progress-status">'
+   +'<span class="big tone-'+o.tone+'">'+svg(o.bigIcon,48)+'</span>'
+   +'<div class="status-info"><div class="status-text tone-'+o.tone+'">'+o.statusText+'</div>'
+   +'<div class="status-detail">'+(o.completed ? (o.success
+        ? '<span class="tone-success">'+svg('circle-check',13)+' 部署成功</span>'
+        : '<span class="tone-danger">'+svg('circle-close',13)+' 部署失败</span>')
+      : '<span class="tone-info">'+svg('timer',13)+' 已用时 '+o.elapsed+'</span>')+'</div></div></div>'
+   +'<div class="ep-progress'+(o.completed?(o.success?' is-success':' is-exception'):'')+'"><span style="width:'+pct+'%"></span></div>'
+   +'<div class="progress-pct">'+pct+'%　<span style="color:var(--platform-text-muted)">数值仅为示意，阶段区间由技术设计按 BR-10 划分</span></div>'
+   +'<div class="progress-steps">'+stepper+'</div></div>'
+   +(o.error?'<div class="ep-alert ep-alert--error error-alert">'+svg('circle-close',16)+'<div><div class="t">部署失败</div><div class="d">'+o.error+'</div></div></div>':'')
+   +'<div class="logs-section"><div class="logs-header"><span>'+svg('tickets',13)+' 部署日志</span>'
+   +'<span class="acts"><button>'+svg('delete',12)+' 清空</button><button>'+svg('bottom',12)+' 到底部</button></span></div>'
+   +'<div class="logs-container">'+(o.lines&&o.lines.length?lines:'<div class="ep-empty">暂无日志</div>')+'</div></div>'
+   +'</div>'
+   +'<div class="ep-dialog__footer">'+(o.completed?(o.success?'<span class="ep-btn">完成</span>'
+        :'<span class="ep-btn ep-btn--primary">'+svg('refresh',13)+'重试</span><span class="ep-btn">关闭</span>')
+       :'<span style="font-size:11px;color:var(--platform-text-muted)">进行中：本窗口为只读日志观察窗，无控制按钮（现状）</span>')+'</div>'
+   +'</div></div>';
+}
+/* 日志行简写 */
+function L(t,lv,m){return {t:t,lv:lv,m:m};}
+function BAND(){return {band:'ext'};}
+
+/* ================= 场景定义 ================= */
+const SC = [
+ {g:'向导 · 目标版本区块',id:'w1',name:'W1 目录未填充（dnf-tw 本期态）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'plugin-dnf-tw 已加载，但版本目录占位模板尚未填入真实资料 → 目录读取结果 = 空目录（0 条目）。',
+  ac:['AC-24 ①③⑥','AC-02','FR-02','FR-23','BR-15 ①'],state:'S1',
+  diff:'与改造前完全一致：目标版本区块整体不渲染、无占位空间、无任何提示行。',
+  catalog:'empty',keyPresent:false,
+  annot:[['区块可见性','目录读取成功且条目数 ≥ 1 → 渲染；否则整块不渲染（含标题与外边距），使面板与改造前逐像素一致。'],['空 ≠ 不合法','未填充（空目录）不得输出任何「声明不合法」提示，也不得触发拦截（RISK-13 / AC-24 ③）。'],['dnf-tw 本期','整个缺口期恒处于本状态 —— 这是本期交付 dnf-tw 向导的真实样子，不是降级态。']]},
+
+ {g:'向导 · 目标版本区块',id:'w2',name:'W2 目录读取中（加载态）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'选定游戏或切换部署方式后，向版本目录声明接口发起读取，尚未返回。',
+  ac:['FR-01','AC-01'],state:'过渡态',
+  diff:'加载期间区块占位渲染（控件禁用 + 「版本目录读取中…」），不出现空选项、不闪现「默认版本」。',
+  catalog:'loading',keyPresent:false,
+  annot:[['加载态','控件呈禁用 + 内联 loading 图标 + 占位文案「版本目录读取中…」；沿用 deploy.vue 既有 v-loading 语义，不新增遮罩层。'],['防误选','读取期间提交按钮不因本区块而被禁用；若用户在返回前进入下一步，返回时以最新目录重算。']]},
+
+ {g:'向导 · 目标版本区块',id:'w3',name:'W3 目录可用 · 停在默认版本（S2）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录读取成功且条目 ≥ 1；用户未做选择，或显式停在「默认版本」。',
+  ac:['AC-01','AC-02','AC-22','FR-01','FR-04'],state:'S2',
+  diff:'区块出现，停在「默认版本」；提交不写 deployVersion 键；日志不出现扩展阶段。',
+  catalog:'ready-default',keyPresent:false,open:true,
+  annot:[['默认项文案','固定为「默认版本」四字，不显示镜像 tag 字面量（BR-02：默认版本 = 沿用游戏模板内既有 tag，无独立版号可展示）。'],['选项排序','默认版本恒在首位，其余按目录声明顺序，不做字典序重排（用户/插件维护者的心智与声明一致）。'],['副标','每个非默认项在右侧以 10px mono 显示其步骤数量，帮助用户理解代价（只读声明，不探测可达性）。']]},
+
+ {g:'向导 · 目标版本区块',id:'w4',name:'W4 目录可用 · 选非默认版本（S3）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录可用，用户选择非默认版本条目。',
+  ac:['AC-01','AC-03','AC-04','AC-16','FR-01','FR-03'],state:'S3',
+  diff:'控件下方出现「部署扩展步骤预览」（序号 · 标签 · 种类 · 执行位置 · 致命性），提交写 deployVersion 键。',
+  catalog:'ready-nondefault',keyPresent:false,
+  annot:[['步骤预览','直接复用声明里的 label 与顺序，与部署日志的步骤行同一套词面（AC-16 要求「正在执行哪一步」可辨识，预览与日志必须同名）。'],['致命性词面','fatal=true → 「失败即终止」；false → 「失败可继续」。不使用「致命 / fatal」等实现词。'],['边界（N-09）','预览只呈现声明文本，不判断补丁来源是否可达、不预判本次部署能否成功。']]},
+
+ {g:'向导 · 目标版本区块',id:'w5',name:'W5 目录仅默认版本（单值态）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录只声明了 default = true 的条目，没有其它版本。',
+  ac:['§12「目录仅默认版本」行（OP-05 待拍板项）'],state:'S2（等价）',
+  diff:'控件保留、只有一个可选值；不隐藏、不禁用。',
+  catalog:'ready-single',keyPresent:false,
+  annot:[['定稿结论','不隐藏单值控件。出现与否只由「目录是否可用」一个谓词决定，条目数只决定选项多寡 —— 否则插件维护者增删条目会让控件反复出现/消失，用户也失去「版本在这里改」的落点认知。'],['无副作用','单值态等价 S2：不写键、不进入扩展阶段（§12 系统表现列已定）。']]},
+
+ {g:'向导 · 目标版本区块',id:'w6',name:'W6 切换部署方式 → 重取目录',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录按 gameCode + deployType 匹配读取（§8.1 声明读取期）；用户改变部署方式。',
+  ac:['§6.1 步骤2「切换部署方式需重取目录（F-08）」','FR-01'],state:'交互规则',
+  diff:'部署方式是本区块唯一的重取触发源；重取后已选版本按规则回落。',
+  catalog:'ready-nondefault',keyPresent:false,
+  annot:[['重取触发','仅「选定游戏」与「选定部署方式」两处变化触发重取目录；改端口、改变量不触发。'],['回落规则','新目录中仍存在同一 versionId → 保留选择；不存在 → 回落「默认版本」并给一次 ElMessage.info「部署方式已切换，目标版本已重置为默认版本」，不静默改选。'],['落位理由','控件与「部署方式」同屏且紧邻，重取与回落都在用户视线内发生 —— 这是它落在步骤 2 而不是步骤 3 的主要理由（OP-05 ①）。']]},
+
+ {g:'向导 · 提交前可见性',id:'w7',name:'W7 摘要 · S1 无键 → 无版本行',screen:'wizard',step:5,stepTitle:'确认部署',
+  stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
+  trigger:'目录不可用（未填充）且实例配置中不存在 deployVersion 键（首次部署）。',
+  ac:['AC-24 ①②④','AC-02','FR-02','BR-11'],state:'S1',
+  diff:'摘要表与改造前逐行一致，不出现「目标版本」行。',
+  catalog:'empty',keyPresent:false,
+  annot:[['同现规则','摘要行与步骤 2 的控件由同一谓词驱动：控件渲染 ⇒ 摘要行渲染；控件不渲染且无既存键 ⇒ 两者都不出现。'],['为什么不在 S1 显示「默认版本」','FR-04 的「未选择时显示默认版本」以「用户本可以选择」为前提；S1 下没有任何可选项，多出一行会让 AC-24 ④ 的「与改造前逐项一致」不成立。该解读已交 Leader 回写 §6.1。']]},
+
+ {g:'向导 · 提交前可见性',id:'w8',name:'W8 摘要 · S2 / S3 版本行',screen:'wizard',step:5,stepTitle:'确认部署',
+  stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
+  trigger:'目录可用；用户停在默认版本或选择非默认版本。',
+  ac:['AC-01','FR-04','AC-22'],state:'S2 / S3',
+  diff:'摘要出现「目标版本」行：默认 → 「默认版本」；非默认 → 版本值 + 步骤数徽标。',
+  catalog:'ready-nondefault',keyPresent:false,
+  annot:[['位置','紧跟「部署方式」之后（同为「部署什么」的信息），而非资源限制一类「怎么部署」的信息之后。'],['只读','摘要不提供改选控件；PRD 约束是「提交前必须可见并可改」，「可改」由「上一步」回到步骤 2 满足，与既有 11 行的处理一致。']]},
+
+ {g:'向导 · 提交前可见性',id:'w9',name:'W9 摘要 · 键既存但目录不可用（BR-12 ②）',screen:'wizard',step:5,stepTitle:'确认部署',
+  stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
+  trigger:'插件被卸载 / 声明异常，而实例配置中已存在非默认 deployVersion（重部署重放，FR-13）。',
+  ac:['AC-20 (b)','BR-12','§12「向导不展示但键已存在」行'],state:'S3（不可改选）',
+  diff:'步骤 2 无控件；摘要仍以「沿用实例配置」标出该版本要求，不做任何可用性判断、不阻断提交。',
+  catalog:'empty',keyPresent:true,
+  annot:[['为什么必须显示','此处若显示「默认版本」或干脆不显示，等于界面上把一次「要求非默认版本」的部署伪装成默认版本部署 —— 正是 BR-12 要杜绝的结果。值取自提交载荷，与目录是否可读无关。'],['不得越界','不得提供「一键清除版本要求」「改回默认版本」的任何控件（§12：本期不提供）。措辞用「无法在此改选」而非「请选择默认版本」。'],['不阻断','提交照常放行，判定发生在扩展阶段入口（N-09）。']]},
+
+ {g:'向导 · 不改动项',id:'wa',name:'WA 环境校验（步骤 4）不变',screen:'wizard',step:4,stepTitle:'环境校验',
+  stepDesc:'在真正执行前检查节点环境、端口占用和运行时条件。',
+  trigger:'任何部署走到步骤 4。',
+  ac:['§6.1 步骤4','N-09'],state:'不变',
+  diff:'零改动：检查项、文案、通过判定与改造前一致，不探测版本目录与补丁来源。',
+  catalog:'empty',keyPresent:false,
+  annot:[['硬约束','不得在本步骤新增「版本可用性」检查项，也不得把目录读取失败做成校验不通过（N-09：版本问题只在运行期由扩展阶段与 BR-12 判定）。'],['理由','本步骤一旦拦截，BR-12「只能在运行期拦」的正当性依据就被破坏，验收会同时得到两种互斥的失败时机。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l1',name:'LA 全部成功',screen:'log',
+  trigger:'选择非默认版本并完成部署；该条目声明 3 个步骤，全部判定成功。',
+  ac:['AC-03','AC-04','AC-16','FR-10','FR-11','FR-20','KPI-02'],state:'扩展阶段 · 成功',
+  diff:'stepper 在「配置」与「启动」之间插入「扩展」项；日志出现「部署扩展」阶段带与逐步三行（开始 / 成功 / 耗时）。',
+  progress:68,statusText:'部署扩展',tone:'warning',bigIcon:'setup',elapsed:'2分14秒',doneIdx:4,extInStepper:true,completed:false,
+  lines:[L('14:02:11','INFO','开始部署'),L('14:02:12','INFO','[DEPLOY] 开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','INFO','正在停止实例，确保扩展步骤在实例未运行时执行'),
+    L('14:03:49','SUCCESS','实例已停止'),
+    L('14:03:50','INFO','步骤 1/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:12','SUCCESS','步骤 1/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 22秒'),
+    L('14:04:13','INFO','步骤 2/3 〈步骤标签〉 · 脚本执行 · 开始'),
+    L('14:04:20','SUCCESS','步骤 2/3 〈步骤标签〉 · 脚本执行 · 成功 · 耗时 7秒'),
+    L('14:04:21','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:39','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
+    L('14:04:39','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 58秒'),
+    L('14:04:40','INFO','部署扩展阶段结束，进入健康检查与启动'),
+    L('14:04:41','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['阶段带','扩展阶段的第一行之前插入一条「部署扩展」分组带（mono 10px + 细线），使「哪一段属于扩展阶段」可被机械判定，也满足 AC-16 的可辨识要求。'],['插入时机','分组带只在真正进入扩展阶段时渲染；未声明扩展 / 停在默认版本的部署完全不出现该带与「扩展」步骤点 —— 这是 AC-15 / AC-24 的回归前提。'],['耗时格式','直接复用 DeployProgress.vue 既有 formattedElapsedTime：N秒 / N分N秒 / N小时N分，不引入 ms 裸数值。'],['步骤行','「步骤 序号/总数 · 标签 · 种类 · 状态 · 耗时」；标识与耗时的承载字段由 §8.5 日志呈现契约定，本原型规定词面。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l0',name:'LB 未进入扩展阶段（对照）',screen:'log',
+  trigger:'停在默认版本，或该游戏未声明扩展步骤（含 dnf-tw 未填充态）。',
+  ac:['AC-02','AC-15','AC-24 ③','BR-11'],state:'无扩展阶段',
+  diff:'stepper 仍为既有 5 项、无「扩展」点、无分组带、无步骤行 —— 与改造前逐行一致。',
+  progress:82,statusText:'健康检查中',tone:'warning',bigIcon:'search',elapsed:'1分51秒',doneIdx:5,extInStepper:false,completed:false,
+  lines:[L('14:02:11','INFO','开始部署'),L('14:02:12','INFO','[DEPLOY] 开始部署'),
+    L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),L('14:03:41','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['对照物','这一屏是给验收与回归用的基准帧：任何使这里多出「扩展」字样的实现都判 AC-15 / AC-24 不通过。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l2',name:'LC 致命步骤失败 + 回滚',screen:'log',
+  trigger:'步骤 2/3 声明为致命（默认）且失败；补丁步骤走 PatchInstallService 自带回滚。',
+  ac:['AC-08','AC-09','FR-17','FR-19','BR-14'],state:'扩展阶段 · 致命失败',
+  diff:'失败行 ERROR；终止行说明「不进入启动、实例置为异常」；回滚结果单独成行。',
+  progress:74,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'2分03秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署扩展阶段的致命步骤失败：〈步骤标签〉 · 补丁替换。实例状态已置为异常，未启动。',
+  lines:[L('14:02:11','INFO','开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','INFO','正在停止实例，确保扩展步骤在实例未运行时执行'),
+    L('14:03:49','SUCCESS','实例已停止'),
+    L('14:03:50','INFO','步骤 1/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:12','SUCCESS','步骤 1/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 22秒'),
+    L('14:04:13','INFO','步骤 2/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:31','ERROR','步骤 2/3 〈步骤标签〉 · 补丁替换 · 失败 · 耗时 18秒 · 原因：补丁包来源不可达〈补丁来源〉'),
+    L('14:04:33','SUCCESS','目标路径已回滚到本次改动前状态（备份：〈备份标识〉）'),
+    L('14:04:33','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
+    L('14:04:33','WARN','此前已成功步骤的改动与脚本副作用一律保留，本期不提供撤销')],
+  annot:[['失败行','ERROR + 行底浅红高亮（对齐 ui-design-spec「异常/故障：红色图标+文字，整行浅红色背景高亮」）。原因段必须以「原因：」引导，可直接归因到步骤（AC-08）。'],['回滚边界','回滚只覆盖失败步骤自身；成功步骤与脚本副作用一律保留（BR-14 ②③），该事实必须成行，不能只在文档里。'],['顶部错误条','沿用既有 el-alert error + title=data.error；错误条给结论，日志给归因，两处措辞不得互相矛盾。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l3',name:'LD 非致命步骤失败',screen:'log',
+  trigger:'步骤 2/3 显式声明 fatal = false 且失败；其余致命步骤成功。',
+  ac:['AC-10','FR-18','BR-04'],state:'扩展阶段 · 非致命失败',
+  diff:'失败行 WARN（黄），随后一行说明继续执行；部署照常 COMPLETE。',
+  progress:88,statusText:'健康检查中',tone:'warning',bigIcon:'search',elapsed:'2分41秒',doneIdx:5,extInStepper:true,completed:false,
+  lines:[L('14:03:41','INFO','进入部署扩展阶段'),
+    BAND(),
+    L('14:03:49','SUCCESS','实例已停止'),
+    L('14:03:50','INFO','步骤 1/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:12','SUCCESS','步骤 1/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 22秒'),
+    L('14:04:13','INFO','步骤 2/3 〈步骤标签〉 · 脚本执行 · 开始'),
+    L('14:04:18','WARN','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败（非致命） · 耗时 5秒 · 原因：脚本退出码 1（非 0 即判失败）'),
+    L('14:04:18','INFO','该步骤声明为非致命，继续执行后续步骤'),
+    L('14:04:19','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:04:37','SUCCESS','步骤 3/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 18秒'),
+    L('14:04:37','SUCCESS','部署扩展阶段完成 · 共 3 步 · 总耗时 56秒')],
+  annot:[['WARN 视觉','必须为黄色图标 + 黄色文本，与 INFO 可一眼区分 —— FR-18 的「仅记日志、照常完成」是否成立，界面上就靠这一处颜色差别。'],['「失败（非致命）」','状态词固定「失败（非致命）」，不得只写「失败」让人以为部署终止，也不得写「跳过」（它真的执行过）。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l4',name:'LE BR-12 拦截 · 本次所选',screen:'log',
+  trigger:'本次部署显式选择了非默认版本，而该游戏版本目录不可用（分支 ①）。',
+  ac:['AC-20 (a)','BR-12','FR-02 反向边界'],state:'扩展阶段入口 · 拦截',
+  diff:'未执行任何步骤、未停实例；ERROR 行指名「本次所选」。',
+  progress:62,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'1分49秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署终止：本次所选版本 〈versionId〉 不可用。实例状态已置为异常，未启动。',
+  lines:[L('14:02:11','INFO','开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','ERROR','部署终止：本次所选版本 〈versionId〉 不可用 —— 该游戏的版本目录当前不可读取或未通过声明校验'),
+    L('14:03:41','ERROR','实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本')],
+  annot:[['可辨识性要求','两分支的区别只在两处长：来源短语（「本次所选」/「实例配置要求的…由既往部署写入」）与恢复路径段是否出现。AC-20 要求「区分是本次所选还是配置既存键」，靠这两处即成立。'],['不执行任何步骤','拦截发生在读取目录时，因此本屏不得出现任何「步骤 x/y」行（§9 状态机行）。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l5',name:'LF BR-12 拦截 · 配置既存键',screen:'log',
+  trigger:'界面上无版本选择项、无法改选（目录不可用），而实例配置中已存在非默认 deployVersion（分支 ②）。',
+  ac:['AC-20 (b)','BR-12','§12「向导不展示但键已存在」行','BR-14 ⑤'],state:'扩展阶段入口 · 拦截',
+  diff:'与上一屏同构，但来源短语改为「实例配置要求的版本…本次未改选」，并追加恢复路径说明。',
+  progress:62,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'1分47秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署终止：实例配置要求的版本 〈versionId〉 不可用。实例状态已置为异常，未启动。',
+  lines:[L('14:02:11','INFO','开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','ERROR','部署终止：实例配置要求的版本 〈versionId〉 不可用 —— 该版本要求由既往部署写入实例配置，本次未改选；而该游戏的版本目录当前不可读取或未通过声明校验'),
+    L('14:03:41','ERROR','实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本'),
+    L('14:03:41','WARN','恢复路径：先恢复该游戏的版本目录（重新启用插件，或由插件维护者修复声明）后重新部署；目录恢复后如不再需要该版本，请在「选择游戏」步骤改选「默认版本」再部署（目录未恢复时该选项不存在）')],
+  annot:[['措辞红线','不得表述为「在向导改选默认版本即可解锁」——本场景向导内没有任何可操作的版本控件（§12 v0.4 修正）。恢复路径必须先落到「恢复目录」，改选默认版本是其后续分支。'],['与摘要呼应','本屏与 W9 使用同一来源短语「由既往部署写入」，让用户在提交前与失败后读到的是同一句话。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l6',name:'LG 目录不合法 + 无键（S1 + 说明行）',screen:'log',
+  trigger:'该游戏版本目录未通过 §8.1 校验，且实例配置中不存在 deployVersion 键。',
+  ac:['§8.1 不合规失败行为 ①','FR-02'],state:'不进入扩展阶段 · 降级',
+  diff:'只多一条 WARN 说明行；无「扩展」步骤点、无步骤行；部署按默认版本照常完成。',
+  progress:88,statusText:'健康检查中',tone:'warning',bigIcon:'search',elapsed:'1分58秒',doneIdx:5,extInStepper:false,completed:false,
+  lines:[L('14:02:11','INFO','开始部署'),L('14:03:40','SUCCESS','[DEPLOY] 部署完成'),
+    L('14:03:41','WARN','提示：该游戏版本目录的声明不合法（〈校验失败要点〉），已按默认版本部署，未执行部署扩展步骤'),
+    L('14:03:41','INFO','[HEALTH_CHECK] 执行健康检查')],
+  annot:[['关键分岔','本行属于 S1，不属于扩展阶段：不得插分组带、不得出现「扩展」步骤点、不得改变阶段序列。'],['三态不得混读','未填充（空目录）→ 无任何提示（LA/L0 与 W1）；声明不合法 + 无键 → 本屏这一条 WARN；目录不可用且键既存 → LE/LF 的拦截失败。三者在文案与视觉上都不得互相冒充。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l7',name:'LH 回滚失败 / 多步骤中途失败',screen:'log',
+  trigger:'步骤 3/3 致命失败，且补丁回滚所需备份不可用（BR-14 边界 + N-08）。',
+  ac:['AC-09','AC-21','§12「补丁目标回滚失败」行','BR-14 ③④⑤'],state:'扩展阶段 · 致命失败 + 回滚失败',
+  diff:'回滚失败为独立 ERROR 行并指名备份位置；明确平台侧无恢复控件。',
+  progress:76,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'3分11秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署失败：致命步骤〈步骤标签〉失败且自动回滚未成功，实例状态已置为异常。',
+  lines:[BAND(),
+    L('14:05:02','SUCCESS','步骤 1/3 〈步骤标签〉 · 补丁替换 · 成功 · 耗时 22秒'),
+    L('14:05:20','SUCCESS','步骤 2/3 〈步骤标签〉 · 脚本执行 · 成功 · 耗时 18秒'),
+    L('14:05:21','INFO','步骤 3/3 〈步骤标签〉 · 补丁替换 · 开始'),
+    L('14:05:44','ERROR','步骤 3/3 〈步骤标签〉 · 补丁替换 · 失败 · 耗时 23秒 · 原因：补丁包摘要与声明不符（期望 〈sha256〉，实际 〈sha256〉）'),
+    L('14:05:45','ERROR','回滚失败：〈原因〉（备份 〈备份标识〉）。目标路径未恢复到本次改动前状态'),
+    L('14:05:45','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
+    L('14:05:45','WARN','步骤 1 的落位结果与步骤 2 的脚本副作用一律保留；平台侧不提供撤销或恢复入口，需在宿主机上手工处理后重新部署')],
+  annot:[['不得暗示有恢复控件','不得出现「点击恢复」「还原备份」类措辞（N-08 / §12：平台侧不存在恢复控件）。只能指向宿主机手工处理 + 重新部署。'],['归因四选一','摘要与日志都要能支撑 KPI-03 的归因（实现缺陷 / 排除项 ①②③）：本屏的原因行给出「摘要不符」= 排除项 ③，回滚失败 = 实现缺陷或外部资源，不得含糊。']]},
+
+ {g:'部署日志 · 扩展阶段',id:'l8',name:'LI 脚本超时 / 退出码 / SSH 不可达',screen:'log',
+  trigger:'脚本步骤的三类失败原因（§8.3 timeoutMs、FR-15 exitCode、宿主机通道异常）。',
+  ac:['AC-12','§12「脚本非零退出」「脚本超时」「宿主机 SSH 不可达」行'],state:'原因词面速查',
+  diff:'三类原因各成一行，均以「原因：」引导，可直接归因。',
+  progress:71,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'6分02秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署失败：致命步骤〈步骤标签〉超时未返回。实例状态已置为异常。',
+  lines:[BAND(),
+    L('14:06:01','INFO','步骤 2/3 〈步骤标签〉 · 脚本执行 · 开始'),
+    L('14:08:01','ERROR','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败 · 耗时 2分00秒 · 原因：脚本执行超过 〈timeoutMs〉 未返回，判失败'),
+    L('14:08:01','ERROR','致命步骤失败，部署终止：不再执行后续步骤，实例不启动、不交付，状态置为异常'),
+    L('14:09:12','ERROR','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败 · 耗时 3秒 · 原因：脚本退出码 7（非 0 即判失败）'),
+    L('14:10:04','ERROR','步骤 2/3 〈步骤标签〉 · 脚本执行 · 失败 · 耗时 9秒 · 原因：宿主机 〈主机名〉 SSH 通道不可用 —— 〈原因〉')],
+  annot:[['timeoutMs 数值','超时阈值本身归 OP-04（@Architect 拍板），本原型只固定「超过 〈timeoutMs〉 未返回」这一措辞，不出现任何具体秒数。'],['退出码必现','exitCode 必须以裸数字出现在原因段（AC-12 的可判定要求）。既有容器执行通道会丢弃退出码（F-16），该改造属 §14.2 待改依赖。']]},
+
+ {g:'全状态与边界',id:'e1',name:'E1 停实例失败（前提未定稿）',screen:'log',
+  trigger:'FR-11 要求进入扩展阶段前实例处于停止；停止动作本身失败。',
+  ac:['FR-11','§14.2「停实例语义」待定调','RISK-05'],state:'预留文案',
+  diff:'预留一条 ERROR 措辞；是否生效取决于 @Architect 对停失败的处置定调。',
+  progress:63,statusText:'失败',tone:'danger',bigIcon:'circle-close',elapsed:'2分05秒',doneIdx:4,extInStepper:true,completed:true,success:false,
+  error:'部署失败：扩展阶段前置条件未满足，实例停止失败。实例状态已置为异常。',
+  lines:[BAND(),
+    L('14:03:41','INFO','进入部署扩展阶段'),
+    L('14:03:41','INFO','正在停止实例，确保扩展步骤在实例未运行时执行'),
+    L('14:03:58','ERROR','实例停止失败：〈原因〉 —— 扩展步骤不得在实例仍运行时执行，部署终止'),
+    L('14:03:58','ERROR','实例未启动、未交付，状态置为异常')],
+  annot:[['定位','这是预留文案，不构成需求主张：PRD 明确「停失败无裁决语义」交 @Architect 定调（§14.2 行 5）。定调为「可容忍」则该行降级为 WARN，定调为「致命」则按本屏措辞。'],['为什么先出稿','避免 Architect 定调后再补一版界面文案造成设计漂移；词面已按本屏矩阵统一。']]},
+
+ {g:'全状态与边界',id:'e2',name:'E2 无权限 / 未登录',screen:'log',
+  trigger:'部署或日志接口返回 401 / 403。',
+  ac:['§12「未登录 / 凭证过期」行','§4.2'],state:'沿用现状',
+  diff:'零改动：沿用平台既有 401 跳登录页 + 会话过期提示，本期不新增任何权限态。',
+  progress:0,statusText:'等待中',tone:'info',bigIcon:'timer',elapsed:'0秒',doneIdx:0,extInStepper:false,completed:false,
+  lines:[L('--:--:--','ERROR','获取进度失败: 登录已过期，请重新登录')],
+  annot:[['无新增权限位','§4.2：本期「无新增权限位」。任何为扩展步骤新增的授权面主张都属越界（N-07）。']]},
+
+ {g:'全状态与边界',id:'e3',name:'E3 空态与视觉可辨识性',screen:'log',
+  trigger:'日志容器为空；以及 level 枚举与前端类名映射失配的现状（本期必须一并修的呈现前提）。',
+  ac:['AC-08','AC-10','AC-16','KPI-02','ui-design-spec 2.2.3 状态视觉规则'],state:'实现前提',
+  diff:'左：既有「暂无日志」空态不变。下：按后端真实枚举 INFO / WARN / ERROR / SUCCESS 正确着色后的样子。',
+  progress:5,statusText:'准备中',tone:'primary',bigIcon:'box',elapsed:'3秒',doneIdx:0,extInStepper:false,completed:false,
+  lines:[L('14:02:11','INFO','开始部署'),L('14:02:12','WARN','示例：WARN 必须呈黄色'),L('14:02:13','ERROR','示例：ERROR 必须呈红色并高亮整行'),L('14:02:14','SUCCESS','示例：SUCCESS 必须呈绿色')],
+  annot:[['已知缺陷','DeployProgress.vue 的 getLogClass / getLogIcon 以 info / warning / error / success 为键，而后端 DeployService.LogEntry 实际输出 INFO / WARN / ERROR / SUCCESS（大写），全链路无归一化 —— 现状是 SUCCESS / WARN / ERROR 全部落进 log-info 兜底，即非 INFO 行的颜色与图标全为「蓝 + info」。'],['后果','不修则 AC-08（致命失败可归因）、AC-10（非致命仅记日志）、AC-16（可辨识当前步骤性质）在界面上都不成立，KPI-02 也无法机械核对。'],['要求','level → 视觉映射必须大小写不敏感，并按 ui-design-spec 2.2.3 落实「颜色 + 图标 + 文字」三重标识；建议同时把 WARN 与 ERROR 的行底色区分开。此项已作为 §14.2 待改依赖候选交 Leader 登记。']]}
+];
+
+/* ================= 渲染 ================= */
+var cur = 'w1';
+function nav(){
+  var g='',html='';
+  SC.forEach(function(s){
+    if(s.g!==g){g=s.g;html+='<h2>'+g+'</h2>';}
+    html+='<button class="nav-item'+(s.id===cur?' on':'')+'" data-id="'+s.id+'">'+s.name+'</button>';
+  });
+  document.getElementById('nav').innerHTML=html;
+  Array.prototype.forEach.call(document.querySelectorAll('.nav-item'),function(b){
+    b.onclick=function(){cur=b.getAttribute('data-id');render();window.scrollTo(0,0);};
+  });
+}
+function stateCard(s){
+  var ac=(s.ac||[]).map(function(a){return '<span class="chip ac">'+a+'</span>';}).join('');
+  return '<h3>'+s.name+'</h3><dl>'
+    +'<dt>状态</dt><dd>'+s.state+'</dd>'
+    +'<dt>触发条件</dt><dd>'+s.trigger+'</dd>'
+    +'<dt>本屏差异</dt><dd>'+s.diff+'</dd>'
+    +'<dt>对应需求</dt><dd>'+ac+'</dd></dl>';
+}
+function annot(s){
+  var items=s.annot.map(function(a,i){return '<li><b style="color:var(--platform-text-primary)">'+a[0]+'：</b>'+a[1]+'</li>';}).join('');
+  var token='<li>容器：<code>border 1px var(--platform-line)</code> · <code>radius 4px</code> · <code>padding 12px / 16px / 17px</code>（沿用 deploy.vue 生效值）</li>'
+    +'<li>标题：<code>13px / 650</code> + <code>padding-bottom 8px</code> + <code>border-bottom var(--platform-line)</code></li>'
+    +'<li>辅助文字：<code>11px</code> <code>var(--platform-text-secondary)</code>；mono 标注 <code>9-10px / letter-spacing .09em</code></li>'
+    +'<li>色值：新增 <span class="sw" style="background:var(--platform-amber)"></span><code>--platform-amber #f2b84b</code> 用于「部署扩展」阶段带与既存键提示；<span class="sw" style="background:var(--platform-cyan)"></span><code>--platform-cyan #27b5f3</code> 用于选中态；<span class="sw" style="background:var(--platform-green)"></span><code>#52cf82</code> 成功；<span class="sw" style="background:var(--platform-red)"></span><code>#f0646a</code> 失败</li>'
+    +'<li>间距全部为 8px 网格倍数（4 / 8 / 12 / 16 / 20 / 24），禁零散值 —— ui-design-spec 2.2.4</li>'
+    +'<li>无障碍：控件带 <code>aria-labelledby</code> 指向区块标题；阶段带不仅靠颜色，同时提供文字「部署扩展」；状态三重标识 = 颜色 + 图标 + 文字</li>';
+  return '<div class="box"><h4>交互与文案规则</h4><ul>'+items+'</ul></div>'
+       +'<div class="box"><h4>设计标注（token / 尺寸 / 无障碍）</h4><ul>'+token+'</ul></div>';
+}
+function screen(s){
+  if(s.screen==='wizard'){
+    return shell({step:s.step,stepTitle:s.stepTitle,stepDesc:s.stepDesc,
+      body:s.step===2?wizardStep2(s):(s.step===4?wizardStep4():wizardStep5(s))});
+  }
+  return logDialog(s);
+}
+function render(){
+  var s=SC.filter(function(x){return x.id===cur;})[0];
+  document.getElementById('state').innerHTML=stateCard(s);
+  document.getElementById('screen').innerHTML=screen(s);
+  document.getElementById('annot').innerHTML=annot(s);
+  nav();
+}
+render();
+</script>
+</body>
+</html>
