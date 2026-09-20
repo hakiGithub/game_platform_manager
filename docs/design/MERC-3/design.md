@@ -48,7 +48,7 @@ G0 裁决把本期定为「交付**框架 + 版本目录占位模板**，显式�
 | D-N02 | 不新增 `onInstanceDeployed` 式自由执行钩子，不改现有生命周期钩子的异常语义 | 决策 2；N-02 |
 | D-N03 | 不做部署日志 / 扩展结果落库（仍为 `taskStatusMap` 内存态） | 决策 8；N-03；L-01；不改 BR-13 |
 | D-N04 | 不支持插件 JAR 内置资源作为补丁来源 | 决策 6；N-04 |
-| D-N05 | 不把部署主流程改造成任务中心任务（扩展阶段在现有 `deployAsync` 线程内执行） | ADR-0029 备选；N-05；F-04 |
+| D-N05 | 不把部署主流程改造成任务中心任务（扩展阶段在现有 `deployAsync` 线程内执行）。**边界（v0.3 补）**：同主机互斥借用的是任务中心的**内存键管理器** `TaskMutexManager`（`putIfAbsent`/`remove`），不 submit、不建 `TaskRecord`、不注册 Handler、不占其线程池 ⇒ 仍是「不改造成任务中心任务」。**不得**把这条借用读成「本期接入了任务中心」 | ADR-0029 备选；N-05；F-04；§14.14 |
 | D-N06 | 不改动 `HEALTH_CHECK` / `START` 判定标准与 `COMPLETE = 100` 语义 | BR-10；N-06 |
 | D-N07 | 不做向导期 / 环境校验期的版本可用性前置探测（不探目录可达、不探补丁 URL） | N-09；运行期是唯一判定点 |
 | D-N08 | 不做「已部署版本」在实例详情 / 列表的回显、版本列、版本徽标或任何读模型 | OP-03 裁决；N-10 |
@@ -65,34 +65,35 @@ G0 裁决把本期定为「交付**框架 + 版本目录占位模板**，显式�
 
 ### 3.1 一句话方案
 
-在 `DeployService` 的 `DEPLOY` 完成行与 `HEALTH_CHECK` 之间插入一个**「有声明才存在」的 `EXTENSION` 阶段**：读版本目录（单一读者）→ 确保实例停止 → 按声明序**阻塞**执行 `PATCH`（同步补丁入口）与 `SCRIPT`（宿主机 SSH）→ 每步三行结构化日志进既有部署日志流 → 致命失败即部署失败。版本选择以 `configInfo.deployVersion` 为唯一载体，通用配置写路径改为**合并式**以保住该键。主应用 `core/` 内不出现任何游戏码分支。
+在 `DeployService` 的 `DEPLOY` 完成行与 `HEALTH_CHECK` 之间插入一个**「有声明才存在」的 `EXTENSION` 阶段**：读版本目录（单一读者，**只支持 `docker-compose` / `linuxgsm-docker` 两类 deployType**，集合外声明即不合法）→ 确保实例停止 → 按声明序**阻塞**执行 `PATCH`（同步补丁入口，**同主机互斥由任务中心同一个内存键管理器承键**）与 `SCRIPT`（宿主机 SSH）→ **收尾以各类 `DEPLOY` 已在用的 `up -d` 形状经 `DeployAdapter` 新增的 default 方法把容器起回** → 每步的结构化日志行进既有部署日志流 → 致命失败即部署失败。版本选择以 `configInfo.deployVersion` 为唯一载体，通用配置写路径改为**合并式**以保住该键。主应用 `core/` 内不出现任何游戏码分支。
 
 ### 3.2 执行时序（本期新增部分加粗）
 
 ```
 INIT → ENV_CHECK → PORT_CHECK → RESOURCE_CHECK → PRE_DEPLOY → DEPLOY
    ↓
-【EXTENSION 阶段】（仅当解析出步骤集 ≥1 才存在；否则本段整体不存在，序列与今天逐字相同）
-   进入行 → 确保停止（3×2s 判定）→ E-1 三行 → E-2 三行 → … → 阶段完成行 → 交棒行
-   ↓  （致命失败 → ERROR，不进入后续任何阶段）
-HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与时点一字不改，见 §14.12）→ UPDATE_STATUS(STOPPED) → START → COMPLETE
+【EXTENSION 阶段】（仅当解析出步骤集 ≥1 才存在；仅 deployType ∈ {docker-compose, linuxgsm-docker} 允许声明，§14.13.1；否则本段整体不存在，序列与今天逐字相同）
+   进入行 → 确保停止（3×2s 判定）→ E-1 步骤行 → E-2 步骤行 → … → 收尾起回容器（adapter.ensureRunningForExtension，§14.13.2/3）→ 阶段完成行 → 交棒行
+   ↓  （致命失败 / 停失败 / 收尾失败 → ERROR，不进入后续任何阶段）
+HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与时点一字不改，见 §14.12 / §14.13.3）→ UPDATE_STATUS(STOPPED) → START → COMPLETE
 ```
 
 ### 3.3 改动分组
 
 | 组 | 改动 | 模块 | 新增/改动 |
 | --- | --- | --- | --- |
-| **A 声明层** | `GameEnhancementExtension` 新增两个 default 方法 `getDeployVersions(deployType)` / `getDeployExtensionSteps(ctx)`；新 record `DeployVersionDeclaration` / `PatchStepDeclaration` / `ScriptStepDeclaration` / `DeployExtensionContext`；`ScriptPosition` 枚举（`CONTAINER` 校验期拒绝） | `backend/plugin` | 新增（纯加法，既有实现者零改动） |
-| B 补丁同步入口 | `PatchInstallService.installSync(request, listener)` + `PatchInstallProgressListener`；core 实现为直调 `PatchInstallExecutor.execute()` | `backend/plugin` + `backend/core` | 新增 default 方法 + 一个实现 |
-| **C 目录与校验** | 新 `DeployVersionCatalogService`（§16.3）：`read(gameCode, deployType) → CatalogView{ABSENT/EMPTY/INVALID/AVAILABLE}`，含 §8.1 全量校验 + 本设计新增三条蕴含规则 | `backend/core` | 新增 |
-| D 版本选择 | 纯函数 `applyVersionSelection(configInfo, catalog, selection)`（写/删/不写三态，§14.10）+ 提交期 BR-07 撞键校验（禁止清单含 `PLATFORM_IMAGE_TAG`） | `backend/core` + `frontend` | 新增 |
-| E 镜像 tag 注入 | `buildDeployConfig` 第 5.5 步：三条件齐才 `config.put("PLATFORM_IMAGE_TAG", tag)`（§14.4） | `backend/core` | 新增一处，条件门控 |
-| **F 执行管线** | `DeployService`：`EXTENSION` 阶段插入（`:214` 之后）+ `DeployExtensionExecutor`（新类：解析步骤集 → 停实例 → 顺序执行 → 每步三行）+ `ensureStoppedForExtension()` + 扩展分支内跳过 `HEALTH_CHECK` 容器态探测（§14.12） | `backend/core` | 新增类 + 改动 4 处 |
-| G 日志与呈现 | `LogEntry` / `LogEntryVO` 新增 5 个可选字段（`stepId`/`stepIndex`+`stepTotal`/`stepLabel`+`stepType`/`stepEvent`/`elapsedMs`）；`DeployProgressVO` 顶层新增 `stage`；`mapStageToStatus` 加 `EXTENSION → installing`；`DeployService` 进度字面量在扩展分支内条件分配 `[80,84]` + `HEALTH_CHECK` 起点 85 | `backend/core` + `backend/api` | 新增可选字段（默认 `null`） |
-| **H 前端** | `DeployProgress.vue`：`level` 归一化（含 `warn → warning` 别名）、阶段带与「扩展」步骤点由 `logs[].stage === 'EXTENSION'` latch 驱动、步骤行按 ui-spec §6.2 词面渲染、耗时用 `elapsedMs`；`deploy.vue`：步骤 2 版本选择控件 + 步骤 5 摘要行（P1/P2 谓词） | `frontend` | 改动 |
+| **A 声明层** | `GameEnhancementExtension` 新增两个 default 方法 `getDeployVersions(deployType)` / `getDeployExtensionSteps(ctx)`；**新增 7 个类型**：4 record（`DeployVersionDeclaration` / `PatchStepDeclaration` / `ScriptStepDeclaration` / `DeployExtensionContext`）+ 1 **sealed interface `DeployExtensionStepDeclaration`**（步骤集的公共上界，两个步骤 record 是其 permitted 实现，带 `kind()`）+ 2 enum（`StepKind` / `ScriptPosition`，后者 `CONTAINER` 校验期拒绝）。定义体见 §16.2（**v0.3 补 REV-4**） | `backend/plugin` | 新增（纯加法，既有实现者零改动） |
+| B 补丁同步入口 | `PatchInstallService.installSync(request, listener)` + `PatchInstallProgressListener`；core 实现为直调 `PatchInstallExecutor.execute()`，**并在其外再包一层同主机互斥：复用 `TaskMutexManager` 承任务中心那个键 `PATCH_INSTALL:<hostId>`（2s 轮询 / 600s 预算 / `finally` 释放）**（**v0.3 补 REV-1**，§14.14） | `backend/plugin` + `backend/core` | 新增 default 方法 + 一个实现（含承键逻辑）；`TaskMutexManager` 与 `PatchInstallExecutor` 零改动 |
+| **C 目录与校验** | 新 `DeployVersionCatalogService`（§16.3）：`read(gameCode, deployType) → CatalogView{ABSENT/EMPTY/INVALID/AVAILABLE}`，含 §8.1 全量校验 + **本设计新增五条规则 N1…N5**（判定通道绑死 `game_metadata` 表快照；模板占位符；tag 格式；`timeoutMs`/`position`；**deployType 支持集合**） | `backend/core` | 新增 |
+| D 版本选择 | 纯函数 `applyVersionSelection(configInfo, catalog, selection)`（写/删/不写三态，§14.10）+ 提交期 BR-07 撞键校验（清单 = PRD 原三项，**`PLATFORM_IMAGE_TAG` 不进该清单**，其约束改由声明期保留键承担，§14.4.2）（**v0.3 订正**） | `backend/core` + `frontend` | 新增 |
+| E 镜像 tag 注入 | `buildDeployConfig` 第 5.5 步，**两级门控**：该 deployType 未声明保留变量 ⇒ 完全不写；声明了 ⇒ **值一律由平台写**（命中条目带 `imageTag` 用条目值，否则用该变量的 `defaultValue`），且**仅当 `configInfo` 含 `deployVersion` 才读目录**（§14.4 / §14.4.3）（**v0.3 补 SUG-4/5**） | `backend/core` | 新增一处，条件门控 |
+| **F 执行管线** | `DeployService`：`EXTENSION` 阶段插入（`:214` 之后）+ `DeployExtensionExecutor`（新类：解析步骤集 → 停实例 → 顺序执行 → 每步日志行 → **收尾调 `adapter.ensureRunningForExtension(...)`**）+ `ensureStoppedForExtension()`。（**v0.3 按 SUG-1 删除**原末项「扩展分支内跳过 `HEALTH_CHECK` 容器态探测」——该方案已被 §14.12 明确否决，留在改动分组里会把实现者引向被判否的形状） | `backend/core` | 新增类 + 改动 4 处 |
+| G 日志与呈现 | `LogEntry` / `LogEntryVO` 新增 **6 个**可选字段（`stepId` / `stepIndex`+`stepTotal` / `stepLabel`+`stepType` / `stepEvent` / `elapsedMs` / **`exitCode`**，v0.3 补 REV-6）；`DeployProgressVO` 顶层新增 `stage`；`mapStageToStatus` 加 `EXTENSION → installing`；`DeployService` 进度字面量在扩展分支内条件分配 `[80,84]` + `HEALTH_CHECK` 顶层 `progress` 起点 85（§14.6 / §14.7） | `backend/core` + `backend/api` | 新增可选字段（默认 `null`） |
+| **H 前端** | `DeployProgress.vue`：`level` 归一化（含 `warn → warning` 别名）、阶段带与「扩展」步骤点由 `logs[].stage === 'EXTENSION'` latch 驱动、步骤行按 ui-spec §6.2 词面渲染、**耗时先把 computed `formattedElapsedTime` 参数化为 `formatElapsed(seconds)` 再按 `max(1, round(ms/1000))` 秒渲染**（§14.6 单位口径，v0.3 补 SUG-6）；`deploy.vue`：步骤 2 版本选择控件 + 步骤 5 摘要行（P1/P2 谓词） | `frontend` | 改动 |
 | I 保键 | `InstanceServiceImpl.updateInstance` 的 `copyProperties` 整表替换改合并式写入（§14.8） | `backend/core` | 改动一处（语义变化面窄） |
 | **J 交付载体** | 新建 `backend/plugin-dnf-tw`（聚合 pom + `-core` JAR 子模块，**无前端**）：`DnfTwPlugin` + `DnfTwExtension`（`getGameCode() = "dnf_tw"`）+ `getDeployVersions()` 返回**未填充占位模板**（读取结果 = 空目录）+ 模板内显式标注「占位模板，不可上线」；`backend/pom.xml` `<modules>` 加一项 | `backend/plugin-dnf-tw` | **新增模块** |
 | K 验收资产 | `plugin-stub`（仅声明版本目录 + 混排步骤集，无游戏语义）+ 受控补丁包/脚本夹具 + 桩游戏元数据经外置 `./games` 目录投放（不进 core resources、不进发布物） | 测试资产 | 新增（非产品模块） |
+| **L 起回调用面（v0.3 新增，回应 REV-2/REV-3）** | `DeployAdapter` **新增一个 default 方法** `ensureRunningForExtension(instanceId, config)`（默认抛 `UnsupportedOperationException`，与既有 `stopServer` 同形）；`DockerComposeAdapter` 与 `LinuxGsmDockerAdapter` **各 +1 覆写**（命令与就绪判定逐类照抄各自 `DEPLOY` 已在用的形状，§14.13.3）；`DockerAdapter` / `LinuxGsmAdapter` / `AbstractDeployAdapter` **零改动**（不给空实现——返回 `true` 等于静默假装已起回） | `backend/core` | 接口 +1 方法（实现者二进制兼容）；两个适配器各 +1 方法，**既有方法一字不改** |
 
 ### 3.4 明确不改
 
@@ -103,9 +104,15 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 文件 / 位置 | 改动性质 | 风险 | 归属 |
 | --- | --- | --- | --- |
 | `backend/plugin/.../extension/GameEnhancementExtension.java`（L255 附近） | 加两个 default 方法 | 低（加法） | @BackendDev |
-| `backend/plugin/.../extension/deploy/*.java`（新增 4 类型） | 新增 | 低 | @BackendDev |
+| `backend/plugin/.../extension/deploy/*.java`（**新增 7 类型**：4 record + 1 sealed interface + 2 enum） | 新增 | 低 | @BackendDev |
+| `backend/plugin/.../service/FileAccessService.java`（不改，仅使用其 `CommandResult.exitCode`，`:235-244`） | **零改动** | — | — |
 | `backend/plugin/.../patch/PatchInstallService.java` + 新 `PatchInstallProgressListener.java` | 加 default 方法 | 低；**不得**改 `install()` 签名或行为（plugin-l4d2 在用） | @BackendDev |
-| `backend/core/.../patch/PatchInstallServiceImpl.java` | 实现 `installSync` | 中：必须直调执行器，不得另起链路（FR-14 红线） | @BackendDev |
+| `backend/core/.../patch/PatchInstallServiceImpl.java` | 实现 `installSync`（直调执行器 + **承 `PATCH_INSTALL:<hostId>` 互斥键**） | 中：必须直调执行器，不得另起链路（FR-14 红线）；**不得改 `install()` 的提交路径**（plugin-l4d2 在用） | @BackendDev |
+| `backend/core/.../task/TaskMutexManager.java` | **零改动**（只注入使用其 `putIfAbsent` / `remove` / `isHeld`） | 低：本期是它的**第二个非任务中心使用方**，holder 用 `"EXT:…"` 前缀避开 `removeByTaskId` 的 DB taskId 路径（§14.14） | @BackendDev |
+| `backend/core/.../adapter/DeployAdapter.java` | **+1 default 方法** `ensureRunningForExtension(instanceId, config)`（默认抛异常） | **高（接口面扩大）**：4 个实现者不必改即可编译，但新增一个「只有两类适配器能用」的能力位 ⇒ 靠声明期支持集合校验封住（§14.13.1/2、RISK-D13）。**红线**：默认实现不得改成 `return true` | @BackendDev |
+| `backend/core/.../adapter/DockerComposeAdapter.java` | **+1 覆写**（`up -d` + `sleep 5s` + `ps` 判 `running`/`Up`，镜像 `:259-287` 既有形状）；既有 14 个方法一字不改 | 中：起停语义若写错会直接破坏 `HEALTH_CHECK`（V-27 逐类核对） | @BackendDev |
+| `backend/core/.../adapter/LinuxGsmDockerAdapter.java` | **+1 覆写**（`up -d` + `sleep 8s` + `ps -q` 后**逐个**容器探 `.State.Running`）；**禁止复用 private `ensureContainerRunning`（`:955-993`，其停止分支走 `compose start` 且第一个容器即 `return`）**；既有方法一字不改 | 中：同上，且该类容器数不定（V-27 单独承载本类） | @BackendDev |
+| `backend/core/.../adapter/DockerAdapter.java` / `LinuxGsmAdapter.java` / `AbstractDeployAdapter.java` | **零改动**（本期 EXTENSION 不支持这两类 deployType，§14.13.1） | 低 | — |
 | `backend/core/.../service/DeployService.java` `:214`、`:216-221`、`:609-620`、`:860` | 插入阶段 + 条件进度 + 状态映射 | **高**：改动落在产品部署主干，回归面最大 → AC-15 必测 | @BackendDev |
 | `backend/core/.../service/deploy/DeployExtensionExecutor.java`（新增） | 新增 | 中 | @BackendDev |
 | `backend/core/.../service/impl/InstanceServiceImpl.java` `:153-195`（`:177`）、`:687-759`（新 5.5 步） | 合并式写入 + tag 注入 | **高**：`updateInstance` 是所有实例更新的公共路径，改语义影响面见 §12 RISK-D02 | @BackendDev |
@@ -118,7 +125,9 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | `scripts/deploy-plugin.sh`、`start-all.sh` | 视模块数可能需登记新插件 jar | 低（核对后决定） | @BackendDev |
 | `docs/design/adr/0029-*.md` / `CONTEXT.md` / `glossary.md` | 已由 `590af8d` 进远端分支 `agent/leader/chat-1cfa252af963`，实现分支**必须 merge 带入** | 低 | @BackendDev |
 
-**不受影响（负向清单，防被读成隐含需求）**：`games/dnf_tw.yml`、`GameInstance` 实体与 `game_instance` 表、`db/schema-*.sql` 与 `db/migration/`、`InstanceQueryService.executeCommand` 与三个适配器（`container` 本期不做）、`DeployTaskHandler` 与任务中心、`SecurityConfig`（无新 URI 面）、`PatchInstallExecutor` 内部逻辑。
+**不受影响（负向清单，防被读成隐含需求）**：`games/dnf_tw.yml`、`GameInstance` 实体与 `game_instance` 表、`db/schema-*.sql` 与 `db/migration/`、`InstanceQueryService.executeCommand`、`DockerAdapter` 与 `LinuxGsmAdapter`（本期 EXTENSION 不支持这两类，§14.13.1）、`AbstractDeployAdapter`（**不给 `ensureRunningForExtension` 空实现**，理由见 §14.13.2）、`DeployTaskHandler` 与任务中心（本期只借 `TaskMutexManager` 的内存键，不 submit、不建任务记录 ⇒ D-N05 仍成立）、`SecurityConfig`（无新 URI 面）、`TaskMutexManager` 自身代码、`LinuxGsmDockerAdapter.ensureContainerRunning`（private，不碰不复用）。
+
+> **v0.3 对本清单的三处订正**（原清单被评审逐条判为不成立）：① 原「**三个适配器不改动**」**作废**——`DeployAdapter` +1 default 方法、compose 与 lgsm-docker 各 +1 覆写（§14.12 的收尾结论必须有调用面才落得了地，REV-2）；② 原「`PatchInstallExecutor` 内部逻辑」不改**保留成立**——本期只**调用**它，锁加在它的调用方，回滚结果的可见性走日志文本而非改它的回调接口（§14.6 规则 5）；③ 原「`InstanceQueryService.executeCommand` 与三个适配器」中把两者并列的写法拆开，避免被读成「因为不改 executeCommand 所以不改适配器」。
 
 ## 5. 数据与状态
 
@@ -130,8 +139,8 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 | 键 | 本期动作 | 说明 |
 | --- | --- | --- |
-| `deployVersion` | 由 `applyVersionSelection` 写/删；retry-deploy 与重部署只读 | 唯一版本载体（§8.4 固定名） |
-| `PLATFORM_IMAGE_TAG` | **不是 `configInfo` 的键**——只在 `buildDeployConfig` 产出的临时 config map 里注入，交给 `generateEnvFileContent` 落 `.env` | 因此它进 `configInfo` 的唯一途径是某游戏把它声明成 `variables[].name`（14.4 要求声明 `imageTag` 就必须这么声明）→ 列入 §8.4.3 禁止清单的回写建议 |
+| `deployVersion` | 由 `applyVersionSelection` 写/删；retry-deploy 与重部署只读（**retry 会先 `uninstall` 清空宿主机 workDir ⇒ 补丁必然全量重放，见 §14.15**） | 唯一版本载体（§8.4 固定名） |
+| `PLATFORM_IMAGE_TAG` | **v0.3 订正（SUG-4）：它确实会成为真实的 `configInfo` 键**，不是「只在临时 map 里」。依据：§14.4 要求声明 `imageTag` 就必须把它声明成该 deployType 的 `variables[]` 一项，而 `deploy.vue` 对**全部**变量（含 `hidden`，`:246-250` 回填 `defaultValue`）做 `...deployVariablesValues` 展开进 `configInfo`（`:713`）⇒ 向导提交即带上它。**后果可控的理由**：第 5.5 步在「该游戏声明了这个键」时**一律由平台写值**（条目 `imageTag` 或该变量的 `defaultValue`），用户 / 通用写接口提交的值**不参与任何判定、不进 `.env`**（§14.4 表「框架侧唯一新增」+ §14.4.2） | 因此 §8.4「声明只出自插件代码、无用户输入面」这句话**在本键上不再无条件成立**——它成立是因为平台不采信，而不是因为面上没有键。取值格式校验见 §14.4.1 R4 |
 | `gameVersion` | 不读、不写、不清理 | D-N16 / F-11 |
 | `database` / `containerWorkDir` / `serviceName` | 不动写方（适配器 `DEPLOY` 末回写） | F-15；`updateInstance` 的 `database` 回注保留 |
 | `variables[].name` 各键 | 不动 | 与 `deployVersion` 共存于同一扁平 map（BR-07 撞键校验对象） |
@@ -152,7 +161,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 ### 5.5 实例运行状态
 
-与 PRD §9 一致，两处必须写明：① 扩展阶段期间 `run_status` 恒为 `INSTALLING(5)`（`ensureStoppedForExtension` 只调适配器、不回写 STOPPED，§14.5）；② 扩展阶段**内部**容器是停止的（FR-11 的判定点），收尾会按依赖顺序把它起回来，因此 `HEALTH_CHECK` 的判据与时点、`UPDATE_STATUS` 只写库、`START` 面对已运行容器这三条既有表现全部不变（§14.12）。
+与 PRD §9 一致，两处必须写明：① 扩展阶段期间 `run_status` 恒为 `INSTALLING(5)`（`ensureStoppedForExtension` 只调适配器、不回写 STOPPED，§14.5）；② 扩展阶段**内部**容器是停止的（FR-11 的判定点），收尾会按依赖顺序把它起回来，因此 `HEALTH_CHECK` 的判据与时点、`UPDATE_STATUS` 只写库、`START` 面对已运行容器这三条既有表现全部不变（§14.12）。**③（v0.3 补）本段全部结论只对 `docker-compose` / `linuxgsm-docker` 两类成立**——「停 → 起回」的调用面是 `DeployAdapter.ensureRunningForExtension`，两类各自的命令形状与就绪判定不同（§14.13.3）；`docker` / `linuxgsm` 两类本期**不允许声明扩展步骤**，故其运行状态语义与今天无任何差异（§14.13.1）。
 
 ## 6. 接口与契约边界
 
@@ -162,7 +171,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | --- | --- | --- |
 | `GET /api/games/{gameId}/deploy-config?deployType=` | 响应增加 `deployVersions[]`、`versionCatalogState`、`versionCatalogReason`（§16.4） | 新增字段；老前端不读即无变化；空目录返回 `[]` 而非 `null` |
 | `POST /api/instances`（向导提交） | **无新增字段**：版本以 `configInfo.deployVersion` 承载 | 载荷形状不变；提交期只新增 BR-07 撞键拒绝（400 + 可辨识原因） |
-| `GET /api/instances/{id}/deploy-progress` | `DeployProgressVO.stage` 新增；`logs[]` 每行新增 5 个可选字段 | 非扩展部署这些字段恒为 `null`/既有集合不变 |
+| `GET /api/instances/{id}/deploy-progress` | `DeployProgressVO.stage` 新增；`logs[]` 每行新增 **6 个**可选字段（v0.3 含 `exitCode`，§14.6） | 非扩展部署这些字段恒为 `null`/既有集合不变 |
 
 不新增接口、不新增 WebSocket、不新增轮询通道（FR-20）。
 
@@ -180,10 +189,13 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 过程可见 | 无责任 | ✅ 日志呈现契约（§14.6） |
 | 回滚 | 无责任 | ✅ 补丁走 `PatchInstallExecutor` 既有备份回滚；脚本无回滚并如实记日志（BR-14） |
 | 鉴权头补丁源 | 本期不可声明 | 结构性不提供（§14.2） |
+| 同主机互斥（BR-09） | 无责任（不感知） | ✅ `installSync` 承任务中心同一个内存键 `PATCH_INSTALL:<hostId>`，等待预算 600 s、`finally` 释放（§14.14）。**不得**在声明侧或调用外层再造重试 |
+| deployType 是否支持扩展步骤 | 无责任（插件不必知道自己被配在哪类部署方式上） | ✅ 声明读取期按 §14.13.1 支持集合判不合法 ⇒ 整目录 `INVALID` → BR-12 处置；`ensureRunningForExtension` 的默认抛异常只是**实现缺陷的兜底**，不是给插件的契约 |
+| 「起回后容器真的在跑」 | 无责任 | ✅ 收尾失败按致命处置（§14.13.3），不让 `HEALTH_CHECK` 去替它失败 |
 
 ### 6.3 日志呈现契约（对外登记物）
 
-§14.6 即 KPI-02 / AC-03 / AC-16 的核对契约，**以本节为登记处**：字段集合、`stepEvent` 取值、归组判据、耗时单位（`elapsedMs` 毫秒）、`stage = "EXTENSION"` 常量。UI 词面归 ui-spec §6.2（`docs/ui/MERC-3/ui-spec.md` @ `f6312ef`），两者关系：契约是判据，词面是渲染。
+§14.6 即 KPI-02 / AC-03 / AC-12 / AC-16 的核对契约，**以本节为登记处**：**六个**字段集合、`stepEvent` 取值、**五条**归组与判定规则、耗时单位（`elapsedMs` 毫秒）、退出码承载位（`exitCode`）、`stdout`/`stderr` 的**非判据**地位、`stage = "EXTENSION"` 常量。UI 词面归 ui-spec §6.2（`docs/ui/MERC-3/ui-spec.md` @ `f6312ef`，S1b v0.4 在途），两者关系：契约是判据，词面是渲染。
 
 ## 7. 实现步骤
 
@@ -193,24 +205,25 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 | # | 步骤 | 完成判据 |
 | --- | --- | --- |
-| B-01 | 新增 `DeployVersionDeclaration` / `PatchStepDeclaration` / `ScriptStepDeclaration` / `ScriptPosition` / `DeployExtensionContext` | 编译通过；无 `dnf_tw` 字面量（AC-23 ③ 前提） |
-| B-02 | `GameEnhancementExtension` 加两个 default 方法（返回空集合），**不改任何既有方法签名** | plugin-l4d2 无需改动即可编译；`install()` 行为未变 |
+| B-01 | 新增 **7 个类型**：`DeployVersionDeclaration` / `PatchStepDeclaration` / `ScriptStepDeclaration` / `DeployExtensionContext` / `ScriptPosition` / **`DeployExtensionStepDeclaration`（sealed interface）** / **`StepKind`**（定义体与 `kind()` 见 §16.2，v0.3 补 REV-4） | 编译通过；无 `dnf_tw` 字面量（AC-23 ③ 前提）；**两个步骤 record 是 sealed 的 permitted 实现且 `Stream.concat(patches, scripts)` 可赋给 `List<DeployExtensionStepDeclaration>`**（类型闭合即本条判据） |
+| B-02 | `GameEnhancementExtension` 加两个 default 方法（返回空集合），**不改任何既有方法签名**；`getDeployExtensionSteps` 的返回类型即 sealed 上界 | plugin-l4d2 无需改动即可编译；`install()` 行为未变 |
 | B-03 | `PatchInstallService.installSync` default 方法 + `PatchInstallProgressListener` | 既有 `install()` 调用点零改动 |
 
 ### 7.2 @BackendDev — `backend/core`（M1→M3）
 
 | # | 步骤 | 完成判据 |
 | --- | --- | --- |
-| B-04 | `PatchInstallServiceImpl` 实现 `installSync` = 直调 `PatchInstallExecutor.execute()`（请求对象引用透传） | `includePattern` 生效（V-07）；并发/重试常量未被复制 |
-| B-05 | `DeployVersionCatalogService`：读取 + §8.1 全量校验 + 三条新规则（`imageTag ⇒ variables 含 PLATFORM_IMAGE_TAG`；`timeoutMs ∈ [1000,1800000]`；`position` 只允许 `HOST`），返回 `CatalogView` 四态 | `EMPTY` 与 `INVALID` 可区分（RISK-13）；`getDeployVersions` 抛异常归 `ABSENT` 不外泄 |
+| B-04 | `PatchInstallServiceImpl` 实现 `installSync` = **承 `PATCH_INSTALL:<hostId>` 互斥键（`TaskMutexManager.putIfAbsent`，2 s 轮询 / 600 s 预算 / `finally` 释放）→ 直调 `PatchInstallExecutor.execute()`**（请求对象引用透传） | `includePattern` 生效（V-07）；并发/重试常量未被复制；**V-26：同主机两路补丁不重叠、与任务中心提交的一路也不重叠、等满 600 s 判该步失败、异常路径后键已释放**（BR-09 / §14.14） |
+| B-05 | `DeployVersionCatalogService`：读取 + §8.1 全量校验 + **§16.3 的 N1…N5 五条规则**（其中 N1/N2 的判定通道**必须绑 `game_metadata` 表快照**、与 `buildDeployConfig` 同一读法；N5 = deployType 支持集合），返回 `CatalogView` 四态 | `EMPTY` 与 `INVALID` 可区分（RISK-13）；`getDeployVersions` 抛异常归 `ABSENT` 不外泄；**V-02 补两条反例**：插件经 `getDeployConfigs()` 声明的 `variables`/`composeTemplate` **不得**让 N1/N2 判过（§14.4.1 R1）、表侧模板缺 `${PLATFORM_IMAGE_TAG` 即 `INVALID`（R3） |
 | B-06 | `GameServiceImpl` 把 `CatalogView` 汇入 `DeployConfigVO`（§16.4）；**不动** `getDeployConfigs()` 的整节替换 | 无扩展声明游戏的 `deploy-config` 响应逐字段与现状一致 |
-| B-07 | `applyVersionSelection` 三态纯函数 + 提交期 BR-07 撞键校验（禁止清单 = `variables[].name` ∪ 三系统键 ∪ `gameVersion` ∪ `PLATFORM_IMAGE_TAG`） | 单测覆盖三态；**目录不可用时不在提交期 400**（§14.10 末段） |
-| B-08 | `buildDeployConfig` 第 5.5 步 `imageTag` 注入（三条件门控） | 未声明保留键的游戏 `.env` 与模板逐字节不变 |
-| B-09 | `DeployExtensionExecutor`：解析步骤集（16.2 解析顺序）→ `ensureStoppedForExtension()`（3×2s 判定，失败即致命）→ 顺序执行 → 每步三行按 §14.6 契约 | 单测：致命失败后续步骤不执行；非致命失败继续 |
-| B-10 | `DeployService`：`:214` 后插阶段；扩展阶段收尾以既有 `up -d` 形状起回容器（§14.12 / RISK-D11，**不改 `adapter.start()`**）；条件进度 `[80,84]` + `HEALTH_CHECK` 起点 85；`mapStageToStatus` 加 `EXTENSION → installing` | 无步骤路径的进度字面量与阶段序列**逐字节不变**（AC-15）；`HEALTH_CHECK` / `START` 代码未改一行 |
+| B-07 | `applyVersionSelection` 三态纯函数 + 提交期 BR-07 撞键校验（清单 = PRD §8.4.3 原三项：`variables[].name` ∪ 三系统键 ∪ `gameVersion`；**`PLATFORM_IMAGE_TAG` 不加入该清单**——它会作为声明期保留变量合法地出现在提交载荷里，加进去等于把 AC-14 的正向路径判 400，§14.4.2） | 单测覆盖三态；**目录不可用时不在提交期 400**（§14.10 末段）；**新增反例断言**：声明了该保留变量的游戏提交带该键 ⇒ 不 400 且部署侧不采信其值 |
+| B-08 | `buildDeployConfig` 第 5.5 步 `imageTag` 注入（**两级门控 + 仅当 `configInfo` 含 `deployVersion` 才读目录**，§14.4 / §14.4.3） | 未声明该保留变量的游戏 `.env` 与模板逐字节不变；**声明了的游戏：用户提交的该键值不出现在 `.env` 里**（V-15 第四核对物）；无 `deployVersion` 键时不触发任何目录读取与 SPI 调用（V-29） |
+| B-09 | `DeployExtensionExecutor`：解析步骤集（16.2 解析顺序，**元素类型 = sealed 上界，按 `kind()` 分派**）→ `ensureStoppedForExtension()`（3×2s 判定，失败即致命）→ 顺序执行 → 每步日志行按 §14.6 契约**五条规则**（含 `exitCode` 与 `ROLLBACK` 记录位）→ **收尾调 `adapter.ensureRunningForExtension(...)`**（不在本类内拼 compose 命令，§14.13.2） | 单测：致命失败后续步骤不执行；非致命失败继续；`SCRIPT` 步骤终态行带 `exitCode`、`PATCH` 步骤 `exitCode == null`；`PATCH` 失败时 `ROLLBACK` 行位置符合规则 5；**executor 内无 `instanceof DeployAdapter` 分派**（V-13 代码审查项） |
+| B-10 | `DeployService`：`:214` 后插阶段（`DeployExtensionExecutor` 用已解析的 adapter，§14.13.2）；条件进度 `[80,84]` + 该分支内 `HEALTH_CHECK` 顶层 `progress` 起点 85（§14.7 订正：不是「进入行」）；`mapStageToStatus` 加 `EXTENSION → installing` | 无步骤路径的进度值与阶段序列**逐值不变**（AC-15）；`HEALTH_CHECK` / `START` 代码未改一行；**`ensureRunningForExtension` 在无扩展部署中的调用次数 = 0**（V-10 新增子项） |
 | B-11 | `LogEntry` / `LogEntryVO` / `DeployProgressVO` 字段扩展（§14.6 / §6.1） | 既有阶段新字段全 `null` |
 | B-12 | `InstanceServiceImpl.updateInstance` 合并式写入（§14.8） | AC-27 四项逐条通过；单测注明「省略键不再等于删键」 |
 | B-13 | 脚本执行安全形状：正文/URL 脚本一律**平台侧下载 → sha256 校验（声明了才校验）→ SFTP 上传到 `<workDir>/.platform-extension/E-<n>.sh` → `bash <file>` 执行 → `finally` 删除** | 命令文本里不出现脚本正文（RISK-08 缓解）；未校验通过不在宿主机留文件 |
+| B-16 | **（v0.3 新增，组 L / REV-2）**`DeployAdapter` 加 default 方法 `ensureRunningForExtension`（默认抛 `UnsupportedOperationException`）；`DockerComposeAdapter` 与 `LinuxGsmDockerAdapter` 各 +1 覆写，命令与就绪判定**逐类照抄各自 `DEPLOY` 已在用的形状**（compose：`up -d` + 5 s + `ps` 认 `running`/`Up`；lgsm-docker：`up -d` + 8 s + `ps -q` 后逐个探 `.State.Running`，§14.13.3） | 两类各自 V-27 通过；`DockerAdapter` / `LinuxGsmAdapter` / `AbstractDeployAdapter` 零改动；既有 14 个方法签名与实现一字不改；**默认实现仍抛异常**（grep 判据：`return true` 不出现在该方法的默认实现里）；**不引用 private `ensureContainerRunning`** |
 
 ### 7.3 @BackendDev — 交付载体（M4）
 
@@ -225,8 +238,8 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | --- | --- | --- |
 | F-01 | `DeployProgress.vue:88-109` `level` 归一化：`toLowerCase()` + `warn → warning` 别名 + 校验 `success` 分支命中 | 单测：`SUCCESS`/`WARN`/`ERROR` 三色与图标各自生效（14.9） |
 | F-02 | 阶段带 / 「扩展」步骤点：latch = `logs.some(l => l.stage === 'EXTENSION')`；激活态用顶层 `stage` | 无扩展部署不渲染阶段带（AC-15 / AC-24 ③） |
-| F-03 | 步骤行按 ui-spec §6.2 词面渲染；耗时读 `elapsedMs` 走 `formattedElapsedTime` | 词面改动不改变可核对判据（14.6 末段） |
-| F-04 | `deploy.vue` 步骤 2 版本控件（`el-select`，P1 谓词 = 条目数 ≥ 1）+ 步骤 5 摘要行（P2 谓词，随 Leader 对 FR-04 的裁定） | 缺口期 dnf-tw 整块不渲染（AC-24 ①②）；不出现 `gameVersion` 读写 |
+| F-03 | 步骤行按 ui-spec §6.2 词面渲染；**先把 computed `formattedElapsedTime`（`:72-85`，读 `elapsedTime`）参数化为纯函数 `formatElapsed(seconds)`**，步骤行按 `max(1, round(elapsedMs/1000))` 秒调用它（§14.6 单位口径，v0.3 补 SUG-6） | 词面改动不改变可核对判据（14.6 承载位分工表）；**快速步骤（<1 s）渲染为「1秒」而非「0秒」**；既有 `elapsedTime` 消费点行为不变（回归） |
+| F-04 | `deploy.vue` 步骤 2 版本控件（`el-select`，P1 谓词 = 条目数 ≥ 1）+ 步骤 5 摘要行（P2 谓词，随 Leader 对 FR-04 的裁定） | **AC-01 正向判据见 V-21**（缺口期 dnf-tw 整块不渲染 = AC-24 ①②；桩游戏目录 AVAILABLE 时控件与选项必须出现）；不出现 `gameVersion` 读写 |
 | F-05 | 提交载荷：非默认选择写 `configInfo.deployVersion`，默认选择省略（删键由服务层 `applyVersionSelection` 承担） | 载荷与现状差异**只多这一个键** |
 
 ### 7.5 @Tester（M2 起并行）
@@ -235,8 +248,9 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | --- | --- | --- |
 | T-01 | 建 `plugin-stub`（仅 `getDeployVersions` 声明 ≥2 条目 + PATCH/SCRIPT 混排）与受控夹具（本地补丁包 + 脚本正文 + 验收期可达源） | 桩声明零游戏语义；夹具不进发布物（AC-26 ②） |
 | T-02 | 桩游戏元数据经外置 `./games` 投放（含 `PLATFORM_IMAGE_TAG` 占位模板），**不改 core resources** | AC-14 三核对物可跑（14.4） |
-| T-03 | 按 §10 的 V-表写接口/自动化用例；KPI-02 写**机械核对脚本**（只读 `stepId`/`stepEvent`/`elapsedMs`） | 脚本不含 `message` 文本匹配 |
-| T-04 | 回归基线：l4d2 与一个 linuxgsm 游戏走完整部署，逐字段比对阶段序列/进度/日志结构/终态 | AC-15 判定表存档（当次采集，L-01） |
+| T-03 | 按 §10 的 V 表写接口/自动化用例（**v0.3 起含 V-21…V-29 九行**）；KPI-02 写**机械核对脚本**（只读 `stepId`/`stepEvent`/`elapsedMs`/`exitCode`） | 脚本不含 `message` 文本匹配；**输出可见性核对（V-22 第二判据块）单独成表，不并入 KPI-02 的机械脚本**（§14.6 承载位分工） |
+| T-04 | 回归基线：**改造前**先在 `main` 跑一次并登记（① 后端 `cd backend && mvn test` 的部署/补丁相关用例清单与通过数；② 前端 `cd frontend && npm run test:run`；③ `cd frontend && npm run e2e` 受管模式用例清单），**改造后重跑同一命令集**（§10 V-25，v0.3 补 KPI-04 的核对物） | AC-15 判定表 + KPI-04 分子/分母存档（当次采集，L-01）；**比对面不含 CSS class 与图标名**（v0.3 补 SUG-9：`level` 归一化后此前同为 `log-info` 的非 INFO 行开始变色，若把它算作回归差异会与 RISK-D03 的「缺陷修复的正当外溢」定性自相矛盾）——比对面限定为**阶段序列 / 顶层 `progress` 值 / 日志行的 `stage`+`level` 原值 / 终态**四项 |
+| T-05 | **（v0.3 新增）**两类支持集合各跑一次完整带步骤部署（`docker-compose`、`linuxgsm-docker`），并对 `deployType = docker` 构造一份带步骤的目录声明 | V-27 两判据块（两类起回形状分别核对 + 集合外声明 `INVALID` 且 `ensureRunningForExtension` 零调用）；**不得**以「compose 一类过了」推定另一类 |
 
 ## 8. 非功能需求
 
@@ -244,16 +258,27 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 | 项 | 预算 | 依据 |
 | --- | --- | --- |
-| 停实例 | ≤ 120 s + 判定 6 s | `compose stop` 既有 `120000`（`DockerComposeAdapter:395`）+ 3×2s |
+| 停实例 | ≤ 120 s + 判定 6 s | `compose stop` 既有 `120000`（`DockerComposeAdapter:395`、`LinuxGsmDockerAdapter:379-381` 同值）+ 3×2s |
 | 单 `SCRIPT` 步骤 | ≤ 600 s（缺省）/ 1800 s（上限） | §15.2 |
-| 单 `PATCH` 步骤 | ≤ 600 s × 尝试数（含 2 次重试退避 5s/20s） | `PatchInstallExecutor:50-54` |
-| 阶段最坏情况 | 120s + 6s + Σ(步骤预算) ；**无聚合上限**（见下） | 声明由插件代码固定、可静态审，故本期不加聚合闸门 |
+| 单 `PATCH` 步骤：**同主机互斥等待** | ≤ **600 s**（2 s 轮询；等满即判该步失败） | v0.3 新增（§14.14）：与执行器 SSH 预算同量级，不引入第二个数 |
+| 单 `PATCH` 步骤：执行 | ≤ 600 s × 尝试数（含 2 次重试退避 5s/20s） | `PatchInstallExecutor:50-54` |
+| **阶段收尾起回**（v0.3 新增） | `docker-compose` ≤ 1200 s（shell `timeout`）+ 5 s；`linuxgsm-docker` ≤ 1200 s + 8 s | 两类各自 `DEPLOY` 已在用的命令超时（compose `:259-261`、lgsm `:222-223`），收尾沿用同值，不新造 |
+| 阶段最坏情况 | 120s + 6s + Σ(步骤预算 + 各步互斥等待) + 收尾预算；**无聚合上限**（见下） | 声明由插件代码固定、可静态审，故本期不加聚合闸门 |
 
 本期**不**引入「扩展阶段总耗时上限」或步骤数上限：新增一个 PRD 未要求的闸门会把「声明很多步骤」的正常插件误杀，且没有对应的产品判定。登记为 RISK-D08。
 
 ### 8.2 并发与互斥
 
-补丁并发闸 3 / 每主机互斥 / 重试 2 次全部继承执行器（§14.1）；扩展阶段在部署 worker 线程内串行，同实例内不并发（FR-12）；**不新增线程池**。`@Async → commonPool` 双跳带来的长阻塞占用登记为 RISK-D04，本期不改部署主流程（D-N05）。
+**四件事，分开说（v0.3 按 REV-1 改写：v0.2 这一节的「全部继承」不成立）**：
+
+| 约束 | 本期是否成立 | 承键者 |
+| --- | --- | --- |
+| 全局并发闸 3 | ✅ 继承 | `PatchInstallExecutor.globalSemaphore`（`:56`、`:86`），直调 `execute()` 即在闸内 |
+| 自动重试 2 次（5s/20s 退避） | ✅ 继承 | 同一执行器（`:50-51`、`:794-801`）；扩展阶段外面**不得**再套重试 |
+| **每宿主机互斥** | ✅ **本期补上**（不是继承来的） | 任务中心的内存键 `PATCH_INSTALL:<hostId>`（`TaskServiceImpl:566-578` + `TaskMutexManager`）；`installSync` 用**同一个** `TaskMutexManager` 承**同一个**键 ⇒ 同时挡住另一路扩展步骤与用户手工提交的 `PATCH_INSTALL` 任务。锁粒度 = 单次 `execute()`；等待预算 600 s；`finally` 释放。详见 §14.14、V-26 |
+| SSH 600 s | ✅ 继承 | `SSH_TIMEOUT_MS`（`:54`） |
+
+其它：扩展阶段在部署 worker 线程内串行，同实例内不并发（FR-12）；**不新增线程池**、不引入任务中心（D-N05）——互斥借用的是键管理器，不是调度器。`@Async → commonPool` 双跳带来的长阻塞占用登记为 RISK-D04；互斥等待与「持锁不得跨 `SCRIPT` 步骤」的红线登记为 RISK-D14。
 
 ### 8.3 可观测与内存上限（本期新增的一条硬约束）
 
@@ -273,13 +298,21 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 脚本注入 | 正文**永不拼进命令行**（B-13 的落文件 + `bash <file>` 形状），消除引号转义类注入面 |
 | 补丁/脚本源 | 只接受 `http(s)`；声明了 `sha256` 即**先校验后落地宿主机**；`headers` 本期不可声明（§14.2） |
 | 路径越界 | `targetPath` 绝对路径 / `..` → 声明不合法（BR-05） |
-| 命令面扩大 | 声明仅出自插件 JAR 代码（非运行时可配、无用户输入面），沿用宿主既有 SSH 凭证与容器控制权（§4.2「无新增权限位」）；`workDir` 下的 `.platform-extension/` 子目录仅放临时脚本，`finally` 删除 |
+| 命令面扩大 | 声明仅出自插件 JAR 代码（非运行时可配），沿用宿主既有 SSH 凭证与容器控制权（§4.2「无新增权限位」）；`workDir` 下的 `.platform-extension/` 子目录仅放临时脚本，`finally` 删除 |
+| **「无用户输入面」的边界（v0.3 补 SUG-4）** | 这句话对**步骤声明本身**成立，对 `PLATFORM_IMAGE_TAG` 这一**个**键**不成立**：它是 `variables[]` 一项 ⇒ 会出现在 `configInfo` 里，`PUT /instances/{id}/config` 可写任意值。三层处置把它压回成立：**① 值不采信**（第 5.5 步一律由平台写，§14.4）；**② 声明期格式校验**（R4，禁空白/换行/`${`/`}`，堵住 `.env` 行结构被改写）；**③ 不进提交期禁止清单**（§14.4.2，否则 AC-14 正向路径自毁）。定性：平台是**单管理员信任模型**，故这不是越权漏洞，而是「输入校验缺失 + 自述不准确」两项缺陷的收口 |
 | 审计 | 步骤级日志可归因到声明步骤与插件；部署日志仍内存态（L-01 / BR-13）→ 本期不宣称审计能力 |
 | 多数据库 | 零 schema 变更 ⇒ ADR-0015 三方言无新增负担 |
 
 ### 8.5 兼容性
 
 `backend/plugin` 只加 default 方法 → 既有插件二进制兼容；`getDeployConfigs()` 语义不动 → 无回归面；`configInfo` 合并式写入的行为差异见 RISK-D02；前端 level 归一化影响所有使用 `DeployProgress.vue` 的流程（RISK-D03，属修复）。
+
+**v0.3 补两条（REV-2 / REV-3）**：
+
+| 面 | 兼容性判定 |
+| --- | --- |
+| `backend/core` 的 `DeployAdapter` +1 **default** 方法 | 对**实现者**兼容：4 个既有适配器与任何测试替身不改即可编译运行（与 `stopServer`、`getDeployConfigs()` 同一先例形状）；对**调用者**是新能力位，只被扩展分支调用 ⇒ 无扩展步骤的部署零路径变化（V-10 子项 + V-27 反例）。集合外适配器继承的是「抛异常」，而集合外声明在 §8.1 即不合法 ⇒ 生产路径不可达（RISK-D13 记这条封套） |
+| deployType 支持集合收窄到 compose 两类 | 对现状零影响：今天没有任何游戏声明扩展步骤，收窄只是**拒绝将来可能的非法声明**；对已按 PRD FR-11 字面理解的读者是一次口径明确化，须回写（D-P15） |
 
 ## 9. 迁移与回滚
 
@@ -289,7 +322,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | --- | --- |
 | 数据库 | **无**：零表、零列、零迁移脚本（§5.1）⇒ 三方言（ADR-0015）与 `db/migration/` 只覆盖 SQLite 的既有缺口都不被触碰 |
 | 存量实例 | 零影响：`configInfo` 里没有 `deployVersion` ⇒ 恒 `S1`；`gameVersion` 坏键不清理（D-N16） |
-| 上线顺序 | ① 主应用（`backend/core` + `api` + `plugin`）随 `scripts/start-all.sh` 重启 → 此时无任何插件声明扩展步骤，行为与今天逐字相同；② `plugin-dnf-tw` 经 `scripts/deploy-plugin.sh` 热部署（`purgeTasks=false` 沿用）；③ 桩插件与夹具只出现在验收环境，不进 `plugins/`（AC-26 ②） |
+| 上线顺序 | ① 主应用（`backend/core` + `api` + `plugin`）随 `scripts/start-all.sh` 重启 → 此时无任何插件声明扩展步骤，行为与今天逐字相同；② `plugin-dnf-tw` 热部署——**点名走「`--jar` + env 覆盖」这一条路，不改脚本**（v0.3 补 SUG-8）：`cd backend && mvn -pl plugin-dnf-tw/plugin-dnf-tw-core -am install -DskipTests` 后执行 `PLUGIN_ID=plugin-dnf-tw JAR_NAME=plugin-dnf-tw-core-1.0.0.jar bash scripts/deploy-plugin.sh --jar backend/plugin-dnf-tw/plugin-dnf-tw-core/target/plugin-dnf-tw-core-1.0.0.jar`。**为什么是这条**：脚本的 `FRONTEND_DIR` / `PLUGIN_MODULE` 硬编码 l4d2（`:26-27`），只有 `PLUGIN_ID` / `JAR_NAME` 可 env 覆盖（`:29-30`），而 `--jar`（`:44`、`:53-57`）**整段跳过构建分支** ⇒ 恰好绕开两处硬编码（本插件无前端、不需要脚本代打 JAR）；卸载/覆盖/加载三步全部按 `PLUGIN_ID`+`JAR_NAME` 走（`:110-124`、`purgeTasks=false` 沿用）。**不选「参数化脚本」**：那要动 l4d2 在用的既有脚本，属本期范围外，且 `--jar` 路线零改动即可用。**B-14 完成判据含本行**（交付日不得卡在这一步）；③ 桩插件与夹具只出现在验收环境，不进 `plugins/`（AC-26 ②） |
 | 分支与 ADR 载体 | 实现统一走 `release/MERC-3-deploy-extension-steps`；`docs/design/adr/0029-*.md` 与 `CONTEXT.md` / `glossary.md` 需从 `agent/leader/chat-1cfa252af963 @ 590af8d` **merge 带入**（远端可读） |
 | 配置项 | 本期不新增任何 `game-platform.*` 或 `plugin.*` 配置开关 |
 
@@ -298,7 +331,9 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 新行为 | 如何关闭 |
 | --- | --- |
 | 扩展阶段执行 | 天然开关：**无插件 / 卸载插件 / 目录为空** ⇒ `ABSENT`/`EMPTY` ⇒ 不进阶段（dnf-tw 本期就恒在此态） |
-| `imageTag` 注入 | 三条件门控（§14.4）：游戏不声明 `PLATFORM_IMAGE_TAG` 变量、或条目不带 `imageTag`，即完全不生效 |
+| `imageTag` 注入 | 两级门控（§14.4 v0.3 订正）：该 deployType 的表侧 `variables[]` 不声明 `PLATFORM_IMAGE_TAG` ⇒ 完全不写；声明了 ⇒ 值由平台写（条目 `imageTag` 或该变量 `defaultValue`） |
+| **deployType 支持集合（v0.3 新增）** | 不是开关，是**校验规则 N5**：集合外 deployType 带步骤或 `imageTag` 的目录判 `INVALID` → BR-12。放进集合 = 将来某类的收口形状被逐类验证过（本期两类），移出集合 = 一行常量 |
+| **收尾 `ensureRunningForExtension`（v0.3 新增）** | 无独立开关：只被扩展分支调用 ⇒ 「无插件 / 目录空 / 声明不合法」三种关闭手段任一成立即永不执行。它的默认抛异常**不是**一个可关的东西，而是集合外路径不可达性的兜底断言（RISK-D13） |
 | 合并式写入（§14.8） | 不提供开关——它是 BR-16 的正确性修复，留开关等于留一条能静默丢版本键的路 |
 | `level` 归一化（§14.9） | 同上，属缺陷修复 |
 
