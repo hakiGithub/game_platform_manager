@@ -153,12 +153,14 @@ svg{display:block}
 .ep-option.on{color:var(--platform-cyan);font-weight:650;background:var(--platform-accent-soft)}
 /* MF-1：选项 = 主文本（displayName，缺省回退 versionId）+ versionId mono 副标（恒渲染） */
 .ep-option .col{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ep-option .col .t{font-size:13px;line-height:1.3}
-.ep-option .vid{font:10px/1.2 var(--font-mono);color:var(--platform-text-secondary)}
+/* S-10（v0.4）：displayName 无长度约束 ⇒ 主文本 ellipsis 截断，完整值进 title；versionId 副标恒可见、永不截断 */
+.ep-option .col .t{font-size:13px;line-height:1.3;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-option .vid{font:10px/1.2 var(--font-mono);color:var(--platform-text-secondary);flex:0 0 auto}
 .ep-option small{font:10px/1 var(--font-mono);color:var(--platform-text-secondary);flex:0 0 auto}
-.ep-select .vid{font:11px/1 var(--font-mono);color:var(--platform-text-secondary);font-weight:400}
+.ep-select .vid{font:11px/1 var(--font-mono);color:var(--platform-text-secondary);font-weight:400;flex:0 0 auto}
 .vid-inline{font:11px/1 var(--font-mono);color:var(--platform-text-secondary);margin-left:8px}
 .ep-select .val{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ep-select .val>span:first-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ep-alert{display:flex;gap:10px;padding:10px 14px;border-radius:var(--border-radius-base);border:1px solid transparent;font-size:13px}
 .ep-alert .t{font-weight:650;font-size:14px}
 .ep-alert .d{font-size:12px;line-height:1.6;opacity:.9}
@@ -233,7 +235,8 @@ svg{display:block}
 .ep-desc{width:100%;border-collapse:collapse;font-size:13px;background:var(--platform-surface-2)}
 .ep-desc th,.ep-desc td{padding:9px 12px;border:1px solid var(--platform-line);text-align:left;vertical-align:top}
 .ep-desc th{width:140px;background:var(--platform-surface-3);font-weight:500;color:var(--platform-text-secondary)}
-.ep-desc td{color:var(--platform-text-regular)}
+/* S-10（v0.4）：摘要行不截断、允许换行（提交前唯一复核点，无 title 兜底） */
+.ep-desc td{color:var(--platform-text-regular);word-break:break-word;overflow-wrap:anywhere}
 tr.hl-row th{color:var(--platform-cyan);background:rgba(39,181,243,.1);font-weight:650}
 tr.hl-row td{background:rgba(39,181,243,.05)}
 /* 评审标记（非产品元素）：实现侧一律不输出，见 ui-spec.md §8.4 */
@@ -285,6 +288,10 @@ tr.hl-row td{background:rgba(39,181,243,.05)}
 .logs-header .acts button{font-size:12px;color:var(--platform-text-secondary)}
 .logs-container{max-height:340px;overflow:auto;padding:12px 16px;background:var(--platform-surface-0);
   font:13px/1.6 var(--font-mono)}
+/* S-12（v0.4）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报），
+   另设视觉隐藏区 role=status + aria-live=polite，只承载阶段级事件与 ERROR 行。 */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .log-item{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:2px 0}
 .log-item .ic{flex:0 0 auto;width:14px;margin-top:4px}
 .log-time{flex:0 0 auto;min-width:64px;color:var(--platform-text-muted)}
@@ -332,7 +339,7 @@ tr.hl-row td{background:rgba(39,181,243,.05)}
   </div>
   <div class="proto-legend">
     <b>〈…〉</b> 一律为字段占位符，不对应任何真实版号 / 下载来源 / 目标路径（PRD BR-15 ①、N-12）。
-    左侧切换 <b>25</b> 个状态；仅覆盖本期新增与受影响界面，未列出的界面一律保持现状。
+    左侧切换 <b>27</b> 个状态；仅覆盖本期新增与受影响界面，未列出的界面一律保持现状。
     虚线元素与「<b>评审标记·非产品元素</b>」标签是原型脚手架，实现侧不输出（ui-spec.md §8.4）。
   </div>
 </header>
@@ -431,7 +438,17 @@ var CAT = [
   {vid:'〈versionId ①〉', dn:'〈展示名 ①〉', def:false, steps:3},
   {vid:'〈versionId ②〉', dn:null, def:false, steps:1}
 ];
+/* MF-5 / 裁定 R2 支②：PRD §8.1 校验「default = true 至多一条」⇒ 0 条是合法目录形态。
+   该份目录里没有任何默认条目，首位「默认版本」因此是【合成项】(vid:null)：只渲染四字、不渲染副标，
+   不得为它编一个目录里不存在的字符串。见 ui-spec.md §6.1「默认项副标取值」。 */
+var CAT_NODEF = [
+  {vid:'〈versionId ①〉', dn:'〈展示名 ①〉', def:false, steps:3},
+  {vid:'〈versionId ②〉', dn:null, def:false, steps:1},
+  {vid:'〈versionId ③〉', dn:null, def:false, steps:2}
+];
+var SYNTH = {vid:null, dn:null, def:true, synth:true, steps:0};
 function optMain(e){return e.def ? '默认版本' : (e.dn || e.vid);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function versionBlock(cat,keyPresent,open){
   if(cat==='empty'||cat==='invalid-nodata'){
     // S1：控件不渲染 —— 与改造前逐字节一致（FR-02 / AC-24 ①）
@@ -441,7 +458,9 @@ function versionBlock(cat,keyPresent,open){
   }
   const loading = cat==='loading';
   const single  = cat==='ready-single';
-  const entries = single ? CAT.filter(function(e){return e.def;}) : CAT;
+  const nodefault = cat==='ready-nodefault';
+  const entries = single ? CAT.filter(function(e){return e.def;})
+                  : (nodefault ? [SYNTH].concat(CAT_NODEF) : CAT);
   const selEntry = cat==='ready-nondefault' ? entries[1] : entries[0];
   const opts = entries.map(function(e){
     return {e:e, on:(e===selEntry),
@@ -449,11 +468,12 @@ function versionBlock(cat,keyPresent,open){
   });
   const sel = '<div class="ep-select'+(open?' open is-focus':'')+(loading?' is-disabled':'')+'">'
     + (loading? '<span class="placeholder" style="display:flex;align-items:center;gap:8px">'+svg('loading',13)+'版本目录读取中…</span>'
-              : '<span class="val"><span>'+optMain(selEntry)+'</span><span class="vid">'+selEntry.vid+'</span></span>')
+              : '<span class="val"><span title="'+esc(optMain(selEntry))+'">'+optMain(selEntry)+'</span>'
+                +(selEntry.vid?'<span class="vid">'+selEntry.vid+'</span>':'')+'</span>')
     + svg('bottom',12).replace('class="','class="caret ')+'</div>';
   const dd = open? '<div class="ep-dropdown">'+opts.map(function(o){
-      return '<div class="ep-option'+(o.on?' on':'')+'"><div class="col"><span class="t">'+optMain(o.e)+'</span>'
-        +'<span class="vid">'+o.e.vid+'</span></div>'
+      return '<div class="ep-option'+(o.on?' on':'')+'"><div class="col"><span class="t" title="'+esc(optMain(o.e))+'">'+optMain(o.e)+'</span>'
+        +(o.e.vid?'<span class="vid">'+o.e.vid+'</span>':'')+'</div>'
         +'<small>'+(o.on?svg('check',13):o.note)+'</small></div>';}).join('')+'</div>' : '';
   const badge = cat==='ready-nondefault'
       ? '<span class="ep-tag ep-tag--primary">'+svg('info',12)+'将执行 '+selEntry.steps+' 个部署扩展步骤</span>'
@@ -467,7 +487,9 @@ function versionBlock(cat,keyPresent,open){
       +'</ul></div>' : '';
   const footnote = single
       ? '<div class="field-description">该游戏当前只声明了默认版本，没有可切换的其它版本；控件仍渲染（定稿见 §2-①）。</div>'
-      : '<div class="field-description">未选择时按该游戏的默认版本部署，行为与改造前一致。所选版本随实例配置保存，重新部署会重放同一份版本配方。</div>';
+      : (nodefault
+        ? '<div class="field-description">该游戏的目录<b>未声明</b> <code>default = true</code> 条目（§8.1 校验＝「至多一条」⇒ 0 条合法）。首位「默认版本」是<b>合成项、不是目录条目</b>，因此<b>没有 <code>versionId</code> 副标可渲染</b>；选中它即 S2：不写键、行为与改造前一致。其余三项各带自己条目的 <code>versionId</code> 副标（§6.1 默认项副标取值 支②）。</div>'
+        : '<div class="field-description">未选择时按该游戏的默认版本部署，行为与改造前一致。所选版本随实例配置保存，重新部署会重放同一份版本配方。</div>');
   return '<div class="detail-section" data-block="target-version">'
     +'<div class="section-title">'+svg('collection',13)+'目标版本<span class="review-flag">评审标记·非产品元素</span></div>'
     +'<div class="version-row">'+sel+badge+'</div>'+dd+preview+footnote
@@ -509,12 +531,14 @@ function wizardStep4(){
 /* ---- 步骤 5 确认部署：摘要行（谓词与控件同现） ---- */
 function wizardStep5(o){
   const c=o.catalog, k=o.keyPresent;
-  const showLine = (c==='ready-default'||c==='ready-nondefault'||c==='ready-single') || k;
+  const showLine = (c==='ready-default'||c==='ready-nondefault'||c==='ready-single'||c==='ready-nodefault') || k;
   let val='';
   if(c==='ready-nondefault') val='〈展示名 ①〉<span class="vid-inline">〈versionId ①〉</span><span class="ep-tag ep-tag--primary" style="margin-left:8px">将执行 3 个部署扩展步骤</span>';
   else if(k) val='〈versionId ①〉<span class="ep-tag ep-tag--warning" style="margin-left:8px">'+svg('warning',12)+'沿用实例配置</span>'
       +'<div class="note-inline warn">本游戏当前无可选版本目录，此项无法在此改选，也不会被静默替换为默认版本。恢复版本目录后可在「选择游戏」步骤调整。</div>'
       +'<div class="note-inline">目录不可用时 displayName 无从解析，摘要以 <code>versionId</code> 呈现 —— 该值即提交载荷里的 <code>deployVersion</code>，与日志的 BR-12 行同值。</div>';
+  else if(c==='ready-nodefault') val='默认版本'
+      +'<div class="note-inline">该游戏的目录未声明 <code>default = true</code> 条目（§8.1 校验＝「至多一条」⇒ 0 条合法），「默认版本」是合成项、<b>不是目录条目</b>，故<b>不渲染 <code>versionId</code> 副标</b>；不得为它编一个目录里不存在的字符串（ui-spec.md §6.1 默认项副标取值 支②）。</div>';
   else val='默认版本<span class="vid-inline">〈默认条目 versionId〉</span>';
   if(!showLine) val='';
   const rows=[
@@ -568,6 +592,12 @@ function logDialog(o){
       +'<span class="log-message">'+l.m+'</span></div>';
   });
   if(!o.completed) lines+='<div class="log-item log-pending"><span class="ic spin">'+svg('loading',14)+'</span><span class="log-time">--:--:--</span><span class="log-message">等待更多输出...</span></div>';
+  /* S-12（v0.4）：播报分工——滚动容器 role=log + aria-live=off（不逐行播报）；
+     另设视觉隐藏区 role=status + aria-live=polite，只承载 ① 阶段级事件 ② ERROR 行全文。
+     该隐藏区不是日志全文的镜像（INFO / WARN 一律不进队列）。 */
+  var srLines=(o.lines||[]).filter(function(l){
+    return l.m && (l.lv==='ERROR' || /^(进入部署扩展阶段|部署扩展阶段)/.test(l.m));
+  }).map(function(l){return '<div>'+l.m+'</div>';}).join('');
   return '<div class="dialog-mask"><div class="ep-dialog">'
    +'<div class="ep-dialog__header">部署进度<span style="color:var(--platform-text-muted)">'+svg('circle-close',16)+'</span></div>'
    +'<div class="ep-dialog__body">'
@@ -584,7 +614,8 @@ function logDialog(o){
    +(o.error?'<div class="ep-alert ep-alert--error error-alert">'+svg('circle-close',16)+'<div><div class="t">部署失败</div><div class="d">'+o.error+'</div></div></div>':'')
    +'<div class="logs-section"><div class="logs-header"><span>'+svg('tickets',13)+' 部署日志</span>'
    +'<span class="acts"><button>'+svg('delete',12)+' 清空</button><button>'+svg('bottom',12)+' 到底部</button></span></div>'
-   +'<div class="logs-container">'+(o.lines&&o.lines.length?lines:'<div class="ep-empty">暂无日志</div>')+'</div></div>'
+   +'<div class="logs-container" role="log" aria-live="off" aria-label="部署日志">'+(o.lines&&o.lines.length?lines:'<div class="ep-empty">暂无日志</div>')+'</div>'
+   +'<div class="sr-only" role="status" aria-live="polite" aria-label="部署状态播报">'+srLines+'</div></div>'
    +'</div>'
    +'<div class="ep-dialog__footer">'+(o.completed?(o.success?'<span class="ep-btn">完成</span>'
         :'<span class="ep-btn ep-btn--primary">'+svg('refresh',13)+'重试</span><span class="ep-btn">关闭</span>')
@@ -619,7 +650,15 @@ const SC = [
   ac:['AC-01','AC-02','AC-22','FR-01','FR-04'],state:'S2',
   diff:'区块出现，停在「默认版本」；提交不写 deployVersion 键；日志不出现扩展阶段。',
   catalog:'ready-default',keyPresent:false,open:true,
-  annot:[['默认项文案','固定为「默认版本」四字，不显示镜像 tag 字面量（BR-02：默认版本 = 沿用游戏模板内既有 tag，无独立版号可展示）；该条目即使声明了 displayName 也<b>有意不采用</b>（§6.1）。'],['选项文本','主文本 = <code>displayName</code>，缺省回退 <code>versionId</code>；<b>versionId 恒以 mono 副标呈现</b>，displayName 缺省时主文本与副标同值（照常双行）。本屏第 3 项即为「无 displayName → 同值双行」的样例。'],['AC-01 核对口径','核对对象 = 每个选项内可见的 <code>versionId</code> 副标；其集合与目录 <code>versionId</code> 集合逐项相等即通过，不需读界面状态。'],['选项排序','默认版本恒在首位，其余按目录声明顺序，不做字典序重排（用户/插件维护者的心智与声明一致）。'],['步数副标','每个条目在右侧以 10px mono 显示其步骤数量或「不执行部署扩展」，帮助用户理解代价（只读声明，不探测可达性）。']]},
+  annot:[['默认项文案','固定为「默认版本」四字，<b>不显示镜像 tag 字面量</b>——BR-02 下默认版本沿用游戏模板内既有 tag，没有独立 <code>imageTag</code> 可展示（<b>没有的是 tag，不是 <code>versionId</code></b>：§8.1 里 <code>versionId</code> 对每条目录条目必填）。该条目即使声明了 displayName 也<b>有意不采用</b>（§6.1）。'],['默认项副标取值（本屏＝支①）','本屏的目录<b>存在</b> <code>default = true</code> 条目 → 首位「默认版本」的副标 = <b>该条目的 <code>versionId</code></b>（原型内为 <code>〈默认条目 versionId〉</code>）。目录<b>无</b>该条目时首位没有副标（支②，见 <b>W3b / W8c</b>）——两支定稿于 §6.1「默认项副标取值」。'],['选项文本','主文本 = <code>displayName</code>，缺省回退 <code>versionId</code>；<b>versionId 恒以 mono 副标呈现</b>，displayName 缺省时主文本与副标同值（照常双行）。本屏第 3 项即为「无 displayName → 同值双行」的样例。超长 <code>displayName</code> 按 §8.2 截断（主文本 ellipsis + <code>title</code> 兜底，副标恒可见）。'],['AC-01 核对口径（两句）','<b>句一</b>：<b>非默认选项</b>内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰出现 1 次）⇒ 本屏 {①,②} = {①,②} 成立。<b>句二</b>：首位显示「默认版本」，副标按上一行两支。默认项<b>不</b>进句一的等式（否则在无 <code>default=true</code> 条目的合法目录下无解）。'],['核对程序三条前提','① 核对前<b>须展开下拉</b>（本屏 <code>open:true</code>；收起态不渲染选项节点）；② 作用域只取 <code>.ep-dropdown .ep-option .vid</code>，<b>不得</b>按 <code>class="vid"</code> 全量扫——本屏全文 <code>.vid</code> = 4（3 选项 + 1 收起态取值区），全扫会把默认条目重复计入；③ 「相等」＝去重集合相等且每元素恰 1 次，非序列比对。'],['选项排序','默认版本恒在首位，其余按目录声明顺序，不做字典序重排（用户/插件维护者的心智与声明一致）。'],['步数副标','每个条目在右侧以 10px mono 显示其步骤数量或「不执行部署扩展」，帮助用户理解代价（只读声明，不探测可达性）。']]},
+
+ {g:'向导 · 目标版本区块',id:'w3b',name:'W3b 目录可用 · 无 default=true 条目（S2 支②）',screen:'wizard',step:2,stepTitle:'选择游戏',
+  stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
+  trigger:'目录读取成功且条目 ≥ 1，但<b>没有任何</b>条目声明 <code>default = true</code> —— PRD §8.1 的校验是「同一游戏<b>至多</b>一条为 true」，因此 0 条是<b>合法</b>目录形态。',
+  ac:['AC-01','AC-02','FR-01','FR-04'],state:'S2（支②）',
+  diff:'与 W3 的唯一差别在首位选项：本屏的「默认版本」是<b>合成项</b>，只渲染四字、<b>不渲染 <code>versionId</code> 副标</b>；其后三条目录条目各带自己条目的副标，各出现 1 次。',
+  catalog:'ready-nodefault',keyPresent:false,open:true,
+  annot:[['这一屏为什么必须存在','评审 MF-5：把默认项写进 AC-01 的集合等式，在「无 <code>default = true</code> 条目」的合法目录下就没有条目可取值、该口径无解。本屏与 W8c 即该形态的实物，缺它则该合法配置在原型里不可见。'],['默认项副标取值（支②）','首位「默认版本」<b>不是目录条目</b>，没有 <code>versionId</code> 可取 ⇒ <b>不渲染副标</b>。<b>禁止</b>为它编一个目录里不存在的字符串（如「沿用模板版本」）：那是 §6.1「凭空造词」禁令的对象，也会让集合等式重新无解；也禁止改显镜像 tag（N-12 / BR-15 ①）。'],['AC-01 两句口径','<b>句一</b>：非默认选项内可见的 <code>versionId</code> 副标集合 ≡ 目录<b>非默认条目</b>的 <code>versionId</code> 集合（去重、每元素恰 1 次）⇒ 本屏 {①,②,③} = {①,②,③} 成立。<b>句二</b>：首位显示「默认版本」，副标按支② 省略。'],['核对程序三条前提','① 本屏 <code>open:true</code>（收起态不渲染选项节点，核对前须展开下拉）；② 作用域只取 <code>.ep-dropdown .ep-option .vid</code>，<b>不得</b>按 <code>class="vid"</code> 全量扫；③ 「相等」＝去重集合相等且每元素恰出现 1 次，不做序列比对。'],['选项排序','合成「默认版本」恒在首位，其后按目录声明顺序（与 W3 同规则），不做字典序重排。'],['无副作用','停在首位即 S2：提交载荷不含 <code>deployVersion</code>、不进入扩展阶段 —— 与支① 行为相同，两支的界面差别只在首位副标的有无。']]},
 
  {g:'向导 · 目标版本区块',id:'w4',name:'W4 目录可用 · 选非默认版本（S3）',screen:'wizard',step:2,stepTitle:'选择游戏',
   stepDesc:'选择运行时模板，并确认部署方式、默认端口和环境依赖。',
@@ -666,9 +705,17 @@ const SC = [
   stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
   trigger:'目录可用（P1 真），用户未做选择或显式停在默认版本 → 提交载荷<b>不含</b> deployVersion（S2）。',
   ac:['AC-01','AC-02','AC-22','FR-04'],state:'S2',
-  diff:'摘要「目标版本」行取 §5 取值表第一行：无键且 P1 真 → 显示「默认版本」+ 该条目的 <code>versionId</code> 副标；不带步骤数徽标（本次不执行扩展步骤）。',
+  diff:'摘要「目标版本」行取 §5 取值表第一行（<b>支①</b>）：无键且 P1 真 且目录<b>存在</b> <code>default = true</code> 条目 → 显示「默认版本」+ <b>该条目的</b> <code>versionId</code> 副标；不带步骤数徽标（本次不执行扩展步骤）。无该条目的另一支见 <b>W8c</b>。',
   catalog:'ready-default',keyPresent:false,
   annot:[['为什么必须单独成屏','「默认版本」这一取值分支是 FR-04 / AC-01 的正向主路径。只画 S3 与 S1 会让它在原型里不可达 —— 本屏即为把它画出来而补。'],['与 W7 的分界','W7 是「目录不可用 + 无键」→ 该行<b>不渲染</b>；本屏是「目录可用 + 无键」→ 该行渲染且取「默认版本」。两者的谓词都是 P1，差别只在目录是否可用。'],['不写键','S2 提交载荷不含 deployVersion（§8.4.2 S2），因此 BR-12 不触发；这也是 AC-24 ② 的核对对象。']]},
+
+ {g:'向导 · 提交前可见性',id:'w8c',name:'W8c 摘要 · 无 default=true 条目 →「默认版本」不带副标',screen:'wizard',step:5,stepTitle:'确认部署',
+  stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
+  trigger:'目录可用（P1 真），但该目录<b>没有</b> <code>default = true</code> 条目；用户未做选择 → 提交载荷<b>不含</b> deployVersion（S2 · 支②）。',
+  ac:['AC-01','AC-02','FR-04'],state:'S2（支②）',
+  diff:'与 W8b 的差别只有一处：「默认版本」<b>不渲染 <code>versionId</code> 副标</b>（该「默认版本」不是目录条目，没有版号可取）；同样不带步骤数徽标。',
+  catalog:'ready-nodefault',keyPresent:false,
+  annot:[['与 W8b 的分界','两屏都是「无键 + P1 真」，唯一差别在目录形态：W8b 有 <code>default=true</code> 条目 → 副标取该条目的 <code>versionId</code>（支①）；本屏无该条目 → <b>不渲染副标</b>（支②）。两支在 §5 取值表各占一行。'],['不得编造','禁止为此项显式补一个目录里不存在的字符串（§1 槽位表已把 <code>〈沿用模板版本〉</code> 标为<b>禁止启用</b>槽位），也禁止改显镜像 tag（N-12 / BR-15 ①）。'],['与下拉同源','本屏与 W3b 首位是同一口径：主文本「默认版本」、副标缺席。用户改选任一条目后，摘要回到「主文本 + 该条目 <code>versionId</code> 副标」的 W8 形态，句一的核对在步骤 2 与步骤 5 取同一个机械核对对象。'],['不写键','载荷不含 <code>deployVersion</code>（§8.4.2 S2）⇒ BR-12 不触发、不进入扩展阶段；这也是 AC-24 ② 的核对对象。']]},
 
  {g:'向导 · 提交前可见性',id:'w9',name:'W9 摘要 · 键既存但目录不可用（BR-12 ②）',screen:'wizard',step:5,stepTitle:'确认部署',
   stepDesc:'复核部署契约，确认后将创建一条可追踪的部署任务。',
