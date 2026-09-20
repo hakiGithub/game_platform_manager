@@ -14,7 +14,7 @@
 
 > 本文按「先落盘再细化」分次提交：v0.1 骨架（§1/§2 + 待判定清单）→ v0.2 补齐 §3–§16 → **v0.3 并入架构评审第 1 轮（REV-1…REV-7 全采纳 + SUG-1…SUG-9）** 与 Leader 的两项范围裁定（每主机互斥取「补一层等价互斥」、EXTENSION 支持集合按 FR-11 字面收口为 compose 两类）。
 >
-> **v0.3 的三处实质变化**（其余为同步）：① §14.14 —— BR-09 的每主机互斥**过去被写错**：真实承担者是任务中心的内存互斥键，绕开任务中心即绕开它，本期由同步入口自行承键补上（不改 `PatchInstallExecutor`、不引入任务中心）；② §14.13 —— 扩展阶段收尾「把容器起回」原先**没有可调用的面**，且该结论对三类容器适配器同时成立，现定死为 `DeployAdapter` 一个 default 方法 + **逐类**收口形状，支持集合钉为 {`docker-compose`, `linuxgsm-docker`}，集合外声明不合法；③ §14.16 —— PRD 点名交本设计的 RISK-09（retry-deploy 先 `uninstall`）收口，`BR-14` 的「保留」自此显式限定为**当次部署内**、不跨 attempt。逐条处置见 §17。
+> **v0.3 的三处实质变化**（其余为同步）：① §14.14 —— BR-09 的每主机互斥**过去被写错**：真实承担者是任务中心的内存互斥键，绕开任务中心即绕开它，本期由同步入口自行承键补上（不改 `PatchInstallExecutor`、不引入任务中心）；② §14.13 —— 扩展阶段收尾「把容器起回」原先**没有可调用的面**，且该结论对三类容器适配器同时成立，现定死为 `DeployAdapter` 一个 default 方法 + **逐类**收口形状，支持集合钉为 {`docker-compose`, `linuxgsm-docker`}，集合外声明不合法；③ §14.15 —— PRD 点名交本设计的 RISK-09（retry-deploy 先 `uninstall`）收口，`BR-14` 的「保留」自此显式限定为**当次部署内**、不跨 attempt。逐条处置见 §17。
 
 ## 1. 理解
 
@@ -352,7 +352,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | # | 对象 | 方法 | 判据 | 对应 |
 | --- | --- | --- | --- | --- |
 | V-01 | 目录四态 | 单测 `DeployVersionCatalogService`：无插件 / 抛异常 / 0 条目 / 含非法条目 / 合法 | `ABSENT` / `ABSENT` / `EMPTY` / `INVALID(+reason)` / `AVAILABLE`；`EMPTY` **不**产生「不合法」文案 | RISK-13、AC-24 ③ |
-| V-02 | §8.1 全量校验 + 三条新规则 | 单测逐规则一条非法样本 | 任一不合法 ⇒ 整目录 `INVALID`，无「跳过该条继续」的部分采纳 | AC-20、§14.4、§15.2 |
+| V-02 | §8.1 全量校验 + **§16.3 的 N1…N5 五条**（v0.3 扩） | 单测逐规则各一条非法样本，另加两条反例 | 任一不合法 ⇒ 整目录 `INVALID`，无「跳过该条继续」的部分采纳；**反例 a**：插件经 `getDeployConfigs()` 整节替换声明出的 `variables` / `composeTemplate` **不得**让 N1/N2 判过（判 `INVALID`，证明校验与部署同读表快照，§14.4.1 R1）；**反例 b**：表侧模板缺 `${PLATFORM_IMAGE_TAG` 字面量 ⇒ `INVALID`（R3） | AC-20、§14.4、§14.4.1、§15.2、§14.13.1 |
 | V-03 | 三态与键 | 单测 `applyVersionSelection` 三支 + 提交期撞键 | S1 不写、S2 删既存键、S3 写且值精确等于 `versionId`；撞禁止清单 ⇒ 400 且原因可辨识；**目录不可用不在提交期 400** | AC-19、AC-22（服务层）、AC-20 |
 | V-04 | 步骤集串行与致命性 | 集成（桩插件 + 夹具）：`PATCH#1` 成功 → `SCRIPT#2` 非致命失败 → `PATCH#3` 致命失败 | 严格声明序、无并发；#2 记 `WARN` 后继续；#3 后无第 4 步；部署失败、`ERROR`、未进 `START` | AC-06、AC-08、AC-10、AC-21 |
 | V-05 | 补丁回滚边界 | 同上，比对 `PATCH#1` 落位结果与 `#2` 文件改动 | `#3` 目标路径回到改动前；`#1` 与 `#2` 的改动一律保留 | AC-09、AC-21、BR-14 |
@@ -360,17 +360,26 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | V-07 | `includePattern` 真实生效 | 集成：带多成员的包 + 单一 glob 声明 | 只有匹配成员落位（证明同步入口未被 payload 截断） | §14.2 行 2、决策 6 |
 | V-08 | 日志呈现契约 | **机械核对脚本**：只读 `logs[].{stage,stepId,stepEvent,elapsedMs}` | 每条 `stage == "EXTENSION"`；每 `stepId` 恰一 `START` + 恰一终态且终态 `elapsedMs != null`；比例 = 100%；**脚本内不得出现 `message` 匹配** | AC-03、AC-16、KPI-02 |
 | V-09 | `level` 归一化 | 组件单测 + 目视 | `SUCCESS`/`WARN`/`ERROR`/`INFO` 四类各自的 class 与图标不再同色同图标 | §14.9、AC-08/AC-10 界面侧 |
-| V-10 | 进度序列 | 抓 `deploy-progress` 全量轮询样本两条：无扩展部署 vs 有扩展部署 | 无扩展：与改造前逐值相同（含 band 插值）；有扩展：单调不减、扩展占 `[80,84]`、`COMPLETE == 100` | AC-15、§14.7、BR-10 |
-| V-11 | 停实例语义 | 集成：`docker inspect` 采样 | 第一条步骤行的时间戳之后容器 `Running == false`；停实例失败注入时部署 `ERROR` 且**零步骤行** | AC-04、§14.5、ui-spec 态 S |
-| V-12 | 健康判定路径 | 集成：两条部署各抓全量轮询样本 | **有扩展步骤**：`HEALTH_CHECK` 行存在且**通过**（容器已在扩展阶段收尾按依赖顺序起回），其后 `UPDATE_STATUS` / `START` / `retryHealthCheck` 与今天逐字同形；**无扩展步骤**：整条序列不含 `EXTENSION` | §14.12、AC-04、N-06/BR-10 |
+| V-10 | 进度序列 | 抓 `deploy-progress` 全量轮询样本两条：无扩展部署 vs 有扩展部署 | 无扩展：与改造前**逐值相同**（含 band 插值）——比对面 = **顶层 `progress` 值序列 / 阶段序列 / 日志行的 `stage`+`level` 原值 / 终态**四项，**不含 CSS class 与图标名**（v0.3 补 SUG-9：`level` 归一化会让此前同为 `log-info` 的非 INFO 行开始变色，那属 RISK-D03 定性的正当外溢，不得被本行判成回归）；有扩展：单调不减、扩展占 `[80,84]`、`COMPLETE == 100`；**子项**：`ensureRunningForExtension` 在无扩展部署中的调用次数 = 0、新字段全 `null` | AC-15、§14.7、BR-10、§14.13.2 |
+| V-11 | 停实例语义 | 集成：`docker inspect` 采样（**两类各跑一次**：`docker-compose` 与 `linuxgsm-docker`） | 第一条步骤行的时间戳之后容器 `Running == false`；停实例失败注入时部署 `ERROR` 且**零步骤行** | AC-04、§14.5、ui-spec 态 S、§14.13.1 |
+| V-12 | 健康判定路径 | 集成：两条部署各抓全量轮询样本（同一 deployType 内），V-27 负责跨类 | **有扩展步骤**：`HEALTH_CHECK` 行存在且**通过**（容器经扩展阶段收尾的 `adapter.ensureRunningForExtension` 起回），其后 `UPDATE_STATUS` / `START` / `retryHealthCheck` 与今天逐字同形；**无扩展步骤**：整条序列不含 `EXTENSION` | §14.12、§14.13.3、AC-04、N-06/BR-10 |
 | V-13 | 脚本安全形状 | 代码审查 + 日志核对 | 命令文本不含脚本正文；未通过校验的下载不在宿主机落地；`finally` 删除临时文件 | BR-05、RISK-08、§8.4 |
 | V-14 | 输出截断 | 集成：产超大 `stdout` 的脚本 | 头 2000 + 尾 2000 + 一条 `NOTE`「输出已截断，共 N 字节」；日志体量受控 | §8.3 |
-| V-15 | `imageTag` 三核对物 | 集成（桩游戏 + 外置元数据） | 模板逐字节不变 ∧ `.env` 中 `PLATFORM_IMAGE_TAG` 精确等于声明值 ∧ `docker compose config` 渲染出 `<repo>:<tag>` | AC-14、§14.4 |
+| V-15 | `imageTag` **四**核对物 | 集成（桩游戏 + 外置元数据） | ① 远端 `docker-compose.yml` 与「同一游戏未选版本时落下的那份」**逐字节相同**（两边都经 `ensureVolumesDeclaration` / `injectHostCertsMount` 后处理，比较基线自带后处理，故 SUG-3① 不影响本判据）；② `.env` 中 `PLATFORM_IMAGE_TAG` 精确等于声明值；③ 该工作目录 `docker compose config` 渲染出的 `.services.<name>.image` = `<repo>:<声明 tag>`；**④（v0.3 新增）先 `PUT /instances/{id}/config` 把该键写成任意他值（如 `latest`）再部署 ⇒ `.env` 里仍是平台写入的值，提交值不出现**（§14.4 表「框架侧唯一新增」②、§8.4 边界行） | AC-14、§14.4、§14.4.2 |
 | V-16 | BR-16 保键 | 接口 + 界面双跑 AC-27 (a)(b)(c)(d) | (a) 键值精确不变；(b) 键保留；**(c) 该入口返回成功**（非「失败也算过」）；(d) 三次之后重部署均进扩展阶段交付同一版本 | AC-27、§14.8 |
 | V-17 | 无专用分支 | 全量构建 → 启动 → 插件清单 → 读目录 → `grep -rn '"dnf_tw"' backend/core/src/main/java --include=*.java` | 命中数 0（口径见 AC-23 ③：必须带引号）；模块无前端产物 | AC-23 |
 | V-18 | 证据归属 | 验收记录核对 | 桩/夹具结果未被登记为 AC-05、KPI-01、KPI-03；发布物不含桩；dnf-tw 目录仍为未填充模板 | AC-25、AC-26、BR-15 |
 | V-19 | 通用性 | 同一份 `core` 构建物，先接桩插件跑通 V-04…V-14，再接 `plugin-dnf-tw`（空目录）跑 V-01 | 期间 `core/` 零改动 | AC-25、G-01 |
 | V-20 | dnf-tw 缺口期默认路径 | 走完 5 步向导并部署，对照 AC-15 checklist | 无版本控件、载荷无键、无扩展行、结果与改造前逐项一致、无任何示例值 | AC-02、AC-24 |
+| **V-21** | **AC-01 正向**（向导出现版本项）——v0.2 只有 V-20 反例，正向零行 | 集成 + E2E：桩插件目录置 `AVAILABLE`（≥2 条目），走 `deploy.vue` 步骤 2 → 步骤 5；同时读 `GET /games/{id}/deploy-config` 响应 | 接口侧 `deployVersions[].versionId` 集合与目录声明**精确相等且同序**、`versionCatalogState == AVAILABLE`；界面侧控件出现、选项数 = 条目数、默认选中项 = `defaultEntry` 条目的 `versionId`、确认页摘要显示所选条目（**断言 locator 与 `versionId`/`displayName` 字段值，不匹配拼好的句子**）；改选非默认后载荷含且只含一个 `deployVersion` 键 | **AC-01**、§16.4、F-04/F-05 |
+| **V-22** | **AC-12**（`position = host` 脚本）——v0.2 V 表无一行 | 集成：两个 host 脚本步骤（`exit 3` 致命 / `exit 0` 且打印含标记行的 stdout + 一行 stderr） | **判据块 1（机械）**：`exit 3` 步骤终态行 `stepEvent == FAILURE` ∧ `exitCode == 3` ∧ 该步致命 → 部署 `ERROR`；成功步 `exitCode == 0`；执行走 `FileAccessService.executeCommand(hostId, …, timeoutMs)`（B-13 命令形状，V-13 复核）；命令文本不含脚本正文。**判据块 2（可见性，单独登记、不入 KPI-02 脚本）**：同 `stepId` 下存在承载 stdout 与 stderr 的 `NOTE` 行且含夹具标记（§14.6 承载位分工表明示这是文本核对，不是机械核对） | **AC-12**、FR-15、§14.6 规则 4 |
+| **V-23** | **AC-16 界面侧**——v0.2 只有 V-08 读 API 字段 | 前端 E2E（`npm run e2e` 受管模式）+ 组件单测：在扩展阶段执行中采样面板 DOM | ① 阶段带 / 「扩展」步骤点出现（latch = `logs[].stage === 'EXTENSION'`，`HEALTH_CHECK` 之后仍为真）；② 当前进行中的步骤行**可读**：含 `stepIndex/stepTotal` 与 `stepLabel` 字段来源的渲染（断言由字段驱动，词面归 ui-spec）；③ 与 V-08 的分工：V-08 判「数据齐备」，本行判「用户可辨识」 | **AC-16**、§14.11、F-02/F-03 |
+| **V-24** | **AC-18**（两实例不同版本不串用）——v0.2 V 表无一行、① 支至今零测试 | 集成：桩插件同时提供两种形态——(a) `getDeployExtensionSteps(ctx)` 按 `ctx.selectedVersionId` 代码算步骤集（① 支）；(b) 只靠目录条目 `patches ++ scripts`（② 支）。同游戏两实例分别选 `V-a` / `V-b` 并发部署 | 两实例的 `stepId → stepLabel` 序列各自等于各自配方的声明序、**互不重叠**；(a) 支的 `ctx.selectedVersionId` / `ctx.instanceId` / `ctx.configInfo` 三值与该实例库中状态一致（证明 ① 支真实被走到，而非回落到 ②）；(a)(b) 两支各测一次 ⇒ §16.2 解析顺序 ①② 都有覆盖 | **AC-18**、§16.2、B-09 |
+| **V-25** | **KPI-04**（无扩展声明游戏的既有自动化用例通过率 = 100%，PRD §3.2 本期可考核，Owner=@Tester）——v0.2 无一行 | 三条具体命令，改造前后各跑一次：`cd backend && mvn test`；`cd frontend && npm run test:run`；`cd frontend && npm run e2e`（受管模式自起栈，临时 SQLite）。部署/补丁相关用例清单在基线里逐条登记（现集合含 `DeployServiceTest`、`DeploymentAccessTest`、`DeployResourceLimitTest`、`PatchDecisionEngineTest`、`PatchArchiveExtractorTest` 及前端 e2e `main-app/instance`、`main-app/docker`） | 分母 = 基线登记的部署相关用例数（**清单不减**，新增用例不计入本 KPI）；分子 = 本期合入后通过数；**判据 = 分子/分母 = 100%**，任一原通过用例转 FAIL 即不达标并逐条归因（区分「本期回归」与「环境抖动重跑」，抖动须同命令重跑两次留痕）。T-04 存基线表、验收记录存末次结果 | **KPI-04**、AC-15、§7.5 T-04 |
+| **V-26** | **BR-09 每主机互斥**（v0.3 新增，REV-1） | 单测（`TaskMutexManager` 假替身）+ 集成（同主机两实例并发扩展阶段各含 `PATCH` 步骤；另一路经 `install()` 走任务中心） | 三路两两不重叠：两次 `execute()` 的时间戳区间无交集；持锁期间 `isHeld("PATCH_INSTALL:<hostId>") == true`；等满 600 s → 该步 `FAILURE` 且原因段指名「等待同主机补丁互斥超时」；异常/失败路径后键已释放（`isHeld == false`）；holder 前缀 `EXT:` 且不受 `removeByTaskId` 影响 | **BR-09**、§14.14、B-04 |
+| **V-27** | **两类逐类收口 + 集合外不合法**（v0.3 新增，REV-2/REV-3） | 集成：deployType 分别取 `docker-compose`、`linuxgsm-docker` 各跑一次带步骤部署；另构造 `deployType=docker` 的带步骤目录声明 | ① 两类各自：`HEALTH_CHECK` 行存在且**通过**，且命中的是**该类自己的** `ensureRunningForExtension` 覆写（compose 路径日志见 `up -d`+`ps` 认 `running`/`Up`；lgsm 路径见 `up -d`+`ps -q`+**逐个**容器 `.State.Running`）；② `docker` 声明 → 目录 `INVALID`（N5）+ BR-12 处置，且 `ensureRunningForExtension` 的默认抛异常路径**命中次数 = 0**；③ 收尾失败注入（桩使 `ps` 不含 running）→ 部署 `ERROR` 且不进 `HEALTH_CHECK` | **AC-04**、§14.13.1/2/3、RISK-D01/D11/D13 |
+| **V-28** | **RISK-09：retry-deploy 的全量重放**（v0.3 新增，REV-7①） | 集成：桩插件实例以非默认版本部署成功 → 手工置 `ERROR` → `POST /instances/{id}/retry-deploy`，全程采 `deploy-progress` 与宿主机文件 | retry 先 `uninstall`（宿主机 `<workDir>` 被 `rm -rf`）后全量重跑 ⇒ 扩展阶段**每次都执行**、`stepId` 集合与首次部署一致；`configInfo.deployVersion` 跨 retry **存续**且值精确不变（不出现按默认版本交付）；**BR-14 的「保留」判定明确只在同一 attempt 内成立**：验收记录须写「首次部署中 `PATCH#1` 的产物在 retry 后不保留，属设计行为，不判 AC-21 FAIL」（§14.15 结论 2） | **AC-07**、AC-21、BR-14、BR-06、RISK-09、§14.15 |
+| **V-29** | **注入点副作用收敛**（v0.3 新增，SUG-5） | 代码审查 + 计数断言：对不含 `deployVersion` 的实例分别走 start/stop/restart/文件/备份/retry 六条路径 | `configInfo` 无 `deployVersion` 时 `DeployVersionCatalogService.read` 与 `getDeployExtensionSteps`/`getDeployVersions` 的调用次数 = 0（快路径）；带键时调用发生但异常一律归 `ABSENT` 不外泄；`updateInstance:183` 路径不因新增读取而改变返回 | §14.4.3、RISK-D07 |
 
 ## 11. 需求追溯
 
@@ -378,51 +387,55 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 
 | AC | 承载方 | 本期状态 | 设计落点 |
 | --- | --- | --- | --- |
-| AC-01 | 桩插件+夹具 | 可验收 | §16.4 GET、F-04、V-20 反例 |
-| AC-02 | dnf-tw 默认路径 | 可验收 | B-08 门控、F-05、V-20 |
-| AC-03 | 桩插件+夹具 | **可验收**（契约已定稿，脱离「不可测」） | §14.6、B-09/B-11、V-08 |
-| AC-04 | 桩插件+夹具 | 可验收 | §14.5 停止语义、§14.12、V-11 |
+| AC-01 | 桩插件+夹具 | 可验收 | §16.4 GET、F-04/F-05、**V-21（v0.3 补正向核对物；此前只有 V-20 反例）** |
+| AC-02 | dnf-tw 默认路径 | 可验收 | B-08 两级门控、F-05、V-20 |
+| AC-03 | 桩插件+夹具 | **可验收**（契约已定稿登记，AC-03 文本里的「生效前提」句式随 D-P12 出表） | §14.6、B-09/B-11、V-08 |
+| AC-04 | 桩插件+夹具 | 可验收（**前置收窄：deployType 两类各测一次**，D-P15） | §14.5 停止语义、§14.12、§14.13.1/3、V-11 + **V-27** |
 | AC-05 | dnf-tw 真实资料 | 不可测（L-02，不变） | — |
-| AC-06 | 桩插件+夹具 | 可验收 | 16.2 解析顺序、V-04、§14.6 规则 3 |
-| AC-07 | 桩插件+夹具 | 可验收 | B-07、retry-deploy 读 `configInfo` |
+| AC-06 | 桩插件+夹具 | 可验收 | 16.2 解析顺序（sealed 上界）、V-04、§14.6 规则 3 |
+| AC-07 | 桩插件+夹具 | 可验收（**v0.3 补 RISK-09 收口：retry 会先清空宿主机 workDir ⇒ 全量重放**） | B-07、retry-deploy 读 `configInfo`、**§14.15 + V-28** |
 | AC-08 | 桩插件+夹具 | 可验收 | B-09、F-01、V-04/V-09 |
-| AC-09 | 桩插件+夹具 | 可验收 | B-04（执行器内建回滚）、V-05 |
+| AC-09 | 桩插件+夹具 | 可验收（回滚结果在日志里有 `ROLLBACK` 记录位，**成功与否仍由文件比对判**） | B-04（执行器内建回滚）、V-05、§14.6 规则 5 |
 | AC-10 | 桩插件+夹具 | 可验收 | B-09 `fatal=false` 继续 + WARN、V-04 |
 | AC-11 | 桩插件+夹具 | 可验收 | B-04/B-13 sha256、V-06 |
-| AC-12 | 桩插件+夹具 | 可验收 | B-13（宿主机 + exitCode 判定）、V-04 |
+| AC-12 | 桩插件+夹具 | 可验收 | B-13（宿主机）、**§14.6 规则 4（`exitCode` 有承载位）、V-22（v0.3 补，此前 V 表无一行）** |
 | **AC-13** | 第一行 → **第五行** | **本期不验收**（14.5 判不合法，`container` 移出本期） | — |
-| **AC-14** | 第五行 → **第一行** | **转可验收**（14.4 给出机制，载体 = 桩游戏外置元数据） | §14.4、B-08、V-15 |
-| AC-15 | dnf-tw 默认路径 | 可验收（门控式改动的直接受益者） | §14.7 无步骤分支、B-08/B-10/B-12、V-10 |
-| AC-16 | 桩插件+夹具 | **可验收**（契约 + F-02/F-03） | §14.6、§14.11、V-08 |
+| **AC-14** | 第五行 → **第一行** | **转可验收**（14.4 给出机制；**载体 = 桩插件 + 桩游戏元数据**，属验收资产扩张 → D-P13） | §14.4、§14.4.1、B-08、V-15（四核对物） |
+| AC-15 | dnf-tw 默认路径 | 可验收（门控式改动的直接受益者；**比对面四项限定见 V-10，不含 CSS class**） | §14.7 无步骤分支、B-08/B-10/B-12/B-16、V-10 |
+| AC-16 | 桩插件+夹具 | **可验收**（契约 + F-02/F-03；AC-16 文本里的「生效前提」句式随 D-P12 出表） | §14.6、§14.11、V-08（数据侧）+ **V-23（界面侧，v0.3 补）** |
 | ~~AC-17~~ | 表外豁免 | 废弃编号，不属验收对象 | — |
-| AC-18 | 桩插件+夹具 | 可验收 | 16.2 解析顺序 ①② |
+| AC-18 | 桩插件+夹具 | 可验收 | 16.2 解析顺序 ①②、**V-24（v0.3 补：① 代码计算型支此前零测试）** |
 | AC-19 | 桩插件+夹具 | 可验收 | B-07、§5.2、V-03 |
 | AC-20 | 桩插件+夹具 | 可验收（**前提保护：提交期不得改判为 400**） | §14.10 末段、B-05、V-02 |
 | AC-21 | 桩插件+夹具 | 可验收 | V-05（回滚/保留边界） |
-| **AC-22** | 第一行 | **服务层可验收；界面端到端前提不成立**（14.10，待 Leader 裁 A/B；推荐 B） | B-07 |
+| **AC-22** | 第一行 | **服务层可验收；界面端到端前提不成立**（14.10，**Leader 已裁 B** ⇒ 本行不再是待决；A 案登记为后续增量建议交人类 Owner） | B-07、V-03 |
 | AC-23 | 本期构建产物 | 可验收 | B-14/B-15、V-17 |
 | AC-24 | dnf-tw 默认路径 | 可验收 | B-15 `EMPTY`、V-01、V-20 |
 | AC-25 | 桩插件+夹具 | 可验收 | T-01、V-19 |
 | AC-26 | 本期构建产物/验收记录 | 可验收 | K 边界、V-18 |
 | AC-27 | 桩插件+夹具 | 可验收（合并式写入天然满足 (c)，无「恒失败」风险） | §14.8、B-12、V-16 |
 
-**FR / BR 侧收口点**：FR-05（两入口 + 唯一解析顺序 16.2）、FR-12（同步直调 §14.1）、FR-14（同执行器，未另起链路）、FR-20（§14.6 契约）、BR-07（禁止清单 + `PLATFORM_IMAGE_TAG`）、BR-11（条件门控 §14.7 / B-08）、BR-14（回滚边界如实记日志，不加反向补偿）、BR-16（§14.8）、BR-15（K/V-18 三不得）。
+**FR / BR 侧收口点**：FR-05（两入口 + 唯一解析顺序 16.2，公共上界 = sealed `DeployExtensionStepDeclaration`）、FR-11（**停实例 + 收尾起回只对 compose 两类成立，集合外声明不合法：§14.13.1**）、FR-12（同步直调 §14.1）、FR-14（同执行器，未另起链路）、**FR-15（`exitCode` 有承载位 + 规则 4：§14.6）**、FR-20（§14.6 契约）、**BR-07（v0.3 订正：清单保持 PRD 原三项，`PLATFORM_IMAGE_TAG` 走声明期保留键而非提交期禁止键，§14.4.2）**、**BR-09（并发闸/重试继承 + 每主机互斥由 `installSync` 承同一个内存键，§14.14）**、BR-11（条件门控 §14.7 / B-08）、**BR-14（回滚边界如实记日志，不加反向补偿；v0.3 补：「保留」限当次 attempt，不跨 retry，§14.15）**、BR-16（§14.8）、BR-15（K/V-18 三不得）。
 
 ## 12. 风险与边界
 
 | # | 风险 | 影响 | 处置 |
 | --- | --- | --- | --- |
-| RISK-D01 | **`HEALTH_CHECK` 与停实例时点相冲**（§14.12）——若按字面同时满足 FR-10/FR-11/BR-10，任何带扩展步骤的 compose 部署必然在健康检查处失败 | 阻断级：AC-03/04/05/08 全灭 | 已定判定：**扩展阶段收尾按依赖顺序把容器起回来**（复用既有 `up -d` 形状），`HEALTH_CHECK` 的判据、动作与时点一字不动 ⇒ 不触碰 N-06/BR-10，也不改无步骤分支。成本与「后移探测」方案相同（都是起停各一次） |
-| RISK-D11 | **`compose start` 不处理 `depends_on` 顺序**：dnf-tw 的 compose 项目含 MySQL 与多个服务，`DockerComposeAdapter.start` 走 `compose -p … start`（`:365-379`），只有 `up` 尊重依赖顺序。今天这一步是 `up -d` 之后的空操作，本期停实例后若由它来真实启动，首启可能早于数据库就绪 | 表现为「部署成功但版本没生效」——G-02 最坏的失效形态 | **与 RISK-D01 同一条解法收口**：起回容器由扩展阶段收尾用既有 `up -d`（`:260`，DEPLOY 已在用、尊重依赖）完成，`START` 沿用今天「已运行 → 空操作 → 复检」的行为。**禁止**把 `DockerComposeAdapter.start()` 全局改成 `up -d`（会改既有语义，违反 AC-15 / N-06） |
+| RISK-D01 | **`HEALTH_CHECK` 与停实例时点相冲**（§14.12）——若按字面同时满足 FR-10/FR-11/BR-10，任何带扩展步骤的 compose 部署必然在健康检查处失败。**v0.3 扩大认知**：该冲突对 `docker` / `linuxgsm-docker` / `docker-compose` **三类容器适配器同时成立**（`DockerAdapter:274-277`、`LinuxGsmDockerAdapter:446-468`），v0.2 只论证了一类 | 阻断级：AC-03/04/05/08 全灭 | 已定判定：**扩展阶段收尾按依赖顺序把容器起回来**，`HEALTH_CHECK` 的判据、动作与时点一字不动 ⇒ 不触碰 N-06/BR-10，也不改无步骤分支。成本与「后移探测」方案相同（都是起停各一次）。**收口的两半补齐（§14.13）**：调用面 = `DeployAdapter.ensureRunningForExtension` default 方法（组 L / B-16）；适用范围 = 支持集合 {`docker-compose`, `linuxgsm-docker`} 内**逐类**给形状，集合外**声明即不合法**（N5 → BR-12） |
+| RISK-D11 | **`compose start` 不处理 `depends_on` 顺序**：dnf-tw 的 compose 项目含 MySQL 与多个服务，`DockerComposeAdapter.start` 走 `compose -p … start`（`:365-379`），只有 `up` 尊重依赖顺序。今天这一步是 `up -d` 之后的空操作，本期停实例后若由它来真实启动，首启可能早于数据库就绪 | 表现为「部署成功但版本没生效」——G-02 最坏的失效形态 | **与 RISK-D01 同一条解法收口**：起回容器由扩展阶段收尾用既有 `up -d`（compose `:260`、lgsm-docker `:223`）完成，`START` 沿用今天「已运行 → 空操作 → 复检」的行为。**禁止**把 `DockerComposeAdapter.start()` 全局改成 `up -d`（会改既有语义，违反 AC-15 / N-06）。**v0.3 追加一条同源禁令**：`linuxgsm-docker` 的收尾**不得复用** private `ensureContainerRunning`（`:955-993`）——它的停止分支正是 `compose start`（`:970-973`），且对 `ps -q` 的第一个容器判完即 `return`（`:979`），两个缺陷叠加会同时踩 D01 与 D11 |
 | RISK-D02 | `updateInstance` 从整表替换改合并：任何依赖「省略即删除」隐含语义的调用方会失效 | 中：仓内核对只有配置管理表单与通用接口两条路径，而该隐含语义本身正是 F-18 判定的缺陷 | 合并范围只在 `configInfo` 一个字段；单测 + V-16 四项；不改 `create`。缺口期 dnf-tw 恒无键，风险面实际落在桩插件承载的实例 |
 | RISK-D03 | `DeployProgress.vue` 归一化会外溢到备份/还原等复用该组件的流程（非 INFO 行**开始**变色） | 低（属缺陷修复的正当外溢） | @Tester 目视回归一次；不改后端取值集合 |
 | RISK-D04 | `deployAsync` 的 `@Async → ForkJoinPool.commonPool` 双跳（`:318-332`）叠加本期长阻塞步骤 | 并发多实例部署时可耗尽 commonPool，拖慢其它异步任务 | 本期不改部署主流程（D-N05）；上线后按 KPI/实测评估专用线程池（另立需求） |
 | RISK-D05 | `install()` 异步路径仍丢 `headers`/`includePattern`（`PatchInstallServiceImpl:47-56`） | plugin-l4d2 若开始依赖这两字段会静默失效 | 本期不修（无使用方依赖，PRD 亦未要求）；在 SDK 注释处标出「需 `includePattern` 请用 `installSync`」，把坑写在脸上 |
 | RISK-D06 | 脚本超时只保证「不再等待」，不保证远端进程已终止（§15.3） | 挂死脚本可能在宿主机继续跑，与重放叠加产生竞态 | 日志明示 + 声明侧幂等（BR-06）+ 本期不引入 kill 台账 |
-| RISK-D07 | ADR-0008 通道不对称：`getDeployConfigs()` 的声明进不了 `buildDeployConfig` 的部署配置（16.1） | 后来者按「插件声明即生效」理解会做出「向导看得见、部署看不见」的功能 | 本期不碰该通道（版本目录走 `getDeployVersions`）；建议另立 Issue（含补测试与文档），交 Leader 裁 |
+| RISK-D07 | ADR-0008 通道不对称：`getDeployConfigs()` 的声明进不了 `buildDeployConfig` 的部署配置（16.1） | 后来者按「插件声明即生效」理解会做出「向导看得见、部署看不见」的功能 | 本期不碰该通道（版本目录走 `getDeployVersions`）；建议另立 Issue（交 Leader 裁，Leader 已判本期不修）。**v0.3 补两点**：① 同一缺陷对 `imageTag` 同样成立——经 `getDeployConfigs()` 声明的 `variables`/`composeTemplate` **不参与** `imageTag` 机制（§14.4.1 R2）；② 校验规则 N1/N2 的判定通道已绑死表快照，所以「插件换个入口声明就能骗过校验」这条路径被关在声明期（V-02 反例 a 负责证明） |
 | RISK-D08 | 扩展阶段无聚合耗时/步骤数上限 | 一个声明很多慢步骤的插件可长期占住部署 worker | 有意为之（不加 PRD 未要求的闸门）；单步已有上下限（§15.2）与体量上限（§8.3） |
 | RISK-D09 | AC-22 / §8.4.2 S2 的删键无真实界面入口（14.10） | 「换回默认版本」只能靠新建实例；`deployVersion` 一旦写入，同实例上无界面手段解除 | 待 Leader 裁 A/B；推荐 B（不扩范围），并把该事实回写 PRD 而非留在聊天记录 |
 | RISK-D10 | 桩插件/夹具结果被误当 dnf-tw 真实版本通过 | 违反 BR-15「三不得」，验收结论失真 | 流程性防线：V-18 记录核对 + 夹具不进 `plugins/` + AC-05/KPI-01/KPI-03 在验收记录里显式写「不可测 + L-02 因」 |
+| **RISK-D12** | **retry-deploy 不是「干净的重放」而是「先拆再建」**（v0.3 新增，REV-7① / PRD RISK-09）：`retryDeploy` 先 `adapter.uninstall(...)`（`InstanceServiceImpl:791-798`），compose 类 `uninstall` = `down` + **`rm -rf <workDir>`**（`DockerComposeAdapter:555-573`、lgsm-docker `:541`） | 读者与验收者会把 BR-14「前序成功步骤改动一律保留」误读成跨 attempt 保留 → AC-21 在 retry 语境下被误判；扩展阶段每次 retry 都全量重跑，幂等前提（BR-06）比首次部署更吃紧 | §14.15 四条结论 + V-28；**`configInfo` 半边核对为安全**（`DEPLOY` 末回写是既有 map 的拷贝再 put，`deployVersion` 不会被冲掉：`DockerComposeAdapter:329`/`:349`）；不加任何「retry 前保留产物」的机制（对抗既有语义） |
+| **RISK-D13** | **`DeployAdapter` 接口面扩大**（v0.3 新增，REV-2）：新增 default 方法 `ensureRunningForExtension` 是本期唯一进入 core 主干公共接口的改动，4 个实现者 + 未来适配器都会看到它 | 中—高：能力位只有两类适配器能用；若被误改成默认返回 `true`、或被 `instanceof` 绕过、或被拿去替代 `start()`，就会把 §14.12 判掉的失效重新引入 | 三层封套：① 声明期支持集合校验 N5（集合外到不了这里）；② 默认实现**抛异常**而非空实现（评审建议的 `AbstractDeployAdapter` 空实现已否决，理由见 §14.13.2）；③ 三条红线入代码注释与 V-27/B-16 判据（不得 `return true`、不得改 `start()`、executor 内不得 `instanceof` 分派）。既有 14 个方法一字不改 + V-10/V-25 守回归 |
+| **RISK-D14** | **同主机互斥带来的新等待面**（v0.3 新增，REV-1）：`installSync` 最多等 600 s 才起补丁；键在内存、单进程有效；多部署线程争同键无排队公平 | 并发多实例同主机部署时，扩展阶段可能长时间排队后失败（今天经任务中心提交是直接 409 拒绝，形态不同）；进程崩溃后重启 `clear()` 释放（与既有一致）；等待叠加 RISK-D04 的 commonPool 长阻塞 | 与等对象同量级取预算（不新增第二个数，§14.14 表）；等满判**该步失败**并指名原因，不静默跳过；锁粒度钉在单次 `execute()`（**红线**：不得提到阶段级，否则 30 min 脚本会把同主机补丁能力拖死）；V-26 四判据；剩余敞口（无公平性）如实登记，本期不引入队列 |
+| **RISK-D15** | **回滚结果的可见性靠日志文本**（v0.3 新增，SUG-7 的诚实限制）：执行器只经 `progress.onLog("已回滚备份"/"回滚失败: …")`（`:215`/`:218`）回报，无结构化信号 | 若想按「回滚成功/失败」做机械判定，必须改 `PatchInstallExecutor` 的回调接口——那与 Leader 就评审 ③ 已裁的「不动 ADR-0006 既有行为」同类，本期不做 | `stepEvent = ROLLBACK` 定为**记录位**（存在性/位置/`level` 可机械判，§14.6 规则 5），**回滚是否成功由 V-05 的文件比对判**，不用文本匹配冒充机械核对；恢复 `container` 或后续增量若允许改执行器，再把该信号结构化（登记为恢复项） |
 | 边界 | 本期结束后，dnf-tw 想跑非默认版本**仍需人工改文件** | 诚实结论（PRD L-02 ③）：本期消除的是「平台没这个能力」，不是「dnf-tw 还要手工干」 | 真实资料填充即生效（BR-15 ④），框架与声明接口都不需要再改 |
 
 ## 13. 待决事项
@@ -435,17 +448,26 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | D-P02 | §14.2（增第 9 行待改依赖）+ §9 状态机表 | 登记新事实：FR-11 停实例与既有 `HEALTH_CHECK`（探测 `.State.Running`）时点相冲，本期由「扩展阶段收尾按依赖顺序起回容器」收口；§9「进入扩展阶段」行补一句「阶段收尾容器恢复运行，故 `HEALTH_CHECK` 语义与时点不变」。**本项不改动决策 1–9，也不触碰 N-06/BR-10** | §14.12、RISK-D01/D11 |
 | D-P03 | §8.3 `timeoutMs` 行、§12「脚本超时」行、§16.2 OP-04 | 缺省 `600000`、合法区间 `[1000, 1800000]`、越界即声明不合法；OP-04 标已关闭 | §15.2 |
 | D-P04 | AC-14 与 §11.1 第五行 | 前提成立 → AC-14 转入第一行（框架类可验收）；RISK-12 关闭 | §14.4 |
-| D-P05 | §8.4.3 禁止清单 + §8.1 校验内容 | 增保留键 `PLATFORM_IMAGE_TAG`；增两条蕴含规则（`imageTag ⇒ 该 deployType 声明该保留变量`；`timeoutMs` 区间） | §14.4、§15.2 |
+| D-P05 | §8.4.3 + §8.1 校验内容 | **v0.3 改写（原建议含一处自相矛盾，见 §14.4.2）**：① §8.4.3 的禁止清单**不增** `PLATFORM_IMAGE_TAG`——它是声明期保留键，会作为 `variables[]` 一项合法出现在提交载荷里，进清单等于把 AC-14 正向路径判 400；改为在 §8.4.3 末尾补一句「`PLATFORM_IMAGE_TAG` 为平台声明期保留键，其提交值不参与判定、由平台在部署配置组装时写入」；② §8.1 校验内容由「增两条蕴含规则」改为**增五条 N1…N5**（判定通道 = `game_metadata` 表快照 / 模板必含 `${PLATFORM_IMAGE_TAG` 字面量 / tag 与默认值格式校验 / `timeoutMs` 区间与 `position` 限 `HOST` / deployType 支持集合），并同步 §14.4.1 的四条 | §14.4、§14.4.1、§14.4.2、§15.2、§14.13.1 |
 | D-P06 | §14.2 增「`level → 视觉映射`」行（Leader 已承诺随 v0.6 回写）+ FR-20/§8.5 | 判据定稿为前端归一化，后端取值集合不变 | §14.9 |
 | D-P07 | AC-22 / §8.4.2 S2 / §12 恢复路径 | 裁 A（新增入口，扩范围）或 B（服务层验收 + 界面端到端记前提未成立）；B 为推荐 | §14.10、RISK-D09 |
 | D-P08 | FR-22 / §5.1 第 3 项 / F-08 / §14.1 | 「通过 ADR-0008 声明接口」→「通过 ADR-0008 声明**体系**」，并把 16.1 的通道不对称登记为事实 | §16.5 |
 | D-P09 | 桩承载与 KPI-02 生效前提 | OP-04 已定稿、呈现契约已登记 ⇒ KPI-02 自此可考核（不再挂「不可测」）；§16.2 OP-04 行改已关闭 | §14.6、§15 |
+| **D-P10** | §12「retry-deploy / 重部署」相关行 + BR-14 + AC-07 + RISK-09 状态 | PRD RISK-09 点名交本设计，现收口：① RISK-09 关闭并写清事实——`retry-deploy` = `uninstall`（compose 类含 `rm -rf workDir`）+ 全量重部署 ⇒ **补丁每次 retry 都重放**；② BR-14 的「前序已成功步骤改动一律保留」**加限定「当次部署 attempt 内」**，防跨 attempt 误读；③ AC-07 预期结果补一句「retry 后仍按同一配方交付同一版本，且不主张前次 attempt 的中间产物」；④ §12 恢复路径行同步该口径 | §14.15、RISK-D12、V-28 |
+| **D-P11** | §11.1 承载表的**并集计数注**与**第五行标题** | D-P01（AC-13 移入第五行）+ D-P04（AC-14 转入第一行）**同时**改变各行条目数与「19+3+2+1+1 = 26」注：应回写为第一行 19（−AC-13 +AC-14 = 19）、第五行 1（AC-13）、合计仍 26——**并须显式重跑并集核对**（§11.1 的闭合规则要求每个 AC 恰一个归属行）；第五行现标题「生效前提未定稿 → 本期不验收」自此同时容纳「前提已判**不成立**」的 AC-13 与「前提**已成立**、应出表」的 AC-14，标题与说明文字须改为按「前提不成立 / 移出本期」口径表述，避免自相矛盾 | §14.5、§14.4、REV-7② |
+| **D-P12** | §8.5 末段「生效前提」约定句 + §11.1 第一行内联标注 + AC-03 / AC-16 的「预期结果」文本 | 契约已于本设计 §14.6 定稿并在 §6.3 登记 ⇒ 上述三处「契约未登记时记不可测」的**条件句式**须改为已 fulfillment 的陈述（否则验收时把**已可测**的条目继续读成「不可测」，方向与本期目标相反）。同批：AC-13 的「本期不验收」结论从条件句改为定稿句 | §6.3、§14.6、REV-7③ |
+| **D-P13** | §5.1.1 验收资产行 + §8.6 三不得 + AC-26 ② | AC-14 的验收载体从「最小桩插件」扩张为**「最小桩插件 + 桩游戏元数据」**（需要一个新 gameCode 的游戏 yml 投放到外置 `./games` 才能验 `imageTag`）：① 把「桩游戏元数据属验收资产、经外置 `./games` 目录投放、验收后回收」写进 §5.1.1 与 §8.6；② **AC-26 ② 的核对物从「发布物 jar 不含桩」扩到「`./games` 下不留桩 yml、发布物 jar 不含桩」**——否则这条扩张本期无判据 | §14.4、组 K、V-18 |
+| **D-P14** | §14.2 待改依赖表（八行 + 本文新增六行） | 逐行按本文 **§14.0.1 状态收口表**回写「已关闭 / 本期不适用 / 已判定 + 证据指向本设计哪一节」，**不得保留「待定调」字样**而不指向证据；现状只有 D-P02 增了第 9 行，没有一行宣布旧八行的状态 ⇒ 下游会按原文把八行继续当开环 | §14.0.1、REV-7 另加项 |
+| **D-P15** | FR-11 / AC-04（前置与预期）+ §14.2 第 9 行（与 D-P02 并批） | 本期 **EXTENSION 支持与收口集合 = {`docker-compose`, `linuxgsm-docker`}**（Leader 裁定按 FR-11 字面）：① FR-11 补一句「集合外 deployType 声明扩展步骤属声明不合法，走 §8.1 → BR-12」；② AC-04 前置把「部署方式仍取 compose 类」明确为「两类各测一次」（V-27），并登记 plain `docker` 的排除理由与成本核对（本设计的改判窗口已用过：该类收口成本高于回写成本）；③ 决策 1–9 不改动——FR-11 原文本就点名这两类 | §14.13.1、REV-3 |
+| **D-P16** | F-06 / F-05 与 §14.2 行 1 的事实口径 | 补一条代码事实：`PatchInstallExecutor` 类头自述「同主机互斥（由任务中心 `scopeKey=hostId` 承担）」（`:35`），类内只有 `globalSemaphore`（`:56`）⇒ **绕开任务中心直调执行器即丢掉每主机互斥**；PRD §14.2 行 1 的「桥接后即继承全部资源约束」表述须收窄为「并发闸/重试在类内继承；每主机互斥由调用方承键」，并登记本期做法（`TaskMutexManager` + 键 `PATCH_INSTALL:<hostId>`）。共享临时路径（`/tmp/patch_install_<ts>`、`/tmp/patch_push/<file>`）实例命名空间属**后续增量建议**（Leader 判本期不授权），交人类 Owner 决定是否另立 Issue | §14.14、BR-09、RISK-D14 |
+| **D-P17** | §8.5 契约的核对对象清单 + FR-15/AC-12 的核对方式 | 契约读者加 **AC-12**（其 `exitCode` 判定现由 §14.6 规则 4 承载）；并在 §8.5 写明「`stdout`/`stderr` 只进 `message`、**不参与任何机械判据**，其可见性核对与 AC-12 的失败判定分离登记」——否则 FR-15 的「输出进日志」会被要求成文本匹配 | §14.6、V-22、REV-6 |
 
-### 13.2 不在本设计权限内、也不阻断实现的三项
+### 13.2 不在本设计权限内、也不阻断实现的三项（v0.3 更新为 Leader 已裁状态）
 
-- `getDeployConfigs()` 通道缺陷（RISK-D07）是否另立 Issue、何时修 → Leader 派 / 人类 Owner；
+- `getDeployConfigs()` 通道缺陷（RISK-D07）是否另立 Issue、何时修 → **Leader 已裁：本期不修，是否另立 Issue 交人类 Owner**（门禁评论 `01a0be9d` 三-3）；本设计已用同一扩展点的 `getDeployVersions` / `getDeployExtensionSteps` 绕开，本期无条目被它阻塞；v0.3 另把该校验的判定通道绑死表快照（§14.4.1 R1），使「换个入口就能骗过校验」不再可达；
 - 「实例详情 → 配置管理」表单该展示什么（OP-07）→ 人类 Owner（Leader 裁定 2 已收口本期下限，本期只落 §14.8 的保键）；
-- `ui-design-spec.md` §3.3「4 步向导」与代码 5 步不一致、`--platform-accent` / `--platform-accent-soft` 无定义 → Leader 已判本期不修，是否另立 Issue 交人类 Owner。**本设计已在原型口径上取 `--platform-cyan`，不新增色值。**
+- `ui-design-spec.md` §3.3「4 步向导」与代码 5 步不一致、`--platform-accent` / `--platform-accent-soft` 无定义 → Leader 已判本期不修，是否另立 Issue 交人类 Owner。**本设计已在原型口径上取 `--platform-cyan`，不新增色值**；
+- **（v0.3 新增两项登记）**① AC-13 移出本期已被 Leader 批准，但属**范围收缩**，须在 G1 记录与交付说明里显式标注、由人类 **G4** 复核（依据文本按 SUG-2 换为 §14.5.1 三条）；② AC-22 的 **A 案**（新增「同实例改选版本重部署」入口）与 §14.14 的**临时路径实例命名空间**（评审 ③）均登记为**后续增量建议**，交人类 Owner 决定是否另立 Issue——本期不实现，也不计入本期完成判据。
 
 ### 13.3 本设计已关闭、不再留开口的三项
 
@@ -470,7 +492,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | @Architect 判定 + 登记 | **给判定**：扩展阶段收尾以既有 `up -d` 形状把容器**按依赖顺序起回**，`HEALTH_CHECK` 的判据、动作、时点一字不改 ⇒ 不触碰 N-06/BR-10，PRD 正文无需改（只建议登记这一事实，D-P02）；顺带修掉 `compose start` 不处理 `depends_on` 的隐蔽失效（RISK-D11）。见 14.12（**v0.3 修正：该结论对三类容器适配器同时成立，调用面与适用范围由 14.13 收口**） |
 | 12 | （ArchReviewer REV-1）BR-09 的每主机互斥**并未被同步入口继承** | @Architect（Leader 裁定取①） | **给**：互斥的真实承担者是任务中心的内存键 `taskType + ":" + scopeKey` = `PATCH_INSTALL:<hostId>`，绕开任务中心即绕开它。本期在 `installSync` 内用**同一个** `TaskMutexManager` 承同一个键（2 s 轮询、600 s 等待预算、`finally` 释放、锁粒度 = 单次 `execute()`），既补回 BR-09 又不引入任务中心、不改部署主流程（不违反 D-N05）。临时路径实例命名空间（③）本期不授权，登记为后续增量。见 14.14 |
 | 13 | （ArchReviewer REV-2 + REV-3）收尾动作**没有可调用的面**，且「停实例 → 必挂」是**三类**容器适配器共同的问题 | @Architect（Leader 裁定按 FR-11 字面收口） | **给**：① `DeployAdapter` 新增**一个 default 方法** `ensureRunningForExtension(instanceId, config)`（与既有 `stopServer` 同形），compose / linuxgsm-docker 各覆写，其余适配器继承「抛异常」默认值 ⇒ 三个适配器不再整体不进改动清单（§4 负向清单同步）；② 本期 **EXTENSION 支持集合 = {`docker-compose`, `linuxgsm-docker`}**，集合外（含 plain `docker`）带步骤或 `imageTag` 的声明**即不合法**，走 §8.1 → BR-12；③ **逐类**给出「起回」命令形状与就绪判定（两类的命令与判据都不同）。见 14.13 |
-| 14 | （ArchReviewer REV-7①）PRD 点名交 @Architect 的 **RISK-09**（retry-deploy 先 `adapter.uninstall`）| @Architect | **给**：`retryDeploy` 确实先 `uninstall`，而 compose 类的 `uninstall` = `down` + **`rm -rf <workDir>`** ⇒ retry = 干净重跑，**补丁必然全量重放**；故 BR-14 的「前序已成功步骤改动保留」**只在当次部署内成立，不跨 attempt**（v0.3 写死，防误读）。`configInfo` 那半边核对为**安全**（`DEPLOY` 末回写是既有值的拷贝再 put，`deployVersion` 不会被冲掉）。见 14.16 |
+| 14 | （ArchReviewer REV-7①）PRD 点名交 @Architect 的 **RISK-09**（retry-deploy 先 `adapter.uninstall`）| @Architect | **给**：`retryDeploy` 确实先 `uninstall`，而 compose 类的 `uninstall` = `down` + **`rm -rf <workDir>`** ⇒ retry = 干净重跑，**补丁必然全量重放**；故 BR-14 的「前序已成功步骤改动保留」**只在当次部署内成立，不跨 attempt**（v0.3 写死，防误读）。`configInfo` 那半边核对为**安全**（`DEPLOY` 末回写是既有值的拷贝再 put，`deployVersion` 不会被冲掉）。见 §14.15 |
 
 ### 14.0.1 逐行状态收口（v0.3 新增，供 PRD §14.2 与下游按此读，不再把已判定项当开环）
 
@@ -491,7 +513,7 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 11 | 停实例与 `HEALTH_CHECK` 时点冲突（本文新发现，阻断级）| **已关闭**（扩展阶段收尾起回容器；v0.3 补齐调用面与适用范围） | §14.12、§14.13 | D-P02、D-P15 |
 | 12 | BR-09 每主机互斥未被同步入口继承（ArchReviewer REV-1） | **已关闭**（同步入口自行承 `PATCH_INSTALL:<hostId>` 键，与任务中心互斥同源） | §14.14、V-26 | D-P16（事实修正）、RISK-D14 |
 | 13 | 收尾动作缺可调用面 + 适用范围未钉（ArchReviewer REV-2/REV-3） | **已关闭**（`DeployAdapter` 一个 default 方法 + 两类逐形状收口；支持集合 = compose 两类，集合外声明不合法） | §14.13、V-27 | D-P15 |
-| 14 | RISK-09 retry-deploy 与扩展阶段的先后关系（PRD 点名交 @Architect） | **已关闭**（retry-deploy = `uninstall`（含 `rm -rf workDir`）+ 全量重部署 ⇒ 补丁必然重放；`configInfo` 半边核对为安全） | §14.16、RISK-D12、V-28 | D-P10 |
+| 14 | RISK-09 retry-deploy 与扩展阶段的先后关系（PRD 点名交 @Architect） | **已关闭**（retry-deploy = `uninstall`（含 `rm -rf workDir`）+ 全量重部署 ⇒ 补丁必然重放；`configInfo` 半边核对为安全） | §14.15、RISK-D12、V-28 | D-P10 |
 
 ### 14.1 行 1：异步 → 阻塞桥接（RISK-03）
 
