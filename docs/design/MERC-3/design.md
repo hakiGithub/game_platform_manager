@@ -427,8 +427,8 @@ HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与�
 | 3 | 容器内脚本执行通道（exitCode / timeoutMs） | @Architect / @BackendDev（F-16） | **本期不改**：行 5 判 `position = container` 不合法 ⇒ 容器脚本通道本期零使用方，F-16 的两个缺口不再阻塞任何条目；登记为「`container` 恢复时的前置」 |
 | 4 | **硬判定①** `imageTag` 落位机制 | @Architect | **给得出 ⇒ AC-14 转可验收**。机制 = 保留变量 `PLATFORM_IMAGE_TAG` 经既有 `.env` 生成链注入（compose 原生插值，不新增渲染器），注入点 = `buildDeployConfig` 而非扩展阶段（时点决定，见 14.4）。dnf-tw 本体不受惠（不改 `dnf_tw.yml`），由桩游戏外置元数据承载验收 |
 | 5 | **硬判定②** 停实例 + `position = container` 合法性 | @Architect | **判不合法 ⇒ AC-13 移出本期**（自 §11.1 第一行转入第五行），`position` 本期取值只有 `host`，决策 7 的「容器内为步骤级可选项」随之收缩；属需求范围收缩，须回写 PRD（FR-08 / FR-11 / §8.3 / §12 / AC-13 / RISK-05）并记修订记录 |
-| 6 | **硬判定③** §8.5 日志呈现契约三项 | @Architect | **定稿并登记**：① 步骤标识 = `LogEntryVO` 新增结构化字段 `stepId`（归组主键）+ `stepIndex`/`stepTotal`/`stepLabel`/`stepType`/`stepEvent`；② 耗时 = 同 VO 的 `elapsedMs`，单位毫秒（界面渲染文本不是核对对象）；③ 归组 = 同 `stepId` 归一步，「齐备」＝恰一 `START` + 恰一终态行且终态行 `elapsedMs != null`。KPI-02 / AC-03 / AC-16 自此脱离「不可测」 |
-| 7 | 扩展阶段进度百分比区间 | @Architect | **条件分配**：无扩展步骤的部署**一个数字都不动**（BR-11 / AC-15 零风险）；有步骤时扩展阶段占 `[80, 84]`，`HEALTH_CHECK` 进入行的字面量在该分支内由 80 改报 85，`COMPLETE = 100` 与其余阶段不变 |
+| 6 | **硬判定③** §8.5 日志呈现契约三项 | @Architect | **定稿并登记**：① 步骤标识 = `LogEntryVO` 新增结构化字段 `stepId`（归组主键）+ `stepIndex`/`stepTotal`/`stepLabel`/`stepType`/`stepEvent`；② 耗时 = 同 VO 的 `elapsedMs`，单位毫秒（界面渲染文本不是核对对象）；③ 归组 = 同 `stepId` 归一步，「齐备」＝恰一 `START` + 恰一终态行且终态行 `elapsedMs != null`。**（v0.3 补齐两处契约缺口**：新增第六字段 `exitCode`（FR-15 的退出码有承载位了）、规则 4（`exitCode ≠ 0` ⇔ `FAILURE`）与规则 5（`ROLLBACK` 行的机械判据），并把 `stdout`/`stderr` 显式排除出机械判据、只作可见性核对——见 §14.6 的「承载位分工」表） |
+| 7 | 扩展阶段进度百分比区间 | @Architect | **条件分配**：无扩展步骤的部署**一个数字都不动**（BR-11 / AC-15 零风险）；有步骤时扩展阶段占 `[80, 84]`，该分支内 `HEALTH_CHECK` 的**顶层 `progress` 值**由 80 改报 85（v0.3 订正：不是「进入行」，见 §14.7），`COMPLETE = 100` 与其余阶段不变 |
 | 8 | `configInfo` 覆盖式写入丢键 → BR-16 手段 | @Architect 定手段 / @BackendDev 落地 | **取「合并式写入」**：`updateInstance` 的整表替换改为「取库中既有值 → 逐键合并 → 本次载荷覆盖」。不需要任何「拒绝写入」分支即满足 AC-27 (a)(b)(c)(d)，配置管理入口照常成功 |
 | 9 | （S1b 门禁新增）`level → 视觉映射` 失效 | @Architect | **给**：前端归一化（`DeployProgress.vue:88-109` 先 `toLowerCase()` + 补 `warn → warning` 别名 + 补 `success` 分支）。后端 `level` 取值集合是 PRD §8.5 已固定口径，不改后端 |
 | 10 | （本设计新发现）AC-22 / §8.4.2 S2 的界面前提不成立 | 交 Leader 裁定 | **登记**：部署向导只创建新实例，既有实例的重部署入口不接受版本改选 ⇒ 「在向导改选默认版本并重新部署 → 删键」这条路径今天不存在。给出 A/B 两方案与推荐（B），见 14.10 |
@@ -503,7 +503,7 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 
 ### 14.4 行 4（硬判定①）：`imageTag` 落位机制 ⇒ 给出，AC-14 转可验收
 
-**为什么不能落在扩展阶段**：compose 模板驱动模式下 `DockerComposeAdapter` 把 `composeTemplate` **原文上传**（`:151-159`，无任何字符串替换），tag 的可选性只能靠 compose 自身的 `.env` 插值；而 `.env` 在 `PRE_DEPLOY` 就生成并上传（`:183-197`），容器在 `DEPLOY` 就起来了。扩展阶段在 `DEPLOY` 之后（决策 3）——在它里面改 tag 已经来不及，除非重跑 `DEPLOY`，那违反决策 3 与 BR-10。**所以注入点必须落在部署配置组装期。**
+**为什么不能落在扩展阶段**：compose 模板驱动模式下 `DockerComposeAdapter` 把 `composeTemplate` 上传前只做**结构性**后处理（`ensureVolumesDeclaration` / `injectHostCertsMount`，`:1216-1219`），**不含任何 tag / 变量类字符串替换**（v0.3 按 SUG-3① 订正：原写「原文上传、无任何字符串替换」过强——两处后处理确实存在，但它们不碰 `image:` 与 `${}`，tag 的可选性仍只能靠 compose 自身的 `.env` 插值）；而 `.env` 在 `PRE_DEPLOY` 就生成并上传（`:183-197`），容器在 `DEPLOY` 就起来了。扩展阶段在 `DEPLOY` 之后（决策 3）——在它里面改 tag 已经来不及，除非重跑 `DEPLOY`，那违反决策 3 与 BR-10。**所以注入点必须落在部署配置组装期。**
 
 **机制（全部复用既有链路，不新增渲染器）**：
 
@@ -511,14 +511,50 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 | --- | --- |
 | 游戏元数据侧 | 想让 tag 可变的 deployType，模板里写 `image: <repo>:${PLATFORM_IMAGE_TAG:-<默认 tag>}`（compose 原生 `${VAR:-default}` 语法），并在该 deployType 的 `variables[]` 声明一项 `name = PLATFORM_IMAGE_TAG`、`hidden = true`、`defaultValue = <默认 tag>` |
 | 为什么这样就够 | `generateEnvFileContent`（`:1397-1435`）本就遍历 `variables[].name` → 取 `config.get(name)` → 落 `.env`。只要 `config` 里出现同名键，tag 就走完整既有链路进 `.env`、被 compose 插值，**core 的渲染代码一行不改** |
-| 框架侧唯一新增 | `InstanceServiceImpl.buildDeployConfig`（`:687-759`）第 5 步之后插入第 5.5 步：若 `configInfo.deployVersion` 命中版本目录条目、该条目声明 `imageTag`、且该 deployType 的 `variables[]` 含保留键 `PLATFORM_IMAGE_TAG` ⇒ `config.put("PLATFORM_IMAGE_TAG", imageTag)`。三条件任一不满足即完全不写 |
+| 框架侧唯一新增 | `InstanceServiceImpl.buildDeployConfig`（`:687-759`）第 5 步之后插入第 5.5 步。**门控条件从「三条件齐才写」改为两级（v0.3，SUG-4）**：① 该 deployType 的表侧 `variables[]` **未声明** `PLATFORM_IMAGE_TAG` ⇒ 完全不写（未声明该变量的游戏 `.env` 与模板逐字节不变）；② 声明了 ⇒ **该键的值一律由平台写**：命中目录条目且条目带 `imageTag` → 写条目值；否则 → 写该 `variables[]` 项声明的 `defaultValue`。⇒ 用户 / 通用写接口提交的该键值**永不进 `.env`**（`deploy.vue:246-250` 会把含 hidden 的全部变量回填进 `configInfo`、`:713` 平铺展开，所以「不写」并不等于「用默认值」，而是等于「采信提交值」——这一条在 v0.2 是漏的） |
 | 与第 6 步 `image`+`tag` 拼接的关系 | 无关系。那条只对 `services[].image` 结构化生成模式（`generateComposeFile`，`:905-935`）生效，模板驱动模式不经过它。本机制不借用它，以免把两种 deployType 的镜像语义搅在一起 |
 | AC-14 的机械核对物 | ① 远端 `docker-compose.yml` 原文与未声明时逐字节相同；② `.env` 中 `PLATFORM_IMAGE_TAG=` 精确等于声明值；③ 该工作目录 `docker compose config` 渲染出的 `.services.<serviceName>.image` = `<repo>:<声明 tag>`。三项齐备即通过，不以文本比对冒充 |
 | dnf-tw 是否受益 | **不受益**：本期不改 `dnf_tw.yml`（D-N15 / BR-02 / AC-02 / AC-15），其模板无占位符，故 dnf-tw 的 `imageTag` 恒不使用（FR-09 已如此规定）。机制由桩游戏承载验收：其元数据经既有外置目录 `game-platform.metadata.external-dir`（默认 `./games`）投放，不改 core resources、不进产品 jar（AC-26 ②） |
 
 **回答 S1b 门禁转来第 2 项（只声明 `imageTag`、无 patches/scripts 的条目是否展示）**：**不隐藏、不加标注，而是判为声明不合法**。若条目声明 `imageTag` 而该 deployType 未声明保留键 `PLATFORM_IMAGE_TAG`，该 tag 必然静默无效——正是 Designer 担心的「看上去可选、实际什么都不做」。按 §8.1 校验内容扩展一条蕴含规则（「`imageTag` 存在 ⇒ 该 deployType 的 `variables[]` 必含 `PLATFORM_IMAGE_TAG`」），走 §8.1 既有处置（无键 → 默认版本 + 一条说明行；有键 → BR-12 拦截）。失败在声明读取期暴露，不在执行期静默吞掉。
 
-**须回写 PRD（交 Leader，随 v0.6）**：§8.4.3 禁止清单增加保留键 `PLATFORM_IMAGE_TAG`（它与 `variables[].name` 同处一个扁平 map，属 BR-07 同类撞键对象）；§8.1 校验内容增加上述蕴含规则。
+**须回写 PRD（交 Leader，随 v0.6）**：§8.1 校验内容增加 14.4.1 的四条规则；§8.4.3 的口径按 14.4.2 **改写**（不是「往禁止清单里加一个键」——v0.2 那条建议会把 AC-14 自己的正向路径判成提交失败）。
+
+#### 14.4.1 `imageTag` 判定通道的绑定（v0.3 新增，回应 REV-5）
+
+v0.2 的蕴含规则「`imageTag` ⇒ 该 deployType 的 `variables[]` 必含 `PLATFORM_IMAGE_TAG`」**没有说这个 `variables[]` 从哪读**，而 §16.1 已经证明有两条通道且它们不对称。整条运行链**全在 `game_metadata` 表这一侧**（上传的 `composeTemplate` 取自表、`generateEnvFileContent` 读的 `config["variables"]` 也取自表），所以规则不绑定通道就会在最需要它的场景放行。定死为四条：
+
+| # | 规则 | 依据 / 后果 |
+| --- | --- | --- |
+| R1 | **唯一判定通道 = `game_metadata` 表快照**（内置 `games/*.yml` + 外置 `./games` 扫描落库的结果）。`DeployVersionCatalogService` 读 `variables[]` / `composeTemplate` 必须与 `buildDeployConfig`（`InstanceServiceImpl:690-699` 的 `gameMetadataMapper.selectById(...).getDeployConfig().get(deployType)`）**同一读法、同一个 map 实例**；**禁止**经 `GameServiceImpl` 的合并视图（`:195-201`）判定 | 否则插件用 `getDeployConfigs()` 整节替换声明出的 `variables` / `composeTemplate` 会**通过校验而部署侧完全看不见**——tag 静默无效，正是本规则声称要防的「看上去可选、实际什么都不做」，与 §14.4 自立的判据同构 |
+| R2 | 经 `getDeployConfigs()` 声明的 `variables[]` / `composeTemplate` **不参与 `imageTag` 机制**，其状态与 RISK-D07 属同一缺陷（合并只作用于 VO，不作用于部署配置），本期不修、不测 | 把「不生效」写成显式结论，避免下游以为换个声明入口就能用 |
+| R3 | **表侧该 deployType 的 `composeTemplate` 必须含字面量 `${PLATFORM_IMAGE_TAG`**，否则声明 `imageTag` 即不合法 | 注入后无消费者 = 静默无效。取字面量前缀匹配，**不认** `$PLATFORM_IMAGE_TAG` 简写（与 `${VAR:-default}` 的既有推荐写法一致，简化校验且避免与 shell 变量歧义）。这是 R1 之外唯一能证明「注入有人接」的静态证据 |
+| R4 | `imageTag` 与「该保留变量的 `defaultValue`」的取值都要过**格式校验**：非空、匹配 `[A-Za-z0-9][A-Za-z0-9._@/-]{0,127}`、**禁空白 / 换行 / `${` / `}`**（compose tag 合法字符集） | `generateEnvFileContent` 对值不做转义与换行过滤 ⇒ 未校验的值可以直接改写 `.env` 结构（注入面的具体形状）。平台是单管理员信任模型，所以这定性为**输入校验缺失**而非漏洞，但必须补：`.env` 一行写坏会让整个 compose 项目起不来，属可用性问题 |
+
+#### 14.4.2 `PLATFORM_IMAGE_TAG` 与 BR-07 撞键清单的关系（v0.3 新增，修一处 v0.2 的自相矛盾）
+
+v0.2 §5.2 建议「把 `PLATFORM_IMAGE_TAG` 列入 §8.4.3 禁止清单」，而 PRD §8.4.3 的原文语义是「**`deployVersion` 不得与以下键同名**」（① `variables[].name` 任一取值 ② 三系统键 ③ `gameVersion`）。按 v0.2 的字面落法会得到两个错误结果：
+
+| 若照 v0.2 字面实现 | 后果 |
+| --- | --- |
+| 把 `PLATFORM_IMAGE_TAG` 当「提交载荷不得出现的键」 | **AC-14 的正向路径自己被判 400**：任何声明了该保留变量的游戏，向导提交时都会带上它（`deploy.vue:713`），于是「用 `imageTag` 部署」这条主路径在提交期即失败 |
+| 只按原文语义做「`deployVersion` 名字冲突」检查 | 加与不加都是空操作（两个键名永不相等），等于没写 |
+
+**定稿口径（两条，分开）**：
+
+1. **`deployVersion` 的撞键清单保持 PRD 原三项**（`variables[].name` ∪ `database`/`containerWorkDir`/`serviceName` ∪ `gameVersion`），`PLATFORM_IMAGE_TAG` **不进该清单**；
+2. `PLATFORM_IMAGE_TAG` 是**声明期保留键**，其约束全部落在 R1/R3/R4（声明侧）+ 14.4 表的②（提交值不采信）——**用户提交的该键值不参与任何判定，且在 5.5 步被平台值覆盖**。因此 §8.4.3 需要回写的不是「加一个禁止键」，而是「补一句：该键为平台保留、提交值不采信」（D-P05 v0.3 改写项）。
+
+#### 14.4.3 注入点的副作用登记（v0.3 新增，回应 SUG-5）
+
+第 5.5 步在 `buildDeployConfig` 内，意味着**目录读取 + SPI 调用 + §8.1 全量校验**被引入 `buildDeployConfig` 的全部 10 个调用点（含 `updateInstance:183`、start/stop/restart/文件/备份路径与 retry-deploy）。功能上安全（`ABSENT` 有快路径、插件抛异常归 `ABSENT` 不外泄），但「每次读文件列表 + 每次调 SPI」不是零成本。处置：
+
+| 项 | 判定 |
+| --- | --- |
+| 收敛条件 | **仅当 `configInfo` 含 `deployVersion` 键时才读目录并注入**（无键 → 走 R2 的默认值分支需要 `variables[]`，而 `variables[]` 本就在 `buildDeployConfig` 第 5 步读出的同一 map 里，不额外读盘）⇒ 绝大多数（本期全部）游戏与全部非版本路径**零新增 IO、零 SPI 调用** |
+| 不引入缓存 | 本期不加目录缓存：缓存会把「热部署即生效」（§16.2）变成「过一会儿才生效」，属新语义；无键即不读之后，读盘只发生在真正用版本的部署上，量级为个位数 |
+| 与 RISK-D07 的关系 | 该收敛同时把 RISK-D07 的扩散面从「所有配置组装」缩到「带版本键的部署」 |
+
 
 ### 14.5 行 5（硬判定②）：停实例 + `position = container` ⇒ 判不合法，AC-13 移出本期
 
@@ -526,7 +562,7 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 
 1. compose 类「停实例」= `docker compose -p … stop`（`DockerComposeAdapter.java:383-399`，超时 `120000`），**容器停止但保留**（不是 `down`）——容器定义仍在、卷与项目名不变，故 RISK-05 关于「`stop` 与 `down` 数据/网络后果不同」的担忧在选定语义下不成立；
 2. `docker exec` / `compose exec` 的前置条件是容器 running，对已停止容器必然失败（F-16；`DockerComposeAdapter.executeCommand` 无任何拉起动作）；
-3. 唯二绕开方式是「扩展阶段先把容器起起来、执行完再停」或「`docker run --rm` 起临时容器挂同样的卷」——前者直接制造决策 3 明确否掉的「先起错版本再重启」中间态；后者执行对象已不是目标容器，且要重新推导全部挂载与网络，属新造执行模型，超出本期范围。
+3. 绕开方式共三条，全部否决（**v0.3 按 SUG-2 换成经得起复核的依据，并把评审点名的第三条路显式登记**，见 14.5.1）：① 扩展阶段先把容器起起来、执行完再停；② `docker run --rm` 起临时容器挂同样的卷；③ `docker compose run --rm <service>`。①直接制造决策 3 明确否掉的「先起错版本再重启」中间态；②③的执行对象都已不是目标容器，属新造执行模型，超出本期范围。
 
 ⇒ **`position = container` 与 FR-11「进入扩展阶段前实例停止」互斥，本期只交付 `position = host`。**
 
@@ -545,16 +581,26 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 | 项 | 定义 |
 | --- | --- |
 | 前置动作 | 扩展阶段进入行之后、任何步骤之前执行；**无扩展步骤则整个阶段（含停实例）不执行**，既有部署一个数字都不动 |
-| 停止判定 | 调适配器停止后以 `DeployAdapter.getStatus(instanceId)` 轮询（3 次 × 2s）判定非 RUNNING；成立才算停止完成 |
+| 停止判定 | 调适配器停止后以 `DeployAdapter.getStatus(instanceId, config)` 轮询（3 次 × 2s）判定非 RUNNING；成立才算停止完成（v0.3 按 SUG-3② 订正签名：`DeployAdapter:226` 是双参） |
 | 不复用 `DeployService.stop()` | 现有 `stop`（`:418-430`）会把 `run_status` 回写 STOPPED，而 PRD §9 要求扩展阶段期间仍为 `INSTALLING(5)`。故新增私有 `ensureStoppedForExtension()`：只调适配器、不写状态 |
 | **停实例失败处置** | **致命**：记 ui-spec 状态 S 的失败行（`实例停止失败：…`，`level = ERROR`），部署判失败、实例 `ERROR`、不执行任何步骤、不进入 `HEALTH_CHECK` / `START`。理由：在未确认停止的实例上替换文件正是决策 3 要消除的中间态。ui-spec 的「预留文案，生效前提是 @Architect 定调」自此生效 |
-| 后续启动与 `HEALTH_CHECK` | 步骤全部判定完成后，扩展阶段收尾以既有 `up -d` 形状把容器按依赖顺序起回（§14.12），之后进入既有 `HEALTH_CHECK → UPDATE_STATUS → START`，三者的判据与时点一字不改 |
+| 后续启动与 `HEALTH_CHECK` | 步骤全部判定完成后，扩展阶段收尾以既有 `up -d` 形状把容器按依赖顺序起回（§14.12 判定 + §14.13.3 逐类形状与调用面），之后进入既有 `HEALTH_CHECK → UPDATE_STATUS → START`，三者的判据与时点一字不改 |
+
+#### 14.5.1 三条绕法逐条否决（v0.3 新增，回应 SUG-2；AC-13 移出须经人类 G4，依据文本必须经得起核）
+
+| 绕法 | 命令形状 | 否决依据（逐条独立成立） |
+| --- | --- | --- |
+| ① 起→执行→再起停 | 扩展阶段内先 `up -d`，执行完再 `stop` | 直接制造决策 3 明确否掉的「先起错版本再重启」中间态；且 `HEALTH_CHECK` 会探测到那个错版本容器（§14.12 同构失效） |
+| ② 临时容器 + 手工挂卷 | `docker run --rm -v <同样的卷> … <image> <cmd>` | (a) 执行对象不是目标容器，「在实例的运行环境里执行」这一产品语义不成立；(b) **镜像内文件层的改动随 `--rm` 丢弃**——补丁若落在非卷路径（dnf-tw 这类镜像的二进制常年在镜像层里）即**静默无效**；(c) 挂载 / 网络 / 环境变量全套需从 compose 服务定义重新推导，而 `getProjectName`/`getWorkDir` 都是适配器 private（compose `:1101`/`:1113`），要推导就得改适配器或复制一份 compose 解析器 ⇒ 新造执行模型 |
+| ③ **`compose run`**（评审指出的第三条路，v0.2 未处理） | `docker compose -p <project> run --rm --no-deps <service> <cmd>` | v0.2 依据 3 的后半句「要重新推导全部挂载与网络」**对本条不成立**——compose 会自行解析服务定义，这正是它比 ② 近一步的地方，故本条必须换依据。换后三条各自独立成立：(a) **执行对象是兄弟容器而非目标容器**：`run` 新建一个一次性容器，补丁落它身上即与目标容器无关；(b) 同样吃 **(b) 镜像内文件层改动随 `--rm` 丢弃**，非卷路径静默无效；(c) **必须带 `--no-deps`**（此刻依赖服务已被 `compose stop` 停下，`run` 默认会连带把依赖再拉起一遍，破坏 FR-11 的停止语义），而带 `--no-deps` 后依赖不再保证就绪 ⇒ 要么违背「停实例」前提，要么在依赖缺失的环境里跑脚本。**结论不变（判不合法），但依据换成本表三条** |
+| 三条共同的第四层理由 | — | 即便某条技术上通了，它引入的是「三种容器执行模型」中的第三种，而本期 `position = host` 已能完整交付 dnf-tw 的全部需求（版本 = 补丁包 + 脚本产出，落位路径由声明给出）。为「界面取值多一个」付「执行模型翻倍」的代价，属 §8.1「不引入 PRD 未要求的闸门/能力」的反向情形 |
+| 与 AC-13 移出的关系 | — | 本表是 AC-13 移出本期（D-P01）在人类 G4 复核时的依据文本；ADR-0029 决策 7 的「保留步骤级出口」作为后续增量仍成立，恢复前置三项见 §14.5 末表 |
 
 ### 14.6 行 6（硬判定③）：日志呈现契约三项 ⇒ 定稿
 
 PRD F-03 的限制是真的：`LogEntryVO{id,level,message,stage,time}`（`DeployService.java:62-71`，映射在 `InstanceController.java:876-897`）既无步骤标识也无耗时字段。§8.5 允许「复用 message 固定前缀 / **扩展 VO 字段** / 其它」三选一——**取扩展 VO 字段**：`message` 前缀方案的归组判据是文本，而 KPI-02 要求「机械判定、不得靠人工文本判读」，用文本当锚点等于把 AC-03 / AC-16 / KPI-02 的核对建立在另一个文本约定上（UI 评审 MF-2 踩的正是这类软锚点）。
 
-`LogEntry` / `LogEntryVO` 新增五个可选字段（既有阶段全部传 `null`，前端不读即零行为变化，AC-15 安全）：
+`LogEntry` / `LogEntryVO` 新增六个可选字段（既有阶段全部传 `null`，前端不读即零行为变化，AC-15 安全）：
 
 | 字段 | 类型 | 契约项 | 约定 |
 | --- | --- | --- | --- |
@@ -564,14 +610,29 @@ PRD F-03 的限制是真的：`LogEntryVO{id,level,message,stage,time}`（`Deplo
 | `stepLabel` / `stepType` | String | ① 步骤标识（展示位） | `stepType ∈ PATCH / SCRIPT`；`stepLabel` 取声明侧 `label` |
 | `stepEvent` | String | ③ 归组判据 | `START` / `SUCCESS` / `FAILURE` / `ROLLBACK` / `NOTE` |
 | `elapsedMs` | Long | ② 耗时承载位与单位 | 毫秒整数（权威值）；仅 `SUCCESS` / `FAILURE` 与阶段完成行非空 |
+| `exitCode` | Integer | ②′ **脚本退出码承载位**（v0.3 新增，回应 REV-6 的契约缺口） | 仅 `SCRIPT` 步骤的终态行（`SUCCESS` / `FAILURE`）非空；`PATCH` 步骤与阶段级行恒为 `null`（执行器不回报退出码，不为此改 `PatchInstallExecutor`）。FR-15 的「`exitCode ≠ 0` 判失败」自此有字段可判，不必落到 `message` 文本 |
 
-**三条规则，逐条可核对**：
+**承载位分工（写死，防止「日志里有」被读成「可核对」）**：
+
+| 内容 | 承载位 | 是否机械判据 |
+| --- | --- | --- |
+| 步骤归组 / 齐备 / 串行 | `stepId`、`stepEvent`、`elapsedMs` | **是**（规则 1–3） |
+| 脚本退出码 | `exitCode` | **是**（规则 4） |
+| 补丁回滚结果的**存在性** | `stepEvent = ROLLBACK` 行的存在与位置 | **是**（规则 5） |
+| 回滚**是否成功** | `message` 文本（转写执行器 `已回滚备份` / `回滚失败: …`，`:215`/`:218`） | **否**——AC-09 的判据是**目标路径文件比对**（V-05），不是这行文本 |
+| `stdout` / `stderr` | 仅进 `message`（`stepEvent = NOTE` 行，§8.3 截断规则） | **否**——可见性核对单独登记（V-22 的第二个判据块），与 AC-12 的失败判定分离，不用文本匹配冒充机械核对 |
+
+**五条规则，逐条可核对**：
 
 1. **归组**：`stepId` 相同的所有行属于同一步骤；一次部署内 `stepId` 与 `stepIndex` 一一对应。
 2. **「三项齐备」判据**：某步骤齐备 ⇔ 该 `stepId` 下恰有一个 `stepEvent = START` 行 + 恰有一个终态行（`SUCCESS` 或 `FAILURE`），且该终态行 `elapsedMs != null`。KPI-02 分子 = 满足此式的步骤数，分母 = `stepId` 去重计数——纯字段判定，不读 `message`。
 3. **串行可见**：步骤 N 的终态行之后才允许出现步骤 N+1 的 `START` 行（AC-06 判据，等价于 FR-12 的阻塞语义）。
+4. **退出码判定**（v0.3）：`SCRIPT` 步骤终态行 `stepEvent == FAILURE` **⇔** 该步 `exitCode != 0`（或超时——超时时 `exitCode` 为 `null` 且原因段指名超时，二者可靠区分）。AC-12 的「`exitCode ≠ 0` 判失败」按本条核对。
+5. **回滚记录位**（v0.3，回应 SUG-7）：`stepEvent = ROLLBACK` 行的机械判据 = 「某 `PATCH` 步骤终态为 `FAILURE` ⇒ 该 `stepId` 下、该终态行之后、下一步骤 `START` 之前**恰有一行** `ROLLBACK`」。该行是**回滚窗口的记录位**，其语义与 `level`：执行器回报 `已回滚备份` → `level = INFO`；回报 `回滚失败: …` → `level = ERROR`（PRD §12「补丁目标回滚失败」行自此在部署日志里有落点）；失败发生在备份之前（无可回滚）→ 仍写该行，`level = INFO`、`message` 记「无备份可回滚」。**回滚是否真的成功不由本行判定**（见上表），由 V-05 的文件比对判定——这是刻意的：要拿到一个「回滚结果」的结构化信号必须改 `PatchInstallExecutor` 的回调接口，而 Leader 已就同类改动（③ 临时路径命名空间）裁定「不动 ADR-0006 既有行为」。**不采纳**评审建议中「按回滚结果决定是否产该行」的形态，理由即此。
 
-`message` 文本仍是给人读的：词面由 ui-spec §6.2 定稿（例 `步骤 1/3 〈标签〉 · 补丁替换 · 成功 · 耗时 12秒`），耗时**渲染**沿用既有 `formattedElapsedTime`（`DeployProgress.vue:72-85`：`N秒`/`N分N秒`/`N小时N分`，不引入裸 ms）。**渲染文本不是核对对象，`elapsedMs` 才是**——这条分工写死，避免界面词面改动连带破坏 KPI-02。
+`message` 文本仍是给人读的：词面由 ui-spec §6.2 定稿（例 `步骤 1/3 〈标签〉 · 补丁替换 · 成功 · 耗时 12秒`）。**渲染文本不是核对对象，`elapsedMs` / `exitCode` 才是**——这条分工写死，避免界面词面改动连带破坏 KPI-02。
+
+**耗时单位口径（v0.3，回应 SUG-6）**：`elapsedMs` 是毫秒权威值，`DeployProgress.vue:71-85` 的 `formattedElapsedTime` 是**读 `elapsedTime` 的 computed**（不可复用），故 F-03 的实现形状 = 先把它参数化为 `formatElapsed(seconds)` 纯函数，再补 ms→s 的换算口径：**`Math.max(1, Math.round(ms / 1000))` 秒**——既有公式下 `<1000ms` 会渲染成「0秒」，与 AC-03「耗时可见」的观感冲突（快速步骤显示 0 秒等于没显示）。换算只发生在渲染层，VO 与核对脚本永不出现秒值。
 
 `level` 口径不变（§8.5：致命 `ERROR`、非致命 `WARN`、成功 `SUCCESS`、过程 `INFO`），后端取值集合保持大写不变，改动落在前端（14.9）。
 
@@ -584,7 +645,7 @@ PRD F-03 的限制是真的：`LogEntryVO{id,level,message,stage,time}`（`Deplo
 | 分支 | 分配 | 理由 |
 | --- | --- | --- |
 | 无扩展步骤（本期绝大多数游戏） | 完全沿用现有序列，不改任何字面量 | BR-11 / AC-15 / G-04 的回归基线对象就是这批游戏；任何全局重排都会改掉既有 `DEPLOY` band 的插值结果，直接违反 AC-15 |
-| 有扩展步骤 | 扩展阶段占 `[80, 84]`：进入行报 80，其后按已完成步骤数 `80 + floor(4 × i / total)`，上限 84；`HEALTH_CHECK` 进入行的字面量在该分支内由 80 改报 85 | ① 不与任何既有阶段共用窗口（§6.2 约束）：`DEPLOY` 仍 `[40,80]`，扩展只吃 80–84，`HEALTH_CHECK` 仍收在 90；② `COMPLETE = 100` 与 `START`/`UPDATE_STATUS` 一字不改（BR-10）；③ 单调不减：80 → 80..84 → 85 → 90 → 95 → 98 → 100；④ 全部改动只有「有步骤时 HEALTH_CHECK 起点」一个数字 |
+| 有扩展步骤 | 扩展阶段占 `[80, 84]`：阶段起点报 80，其后按已完成步骤数 `80 + floor(4 × i / total)`，上限 84；`HEALTH_CHECK` 的**顶层 `progress` 值**在该分支内由 80 改报 85（v0.3 按 SUG-3③ 订正核对对象：`updateTaskStatus`（`:844-851`）只写 `DeployTaskStatus` 的 stage/progress/message，**不产生日志行**——产日志的是 `notifyProgress` / `notifyStage*` 路径。所以「进入行」这个说法在 V-10 与 §14.7 都不成立，统一改述为「顶层 `progress` 值」，V-10 的采样对象 = `deploy-progress` 接口的轮询样本） | ① 不与任何既有阶段共用窗口（§6.2 约束）：`DEPLOY` 仍 `[40,80]`，扩展只吃 80–84，`HEALTH_CHECK` 仍收在 90；② `COMPLETE = 100` 与 `START`/`UPDATE_STATUS` 一字不改（BR-10）；③ 单调不减：80 → 80..84 → 85 → 90 → 95 → 98 → 100；④ 全部改动只有「有步骤时 HEALTH_CHECK 起点」一个数字 |
 
 失败路径不变：致命步骤失败时 `progress` 停在最后上报值（现状失败也不到 100，`DeployService.java:258-310`），`completed = true` / `success = false` / `error` 非空——沿用，不新增语义。
 
@@ -661,8 +722,8 @@ Designer 问 `status` / `statusText` / `stage` 三者取哪个。核对：`Deplo
 
 PRD §14.2 的八行、S1b 转来的三项都没覆盖这一条，但它是本期**能不能交付**的前提。代码事实三条：
 
-1. 插入点在 `notifyStageComplete(…, "DEPLOY")`（`DeployService.java:214`）之后、`updateTaskStatus("HEALTH_CHECK", 80)`（`:216`）之前——正是 FR-10 要求的位置；
-2. `DockerComposeAdapter.healthCheck` 逐容器执行 `docker inspect -f '{{.State.Running}}'`，**任一容器不是 `true` 即返回 false**，`DeployService` 随即 `throw new DeployException("健康检查失败")`（`:217-219`）；
+1. 插入点在 `notifyStageComplete(…, "DEPLOY")`（`DeployService.java:214`）之后、`updateTaskStatus("HEALTH_CHECK", 80)`（`:217`，v0.3 按 SUG-3③ 订正行号；`:216` 是注释行）之前——正是 FR-10 要求的位置；
+2. `DockerComposeAdapter.healthCheck` 逐容器执行 `docker inspect -f '{{.State.Running}}'`（`:452-483`），**任一容器不是 `true` 即返回 false**，`DeployService` 随即 `throw new DeployException("健康检查失败")`（`:218-220`）；
 3. compose 类在 `DEPLOY` 的 `up -d`（`:260`）里已经把容器起起来了，而 FR-11 / 决策 3 要求进入扩展阶段前把它停下。
 
 ⇒ **三条同时成立时，任何带扩展步骤的 compose 部署都会在 `HEALTH_CHECK` 处必然失败**：停实例 → 探测 Running → false → 部署 `ERROR`。AC-03 / AC-04 / AC-05 / AC-08 全灭，本期头号交付物直接归零。这不是实现细节，是 FR-10 + FR-11 与既有 `HEALTH_CHECK` 位置之间的口径冲突，PRD 与 ADR 都未预见。
