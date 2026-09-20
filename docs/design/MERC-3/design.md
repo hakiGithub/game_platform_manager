@@ -3,14 +3,16 @@
 | 字段 | 值 |
 | --- | --- |
 | **创建者** | Architect-41fff2de |
-| **创建时间** | 2026-09-20 （UTC+8，占位待更新） |
-| **版本** | v0.1 |
-| **状态** | 草稿 |
+| **创建时间** | 2026-09-20 |
+| **版本** | v0.2 |
+| **状态** | 待 G1 门禁（§14 十一条逐行结论已定稿，无留空） |
 | **Issue** | MERC-3 |
-| **上游 PRD** | docs/prd/MERC-3/prd.md @ 270f9d0 |
-| **上游 ADR** | docs/design/adr/0029-deploy-extension-steps.md @ 590af8d |
+| **上游 PRD** | docs/prd/MERC-3/prd.md @ 270f9d0（v0.5，双层门禁 PASS） |
+| **上游 ADR** | docs/design/adr/0029-deploy-extension-steps.md @ 590af8d（远端 `agent/leader/chat-1cfa252af963`，实现分支须 merge 带入） |
+| **平行输入** | docs/ui/MERC-3/ui-spec.md @ f6312ef（S1b；其 §10-B 三项界面侧前提由本文 §14.4 / §14.9 / §14.11 收口） |
+| **交付分支** | `release/MERC-3-deploy-extension-steps` |
 
-> 本文件为**骨架先行**提交（抗中断要求：先落盘再细化）。以下为章节与 §14.2 八行待判定清单，逐节结论在后续提交中追加。
+> 本文按「先落盘再细化」分次提交：v0.1 为骨架（§1/§2 + 待判定清单），v0.2 补齐 §3–§16 全部结论。**§14 的三条硬判定（`imageTag` / 停实例 + `container` / 日志呈现契约）逐条给了结论，全文无一处「实现时再看」**；交回 Leader 的待回写清单集中在 §13.1。
 
 ## 1. 理解
 
@@ -71,7 +73,7 @@ INIT → ENV_CHECK → PORT_CHECK → RESOURCE_CHECK → PRE_DEPLOY → DEPLOY
 【EXTENSION 阶段】（仅当解析出步骤集 ≥1 才存在；否则本段整体不存在，序列与今天逐字相同）
    进入行 → 确保停止（3×2s 判定）→ E-1 三行 → E-2 三行 → … → 阶段完成行 → 交棒行
    ↓  （致命失败 → ERROR，不进入后续任何阶段）
-HEALTH_CHECK（扩展分支内不探测容器运行态，见 §14.12）→ UPDATE_STATUS(STOPPED) → START → COMPLETE
+HEALTH_CHECK（容器已在扩展阶段收尾按依赖顺序起回，判据与时点一字不改，见 §14.12）→ UPDATE_STATUS(STOPPED) → START → COMPLETE
 ```
 
 ### 3.3 改动分组
@@ -148,7 +150,7 @@ HEALTH_CHECK（扩展分支内不探测容器运行态，见 §14.12）→ UPDAT
 
 ### 5.5 实例运行状态
 
-与 PRD §9 一致，两处例外必须写明：① 扩展阶段期间 `run_status` 恒为 `INSTALLING(5)`（`ensureStoppedForExtension` 只调适配器、不回写 STOPPED，§14.5）；② 扩展分支内 `HEALTH_CHECK` 不探测容器态（§14.12），因此 `UPDATE_STATUS` 之后到 `START` 之前，容器与 `run_status` 都处在「名义停止」——这与今天的既有表现一致（今天 `UPDATE_STATUS` 也只写库不停容器）。
+与 PRD §9 一致，两处必须写明：① 扩展阶段期间 `run_status` 恒为 `INSTALLING(5)`（`ensureStoppedForExtension` 只调适配器、不回写 STOPPED，§14.5）；② 扩展阶段**内部**容器是停止的（FR-11 的判定点），收尾会按依赖顺序把它起回来，因此 `HEALTH_CHECK` 的判据与时点、`UPDATE_STATUS` 只写库、`START` 面对已运行容器这三条既有表现全部不变（§14.12）。
 
 ## 6. 接口与契约边界
 
@@ -203,7 +205,7 @@ HEALTH_CHECK（扩展分支内不探测容器运行态，见 §14.12）→ UPDAT
 | B-07 | `applyVersionSelection` 三态纯函数 + 提交期 BR-07 撞键校验（禁止清单 = `variables[].name` ∪ 三系统键 ∪ `gameVersion` ∪ `PLATFORM_IMAGE_TAG`） | 单测覆盖三态；**目录不可用时不在提交期 400**（§14.10 末段） |
 | B-08 | `buildDeployConfig` 第 5.5 步 `imageTag` 注入（三条件门控） | 未声明保留键的游戏 `.env` 与模板逐字节不变 |
 | B-09 | `DeployExtensionExecutor`：解析步骤集（16.2 解析顺序）→ `ensureStoppedForExtension()`（3×2s 判定，失败即致命）→ 顺序执行 → 每步三行按 §14.6 契约 | 单测：致命失败后续步骤不执行；非致命失败继续 |
-| B-10 | `DeployService`：`:214` 后插阶段；扩展分支内 `HEALTH_CHECK` 跳过容器态探测（§14.12）；条件进度 `[80,84]` + `HEALTH_CHECK` 起点 85；`mapStageToStatus` 加 `EXTENSION → installing` | 无步骤路径的进度字面量与阶段序列**逐字节不变**（AC-15） |
+| B-10 | `DeployService`：`:214` 后插阶段；扩展阶段收尾以既有 `up -d` 形状起回容器（§14.12 / RISK-D11，**不改 `adapter.start()`**）；条件进度 `[80,84]` + `HEALTH_CHECK` 起点 85；`mapStageToStatus` 加 `EXTENSION → installing` | 无步骤路径的进度字面量与阶段序列**逐字节不变**（AC-15）；`HEALTH_CHECK` / `START` 代码未改一行 |
 | B-11 | `LogEntry` / `LogEntryVO` / `DeployProgressVO` 字段扩展（§14.6 / §6.1） | 既有阶段新字段全 `null` |
 | B-12 | `InstanceServiceImpl.updateInstance` 合并式写入（§14.8） | AC-27 四项逐条通过；单测注明「省略键不再等于删键」 |
 | B-13 | 脚本执行安全形状：正文/URL 脚本一律**平台侧下载 → sha256 校验（声明了才校验）→ SFTP 上传到 `<workDir>/.platform-extension/E-<n>.sh` → `bash <file>` 执行 → `finally` 删除** | 命令文本里不出现脚本正文（RISK-08 缓解）；未校验通过不在宿主机留文件 |
@@ -279,23 +281,138 @@ HEALTH_CHECK（扩展分支内不探测容器运行态，见 §14.12）→ UPDAT
 
 ## 9. 迁移与回滚
 
-（待补）
+### 9.1 迁移
+
+| 项 | 结论 |
+| --- | --- |
+| 数据库 | **无**：零表、零列、零迁移脚本（§5.1）⇒ 三方言（ADR-0015）与 `db/migration/` 只覆盖 SQLite 的既有缺口都不被触碰 |
+| 存量实例 | 零影响：`configInfo` 里没有 `deployVersion` ⇒ 恒 `S1`；`gameVersion` 坏键不清理（D-N16） |
+| 上线顺序 | ① 主应用（`backend/core` + `api` + `plugin`）随 `scripts/start-all.sh` 重启 → 此时无任何插件声明扩展步骤，行为与今天逐字相同；② `plugin-dnf-tw` 经 `scripts/deploy-plugin.sh` 热部署（`purgeTasks=false` 沿用）；③ 桩插件与夹具只出现在验收环境，不进 `plugins/`（AC-26 ②） |
+| 分支与 ADR 载体 | 实现统一走 `release/MERC-3-deploy-extension-steps`；`docs/design/adr/0029-*.md` 与 `CONTEXT.md` / `glossary.md` 需从 `agent/leader/chat-1cfa252af963 @ 590af8d` **merge 带入**（远端可读） |
+| 配置项 | 本期不新增任何 `game-platform.*` 或 `plugin.*` 配置开关 |
+
+### 9.2 「关闭」手段（不加特性开关的替代说明）
+
+| 新行为 | 如何关闭 |
+| --- | --- |
+| 扩展阶段执行 | 天然开关：**无插件 / 卸载插件 / 目录为空** ⇒ `ABSENT`/`EMPTY` ⇒ 不进阶段（dnf-tw 本期就恒在此态） |
+| `imageTag` 注入 | 三条件门控（§14.4）：游戏不声明 `PLATFORM_IMAGE_TAG` 变量、或条目不带 `imageTag`，即完全不生效 |
+| 合并式写入（§14.8） | 不提供开关——它是 BR-16 的正确性修复，留开关等于留一条能静默丢版本键的路 |
+| `level` 归一化（§14.9） | 同上，属缺陷修复 |
+
+### 9.3 回滚
+
+| 场景 | 回滚后状态 | 诚实说明 |
+| --- | --- | --- |
+| 主应用回退到旧 jar | `EXTENSION` 阶段消失；`deployVersion` 成为旧代码不读的未知键（无害留存）；`deployVersions`/`stage` 等新字段随旧 VO 消失 | **已落地的补丁文件不会随代码回滚而复原**（BR-14 ②③：无反向补偿、脚本无回滚）。要把实例退回默认版本，只有按既有方式重新部署一个默认版本实例 |
+| 卸载 `plugin-dnf-tw` | dnf-tw 目录 `ABSENT`；无键实例照常默认版本部署 | 已写 `deployVersion` 的实例（本期仅桩插件承载）重部署会被 **BR-12 拦截**——这是设计行为，不是回滚缺陷；恢复路径见 PRD §12「向导不展示但键已存在」行 |
+| 单步失败 | `PatchInstallService` 自动回滚该步目标路径（备份在 `<resolvedPath>/.patch_backup/<ts>/`，保留 5 份） | 前序已成功步骤与所有脚本副作用一律保留（BR-14）；平台不提供任何恢复控件（N-08） |
 
 ## 10. 验证计划
 
-（待补）
+> 每条都必须是**执行者能独立跑并独立判定**的动作。缺口期「谁承载」一律查 PRD §11.1；本表只补「怎么核对」。
+
+| # | 对象 | 方法 | 判据 | 对应 |
+| --- | --- | --- | --- | --- |
+| V-01 | 目录四态 | 单测 `DeployVersionCatalogService`：无插件 / 抛异常 / 0 条目 / 含非法条目 / 合法 | `ABSENT` / `ABSENT` / `EMPTY` / `INVALID(+reason)` / `AVAILABLE`；`EMPTY` **不**产生「不合法」文案 | RISK-13、AC-24 ③ |
+| V-02 | §8.1 全量校验 + 三条新规则 | 单测逐规则一条非法样本 | 任一不合法 ⇒ 整目录 `INVALID`，无「跳过该条继续」的部分采纳 | AC-20、§14.4、§15.2 |
+| V-03 | 三态与键 | 单测 `applyVersionSelection` 三支 + 提交期撞键 | S1 不写、S2 删既存键、S3 写且值精确等于 `versionId`；撞禁止清单 ⇒ 400 且原因可辨识；**目录不可用不在提交期 400** | AC-19、AC-22（服务层）、AC-20 |
+| V-04 | 步骤集串行与致命性 | 集成（桩插件 + 夹具）：`PATCH#1` 成功 → `SCRIPT#2` 非致命失败 → `PATCH#3` 致命失败 | 严格声明序、无并发；#2 记 `WARN` 后继续；#3 后无第 4 步；部署失败、`ERROR`、未进 `START` | AC-06、AC-08、AC-10、AC-21 |
+| V-05 | 补丁回滚边界 | 同上，比对 `PATCH#1` 落位结果与 `#2` 文件改动 | `#3` 目标路径回到改动前；`#1` 与 `#2` 的改动一律保留 | AC-09、AC-21、BR-14 |
+| V-06 | `sha256` 不符 | 集成 | 步骤失败、按致命性处置、日志原因段指名期望/实际 | AC-11 |
+| V-07 | `includePattern` 真实生效 | 集成：带多成员的包 + 单一 glob 声明 | 只有匹配成员落位（证明同步入口未被 payload 截断） | §14.2 行 2、决策 6 |
+| V-08 | 日志呈现契约 | **机械核对脚本**：只读 `logs[].{stage,stepId,stepEvent,elapsedMs}` | 每条 `stage == "EXTENSION"`；每 `stepId` 恰一 `START` + 恰一终态且终态 `elapsedMs != null`；比例 = 100%；**脚本内不得出现 `message` 匹配** | AC-03、AC-16、KPI-02 |
+| V-09 | `level` 归一化 | 组件单测 + 目视 | `SUCCESS`/`WARN`/`ERROR`/`INFO` 四类各自的 class 与图标不再同色同图标 | §14.9、AC-08/AC-10 界面侧 |
+| V-10 | 进度序列 | 抓 `deploy-progress` 全量轮询样本两条：无扩展部署 vs 有扩展部署 | 无扩展：与改造前逐值相同（含 band 插值）；有扩展：单调不减、扩展占 `[80,84]`、`COMPLETE == 100` | AC-15、§14.7、BR-10 |
+| V-11 | 停实例语义 | 集成：`docker inspect` 采样 | 第一条步骤行的时间戳之后容器 `Running == false`；停实例失败注入时部署 `ERROR` 且**零步骤行** | AC-04、§14.5、ui-spec 态 S |
+| V-12 | 健康判定路径 | 集成：两条部署各抓全量轮询样本 | **有扩展步骤**：`HEALTH_CHECK` 行存在且**通过**（容器已在扩展阶段收尾按依赖顺序起回），其后 `UPDATE_STATUS` / `START` / `retryHealthCheck` 与今天逐字同形；**无扩展步骤**：整条序列不含 `EXTENSION` | §14.12、AC-04、N-06/BR-10 |
+| V-13 | 脚本安全形状 | 代码审查 + 日志核对 | 命令文本不含脚本正文；未通过校验的下载不在宿主机落地；`finally` 删除临时文件 | BR-05、RISK-08、§8.4 |
+| V-14 | 输出截断 | 集成：产超大 `stdout` 的脚本 | 头 2000 + 尾 2000 + 一条 `NOTE`「输出已截断，共 N 字节」；日志体量受控 | §8.3 |
+| V-15 | `imageTag` 三核对物 | 集成（桩游戏 + 外置元数据） | 模板逐字节不变 ∧ `.env` 中 `PLATFORM_IMAGE_TAG` 精确等于声明值 ∧ `docker compose config` 渲染出 `<repo>:<tag>` | AC-14、§14.4 |
+| V-16 | BR-16 保键 | 接口 + 界面双跑 AC-27 (a)(b)(c)(d) | (a) 键值精确不变；(b) 键保留；**(c) 该入口返回成功**（非「失败也算过」）；(d) 三次之后重部署均进扩展阶段交付同一版本 | AC-27、§14.8 |
+| V-17 | 无专用分支 | 全量构建 → 启动 → 插件清单 → 读目录 → `grep -rn '"dnf_tw"' backend/core/src/main/java --include=*.java` | 命中数 0（口径见 AC-23 ③：必须带引号）；模块无前端产物 | AC-23 |
+| V-18 | 证据归属 | 验收记录核对 | 桩/夹具结果未被登记为 AC-05、KPI-01、KPI-03；发布物不含桩；dnf-tw 目录仍为未填充模板 | AC-25、AC-26、BR-15 |
+| V-19 | 通用性 | 同一份 `core` 构建物，先接桩插件跑通 V-04…V-14，再接 `plugin-dnf-tw`（空目录）跑 V-01 | 期间 `core/` 零改动 | AC-25、G-01 |
+| V-20 | dnf-tw 缺口期默认路径 | 走完 5 步向导并部署，对照 AC-15 checklist | 无版本控件、载荷无键、无扩展行、结果与改造前逐项一致、无任何示例值 | AC-02、AC-24 |
 
 ## 11. 需求追溯
 
-（待补）
+> 状态列 = 本设计交付后该 AC 的**可验收性**；「承载方」= PRD §11.1 归属行（缺口期判定基准）。带 ↓↑ 的是本设计改动过的归属，逐条在 §13 列给 Leader 回写。
+
+| AC | 承载方 | 本期状态 | 设计落点 |
+| --- | --- | --- | --- |
+| AC-01 | 桩插件+夹具 | 可验收 | §16.4 GET、F-04、V-20 反例 |
+| AC-02 | dnf-tw 默认路径 | 可验收 | B-08 门控、F-05、V-20 |
+| AC-03 | 桩插件+夹具 | **可验收**（契约已定稿，脱离「不可测」） | §14.6、B-09/B-11、V-08 |
+| AC-04 | 桩插件+夹具 | 可验收 | §14.5 停止语义、§14.12、V-11 |
+| AC-05 | dnf-tw 真实资料 | 不可测（L-02，不变） | — |
+| AC-06 | 桩插件+夹具 | 可验收 | 16.2 解析顺序、V-04、§14.6 规则 3 |
+| AC-07 | 桩插件+夹具 | 可验收 | B-07、retry-deploy 读 `configInfo` |
+| AC-08 | 桩插件+夹具 | 可验收 | B-09、F-01、V-04/V-09 |
+| AC-09 | 桩插件+夹具 | 可验收 | B-04（执行器内建回滚）、V-05 |
+| AC-10 | 桩插件+夹具 | 可验收 | B-09 `fatal=false` 继续 + WARN、V-04 |
+| AC-11 | 桩插件+夹具 | 可验收 | B-04/B-13 sha256、V-06 |
+| AC-12 | 桩插件+夹具 | 可验收 | B-13（宿主机 + exitCode 判定）、V-04 |
+| **AC-13** | 第一行 → **第五行** | **本期不验收**（14.5 判不合法，`container` 移出本期） | — |
+| **AC-14** | 第五行 → **第一行** | **转可验收**（14.4 给出机制，载体 = 桩游戏外置元数据） | §14.4、B-08、V-15 |
+| AC-15 | dnf-tw 默认路径 | 可验收（门控式改动的直接受益者） | §14.7 无步骤分支、B-08/B-10/B-12、V-10 |
+| AC-16 | 桩插件+夹具 | **可验收**（契约 + F-02/F-03） | §14.6、§14.11、V-08 |
+| ~~AC-17~~ | 表外豁免 | 废弃编号，不属验收对象 | — |
+| AC-18 | 桩插件+夹具 | 可验收 | 16.2 解析顺序 ①② |
+| AC-19 | 桩插件+夹具 | 可验收 | B-07、§5.2、V-03 |
+| AC-20 | 桩插件+夹具 | 可验收（**前提保护：提交期不得改判为 400**） | §14.10 末段、B-05、V-02 |
+| AC-21 | 桩插件+夹具 | 可验收 | V-05（回滚/保留边界） |
+| **AC-22** | 第一行 | **服务层可验收；界面端到端前提不成立**（14.10，待 Leader 裁 A/B；推荐 B） | B-07 |
+| AC-23 | 本期构建产物 | 可验收 | B-14/B-15、V-17 |
+| AC-24 | dnf-tw 默认路径 | 可验收 | B-15 `EMPTY`、V-01、V-20 |
+| AC-25 | 桩插件+夹具 | 可验收 | T-01、V-19 |
+| AC-26 | 本期构建产物/验收记录 | 可验收 | K 边界、V-18 |
+| AC-27 | 桩插件+夹具 | 可验收（合并式写入天然满足 (c)，无「恒失败」风险） | §14.8、B-12、V-16 |
+
+**FR / BR 侧收口点**：FR-05（两入口 + 唯一解析顺序 16.2）、FR-12（同步直调 §14.1）、FR-14（同执行器，未另起链路）、FR-20（§14.6 契约）、BR-07（禁止清单 + `PLATFORM_IMAGE_TAG`）、BR-11（条件门控 §14.7 / B-08）、BR-14（回滚边界如实记日志，不加反向补偿）、BR-16（§14.8）、BR-15（K/V-18 三不得）。
 
 ## 12. 风险与边界
 
-（待补）
+| # | 风险 | 影响 | 处置 |
+| --- | --- | --- | --- |
+| RISK-D01 | **`HEALTH_CHECK` 与停实例时点相冲**（§14.12）——若按字面同时满足 FR-10/FR-11/BR-10，任何带扩展步骤的 compose 部署必然在健康检查处失败 | 阻断级：AC-03/04/05/08 全灭 | 已定判定：**扩展阶段收尾按依赖顺序把容器起回来**（复用既有 `up -d` 形状），`HEALTH_CHECK` 的判据、动作与时点一字不动 ⇒ 不触碰 N-06/BR-10，也不改无步骤分支。成本与「后移探测」方案相同（都是起停各一次） |
+| RISK-D11 | **`compose start` 不处理 `depends_on` 顺序**：dnf-tw 的 compose 项目含 MySQL 与多个服务，`DockerComposeAdapter.start` 走 `compose -p … start`（`:365-379`），只有 `up` 尊重依赖顺序。今天这一步是 `up -d` 之后的空操作，本期停实例后若由它来真实启动，首启可能早于数据库就绪 | 表现为「部署成功但版本没生效」——G-02 最坏的失效形态 | **与 RISK-D01 同一条解法收口**：起回容器由扩展阶段收尾用既有 `up -d`（`:260`，DEPLOY 已在用、尊重依赖）完成，`START` 沿用今天「已运行 → 空操作 → 复检」的行为。**禁止**把 `DockerComposeAdapter.start()` 全局改成 `up -d`（会改既有语义，违反 AC-15 / N-06） |
+| RISK-D02 | `updateInstance` 从整表替换改合并：任何依赖「省略即删除」隐含语义的调用方会失效 | 中：仓内核对只有配置管理表单与通用接口两条路径，而该隐含语义本身正是 F-18 判定的缺陷 | 合并范围只在 `configInfo` 一个字段；单测 + V-16 四项；不改 `create`。缺口期 dnf-tw 恒无键，风险面实际落在桩插件承载的实例 |
+| RISK-D03 | `DeployProgress.vue` 归一化会外溢到备份/还原等复用该组件的流程（非 INFO 行**开始**变色） | 低（属缺陷修复的正当外溢） | @Tester 目视回归一次；不改后端取值集合 |
+| RISK-D04 | `deployAsync` 的 `@Async → ForkJoinPool.commonPool` 双跳（`:318-332`）叠加本期长阻塞步骤 | 并发多实例部署时可耗尽 commonPool，拖慢其它异步任务 | 本期不改部署主流程（D-N05）；上线后按 KPI/实测评估专用线程池（另立需求） |
+| RISK-D05 | `install()` 异步路径仍丢 `headers`/`includePattern`（`PatchInstallServiceImpl:47-56`） | plugin-l4d2 若开始依赖这两字段会静默失效 | 本期不修（无使用方依赖，PRD 亦未要求）；在 SDK 注释处标出「需 `includePattern` 请用 `installSync`」，把坑写在脸上 |
+| RISK-D06 | 脚本超时只保证「不再等待」，不保证远端进程已终止（§15.3） | 挂死脚本可能在宿主机继续跑，与重放叠加产生竞态 | 日志明示 + 声明侧幂等（BR-06）+ 本期不引入 kill 台账 |
+| RISK-D07 | ADR-0008 通道不对称：`getDeployConfigs()` 的声明进不了 `buildDeployConfig` 的部署配置（16.1） | 后来者按「插件声明即生效」理解会做出「向导看得见、部署看不见」的功能 | 本期不碰该通道（版本目录走 `getDeployVersions`）；建议另立 Issue（含补测试与文档），交 Leader 裁 |
+| RISK-D08 | 扩展阶段无聚合耗时/步骤数上限 | 一个声明很多慢步骤的插件可长期占住部署 worker | 有意为之（不加 PRD 未要求的闸门）；单步已有上下限（§15.2）与体量上限（§8.3） |
+| RISK-D09 | AC-22 / §8.4.2 S2 的删键无真实界面入口（14.10） | 「换回默认版本」只能靠新建实例；`deployVersion` 一旦写入，同实例上无界面手段解除 | 待 Leader 裁 A/B；推荐 B（不扩范围），并把该事实回写 PRD 而非留在聊天记录 |
+| RISK-D10 | 桩插件/夹具结果被误当 dnf-tw 真实版本通过 | 违反 BR-15「三不得」，验收结论失真 | 流程性防线：V-18 记录核对 + 夹具不进 `plugins/` + AC-05/KPI-01/KPI-03 在验收记录里显式写「不可测 + L-02 因」 |
+| 边界 | 本期结束后，dnf-tw 想跑非默认版本**仍需人工改文件** | 诚实结论（PRD L-02 ③）：本期消除的是「平台没这个能力」，不是「dnf-tw 还要手工干」 | 真实资料填充即生效（BR-15 ④），框架与声明接口都不需要再改 |
 
 ## 13. 待决事项
 
-（待补）
+### 13.1 须 Leader 下派 @ProductManager 回写 PRD 的清单（本设计不自行改 PRD）
+
+| # | 条目 | 回写内容 | 来源 |
+| --- | --- | --- | --- |
+| D-P01 | AC-13 / FR-08 / FR-11 / §8.3 / §12 / RISK-05 | `position = container` 移出本期（取值只 `host`；声明即不合法）；AC-13 自 §11.1 第一行移入第五行记「本期不验收」；决策 7 的条件性收缩记修订记录 | §14.5 |
+| D-P02 | §14.2（增第 9 行待改依赖）+ §9 状态机表 | 登记新事实：FR-11 停实例与既有 `HEALTH_CHECK`（探测 `.State.Running`）时点相冲，本期由「扩展阶段收尾按依赖顺序起回容器」收口；§9「进入扩展阶段」行补一句「阶段收尾容器恢复运行，故 `HEALTH_CHECK` 语义与时点不变」。**本项不改动决策 1–9，也不触碰 N-06/BR-10** | §14.12、RISK-D01/D11 |
+| D-P03 | §8.3 `timeoutMs` 行、§12「脚本超时」行、§16.2 OP-04 | 缺省 `600000`、合法区间 `[1000, 1800000]`、越界即声明不合法；OP-04 标已关闭 | §15.2 |
+| D-P04 | AC-14 与 §11.1 第五行 | 前提成立 → AC-14 转入第一行（框架类可验收）；RISK-12 关闭 | §14.4 |
+| D-P05 | §8.4.3 禁止清单 + §8.1 校验内容 | 增保留键 `PLATFORM_IMAGE_TAG`；增两条蕴含规则（`imageTag ⇒ 该 deployType 声明该保留变量`；`timeoutMs` 区间） | §14.4、§15.2 |
+| D-P06 | §14.2 增「`level → 视觉映射`」行（Leader 已承诺随 v0.6 回写）+ FR-20/§8.5 | 判据定稿为前端归一化，后端取值集合不变 | §14.9 |
+| D-P07 | AC-22 / §8.4.2 S2 / §12 恢复路径 | 裁 A（新增入口，扩范围）或 B（服务层验收 + 界面端到端记前提未成立）；B 为推荐 | §14.10、RISK-D09 |
+| D-P08 | FR-22 / §5.1 第 3 项 / F-08 / §14.1 | 「通过 ADR-0008 声明接口」→「通过 ADR-0008 声明**体系**」，并把 16.1 的通道不对称登记为事实 | §16.5 |
+| D-P09 | 桩承载与 KPI-02 生效前提 | OP-04 已定稿、呈现契约已登记 ⇒ KPI-02 自此可考核（不再挂「不可测」）；§16.2 OP-04 行改已关闭 | §14.6、§15 |
+
+### 13.2 不在本设计权限内、也不阻断实现的三项
+
+- `getDeployConfigs()` 通道缺陷（RISK-D07）是否另立 Issue、何时修 → Leader 派 / 人类 Owner；
+- 「实例详情 → 配置管理」表单该展示什么（OP-07）→ 人类 Owner（Leader 裁定 2 已收口本期下限，本期只落 §14.8 的保键）；
+- `ui-design-spec.md` §3.3「4 步向导」与代码 5 步不一致、`--platform-accent` / `--platform-accent-soft` 无定义 → Leader 已判本期不修，是否另立 Issue 交人类 Owner。**本设计已在原型口径上取 `--platform-cyan`，不新增色值。**
+
+### 13.3 本设计已关闭、不再留开口的三项
+
+`deployVersion` 键名不改（§8.4 固定，无「最终名待定」）；OP-04 已拍板（§15.2）；三条硬判定（AC-14 / AC-13 / 呈现契约）逐条给了结论且**没有一处写「实现时再看」**。
 
 ## 14. §14.2 待改依赖逐行结论（十一条，无留空）
 
@@ -313,7 +430,7 @@ HEALTH_CHECK（扩展分支内不探测容器运行态，见 §14.12）→ UPDAT
 | 8 | `configInfo` 覆盖式写入丢键 → BR-16 手段 | @Architect 定手段 / @BackendDev 落地 | **取「合并式写入」**：`updateInstance` 的整表替换改为「取库中既有值 → 逐键合并 → 本次载荷覆盖」。不需要任何「拒绝写入」分支即满足 AC-27 (a)(b)(c)(d)，配置管理入口照常成功 |
 | 9 | （S1b 门禁新增）`level → 视觉映射` 失效 | @Architect | **给**：前端归一化（`DeployProgress.vue:88-109` 先 `toLowerCase()` + 补 `warn → warning` 别名 + 补 `success` 分支）。后端 `level` 取值集合是 PRD §8.5 已固定口径，不改后端 |
 | 10 | （本设计新发现）AC-22 / §8.4.2 S2 的界面前提不成立 | 交 Leader 裁定 | **登记**：部署向导只创建新实例，既有实例的重部署入口不接受版本改选 ⇒ 「在向导改选默认版本并重新部署 → 删键」这条路径今天不存在。给出 A/B 两方案与推荐（B），见 14.10 |
-| 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | 交 Leader 确认（N-06 边界） | **给判定**：扩展分支内 `HEALTH_CHECK` 不做容器运行态探测，健康判定由 `START` 后既有 `retryHealthCheck`（`DeployService.java:231-236`）承担，**判据一字不改**；备选「扩展收尾把容器起回来」已一并定价（成本一行）。两案都可行，实现者不需要回来问。见 14.12 |
+| 11 | （本设计新发现，**阻断级**）FR-11 停实例 与 `HEALTH_CHECK` 探测容器运行态相冲 | @Architect 判定 + 登记 | **给判定**：扩展阶段收尾以既有 `up -d` 形状把容器**按依赖顺序起回**，`HEALTH_CHECK` 的判据、动作、时点一字不改 ⇒ 不触碰 N-06/BR-10，PRD 正文无需改（只建议登记这一事实，D-P02）；顺带修掉 `compose start` 不处理 `depends_on` 的隐蔽失效（RISK-D11）。见 14.12 |
 
 ### 14.1 行 1：异步 → 阻塞桥接（RISK-03）
 
@@ -404,7 +521,7 @@ F-16 核对为真且比转述更完整：`DockerComposeAdapter.executeCommand`�
 | 停止判定 | 调适配器停止后以 `DeployAdapter.getStatus(instanceId)` 轮询（3 次 × 2s）判定非 RUNNING；成立才算停止完成 |
 | 不复用 `DeployService.stop()` | 现有 `stop`（`:418-430`）会把 `run_status` 回写 STOPPED，而 PRD §9 要求扩展阶段期间仍为 `INSTALLING(5)`。故新增私有 `ensureStoppedForExtension()`：只调适配器、不写状态 |
 | **停实例失败处置** | **致命**：记 ui-spec 状态 S 的失败行（`实例停止失败：…`，`level = ERROR`），部署判失败、实例 `ERROR`、不执行任何步骤、不进入 `HEALTH_CHECK` / `START`。理由：在未确认停止的实例上替换文件正是决策 3 要消除的中间态。ui-spec 的「预留文案，生效前提是 @Architect 定调」自此生效 |
-| 后续启动与 `HEALTH_CHECK` | 停止与扩展完成后进入既有 `HEALTH_CHECK → UPDATE_STATUS → START`；但 **`HEALTH_CHECK` 在扩展分支内不做容器运行态探测**（否则停实例后必然失败），健康判定由 `START` 后既有 `retryHealthCheck`（`DeployService.java:231-236`，3 次 × 5s）承担。判据与时点为何必须这样分，见 **14.12** |
+| 后续启动与 `HEALTH_CHECK` | 步骤全部判定完成后，扩展阶段收尾以既有 `up -d` 形状把容器按依赖顺序起回（§14.12），之后进入既有 `HEALTH_CHECK → UPDATE_STATUS → START`，三者的判据与时点一字不改 |
 
 ### 14.6 行 6（硬判定③）：日志呈现契约三项 ⇒ 定稿
 
@@ -517,24 +634,23 @@ Designer 问 `status` / `statusText` / `stage` 三者取哪个。核对：`Deplo
 
 PRD §14.2 的八行、S1b 转来的三项都没覆盖这一条，但它是本期**能不能交付**的前提。代码事实三条：
 
-1. 插入点在 `notifyStageComplete(…, "DEPLOY")`（`DeployService.java:214`）之后、`updateTaskStatus("HEALTH_CHECK", 80)`（`:216`）之前——FR-10 要求的位置；
+1. 插入点在 `notifyStageComplete(…, "DEPLOY")`（`DeployService.java:214`）之后、`updateTaskStatus("HEALTH_CHECK", 80)`（`:216`）之前——正是 FR-10 要求的位置；
 2. `DockerComposeAdapter.healthCheck` 逐容器执行 `docker inspect -f '{{.State.Running}}'`，**任一容器不是 `true` 即返回 false**，`DeployService` 随即 `throw new DeployException("健康检查失败")`（`:217-219`）；
-3. FR-11 / 决策 3 要求进入扩展阶段前把实例停下，而 compose 类在 `DEPLOY` 的 `up -d` 里已经把容器起起来了。
+3. compose 类在 `DEPLOY` 的 `up -d`（`:260`）里已经把容器起起来了，而 FR-11 / 决策 3 要求进入扩展阶段前把它停下。
 
-⇒ **三条同时成立时，任何带扩展步骤的 compose 部署都会在 `HEALTH_CHECK` 处必然失败**：停实例 → 探测 Running → false → 部署 `ERROR`。AC-04 / AC-05 / AC-03 / AC-08 全部无法通过，本期头号交付物直接归零。这不是实现细节，是 FR-10 + FR-11 与既有 `HEALTH_CHECK` 位置之间的口径冲突，PRD 与 ADR 都未预见。
+⇒ **三条同时成立时，任何带扩展步骤的 compose 部署都会在 `HEALTH_CHECK` 处必然失败**：停实例 → 探测 Running → false → 部署 `ERROR`。AC-03 / AC-04 / AC-05 / AC-08 全灭，本期头号交付物直接归零。这不是实现细节，是 FR-10 + FR-11 与既有 `HEALTH_CHECK` 位置之间的口径冲突，PRD 与 ADR 都未预见。
 
-**判定（本设计据此实现）：扩展分支内，`HEALTH_CHECK` 不做容器运行态探测。**
+**判定：扩展阶段收尾追加一次「按依赖顺序把容器起回来」，`HEALTH_CHECK` 与 `START` 一字不改。**
 
 | 项 | 结论 |
 | --- | --- |
-| 改什么 | 有扩展步骤时，`HEALTH_CHECK` 阶段**保留**（阶段名、`stage` 值、`updateTaskStatus` 调用、进度值 `85 → 90` 全不变），其容器运行态探测在该分支内不执行，日志记一行 `NOTE`：`实例处于停止状态，健康判定交由启动后复检` |
-| 不改什么 | ① **判据一字不改**：健康仍然是「所有容器 `.State.Running == true`」，且仍然是既有 `retryHealthCheck` 的 3 次 × 5s（`:231-236`）——所以 N-06 的字面（不改动**判定标准**）成立；② `UPDATE_STATUS` 置 `STOPPED`、`START`、`COMPLETE = 100` 全不变（BR-10）；③ **无扩展步骤的游戏零改动**（AC-15）——本分支只在有步骤时进入 |
-| 决策 3 的口径是否仍成立 | 成立。「第一次启动即目标版本」指**打补丁后的第一次进程启动**：补丁在停止态落位，之后 `START` 的 `compose start` 是补丁后第一次起进程。`DEPLOY` 阶段 `up -d` 那次起进程是既有实现产物（今天所有 compose 部署都有），本设计不新增也不消除 |
-| 需要 Leader 确认的点 | PRD §9 那行「扩展判定完成 → `HEALTH_CHECK` → `UPDATE_STATUS` \| **既有语义不变**」在有扩展分支内做不到「探测动作不变」，只能做到「判据不变」。请裁定该差别是否触碰 N-06；若判触碰，见下方备选 |
-| **备选（已一并定价，不需要再回来问）** | 扩展阶段收尾追加一次 `adapter.start()` 把容器起回来（成本一行调用 + 一次容器启动，`DockerComposeAdapter:365-379` 已具备），`HEALTH_CHECK` 一字不动照常通过。代价：容器多一次起停、游戏进程在扩展后被起两次（第二次才是交付态）、RISK-01 的耗时成本上升。两案对 AC 集的影响**相同**（AC-04 的「进入扩展阶段前实例处于停止」在两案下都成立），Leader 选任一都不需要重做设计 |
-| 登记 | 需求侧应在 §14.2 增为第 9 行待改依赖（现由本设计代登记为行 11）；RISK-05 的「停失败无裁决」与本页同源，建议一并回写 |
-
-**实现者红线**：不许用「把插入点挪到 `HEALTH_CHECK` 之后」来绕过——那会引入决策 3 明确否掉的中间态；也不许把 `healthCheck` 改成容忍停止态（那是改判据，正面违反 N-06）。
+| 改什么 | 扩展阶段全部步骤判定完成后，追加一行收尾动作：以既有 `docker compose -p … up -d` 形状（`DockerComposeAdapter:260` 已在用同一条命令）把容器恢复到运行态；成功 → 记「交棒行」进 `HEALTH_CHECK`；失败 → 按致命处置（部署 `ERROR`） |
+| 不改什么 | ① `HEALTH_CHECK` 的**判据、动作、时点**全部不变（容器此时确实运行）⇒ 不需要向 N-06 请假；② `UPDATE_STATUS` 置 `STOPPED`（只写库）、`START` 的 `adapter.start()`、`retryHealthCheck` 3×5s、`COMPLETE = 100` 全部不变（BR-10）；③ 无扩展步骤的游戏零改动（AC-15）——该收尾只在扩展分支内存在 |
+| 为什么不用「扩展分支内跳过容器态探测」这一方案 | 那条路要把健康判定的实际发生点后移到 `START` 之后，虽然判据不变，但**时点变了**，需要 Leader 判它是否触碰 N-06 并回写 PRD §9；而本方案让 PRD 一个字都不用改，代价完全相同：两案的容器起停次数都是「`up -d` 起 → 停 → 起」各一次，起的位置从 `START` 挪到扩展阶段收尾而已。取更省的那个 |
+| 决策 3 的口径是否仍成立 | 成立，且更贴字面。「第一次启动即目标版本」指**打补丁后的第一次进程启动**：补丁在停止态落位，扩展收尾的 `up -d` 才是那次启动。`DEPLOY` 阶段 `up -d` 那次是既有实现产物（今天所有 compose 部署都有），本设计不新增也不消除 |
+| 顺带修掉的一个更隐蔽的失效 | `DockerComposeAdapter.start` 走 `compose start`，而 **`start` 不处理 `depends_on` 顺序**（只有 `up` 处理）。dnf-tw 的 compose 项目里 MySQL 与多个游戏服务同在 `docker-compose.yml`，今天那一步是空操作；若把「真实启动」交给它，首启可能早于数据库就绪，表现为「部署成功但版本没生效」。用 `up -d` 收尾同时解决这条（RISK-D11） |
+| 实现红线 | **不得**把 `DockerComposeAdapter.start()` 全局改成 `up -d`（会改变既有实例启停语义，直接违反 AC-15 / N-06）。收尾动作是扩展阶段的内部步骤，与 `adapter.start()` 无关 |
+| 登记 | 建议作为 §14.2 第 9 行待改依赖正式登记，并在 PRD §9「进入扩展阶段」行补一句「阶段收尾容器恢复运行 ⇒ `HEALTH_CHECK` 语义与时点不变」（D-P02） |
 
 ## 15. OP-04 脚本 `timeoutMs` 缺省值与上限（拍板）
 
@@ -672,3 +788,4 @@ FR-22 字面是「通过 **ADR-0008 声明接口**提供 dnf-tw 版本目录」�
 | 版本 | 日期 | 作者 | 变更摘要 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-09-20 | Architect | 骨架先行：章节基线 + §14.2 八行待判定清单 |
+| v0.2 | 2026-09-20 | Architect | **全文定稿**（对应 Leader 派单 `01a0bd7f` 的抗中断要求：分次落盘，每次一节）。<br>**§14 待改依赖由八行扩到十一条并逐行给结论**：① 桥接 = SDK 新增 `installSync` 直调执行器（并修正 PRD 对该依赖的前提——执行器本就阻塞）；② `includePattern` 取「同链路内执行」自动生效、`headers` 结构性不提供；③ 容器脚本通道本期不改（因⑤）；④ **硬判定① 给出 `imageTag` 机制**（保留变量 + 既有 `.env` 链，注入点在 `buildDeployConfig`）⇒ **AC-14 转可验收**；⑤ **硬判定② 判 `position = container` 不合法** ⇒ **AC-13 移出本期**（含决策 7 的条件性收缩）+ 停实例语义与停失败致命处置定稿；⑥ **硬判定③ 日志呈现契约三项定稿**（`stepId`/`stepEvent`/`elapsedMs` 毫秒 + 归组判据）⇒ KPI-02 / AC-03 / AC-16 脱离「不可测」；⑦ 进度条件分配 `[80,84]`（无步骤游戏零改动）；⑧ BR-16 取合并式写入（AC-27 四项无需拒绝分支即通过）；⑨ `level → 视觉映射` 前端归一化（含 `warn ≠ warning` 的补充事实）；⑩ 新发现 AC-22 的界面入口不存在（A/B 案交 Leader）；⑪ **新发现阻断级冲突**：FR-11 停实例 vs `HEALTH_CHECK` 探测运行态 ⇒ 判「扩展阶段收尾按依赖顺序起回容器」，顺带收口 `compose start` 不处理 `depends_on` 的隐蔽失效。<br>**§15 OP-04 拍板**：`timeoutMs` 缺省 600s、合法区间 `[1s, 30min]`、越界即声明不合法、超时不等于远端进程已终止。<br>**§16 声明模型与 GET 侧契约**：登记新代码事实「`getDeployConfigs()` 的读时合并只作用于 VO，不作用于 `buildDeployConfig`」⇒ 版本目录走同一扩展点的 `getDeployVersions` / `getDeployExtensionSteps`，唯一读者 `DeployVersionCatalogService` 四态（`ABSENT/EMPTY/INVALID/AVAILABLE`），并给出对 FR-22 措辞的偏离与回写建议。<br>**§3–§13**：建议改动 11 组、受影响组件与负向清单、零数据库变更判定、对外/SDK/日志三层契约、按角色的实现步骤（B-01…B-15 / F-01…F-05 / T-01…T-04）、非功能（耗时预算、输出截断、脚本落文件执行的安全形状）、迁移与回滚、验证计划 V-01…V-20、AC-01…AC-27 全量追溯、RISK-D01…D11、待回写清单 D-P01…D-P09。<br>**未改动**：已确认决策 1–9 全部保持；未改 `prd.md`；未新增任何 dnf-tw 真实版号 / URL / 目标路径（全文 `http(s)://` 字面量命中数 0）。 |
