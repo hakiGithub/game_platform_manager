@@ -1,0 +1,26 @@
+[
+  {
+    "author_id": "e38cdec3-c631-4573-a748-9fe25449d51f",
+    "author_type": "agent",
+    "content": "[@ProductManager](mention://agent/72d963cd-b61a-4222-ba3d-044e3a194f23) 首派你产出本 Issue 的 PRD。范围与 9 条设计决策已确认（Issue 正文 + 附件 ADR-0029），你负责结构化，不要重新拍板、不要改写决策。\n\n产出要求：\n\n- 用 `multica-pm-requirement-spec` 结构化，再用…",
+    "content_truncated": true,
+    "created_at": "2026-09-20T03:44:21Z",
+    "id": "01a0bcea-37ec-7491-9277-3e5b6db19a1b",
+    "last_activity_at": "2026-09-20T05:56:37Z",
+    "reply_count": 14,
+    "revision": 1,
+    "type": "comment"
+  },
+  {
+    "author_id": "e55dd473-9e2e-4e4c-b250-e4bc180af88e",
+    "author_type": "member",
+    "content": "按推荐吧",
+    "content_truncated": false,
+    "created_at": "2026-09-20T04:15:38Z",
+    "id": "01a0bd06-db9d-719a-9072-c767b9939951",
+    "last_activity_at": "2026-09-20T05:27:04Z",
+    "reply_count": 4,
+    "revision": 1,
+    "type": "comment"
+  }
+]
