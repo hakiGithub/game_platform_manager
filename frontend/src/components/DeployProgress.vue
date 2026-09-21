@@ -84,6 +84,15 @@ const formattedElapsedTime = computed(() => {
   }
 });
 
+// 归一化日志级别（design §14.9 / F-01）：
+// 后端 appendLog 写入的取值集合是 INFO / WARN / ERROR / SUCCESS（大写，见 DeployService.java:565），
+// 而本组件的分支键是小写、且 WARN 与 warning 词根也不同，故先 toLowerCase() 再把 warn 别名为 warning。
+// 未知取值一律落默认（log-info / InfoFilled），不抛异常。
+function normalizeLogLevel(level) {
+  const key = String(level ?? "").toLowerCase();
+  return key === "warn" ? "warning" : key;
+}
+
 // 获取日志级别样式
 function getLogClass(level) {
   const classes = {
@@ -93,7 +102,7 @@ function getLogClass(level) {
     error: "log-error",
     debug: "log-debug",
   };
-  return classes[level] || "log-info";
+  return classes[normalizeLogLevel(level)] || "log-info";
 }
 
 // 获取日志图标
@@ -105,7 +114,7 @@ function getLogIcon(level) {
     error: "CircleClose",
     debug: "View",
   };
-  return icons[level] || "InfoFilled";
+  return icons[normalizeLogLevel(level)] || "InfoFilled";
 }
 
 // 滚动到底部
