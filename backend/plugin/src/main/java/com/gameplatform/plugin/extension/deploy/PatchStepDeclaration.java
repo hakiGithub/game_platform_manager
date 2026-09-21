@@ -14,7 +14,9 @@ package com.gameplatform.plugin.extension.deploy;
  * @param includePattern 压缩包内落位范围，可空即全部落位，逗号分隔 glob，仅压缩包生效；
  *                       经扩展阶段声明时由同步补丁入口原对象透传（design.md §14.2）
  * @param format         压缩包格式，可空即按扩展名判定，取值沿用宿主 {@code PatchFormat}
- * @param fatal          步骤致命性，缺省语义为致命（BR-04）
+ * @param fatal          步骤致命性。PRD §8.2 的口径是「可选、缺省致命」，而 Java 原始 {@code boolean}
+ *                       的缺省是 {@code false} ⇒ 声明方必须显式写 {@code true}，漏写即等于声明非致命。
+ *                       类型形状按 design.md §16.2 定义体保留，不在声明层补默认值（BR-04）
  */
 public record PatchStepDeclaration(String label, String url, String targetPath, String sha256,
                                    String includePattern, String format, boolean fatal)

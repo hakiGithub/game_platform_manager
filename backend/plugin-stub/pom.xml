@@ -86,8 +86,8 @@
                 <executions>
                     <!-- 提前到 process-test-classes 再打一次 JAR 到 target/plugins/，
                          让 PF4J 真实加载用例在 test 阶段就能拿到插件 JAR。
-                         带 classifier 且不 attach：否则与 package 阶段的 default-jar 撞同一坐标，
-                         maven-jar-plugin 会拒绝「替换已发布的主构件」。 -->
+                         必须带 classifier：与 package 阶段 default-jar 同坐标会被 maven-jar-plugin
+                         拒绝（"You have to use a classifier to attach supplemental artifacts"）。 -->
                     <execution>
                         <id>stage-plugin-jar-for-load-test</id>
                         <phase>process-test-classes</phase>
@@ -97,7 +97,6 @@
                         <configuration>
                             <outputDirectory>${project.build.directory}/plugins</outputDirectory>
                             <classifier>staged</classifier>
-                            <attach>false</attach>
                         </configuration>
                     </execution>
                 </executions>

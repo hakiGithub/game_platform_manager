@@ -19,7 +19,8 @@ public sealed interface DeployExtensionStepDeclaration
     /** 步骤展示位（design.md §14.6 的 stepLabel 来源） */
     String label();
 
-    /** 步骤致命性，缺省语义为致命；主应用只读取，不推断不覆盖（BR-04） */
+    /** 步骤致命性：PRD §8.2 / §8.3 的缺省口径是致命（声明方须显式传 {@code true}，见各 record 的说明）；
+     *  主应用只读取，不推断不覆盖（BR-04） */
     boolean fatal();
 
     /** 执行器分派位（Java 17 无 pattern-matching switch，用显式 kind() 而非 instanceof 链） */
