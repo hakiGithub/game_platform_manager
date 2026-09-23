@@ -798,27 +798,30 @@ public class InstanceServiceImpl implements InstanceService {
      * imageTag 用条目值，否则用该变量的 defaultValue），因此用户或通用写接口提交的该键值
      * 在这里被覆盖 —— 它不参与任何判定、也不进 {@code .env}（AC-14 ④）。
      *
-     * <p>快路径：仅当 {@code configInfo} 含 {@code deployVersion} 时才读目录，否则本方法的
-     * 目录读取与 SPI 调用次数为 0（§14.4.3 / V-29）—— 本类是 buildDeployConfig 十条调用点的
+     * <p>快路径：只有 {@code configInfo} 含 {@code deployVersion} 才读目录（§14.4.3 / V-29）；
+     * 门控判的是已组装好的 {@code config}，零额外读盘。本类是 buildDeployConfig 十条调用点的
      * 公共入口，不加这道门等于给 start/stop/文件/备份每条路径都挂上 SPI。
+     *
+     * <p><b>② 与本次是否选了版本无关</b>：没选版本的普通部署同样要覆盖，否则提交值会经
+     * {@code generateEnvFileContent} 直接落进 {@code .env}（PRD §8.4.3「该键的提交值不参与任何判定」）。
      */
     private void injectPlatformImageTag(GameInstance instance, Map<String, Object> config) {
         Map<String, Object> configInfo = instance.getConfigInfo();
-        if (configInfo == null || !(configInfo.get(DeployVersionCatalogService.VERSION_KEY) instanceof String selected)) {
-            return;
+        String entryImageTag = null;
+        if (configInfo != null
+                && configInfo.get(DeployVersionCatalogService.VERSION_KEY) instanceof String selected) {
+            entryImageTag = deployVersionCatalogService
+                    .read(instance.getGameCode(), instance.getDeployType())
+                    .findEntry(selected)
+                    .map(VersionEntry::imageTag)
+                    .filter(tag -> tag != null && !tag.isBlank())
+                    .orElse(null);
         }
-        var declaration = deployVersionCatalogService
-                .platformImageTag(instance.getGameCode(), instance.getDeployType());
-        if (!declaration.declared()) {
-            return;
+        DeployVersionCatalogService.PlatformImageTagDeclaration tag =
+                DeployVersionCatalogService.platformImageTagOf(config, entryImageTag);
+        if (tag.declared()) {
+            config.put(DeployVersionCatalogService.PLATFORM_IMAGE_TAG_KEY, tag.value());
         }
-        String imageTag = deployVersionCatalogService
-                .read(instance.getGameCode(), instance.getDeployType())
-                .findEntry(selected)
-                .map(VersionEntry::imageTag)
-                .filter(tag -> tag != null && !tag.isBlank())
-                .orElse(declaration.defaultValue());
-        config.put(DeployVersionCatalogService.PLATFORM_IMAGE_TAG_KEY, imageTag);
     }
 
     /**

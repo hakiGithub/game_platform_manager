@@ -123,6 +123,17 @@ class DeployVersionCatalogServiceTest {
     }
 
     @Test
+    @DisplayName("SPI 交回的清单形状本身有问题（混进 null 元素）⇒ 同样归 ABSENT，不把异常泄到向导")
+    void malformedDeclarationListIsAbsentNotError() {
+        when(extension.getDeployVersions(anyString()))
+                .thenReturn(java.util.Arrays.asList(entry("1.0.0", null, true, null, null), null));
+
+        CatalogView view = assertDoesNotThrow(() -> service.read(GAME, COMPOSE));
+
+        assertEquals(CatalogState.ABSENT, view.state());
+    }
+
+    @Test
     @DisplayName("V-01 合法 → AVAILABLE 且保持声明序")
     void read_availableKeepsDeclarationOrder() {
         when(extension.getDeployVersions(anyString())).thenReturn(List.of(
@@ -286,12 +297,19 @@ class DeployVersionCatalogServiceTest {
     }
 
     @Test
-    @DisplayName("保留变量声明态取表快照：未声明该 deployType 时 declared=false（§14.4 门控 ①）")
-    void platformImageTagDeclarationComesFromTableSnapshot() {
+    @DisplayName("两级门控取的是已组装 config 的 variables：条目带 tag 用 tag，否则用 defaultValue")
+    void platformImageTagGateReadsAssembledVariables() {
+        Map<String, Object> assembled = Map.of("variables", List.of(variable(TAG_KEY, "3.20")));
+
+        assertEquals(new DeployVersionCatalogService.PlatformImageTagDeclaration(true, "3.19"),
+                DeployVersionCatalogService.platformImageTagOf(assembled, "3.19"));
         assertEquals(new DeployVersionCatalogService.PlatformImageTagDeclaration(true, "3.20"),
-                service.platformImageTag(GAME, COMPOSE));
+                DeployVersionCatalogService.platformImageTagOf(assembled, null));
         assertEquals(new DeployVersionCatalogService.PlatformImageTagDeclaration(false, null),
-                service.platformImageTag(GAME, "docker"));
+                DeployVersionCatalogService.platformImageTagOf(Map.of("variables", List.of()), null));
+        // ① 级门控优先：未声明保留变量 ⇒ 条目带了 imageTag 也不写
+        assertEquals(new DeployVersionCatalogService.PlatformImageTagDeclaration(false, null),
+                DeployVersionCatalogService.platformImageTagOf(Map.of("variables", List.of()), "3.19"));
     }
 
     @Test

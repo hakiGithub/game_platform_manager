@@ -89,15 +89,20 @@ public class DeployVersionCatalogService {
         if (ext == null) {
             return CatalogView.absent();
         }
-        List<DeployVersionDeclaration> declared;
         try {
-            declared = ext.getDeployVersions(deployType);
+            return readWithinGuard(ext, gameCode, deployType);
         } catch (Exception e) {
-            // SPI 抛异常归 ABSENT：不外泄到向导（AC-20 的构造手段之一）
+            // 插件侧数据不可信：SPI 抛异常、清单里混进 null 元素一类，全部归 ABSENT。
+            // 向导与部署提交都在本方法之外，异常外泄就等于把 AC-20 的「部署失败、实例 ERROR」
+            // 变成一次 500（design.md §16.3「不外泄到向导」）
             log.warn("插件 [{}] 读取版本目录异常，按「无目录」处置: deployType={}, cause={}",
-                    gameCode, deployType, e.getMessage());
+                    gameCode, deployType, e.toString());
             return CatalogView.absent();
         }
+    }
+
+    private CatalogView readWithinGuard(GameEnhancementExtension ext, String gameCode, String deployType) {
+        List<DeployVersionDeclaration> declared = ext.getDeployVersions(deployType);
         if (declared == null || declared.isEmpty()) {
             return CatalogView.empty();
         }
@@ -121,33 +126,52 @@ public class DeployVersionCatalogService {
      *
      * <p>与 N1/N2 同一条取值通道（表快照），因此提交期判定的「会不会互相覆盖」与实际部署
      * 组装出的那份 config 一致。
+     *
+     * <p><b>已知边界</b>：向导渲染的是 {@code GameServiceImpl} 合并后的 {@code variables}，
+     * 所以插件经 {@code getDeployConfigs()} 整节替换出的同名变量在这里看不见。那属 RISK-D07
+     * 同一条通道缺陷（design.md §14.4.1 R2 明写「本期不修、不测」），换成读合并视图反而会让
+     * 校验对象与实际部署那份 config 脱钩，故维持表快照口径。
      */
     public List<String> declaredVariableNames(String gameCode, String deployType) {
         return variableNames(tableTypeConfig(gameCode, deployType));
     }
 
     /**
-     * {@code PLATFORM_IMAGE_TAG} 的表侧声明态 —— design.md §14.4 两级门控的数据源。
+     * design.md §14.4 的两级门控，就着已组装好的部署配置判（纯函数：不读盘、不调 SPI）。
      *
-     * <p>判定通道同样只认表快照：声明与否、以及缺省值，都必须和 {@code buildDeployConfig}
-     * 实际拿去渲染 {@code .env} 的那份 {@code variables[]} 是同一份。
+     * <p>判定对象是 {@code buildDeployConfig} 出口那份 map 里的 {@code variables[]} —— 那正是
+     * {@code generateEnvFileContent} 要遍历渲染 {@code .env} 的同一份清单，所以「这个键会不会进
+     * {@code .env}、缺省值取谁」在这里判既最准，也不额外读盘（§14.4.3「无键 → 默认值分支需要
+     * {@code variables[]}，而它本就在第 5 步读出的同一 map 里」）。
+     *
+     * <p>{@code declared == true} 时值<b>一律由平台定</b>：命中条目带了 {@code imageTag} 就用它，
+     * 否则用该变量声明的 {@code defaultValue}。载荷里用户提交的该键值由调用方覆盖，永不采信 ——
+     * 这条门控与 {@code deployVersion} 键是否存在无关，否则「游戏声明了保留变量但本次没选版本」
+     * 时提交值会直接落进 {@code .env}（PRD §8.4.3、AC-14 ④）。
+     *
+     * @param entryImageTag 命中目录条目声明的 {@code imageTag}；无键、无条目或条目未声明时为 {@code null}
      */
-    public PlatformImageTagDeclaration platformImageTag(String gameCode, String deployType) {
-        Map<String, Object> variable = findVariable(tableTypeConfig(gameCode, deployType), PLATFORM_IMAGE_TAG_KEY);
-        if (variable == null) {
+    public static PlatformImageTagDeclaration platformImageTagOf(Map<String, Object> assembledConfig,
+                                                                 String entryImageTag) {
+        Map<String, Object> reserved = findVariable(assembledConfig, PLATFORM_IMAGE_TAG_KEY);
+        if (reserved == null) {
+            // ① 级门控优先于条目值：未声明保留变量的游戏不参与本机制，条目带了 imageTag 也不写
             return PlatformImageTagDeclaration.notDeclared();
         }
-        Object defaultValue = variable.get("defaultValue");
+        if (entryImageTag != null) {
+            return new PlatformImageTagDeclaration(true, entryImageTag);
+        }
+        Object defaultValue = reserved.get("defaultValue");
         return new PlatformImageTagDeclaration(true,
                 defaultValue == null || String.valueOf(defaultValue).isBlank()
                         ? null : String.valueOf(defaultValue));
     }
 
     /**
-     * @param declared     该 deployType 是否声明了保留变量；未声明 ⇒ 平台完全不写该键
-     * @param defaultValue 声明了时平台为该键写的缺省值（命中条目不带 imageTag 即用此值）
+     * @param declared 该 deployType 是否声明了保留变量；未声明 ⇒ 平台完全不写该键
+     * @param value    声明了时平台为该键写的值（{@code null} 交由 compose 的 {@code ${VAR:-默认}} 兜底）
      */
-    public record PlatformImageTagDeclaration(boolean declared, String defaultValue) {
+    public record PlatformImageTagDeclaration(boolean declared, String value) {
 
         private static final PlatformImageTagDeclaration NOT_DECLARED = new PlatformImageTagDeclaration(false, null);
 
