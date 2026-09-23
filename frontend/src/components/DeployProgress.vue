@@ -101,8 +101,9 @@ const formattedElapsedTime = computed(() => formatElapsed(elapsedTime.value));
 
 // elapsedMs（毫秒权威值）→ 秒：Math.max(1, Math.round(ms / 1000))。
 // <1000ms 渲染成「0秒」等于没显示（AC-03「耗时可见」），故下限取 1 秒；
-// 换算只发生在渲染层——VO 与核对脚本永不出现秒值（design §14.6）。
+// 字段缺失（null / undefined）时不编造数字，该段整体不出（换算只发生在渲染层，design §14.6）。
 function stepElapsedSeconds(ms) {
+  if (ms == null || ms === "") return null;
   const value = Number(ms);
   if (!Number.isFinite(value)) return null;
   return Math.max(1, Math.round(value / 1000));
@@ -111,14 +112,13 @@ function stepElapsedSeconds(ms) {
 // P3「本次真的进过扩展阶段」= latch（design §14.11）：任一日志行的 stage 为 EXTENSION。
 // 组件已累计全部日志行并按 log.id 去重，故该谓词在 HEALTH_CHECK 之后仍为真，
 // 不需要额外状态位；statusText 会变、progress 会跨过，都不能当 latch。
-const hasExtensionStage = computed(() =>
-  logs.value.some((l) => l.stage === EXTENSION_STAGE),
-);
-
-// 阶段带恒在该阶段第一行之前（ui-spec §6.2 规则 1 / §7 X-07 锚点一）
+//
+// 阶段带恒在该阶段第一行之前（ui-spec §6.2 规则 1 / §7 X-07 锚点一），故两者同源一个谓词。
 const firstExtensionLogIndex = computed(() =>
   logs.value.findIndex((l) => l.stage === EXTENSION_STAGE),
 );
+
+const hasExtensionStage = computed(() => firstExtensionLogIndex.value >= 0);
 
 // 「扩展」步骤点的状态：激活态取顶层 stage；终止 / 完成取部署终态（ui-spec §4.2 K…V）。
 // 不由百分比分桶猜（design §14.11）。
@@ -223,6 +223,7 @@ function stepReason(log) {
 }
 
 // 步骤行文本：`步骤 〈序号〉/〈总数〉 〈步骤标签〉 · 〈种类〉 [· 成功 · 耗时 〈时长〉 · 原因：〈原因〉]`
+// （步骤开始行见下，`开始` 前是空格——ui-spec §6.2 表逐字）
 function stepRowText(log) {
   const kind = stepKindLabel(log.stepType);
   const head =
@@ -234,8 +235,9 @@ function stepRowText(log) {
   if (kind) parts.push(kind);
 
   if (log.stepEvent === "START") {
-    parts.push("开始");
-    return parts.join(" · ");
+    // ui-spec §6.2 步骤开始行：`步骤 〈序号〉/〈总数〉 〈步骤标签〉 · 〈种类〉 开始`
+    // ——「开始」前的分隔符是空格，不是 `·`。
+    return `${parts.join(" · ")} 开始`;
   }
 
   parts.push(stepOutcomeLabel(log));

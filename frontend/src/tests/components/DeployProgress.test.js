@@ -399,8 +399,8 @@ describe("DeployProgress 扩展阶段呈现（design §14.11 / F-02 / F-03）", 
     expect(first.classes()).toContain("log-step");
     expect(first.attributes("data-step-index")).toBe("1");
     expect(first.attributes("data-step-total")).toBe("3");
-    expect(first.text()).toContain("补丁替换");
-    expect(first.text()).toContain("开始");
+    // ui-spec §6.2 步骤开始行逐字：「开始」前是空格
+    expect(first.text()).toContain("步骤 1/3 替换二进制 · 补丁替换 开始");
 
     // 阶段级行（进入 / 停实例两行 / 收尾行）不进「步骤」形状
     for (const text of [
@@ -437,10 +437,51 @@ describe("DeployProgress 扩展阶段呈现（design §14.11 / F-02 / F-03）", 
     const wrapper = await renderPayload({ logs: EXTENSION_LOGS });
 
     const fallback = rowByText(wrapper, "步骤 2/3 脚本执行 2");
-    expect(fallback.text()).toContain("脚本执行 2 · 脚本执行 · 开始");
+    expect(fallback.text()).toContain("脚本执行 2 · 脚本执行 开始");
 
     const text = wrapper.text();
     expect(text).not.toMatch(/PATCH|SCRIPT|fatal/);
+  });
+
+  it("§6.2：阶段级行（完成行 / 交棒行）不进「步骤」形状", async () => {
+    const wrapper = await renderPayload({
+      logs: [
+        ENTER_ROW,
+        STOP_BEFORE_ROW,
+        STOPPED_ROW,
+        log(2400, "SUCCESS", "部署扩展阶段收尾 · 容器已恢复到运行态 · 成功 · 耗时 5秒", {
+          stage: EXT,
+          stepId: null,
+          stepEvent: "SUCCESS",
+          elapsedMs: 5000,
+        }),
+        log(2401, "SUCCESS", "部署扩展阶段完成 · 共 3 步 · 总耗时 30分1秒", {
+          stage: EXT,
+          stepId: null,
+          stepEvent: "SUCCESS",
+        }),
+        log(2402, "INFO", "部署扩展阶段结束，进入健康检查与启动", { stage: EXT }),
+      ],
+    });
+
+    expect(wrapper.findAll(".log-step")).toHaveLength(0);
+    for (const text of ["部署扩展阶段收尾", "部署扩展阶段完成", "部署扩展阶段结束"]) {
+      expect(rowByText(wrapper, text).classes()).not.toContain("log-step");
+    }
+    expect(wrapper.findAll(".log-stage-band")).toHaveLength(1);
+  });
+
+  it("§14.6：终态行 elapsedMs 缺失时不编造耗时数字", async () => {
+    const wrapper = await renderPayload({
+      logs: [
+        ENTER_ROW,
+        stepRow(2500, "PATCH", STEP1, { stepEvent: "SUCCESS" }),
+      ],
+    });
+
+    const row = rowByText(wrapper, "步骤 1/3 替换二进制");
+    expect(row.text()).toContain("成功");
+    expect(row.text()).not.toContain("耗时");
   });
 
   it("§6.3：失败行原因段以「原因：」引导且置于行尾（AC-08 / AC-12 界面侧）", async () => {
