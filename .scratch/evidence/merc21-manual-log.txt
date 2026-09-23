@@ -1,0 +1,26 @@
+STEP 登录成功 → http://localhost:3000/workspace/overview
+=== W3/W4 桩游戏（gameId=140，目录 AVAILABLE）===
+STEP 主机已选中（is-selected 计数=1）
+  deploy-config 请求次数（本次进步骤 2 全程）= 1 /games/140/deploy-config/docker-compose
+AC-01 控件出现（data-ext-version-select 可见）
+  区块标题 = 目标版本
+  aria-label=目标版本 节点数 = 2
+  data-ext-version-select 节点标签 = DIV.el-select version-select
+  P1 收起态值区 = 默认版本 1.0.0-default
+  默认态徽标 = 不执行部署扩展步骤
+  锚点 input aria-controls = el-id-2990-40
+  锚点弹层 listbox 计数 = 1
+  选项行 = [{"main":"默认版本","sub":"1.0.0-default","note":"不执行部署扩展"},{"main":"桩改造版","sub":"2.0.0-patched","note":"含 2 个部署扩展步骤"},{"main":"桩选装版","sub":"2.1.0-selective","note":"含 3 个部署扩展步骤"}]
+  句一 非默认选项副标去重集合 = ["2.0.0-patched","2.1.0-selective"]
+  句一 每元素恰出现 1 次 = true
+  句二 默认项 = {"main":"默认版本","sub":"1.0.0-default","note":"不执行部署扩展"}
+  选项数 = 3 （目录条目数 3）
+  G 态徽标 = 将执行 2 个部署扩展步骤
+  G 态步骤预览 = ["1/2 补丁替换 补丁替换 1 失败即终止","2/2 脚本执行 桩版本改造脚本 失败即终止"]
+=== W1 dnf_tw（gameId=41，目录 ABSENT）===
+STEP 主机已选中（is-selected 计数=1）
+AC-24① [data-ext-version-select] 计数 = 0
+AC-24① #ext-version-section-title 计数 = 0
+AC-24① body 文本含「默认版本」 = false
+AC-24① body 文本含「目标版本」 = false
+=== 浏览器控制台 error 计数 = 0 ===
