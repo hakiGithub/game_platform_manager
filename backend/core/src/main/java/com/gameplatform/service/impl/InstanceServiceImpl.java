@@ -825,7 +825,8 @@ public class InstanceServiceImpl implements InstanceService {
      * 将 runtimeMetadata 中的字段提升到 config 顶层（仅当顶层不存在或为空时）。
      * 用于在 uninstall/stop/start 等后续操作中还原部署时的 projectName/workDir/containerName。
      */
-    private void promoteMetadataIfAbsent(Map<String, Object> config, Map<String, Object> metadata, String key) {        if (metadata == null || !metadata.containsKey(key)) {
+    private void promoteMetadataIfAbsent(Map<String, Object> config, Map<String, Object> metadata, String key) {
+        if (metadata == null || !metadata.containsKey(key)) {
             return;
         }
         Object existing = config.get(key);
