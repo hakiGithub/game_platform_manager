@@ -170,6 +170,8 @@ class DeployVersionCatalogServiceTest {
                         new PatchStepDeclaration("p", "http://127.0.0.1:8099/a.zip", "/etc/passwd", null, null, null, true), null))),
                 new IllegalSample("BR-05 PATCH targetPath 不得越界", List.of(entry("2.0.0", null, false,
                         new PatchStepDeclaration("p", "http://127.0.0.1:8099/a.zip", "../escape", null, null, null, true), null))),
+                new IllegalSample("BR-05 PATCH targetPath 不得为 Windows 绝对路径", List.of(entry("2.0.0", null, false,
+                        new PatchStepDeclaration("p", "http://127.0.0.1:8099/a.zip", "C:/Windows/x", null, null, null, true), null))),
                 new IllegalSample("PATCH sha256 须为 64 位十六进制", List.of(entry("2.0.0", null, false,
                         new PatchStepDeclaration("p", "http://127.0.0.1:8099/a.zip", "target", "xyz", null, null, true), null))),
                 new IllegalSample("SCRIPT label 必填非空", List.of(entry("2.0.0", null, false, null,
@@ -260,6 +262,16 @@ class DeployVersionCatalogServiceTest {
         assertEquals(CatalogState.INVALID, view.state());
         assertTrue(view.invalidReason().contains("N1"), view.invalidReason());
         assertTrue(view.invalidReason().contains("N2"), view.invalidReason());
+    }
+
+    @Test
+    @DisplayName("BR-05 判的是越界，不是「路径里有冒号」：Linux 相对路径含 : 仍合法")
+    void colonInsideRelativePathIsLegal() {
+        when(extension.getDeployVersions(anyString())).thenReturn(List.of(entry("2.0.0", null, false,
+                new PatchStepDeclaration("p", "http://127.0.0.1:8099/a.zip", "builds/1.0:stable/mod",
+                        null, null, null, true), null)));
+
+        assertEquals(CatalogState.AVAILABLE, service.read(GAME, COMPOSE).state());
     }
 
     @Test

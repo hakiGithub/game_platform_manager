@@ -62,6 +62,9 @@ public class DeployVersionCatalogService {
 
     private static final Pattern SHA256 = Pattern.compile("[0-9a-fA-F]{64}");
 
+    /** Windows 绝对路径形状（Linux 下 {@code :} 是合法文件名字符，不能一律按绝对路径判死）。 */
+    private static final Pattern WINDOWS_DRIVE_PATH = Pattern.compile("[A-Za-z]:[/\\\\].*");
+
     /** design.md §15.2 拍板的脚本超时区间。 */
     private static final long TIMEOUT_MIN_MS = 1_000L;
     private static final long TIMEOUT_MAX_MS = 1_800_000L;
@@ -322,7 +325,7 @@ public class DeployVersionCatalogService {
     /** BR-05：实例相对路径，越界即声明不合法。 */
     private void requireInstanceRelativePath(String step, String path, List<String> failures) {
         String normalized = path.replace('\\', '/');
-        boolean absolute = normalized.startsWith("/") || normalized.contains(":");
+        boolean absolute = normalized.startsWith("/") || WINDOWS_DRIVE_PATH.matcher(normalized).lookingAt();
         boolean escapes = Stream.of(normalized.split("/")).anyMatch(".."::equals);
         if (absolute || escapes) {
             failures.add(step + " 的 targetPath=" + path + " 不是实例目录内的相对路径（BR-05）");
