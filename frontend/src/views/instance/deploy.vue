@@ -1311,6 +1311,7 @@ onMounted(() => {
                       data-ext-version-select
                       aria-label="目标版本"
                       aria-labelledby="ext-version-section-title"
+                      popper-class="version-select-popper"
                       class="version-select"
                       :disabled="versionCatalogLoading"
                       :placeholder="
@@ -3272,6 +3273,13 @@ onMounted(() => {
 <style lang="scss">
 /* 目标版本下拉选项行（非 scoped：el-select 的弹层被传送到 <body> 下，scoped 选择器取不到）。
    类名以 .version-* 为前缀，仅服务 F-04 的这一个控件。 */
+.version-select-popper .el-select-dropdown__item {
+  /* §8.2 下拉选项行：行高随两行内容自然撑开（主文本 + versionId 副标），padding: 7px 12px */
+  height: auto;
+  line-height: 1.4;
+  padding: 7px 12px;
+}
+
 .version-option {
   display: flex;
   align-items: center;
