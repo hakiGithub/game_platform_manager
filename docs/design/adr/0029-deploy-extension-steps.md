@@ -56,6 +56,8 @@
 
 版本目录条目 = `版号 → 镜像 tag（可选，缺省沿用默认）+ 补丁集 + 脚本集 + 目标路径`。dnf-tw 现状：基础镜像只提供默认版本（qf1031），其他版本由插件提供的补丁包 + 脚本"改"出来；版本目录放插件声明（ADR-0008 读时合并体系）。dnf-tw 尚无可承载声明的插件模块——"是否随本次交付创建最小 plugin-dnf-tw"属实现范围问题，见 Consequences。
 
+> **注（2026-09-24，实现回写 · 只做加法：本文决策 1–9 的正文一字未改）**：本注适用于本文把版本目录挂在「ADR-0008 读时合并 / 声明式合并体系」上的那两处表述——**决策 9 末句**与 **Consequences「版本目录的承载方」行**。实现落定的承载入口是**同一扩展点 `GameEnhancementExtension` 的类型化入口 `getDeployVersions`**，不是 `getDeployConfigs()`：ADR-0008 的读时合并**只作用于配置读取路径**（`GameServiceImpl` 给部署向导返回 `DeployConfigVO` 时整节替换、插件优先），**不作用于部署执行路径**（`InstanceServiceImpl.buildDeployConfig` 取的是 `game_metadata` 表里由扫描器落库的 yml 快照，不经那条合并视图）。⇒ 按字面把目录挂进 `getDeployConfigs()` 会做出一个「向导看得见、部署看不见」的目录，BR-12 / AC-20 / AC-24 同时落空。**本决策的边界不变**：版本目录仍由插件声明、仍在 ADR-0008 的声明体系之内，变的只是该体系里被选用的方法——这正是决策 1「游戏专属逻辑不写进主应用（ADR-0002 / ADR-0008 边界）」要保住的同一件事。依据：`docs/design/MERC-3/design.md` §16.1（那条不对称本身）与 §16.5（对 FR-22 措辞的偏离与回写建议）；事实登记：`docs/prd/MERC-3/prd.md` F-19 与 FR-22。
+
 ## Consequences（后果）
 
 - 部署流程新增扩展阶段（DEPLOY 与 HEALTH_CHECK 之间），部署日志新增可见步骤；部署耗时增加"停实例 → 扩展 → 再启动"的固定成本。
