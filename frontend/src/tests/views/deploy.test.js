@@ -116,18 +116,16 @@ const HOST = {
 };
 
 // ── 挂载与渲染探针 ───────────────────────────────────────────────────────────
-async function mountDeploy({
-  catalog = [],
-  state = "AVAILABLE",
-  game = GAME,
-} = {}) {
+async function mountDeploy({ catalog = [], game = GAME } = {}) {
   mockGetGameList.mockResolvedValue([game]);
   if (catalog instanceof Error) {
     mockGetDeployConfig.mockRejectedValue(catalog);
   } else {
+    // versionCatalogState 按 design §16.4 原样喂入：前端**有意**不读它（三态渲染相同），
+    // P1 谓词只由 deployVersions.length 决定——这里保留它只为让桩响应保持真实形状。
     mockGetDeployConfig.mockResolvedValue({
       deployVersions: catalog,
-      versionCatalogState: state,
+      versionCatalogState: catalog.length ? "AVAILABLE" : "EMPTY",
       variables: [],
     });
   }

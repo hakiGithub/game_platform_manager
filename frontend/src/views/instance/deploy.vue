@@ -142,7 +142,6 @@ const variableFormRef = ref(null);
 // P1（控件渲染）⇔ 目录可用（读取成功 且 条目数 ≥ 1）。载荷里的 versionId 是否在条目中
 // **不**并入 P1——那半只决定当前值怎么显示（G2 态），不决定控件出不出现。
 const deployVersions = ref([]);
-const versionCatalogLoading = ref(false);
 // 选择值：VERSION_DEFAULT = 「默认版本」（S2，提交省略 deployVersion 键）；其余一律是
 // 某个条目的 versionId。目录外既存值（G2）也原样落在这里，不得回落、不得清除（X-11）。
 // 哨位串含 `:`（versionId 字符集 [A-Za-z0-9._-] 不含它），不可能与真实版号撞值。
@@ -168,7 +167,7 @@ const isOffCatalogVersion = computed(
 );
 // 区块可见性：目录可用时渲染；读取中按 §4.1 D（W2）占位渲染，不出现空选项。
 const versionBlockVisible = computed(
-  () => versionCatalogAvailable.value || versionCatalogLoading.value,
+  () => versionCatalogAvailable.value || loadingDeployConfig.value,
 );
 
 // §6.1「↳ 选项排序」：「默认版本」恒为第一项；目录里 default = true 的条目若不在声明序
@@ -249,7 +248,8 @@ const versionValueSubText = computed(() => {
 const versionBadgeVisible = computed(
   () => versionCatalogAvailable.value && !isOffCatalogVersion.value,
 );
-const versionBadge = computed(() =>
+// 徽标文本与摘要徽标同源（同一机械核对对象）
+const selectedVersionBadge = computed(() =>
   versionBadgeText(selectedVersionEntry.value),
 );
 
@@ -293,9 +293,7 @@ const versionSummaryVisible = computed(
 const versionSummaryBadgeVisible = computed(
   () => !isVersionDefault.value && !isOffCatalogVersion.value,
 );
-const versionSummaryBadge = computed(() =>
-  versionBadgeText(selectedVersionEntry.value),
-);
+
 // 目录外既存值：与 W9 同款的「沿用实例配置」标识；目录可用（G2）时另加「不在当前可选版本中」
 const versionOffCatalogNote = computed(() =>
   isOffCatalogVersion.value && versionCatalogAvailable.value
@@ -391,73 +389,59 @@ function isComposeVariableDeploy() {
   );
 }
 
-async function loadDeployConfig() {
-  if (!isComposeVariableDeploy() || !selectedGame.value) {
-    deployVariables.value = [];
-    return;
-  }
-  loadingDeployConfig.value = true;
-  try {
-    const data = await getDeployConfig(
-      selectedGame.value.id,
-      selectedDeployMethod.value,
-    );
-    deployVariables.value = data.variables || [];
-    // 重置变量值，并回填每个变量的默认值
-    // 之前未回填默认值，导致提交时变量值为空，后端 .env 生成缺失关键变量
-    Object.keys(deployVariablesValues).forEach(
-      (k) => delete deployVariablesValues[k],
-    );
-    deployVariables.value.forEach((v) => {
-      if (v.defaultValue !== undefined && v.defaultValue !== null) {
-        deployVariablesValues[v.name] = v.defaultValue;
-      }
-    });
-  } catch (error) {
-    console.error("Failed to load deploy config:", error);
-    ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
-    deployVariables.value = [];
-  } finally {
-    loadingDeployConfig.value = false;
-  }
-}
-
-// 读取版本目录（与变量配置同一个 GET，不新增接口，§16.4）：作用域 = gameCode + deployType。
+// 一次 GET 同时供两个读者（design §16.4：不新增接口，也不重复拉取）：
+// ① 步骤 3 的 Compose 变量元信息与默认值；② 步骤 2 的版本目录（deployVersions）。
+// 作用域 = gameCode + deployType，故「选定游戏」与「切换部署方式」都重取一次。
 // 读取成功但 0 条目 ⇒ P1 假（控件与摘要行都不出现，AC-24）；读取失败同理不渲染，
 // 且**不得**把它当「声明不合法」输出提示（RISK-13，提示行只在部署日志）。
-async function loadVersionCatalog({ notifyReset = false } = {}) {
+async function loadDeployConfig({ notifyReset = false } = {}) {
   const previous = selectedVersionId.value;
   // 旧选择是否来自「上一次目录读取」——只有这种来源才适用 X-02 的回落；
   // 目录外既存值（G2）按 X-11 不得回落、不得清除。
   const previousWasCatalogEntry =
     previous === VERSION_DEFAULT ||
     deployVersions.value.some((e) => e.versionId === previous);
-  const scopeReadable =
-    Boolean(selectedGame.value) && isComposeVariableDeploy();
 
-  versionCatalogLoading.value = scopeReadable;
-  let next = [];
-  try {
-    if (scopeReadable) {
+  let nextVersions = [];
+  if (isComposeVariableDeploy() && selectedGame.value) {
+    loadingDeployConfig.value = true;
+    try {
       const data = await getDeployConfig(
         selectedGame.value.id,
         selectedDeployMethod.value,
       );
-      next = Array.isArray(data?.deployVersions) ? data.deployVersions : [];
+      deployVariables.value = data?.variables || [];
+      nextVersions = Array.isArray(data?.deployVersions)
+        ? data.deployVersions
+        : [];
+      // 重置变量值，并回填每个变量的默认值
+      // 之前未回填默认值，导致提交时变量值为空，后端 .env 生成缺失关键变量
+      Object.keys(deployVariablesValues).forEach(
+        (k) => delete deployVariablesValues[k],
+      );
+      deployVariables.value.forEach((v) => {
+        if (v.defaultValue !== undefined && v.defaultValue !== null) {
+          deployVariablesValues[v.name] = v.defaultValue;
+        }
+      });
+    } catch (error) {
+      console.error("Failed to load deploy config:", error);
+      ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
+      deployVariables.value = [];
+    } finally {
+      loadingDeployConfig.value = false;
     }
-  } catch (error) {
-    console.error("Failed to load version catalog:", error);
-  } finally {
-    versionCatalogLoading.value = false;
+  } else {
+    deployVariables.value = [];
   }
-  deployVersions.value = next;
+  deployVersions.value = nextVersions;
 
   // X-02：切换部署方式须重取目录；新版号仍存在则保留选择，不存在则回落「默认版本」并提示，
   // 不得静默改选。
   if (
     previous !== VERSION_DEFAULT &&
     previousWasCatalogEntry &&
-    !next.some((e) => e.versionId === previous)
+    !nextVersions.some((e) => e.versionId === previous)
   ) {
     selectedVersionId.value = VERSION_DEFAULT;
     if (notifyReset) {
@@ -639,19 +623,8 @@ watch(
   },
 );
 
-// 监听部署方式变化：docker-compose / linuxgsm-docker 时加载变量配置
-watch(
-  () => selectedDeployMethod.value,
-  (method) => {
-    if (isComposeVariableDeploy() && selectedGame.value) {
-      loadDeployConfig();
-    } else {
-      deployVariables.value = [];
-    }
-  },
-);
-
-// 版本目录作用域 = gameCode + deployType（X-01 / X-02）：选定游戏或切换部署方式都重取目录。
+// 部署配置（Compose 变量元信息 + 版本目录）的作用域 = gameCode + deployType
+// （X-01 / X-02）：选定游戏或切换部署方式都重取一次。
 // 只有「同一游戏内切换部署方式」才给回落提示——换游戏是整块重来，不报重置。
 watch(
   () => [selectedGame.value?.id ?? null, selectedDeployMethod.value],
@@ -660,7 +633,7 @@ watch(
       previous !== undefined &&
       gameId === previous[0] &&
       deployType !== previous[1];
-    loadVersionCatalog({ notifyReset: methodChanged });
+    loadDeployConfig({ notifyReset: methodChanged });
   },
 );
 
@@ -1313,13 +1286,16 @@ onMounted(() => {
                       aria-labelledby="ext-version-section-title"
                       popper-class="version-select-popper"
                       class="version-select"
-                      :disabled="versionCatalogLoading"
+                      :disabled="loadingDeployConfig"
                       :placeholder="
-                        versionCatalogLoading ? '版本目录读取中…' : ''
+                        loadingDeployConfig ? '版本目录读取中…' : ''
                       "
                     >
                       <template #label>
-                        <span class="version-value">
+                        <span
+                          class="version-value"
+                          :class="{ 'is-off-catalog': isOffCatalogVersion }"
+                        >
                           <span
                             class="version-value-main"
                             :title="versionValueMainText"
@@ -1359,7 +1335,7 @@ onMounted(() => {
                     </el-select>
                     <span v-if="versionBadgeVisible" class="version-badge">
                       <el-tag size="small" effect="plain">{{
-                        versionBadge
+                        selectedVersionBadge
                       }}</el-tag>
                     </span>
                   </div>
@@ -1962,7 +1938,7 @@ onMounted(() => {
                     class="version-summary-badge"
                   >
                     <el-tag size="small" effect="plain">{{
-                      versionSummaryBadge
+                      selectedVersionBadge
                     }}</el-tag>
                   </span>
                 </span>
@@ -3103,9 +3079,17 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
+/* 收起态值区的副标按 §8.2 取 11px（弹层选项行的副标是 10px，见文件末尾非 scoped 块） */
 .version-value .version-id-sub {
   flex: 0 0 auto;
   font-size: 11px;
+}
+
+/* G2（§6.1「↳ 控件当前值 G2」/ §8.2）：值区内只放组件回显的那个值——amber mono 11px */
+.version-value.is-off-catalog .version-value-main {
+  font-family: var(--el-font-family-mono);
+  font-size: 11px;
+  color: var(--platform-amber);
 }
 
 .version-badge {
