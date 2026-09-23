@@ -1,0 +1,9 @@
+# 验收夹具的字节级稳定性约束（不是样式偏好，是判据前提）
+#
+# 桩插件声明里对两个夹具写了 sha256（PRD §8.2 / §8.3 的「声明了即校验」分支），
+# 而本机 git 默认 core.autocrlf=true ⇒ 不做约束时 checkout 出的字节与提交时的字节不同，
+# 摘要必然不符。zip 若被当文本处理更会直接损坏包体。
+*.zip   binary
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf

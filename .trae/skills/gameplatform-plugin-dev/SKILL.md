@@ -76,7 +76,7 @@ curl http://localhost:8080/api/pf4j/plugin/mygame/manifest
 | `references/exceptions.md` | 异常类层级、框架异常使用、基于真实异常的 FAQ | 抛错/接错；按异常类名排查问题 |
 | `references/gotchas.md` | 19 节非显而易见的陷阱：菜单机制、路由对齐、隔离规约、路径安全、热部署、独立构建四坑、子容器静默失败、无 RCON 控制台通道等 | 行为与预期不符时先查这里 |
 | `references/checklist.md` | 路径常量速查、安全配置约定、发布检查清单、验收标准 | 发布前自检、查路径常量与缓存策略 |
-| `references/sdk-reference.md` | 全部扩展点 / 服务接口签名速查（跨项目离线快照） | 编码时查方法签名；语义疑义回到对应主题文件与源码 |
+| `references/sdk-reference.md` | 全部扩展点 / 服务接口签名速查（跨项目离线快照）；含 **ADR-0029 部署扩展声明面**：`getDeployVersions` / `getDeployExtensionSteps` 两个 default 入口、`extension.deploy` 七个类型（sealed 步骤上界 + 版本目录条目 + 上下文）、`PatchInstallService.installSync` | 编码时查方法签名；语义疑义回到对应主题文件与源码 |
 | `references/changelog.md` | 版本演进、**破坏性变更速查表**、维护约定 | 动手前确认 API 兼容性；平台升级后对照 |
 | `references/walkthrough-l4d2.md` | plugin-l4d2 完整双端参考实现剖析 | 对照完整实现开发新插件（平台仓库内） |
 
