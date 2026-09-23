@@ -21,9 +21,10 @@ import java.nio.file.Path;
  * {@code <workDir>/.platform-extension/E-<n>.sh} → {@code bash <file>} 执行 → {@code finally} 删除」。
  * 脚本正文<b>永不</b>拼进命令行（RISK-08）：命令行里只有脚本文件名，审计可读且无引号转义面。
  *
- * <p><b>本类只提供能力，不产日志行</b>：步骤行的归组与词面属 §14.6 的呈现契约（B-09 / B-11），
+ * <p><b>本类只提供能力，不产部署日志行</b>：步骤行的归组与词面属 §14.6 的呈现契约（B-09 / B-11），
  * 因此结果对象只携带机械字段（{@code exitCode} / {@code timedOut} / 截断后的输出与字节数），
- * 不携带任何用户可见文案。OP-05 未关闭，本类因此不自造词面。
+ * 不携带任何用户可见文案。OP-05 未关闭，本类因此不自造词面。（下面的 slf4j 输出是平台运维日志，
+ * 不是给用户读的部署日志流。）
  *
  * <p><b>诚实限制（§15.3）</b>：{@code timeoutMs} 到点后平台只是<b>不再等待</b>，
  * 不保证宿主机上的脚本进程已被终止——远端 {@code timeout} 发的是 SIGTERM，
@@ -77,32 +78,37 @@ public class ExtensionScriptRunner {
      */
     public ScriptRunResult run(ScriptStepDeclaration step, int stepIndex, Long hostId, String workDir) {
         long timeoutMs = step.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : step.timeoutMs();
-        String scriptFile = workDir + "/" + SCRIPT_DIR_NAME + "/E-" + stepIndex + ".sh";
+        long shellSeconds = shellTimeoutSeconds(timeoutMs);
+        String scriptDir = workDir + "/" + SCRIPT_DIR_NAME;
+        String scriptFile = scriptDir + "/E-" + stepIndex + ".sh";
         Path localScript = null;
-        boolean uploaded = false;
+        // 「可能已在宿主机落文件」的边界要划在上传**之前**：传输中断同样会留下半个 E-<n>.sh，
+        // 若在之后才置真，这半个文件就没人删了（V-13 的 finally 删除）。
+        boolean mayExistOnHost = false;
         try {
             localScript = materializeLocalScript(step);
-            String scriptDir = scriptFile.substring(0, scriptFile.lastIndexOf('/'));
             fileAccessService.executeCommand(hostId, "mkdir -p " + shellQuote(scriptDir));
+            mayExistOnHost = true;
             fileAccessService.uploadLocalFile(hostId, scriptFile, localScript.toString());
-            uploaded = true;
 
             // 命令标识 + 脚本文件名，不含正文（§8.3「命令文本」行）
             log.info("扩展脚本步骤 {} 开始: hostId={}, scriptFile={}, timeoutMs={}", stepIndex, hostId, scriptFile, timeoutMs);
-            String command = "timeout " + shellTimeoutSeconds(timeoutMs) + " bash " + shellQuote(scriptFile);
+            String command = "timeout " + shellSeconds + " bash " + shellQuote(scriptFile);
             long startedAt = System.currentTimeMillis();
             FileAccessService.CommandResult result = fileAccessService.executeCommand(hostId, command, timeoutMs);
             long elapsedMs = System.currentTimeMillis() - startedAt;
 
-            boolean timedOut = result.getExitCode() == SHELL_TIMEOUT_EXIT_CODE && elapsedMs >= timeoutMs;
+            // 判超时必须对齐「远端实际被杀的时刻」而不是声明的毫秒数：shell timeout 只有秒的粒度，
+            // 用 timeoutMs 本身比会把一次真超时误判成普通的 exitCode == 124（违反 §14.6 规则 4）
+            boolean timedOut = result.getExitCode() == SHELL_TIMEOUT_EXIT_CODE && elapsedMs >= shellSeconds * 1000L;
             Integer exitCode = timedOut ? null : result.getExitCode();
             log.info("扩展脚本步骤 {} 结束: scriptFile={}, exitCode={}, timedOut={}, elapsedMs={}",
                     stepIndex, scriptFile, exitCode, timedOut, elapsedMs);
             return new ScriptRunResult(exitCode, timedOut, timeoutMs, elapsedMs,
                     truncate(result.getOutput()), truncate(result.getError()));
         } finally {
-            if (uploaded) {
-                deleteQuietly(hostId, scriptFile);
+            if (mayExistOnHost) {
+                deleteQuietly(hostId, scriptFile, scriptDir);
             }
             deleteLocalQuietly(localScript);
         }
@@ -160,9 +166,13 @@ public class ExtensionScriptRunner {
         }
     }
 
-    /** 远端 {@code timeout} 以秒为单位；声明区间已保证 &gt;= 1s，取整下界仍夹到 1 防「timeout 0 = 不限时」。 */
+    /**
+     * 远端 {@code timeout} 只有秒的粒度，这里<b>向上</b>取整（下界 1 s，防「timeout 0 = 不限时」）：
+     * 向下取整会在声明预算还没用满前就把脚本杀掉（1400 ms → 1 s），那是「主应用覆盖声明」的一种，
+     * BR-04 禁止。代价是预算最多被放宽不到 1 s，而 {@code timeoutMs} 的下界本就是 1 s（§15.2）。
+     */
     private static long shellTimeoutSeconds(long timeoutMs) {
-        return Math.max(1L, Math.round(timeoutMs / 1000.0));
+        return Math.max(1L, (timeoutMs + 999L) / 1000L);
     }
 
     // ==================== 输出截断（§8.3） ====================
@@ -180,11 +190,21 @@ public class ExtensionScriptRunner {
 
     // ==================== 清理 ====================
 
-    private void deleteQuietly(Long hostId, String remotePath) {
+    /**
+     * 删临时脚本，并把只放临时脚本的 {@code .platform-extension/} 目录一起收掉（§8.4）。
+     * 用 {@code rmdir} 而非 {@code rm -rf}：脚本自己往这里写过东西就不该被平台顺手清空，
+     * 目录非空时 rmdir 自然失败，忽略即可。
+     */
+    private void deleteQuietly(Long hostId, String remotePath, String remoteDir) {
         try {
             fileAccessService.deleteFile(hostId, remotePath);
         } catch (Exception e) {
             log.warn("扩展脚本临时文件删除失败（不影响步骤判定）: {}, {}", remotePath, e.getMessage());
+        }
+        try {
+            fileAccessService.executeCommand(hostId, "rmdir " + shellQuote(remoteDir));
+        } catch (Exception e) {
+            log.debug("扩展脚本临时目录未清空（非空或已不存在）: {}", remoteDir);
         }
     }
 
@@ -258,6 +278,7 @@ public class ExtensionScriptRunner {
      * 前置条件不满足：脚本未上传、未执行。携带结构化字段而非文案，
      * 因为 OP-05 未关闭且 ui-spec §6.3 只登记了「补丁包」摘要不符的词面，脚本侧没有对应行。
      */
+    @lombok.Getter
     public static class ScriptPreconditionException extends RuntimeException {
 
         private final ScriptPrecondition precondition;
@@ -270,18 +291,6 @@ public class ExtensionScriptRunner {
             this.precondition = precondition;
             this.expectedSha256 = expectedSha256;
             this.actualSha256 = actualSha256;
-        }
-
-        public ScriptPrecondition getPrecondition() {
-            return precondition;
-        }
-
-        public String getExpectedSha256() {
-            return expectedSha256;
-        }
-
-        public String getActualSha256() {
-            return actualSha256;
         }
     }
 }

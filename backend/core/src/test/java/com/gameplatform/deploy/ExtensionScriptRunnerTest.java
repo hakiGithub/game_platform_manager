@@ -116,9 +116,22 @@ class ExtensionScriptRunnerTest {
         }
 
         @Test
-        @DisplayName("finally 删除临时脚本")
+        @DisplayName("finally 删除临时脚本，并收掉只放临时脚本的空目录")
         void deletesRemoteScriptAfterSuccess() {
             runner.run(hostScript("true", null), 2, HOST_ID, WORK_DIR);
+            verify(fileAccessService).deleteFile(HOST_ID, SCRIPT_FILE);
+            assertTrue(commands.contains("rmdir '" + WORK_DIR + "/.platform-extension'"),
+                    "§8.4：.platform-extension 只放临时脚本，收尾一并删除：" + commands);
+        }
+
+        @Test
+        @DisplayName("上传中途断掉也要删掉那半个临时脚本")
+        void deletesRemoteScriptWhenUploadBreaksMidway() {
+            org.mockito.Mockito.doThrow(new IllegalStateException("sftp 通道断了"))
+                    .when(fileAccessService).uploadLocalFile(anyLong(), anyString(), anyString());
+
+            assertThrows(IllegalStateException.class,
+                    () -> runner.run(hostScript("true", null), 2, HOST_ID, WORK_DIR));
             verify(fileAccessService).deleteFile(HOST_ID, SCRIPT_FILE);
         }
 
@@ -268,11 +281,12 @@ class ExtensionScriptRunnerTest {
         @Test
         @DisplayName("超时：exitCode 置 null 以与「非零退出」区分（§14.6 规则 4）")
         void timeoutYieldsNullExitCode() {
-            long budget = 300L;
+            long budget = 1_000L;
             lenient().when(fileAccessService.executeCommand(anyLong(), anyString(), anyLong()))
                     .thenAnswer(invocation -> {
                         commands.add(invocation.getArgument(1));
-                        Thread.sleep(budget + 50);
+                        // 远端 shell timeout 在整秒处把进程杀掉，耗时必然 >= 那一秒
+                        Thread.sleep(budget + 150);
                         return commandResult(124, "", "");
                     });
 
@@ -282,6 +296,15 @@ class ExtensionScriptRunnerTest {
             assertNull(result.exitCode());
             assertFalse(result.succeeded());
             assertEquals(budget, result.timeoutMs());
+        }
+
+        @Test
+        @DisplayName("秒的粒度向上取整：不提前杀掉还没用满预算的脚本")
+        void subSecondBudgetRoundsUpNotDown() {
+            runner.run(hostScript("true", 1_400L), 2, HOST_ID, WORK_DIR);
+            assertTrue(executionCommand().startsWith("timeout 2 bash "),
+                    "1400ms 若向下取整成 1 s，就是在声明预算内提前判死（BR-04 不得覆盖声明）："
+                            + executionCommand());
         }
 
         @Test

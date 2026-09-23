@@ -38,6 +38,21 @@ public class PatchInstallServiceImpl implements PatchInstallService {
     /** holder 前缀：非任务 ID，{@code removeByTaskId} 拿不到它，故不会被 PENDING 超时/崩溃恢复误释放。 */
     private static final String MUTEX_HOLDER_PREFIX = "EXT:";
 
+    private static final PatchInstallProgressListener SILENT_LISTENER = new PatchInstallProgressListener() {
+        @Override
+        public void onProgress(int percent, String message) {
+        }
+
+        @Override
+        public void onLog(String message) {
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return false;
+        }
+    };
+
     private final TaskService taskService;
     private final InstanceQueryService instanceQueryService;
     private final HostCapabilityProber prober;
@@ -102,6 +117,9 @@ public class PatchInstallServiceImpl implements PatchInstallService {
         // 每主机互斥不在 PatchInstallExecutor 内（该类只承全局闸），直调 execute() 恰好绕开
         // 任务中心那条 submit 路径上的键占用，因此这里承同一个键补回来（design.md §14.14）。
         String mutexKey = MUTEX_KEY_PREFIX + instance.getHostId();
+        // §14.14 写的是 EXT:<instanceId>:<stepIndex>，但 installSync 的 SDK 签名里没有 stepIndex
+        // （序号属调用方的呈现层概念）。改用进程内自增后缀：前缀不变 ⇒ 仍不是任何 DB 任务 ID，
+        // 且保证两个线程不会拿到同一个 holder（否则 putIfAbsent 会把「别人已持键」误判成「自己持着」）。
         String holder = MUTEX_HOLDER_PREFIX + request.getInstanceId() + ":" + syncSequence.incrementAndGet();
         acquireHostMutex(mutexKey, holder, instance.getHostId());
         try {
@@ -123,43 +141,35 @@ public class PatchInstallServiceImpl implements PatchInstallService {
                 Thread.sleep(mutexPollIntervalMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                // OP-05 缺口：ui-spec 只登记了「等满预算」那一支的词面，「等待期被中断」没有对应行。
+                // 这里不新造产品文案，只给可归因的技术串（已在 MERC-20 回贴里登记为缺口）。
                 throw new BusinessException("等待同主机补丁互斥被中断，实例 hostId=" + hostId);
             }
         }
         throw new BusinessException("等待同主机补丁互斥超时（" + mutexWaitBudgetMs / 1000 + "s），实例 hostId=" + hostId);
     }
 
+    /**
+     * SDK 回调 → 执行器回调的同形状桥接。{@code isCancelled} 原样透传而不固定为 {@code false}：
+     * §14.1 的「扩展阶段传 () -> false」是**调用方**的义务，本服务不该替它写死——
+     * 插件直接调 {@code installSync} 时那条取消通道仍然可用。
+     */
     private static PatchInstallExecutor.ProgressListener asExecutorListener(PatchInstallProgressListener listener) {
-        if (listener == null) {
-            return new PatchInstallExecutor.ProgressListener() {
-                @Override
-                public void onProgress(int percent, String message) {
-                }
-
-                @Override
-                public void onLog(String message) {
-                }
-
-                @Override
-                public boolean isCancelled() {
-                    return false;
-                }
-            };
-        }
+        PatchInstallProgressListener source = listener == null ? SILENT_LISTENER : listener;
         return new PatchInstallExecutor.ProgressListener() {
             @Override
             public void onProgress(int percent, String message) {
-                listener.onProgress(percent, message);
+                source.onProgress(percent, message);
             }
 
             @Override
             public void onLog(String message) {
-                listener.onLog(message);
+                source.onLog(message);
             }
 
             @Override
             public boolean isCancelled() {
-                return listener.isCancelled();
+                return source.isCancelled();
             }
         };
     }
