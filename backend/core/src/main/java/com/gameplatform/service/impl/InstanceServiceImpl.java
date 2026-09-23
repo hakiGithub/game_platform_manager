@@ -9,6 +9,9 @@ import com.gameplatform.adapter.DeployProgressCallback;
 import com.gameplatform.adapter.DockerComposeAdapter;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
+import com.gameplatform.deploy.DeployVersionCatalogService;
+import com.gameplatform.deploy.DeployVersionSelection;
+import com.gameplatform.deploy.VersionEntry;
 import com.gameplatform.dto.*;
 import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
@@ -33,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -58,6 +62,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final RconConnectionManager rconConnectionManager;
     private final InstanceInfoService instanceInfoService;
     private final DeploymentAccess deployAccess;
+    private final DeployVersionCatalogService deployVersionCatalogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -101,6 +106,14 @@ public class InstanceServiceImpl implements InstanceService {
 
         // 设置游戏编码（用于插件匹配）
         instance.setGameCode(game.getGameCode());
+
+        // 版本选择落库（B-07）：部署向导提交是 deployVersion 唯一的写/删入口。
+        // 提交期只做 BR-07 撞键校验，不因「目录不可用」在这里 400 —— 那是 BR-12 的运行期
+        // 职责，前置到这里会把 AC-20 (a) 的「部署失败、实例 ERROR」降级成「提交被拒、实例不存在」。
+        DeployVersionSelection.verifyNoKeyCollision(instance.getConfigInfo(),
+                deployVersionCatalogService.declaredVariableNames(game.getGameCode(), instance.getDeployType()));
+        instance.setConfigInfo(DeployVersionSelection.apply(instance.getConfigInfo(),
+                deployVersionCatalogService.read(game.getGameCode(), instance.getDeployType())));
 
         // 初始状态为部署中（安装中）
         instance.setRunStatus(DeployAdapter.InstanceStatus.INSTALLING.getCode());
@@ -174,7 +187,20 @@ public class InstanceServiceImpl implements InstanceService {
             }
         }
 
+        // 合并式写入（B-12 / design.md §14.8、BR-16）：copyProperties 是整表替换，载荷里没出现的
+        // 键会静默消失 —— 那正是 configInfo.deployVersion 的丢法，会让「已选非默认版本」的实例
+        // 在一次无关的配置保存后退回默认版本交付。省略键自此等于「不动键」，不再等于「删键」；
+        // 想解除版本要求只有 DeployVersionSelection 这一个合法入口。
+        // 合并对本条公共写路径的其它键是加法式改动：create 与部署提交路径的组装不变。
+        Map<String, Object> existingConfigInfo = instance.getConfigInfo();
         BeanUtil.copyProperties(dto, instance, "id");
+        if (existingConfigInfo != null) {
+            Map<String, Object> merged = new LinkedHashMap<>(existingConfigInfo);
+            if (dto.getConfigInfo() != null) {
+                merged.putAll(dto.getConfigInfo());
+            }
+            instance.setConfigInfo(merged);
+        }
 
         // 部署与更新同路径：按 database 声明 + 最新变量值重组 configInfo.database（ADR-0009），
         // 避免裸 compose 变量与 database 节不一致；无 database 声明的游戏（非 compose 带 DB）跳过
@@ -745,6 +771,9 @@ public class InstanceServiceImpl implements InstanceService {
             promoteMetadataIfAbsent(config, metadata, "serviceName");
         }
 
+        // 5.5 平台保留镜像 tag 注入（B-08 / design.md §14.4）
+        injectPlatformImageTag(instance, config);
+
         // 6. 组合完整的镜像名（image:tag）
         String image = (String) config.get("image");
         String tag = (String) config.get("tag");
@@ -759,11 +788,44 @@ public class InstanceServiceImpl implements InstanceService {
     }
 
     /**
+     * 第 5.5 步：把版本目录条目声明的 {@code imageTag} 落进 {@code PLATFORM_IMAGE_TAG}（B-08）。
+     *
+     * <p>compose 模板驱动模式下适配器不做任何 tag / 变量替换，tag 的可选性只能靠 compose 自己的
+     * {@code .env} 插值，所以注入点必须在部署配置组装期、不能在扩展阶段（design.md §14.4）。
+     *
+     * <p>两级门控：① 该 deployType 未声明保留变量 ⇒ <b>完全不写</b>，未参与该机制的游戏其
+     * {@code .env} 与模板逐字节不变；② 声明了 ⇒ 该键的值<b>一律由平台写</b>（命中条目带
+     * imageTag 用条目值，否则用该变量的 defaultValue），因此用户或通用写接口提交的该键值
+     * 在这里被覆盖 —— 它不参与任何判定、也不进 {@code .env}（AC-14 ④）。
+     *
+     * <p>快路径：仅当 {@code configInfo} 含 {@code deployVersion} 时才读目录，否则本方法的
+     * 目录读取与 SPI 调用次数为 0（§14.4.3 / V-29）—— 本类是 buildDeployConfig 十条调用点的
+     * 公共入口，不加这道门等于给 start/stop/文件/备份每条路径都挂上 SPI。
+     */
+    private void injectPlatformImageTag(GameInstance instance, Map<String, Object> config) {
+        Map<String, Object> configInfo = instance.getConfigInfo();
+        if (configInfo == null || !(configInfo.get(DeployVersionCatalogService.VERSION_KEY) instanceof String selected)) {
+            return;
+        }
+        var declaration = deployVersionCatalogService
+                .platformImageTag(instance.getGameCode(), instance.getDeployType());
+        if (!declaration.declared()) {
+            return;
+        }
+        String imageTag = deployVersionCatalogService
+                .read(instance.getGameCode(), instance.getDeployType())
+                .findEntry(selected)
+                .map(VersionEntry::imageTag)
+                .filter(tag -> tag != null && !tag.isBlank())
+                .orElse(declaration.defaultValue());
+        config.put(DeployVersionCatalogService.PLATFORM_IMAGE_TAG_KEY, imageTag);
+    }
+
+    /**
      * 将 runtimeMetadata 中的字段提升到 config 顶层（仅当顶层不存在或为空时）。
      * 用于在 uninstall/stop/start 等后续操作中还原部署时的 projectName/workDir/containerName。
      */
-    private void promoteMetadataIfAbsent(Map<String, Object> config, Map<String, Object> metadata, String key) {
-        if (metadata == null || !metadata.containsKey(key)) {
+    private void promoteMetadataIfAbsent(Map<String, Object> config, Map<String, Object> metadata, String key) {        if (metadata == null || !metadata.containsKey(key)) {
             return;
         }
         Object existing = config.get(key);
