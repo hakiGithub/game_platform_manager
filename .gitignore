@@ -13,6 +13,7 @@ Thumbs.db
 .claude/
 .workbuddy/
 .agents/
+.scratch/rev-*/
 
 # Logs
 logs/

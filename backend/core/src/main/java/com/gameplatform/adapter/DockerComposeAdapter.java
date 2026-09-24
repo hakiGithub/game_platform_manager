@@ -361,6 +361,59 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         }
     }
 
+    /**
+     * 扩展阶段收尾起回（design.md §14.13.3 docker-compose 列）。
+     *
+     * <p>命令与就绪判定都逐字照抄本类 {@link #deploy} 在用的那一条：{@code up -d} 带
+     * {@code COMPOSE_HTTP_TIMEOUT=300} 与 shell {@code timeout 1200} 兜底（SshUtil 的 timeoutMs
+     * 只作用于建连），判定用 {@code ps} 认 running/Up。取 {@code up -d} 而非 {@code compose start}
+     * 是 RISK-D11——{@code start} 不处理 depends_on 顺序。本方法不改 {@code adapter.start()} 的语义。
+     */
+    @Override
+    public boolean ensureRunningForExtension(Long instanceId, Map<String, Object> config) {
+        InstanceHostInfo info = getInstanceHostInfo(instanceId);
+        if (info == null) {
+            return false;
+        }
+
+        Host host = info.host();
+        String projectName = getProjectName(instanceId, config);
+        String workDir = getWorkDir(instanceId, config);
+        String composeCmd = getComposeCommand(host);
+
+        SshUtil.CommandResult upResult = executeCommand(host,
+                String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 timeout 1200 %s -p %s up -d",
+                        workDir, composeCmd, projectName), 1200000);
+        if (!upResult.isSuccess()) {
+            log.warn("扩展阶段收尾起回失败（up -d 未成功）: instanceId={}, error={}", instanceId, upResult.getError());
+            return false;
+        }
+
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("扩展阶段收尾起回等待被中断: instanceId={}", instanceId);
+            return false;
+        }
+
+        SshUtil.CommandResult psResult = executeCommand(host,
+                String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps", workDir, composeCmd, projectName), 30000);
+        String psOutput = psResult.getOutput();
+        // docker-compose V1 输出状态为 "Up"，V2（docker compose）输出状态为 "running"，两者都要认
+        boolean isRunning = psResult.isSuccess()
+                && (psOutput.contains("running") || psOutput.contains("Up"));
+        if (!isRunning) {
+            SshUtil.CommandResult logResult = executeCommand(host,
+                    String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s logs --no-color --tail 50",
+                            workDir, composeCmd, projectName), 30000);
+            log.warn("扩展阶段收尾起回失败（容器未运行）: instanceId={}, 日志: {}",
+                    instanceId, stripAnsiCodes(logResult.getOutput()));
+            return false;
+        }
+        return true;
+    }
+
     @Override
     public boolean start(Long instanceId, Map<String, Object> config) {
         InstanceHostInfo info = getInstanceHostInfo(instanceId);

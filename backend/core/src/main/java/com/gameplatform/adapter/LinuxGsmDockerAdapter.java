@@ -297,6 +297,67 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         }
     }
 
+    /**
+     * 扩展阶段收尾起回（design.md §14.13.3 linuxgsm-docker 列）。
+     *
+     * <p><b>命令</b>照抄本类 {@link #deploy} 在用的那条 {@code up -d}（不带 {@code COMPOSE_HTTP_TIMEOUT}，
+     * 本类只有 {@code stop()} 带）；<b>就绪判定</b>不照抄 {@code deploy} 的 {@code ps} 认 running/Up，
+     * 而取 {@link #healthCheck} 的 {@code ps -q} + 逐个容器 {@code .State.Running}——收尾判据必须与紧随其后的
+     * HEALTH_CHECK 同形且更严，否则会出现「收尾判过而 HEALTH_CHECK 判不过」。
+     *
+     * <p><b>不复用</b> private {@code ensureContainerRunning}：它的停止分支走 {@code compose start}
+     * （不处理 depends_on 顺序，RISK-D11），且对 {@code ps -q} 的第一个容器判完即 return。
+     */
+    @Override
+    public boolean ensureRunningForExtension(Long instanceId, Map<String, Object> config) {
+        InstanceHostInfo info = getInstanceHostInfo(instanceId);
+        if (info == null) {
+            return false;
+        }
+
+        Host host = info.host();
+        String projectName = getProjectName(instanceId, config);
+        String workDir = getWorkDir(instanceId, config);
+        String composeCmd = getComposeCommand(host);
+
+        SshUtil.CommandResult upResult = executeCommand(host,
+                String.format("cd %s && timeout 1200 %s -p %s up -d", workDir, composeCmd, projectName), 1200000);
+        if (!upResult.isSuccess()) {
+            log.warn("扩展阶段收尾起回失败（up -d 未成功）: instanceId={}, error={}", instanceId, upResult.getError());
+            return false;
+        }
+
+        try {
+            // 等待 entrypoint 启动 linuxgsm 用户进程（与本类 deploy() 的就绪等待同值）
+            Thread.sleep(8000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("扩展阶段收尾起回等待被中断: instanceId={}", instanceId);
+            return false;
+        }
+
+        SshUtil.CommandResult psResult = executeCommand(host,
+                String.format("cd %s && %s -p %s ps -q", workDir, composeCmd, projectName), 30000);
+        if (!psResult.isSuccess() || psResult.getOutput().trim().isEmpty()) {
+            log.warn("扩展阶段收尾起回失败：未找到容器 instanceId={}", instanceId);
+            return false;
+        }
+
+        for (String containerId : psResult.getOutput().trim().split("\n")) {
+            if (containerId.trim().isEmpty()) {
+                continue;
+            }
+            SshUtil.CommandResult stateResult = executeCommand(host,
+                    String.format("docker inspect -f '{{.State.Running}}' %s", containerId.trim()));
+            if (!stateResult.isSuccess() || !"true".equals(stateResult.getOutput().trim())) {
+                log.warn("扩展阶段收尾起回失败：容器未运行 instanceId={}, containerId={}",
+                        instanceId, containerId.trim());
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Override
     public boolean start(Long instanceId, Map<String, Object> config) {
         InstanceHostInfo info = getInstanceHostInfo(instanceId);
