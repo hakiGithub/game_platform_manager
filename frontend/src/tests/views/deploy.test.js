@@ -116,9 +116,15 @@ const HOST = {
 };
 
 // ── 挂载与渲染探针 ───────────────────────────────────────────────────────────
-async function mountDeploy({ catalog = [], game = GAME } = {}) {
+async function mountDeploy({ catalog = [], game = GAME, pending = false } = {}) {
   mockGetGameList.mockResolvedValue([game]);
-  if (catalog instanceof Error) {
+  if (pending) {
+    // 状态 D：目录 GET 挂起不返回（§4.1 D / D-01b / X-01）。
+    // 传 true = 永不落定；传一个 Promise = 由用例自己控制落定时机。
+    mockGetDeployConfig.mockReturnValue(
+      pending === true ? new Promise(() => {}) : pending,
+    );
+  } else if (catalog instanceof Error) {
     mockGetDeployConfig.mockRejectedValue(catalog);
   } else {
     // versionCatalogState 按 design §16.4 原样喂入：前端**有意**不读它（三态渲染相同），
@@ -139,6 +145,20 @@ async function mountDeploy({ catalog = [], game = GAME } = {}) {
 
 function versionAnchor() {
   return document.querySelector("[data-ext-version-select]");
+}
+/** 目标版本控件对应的组件实例：`:loading` 没有 DOM 落点，只能在 prop 层核对。 */
+function versionSelectComponent(wrapper) {
+  return wrapper
+    .findAllComponents({ name: "ElSelect" })
+    .find((c) => c.attributes("data-ext-version-select") !== undefined);
+}
+/** §4.1 D 支①「禁用」的 DOM 落点：根元素只有 `el-select`，`is-disabled` 在内部 wrapper 上。 */
+function versionSelectDisabled() {
+  return (
+    versionAnchor()
+      ?.querySelector(".el-select__wrapper")
+      ?.classList.contains("is-disabled") ?? false
+  );
 }
 function sectionTitle() {
   return document.getElementById("ext-version-section-title");
@@ -244,6 +264,82 @@ describe("F-04 步骤 2 目标版本控件 · P1 谓词（ui-spec §5 / §6.4）
     expect(items).toHaveLength(1);
     expect(optionMain(items[0])).toBe("默认版本");
     expect(optionSub(items[0])).toBe("only-1");
+  });
+});
+
+describe("F-04 状态 D（§4.1 D / D-01b / X-01：目录读取未返回）", () => {
+  it("三支齐备：禁用 + loading + 登记词面占位「版本目录读取中…」", async () => {
+    const wrapper = await mountDeploy({ pending: true });
+    const anchor = versionAnchor();
+    // versionBlockVisible = P1 ∨ 读取中：读取中该区块仍占位渲染（D-01b）
+    expect(anchor).toBeTruthy();
+    expect(sectionTitle()?.textContent?.trim()).toBe("目标版本");
+    // 支① disabled（§4.1 D 逐字：`el-select` 禁用）
+    expect(versionSelectDisabled()).toBe(true);
+    expect(anchor.querySelector("input").disabled).toBe(true);
+    // 支② loading（`:loading` 只影响下拉，无 DOM 落点 ⇒ 判到 prop 层）
+    expect(versionSelectComponent(wrapper).props("loading")).toBe(true);
+    // 支③ 占位文案 = §4.1 D 登记词面逐字，落在组件自己的 placeholder 节点内
+    const placeholderEl = anchor.querySelector(".el-select__placeholder");
+    expect(placeholderEl?.textContent?.trim()).toBe("版本目录读取中…");
+  });
+
+  it("读取中不渲染选择值 /「默认版本」（D-01b：不得出现空选项的假定性呈现）", async () => {
+    const wrapper = await mountDeploy({ pending: true });
+    const anchor = versionAnchor();
+    // §8.2 两段式值区在读取中整体让位给占位，不先亮出哨位值
+    expect(anchor.querySelector(".version-value")).toBeNull();
+    expect(anchor.textContent).not.toContain("默认版本");
+    expect(anchor.textContent).not.toContain("::default::");
+    // 值区文案就是唯一那句登记词面，没有第二个取值来源
+    expect(anchor.textContent.replace(/\s+/g, "")).toContain("版本目录读取中…");
+  });
+
+  it("读取落定后回到稳态：占位让位、恢复「默认版本」+ 默认条目 versionId 的两段式值区", async () => {
+    let settle;
+    const pendingConfig = new Promise((resolve) => {
+      settle = resolve;
+    });
+    const wrapper = await mountDeploy({ pending: pendingConfig });
+    expect(versionAnchor().querySelector(".version-value")).toBeNull();
+
+    settle({
+      deployVersions: CATALOG_DEFAULT,
+      versionCatalogState: "AVAILABLE",
+      variables: [],
+    });
+    await flushPromises();
+
+    const valueArea = versionAnchor().querySelector(".version-value");
+    expect(valueArea.textContent).toContain("默认版本");
+    expect(valueArea.querySelector(".version-id-sub").textContent.trim()).toBe(
+      "def-1",
+    );
+    expect(versionSelectComponent(wrapper).props("loading")).toBe(false);
+    expect(versionSelectDisabled()).toBe(false);
+  });
+});
+
+describe("F-04 控件交互（现由 `:model-value` + `@update:model-value` 承载 v-model 语义）", () => {
+  it("展开后点选非默认条目 ⇒ 选择值写回，值区与步骤 5 摘要随之改口径", async () => {
+    const wrapper = await mountDeploy({ catalog: CATALOG_DEFAULT });
+    expect(versionAnchor().querySelector(".version-value").textContent).toContain(
+      "默认版本",
+    );
+
+    const items = await expandVersionSelect();
+    const picked = items.find((i) => optionMain(i) === "展示名 A");
+    picked.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushPromises();
+
+    expect(wrapper.vm.selectedVersionId).toBe("ver-a");
+    const valueArea = versionAnchor().querySelector(".version-value");
+    expect(valueArea.textContent).toContain("展示名 A");
+    expect(valueArea.querySelector(".version-id-sub").textContent.trim()).toBe(
+      "ver-a",
+    );
+    expect(summaryRow()).toContain("ver-a");
+    expect(summaryBadge()).toBe("将执行 3 个部署扩展步骤");
   });
 });
 
@@ -439,6 +535,58 @@ describe("F-04 / §7 X-02 · 切换部署方式重取目录与回落", () => {
 
     expect(wrapper.vm.selectedVersionId).toBe("ver-b");
     expect(ElMessage.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("F-04 / §7 X-01 · 重叠读取的序列号守卫", () => {
+  it("快速连换游戏：先返回的过期响应不落地，loading 由最新那次请求的落定决定", async () => {
+    const GAME_B = {
+      ...GAME,
+      id: 8,
+      gameCode: "stub-b",
+      gameName: "验收资产 B",
+    };
+    mockGetGameList.mockResolvedValue([GAME, GAME_B]);
+    const settled = [];
+    mockGetDeployConfig.mockImplementation(
+      () => new Promise((resolve) => settled.push(resolve)),
+    );
+    const wrapper = mount(Deploy, {
+      attachTo: document.body,
+      global: { components: { ...ElementPlusIcons } },
+    });
+    // route.query.gameId = "7" ⇒ 自动选定 GAME ⇒ 第 1 次读取（在途）
+    await flushPromises();
+    expect(settled).toHaveLength(1);
+
+    wrapper.vm.selectGame(GAME_B); // 连换游戏 ⇒ 第 2 次读取（在途）
+    await flushPromises();
+    expect(settled).toHaveLength(2);
+
+    // 过期的那次先返回：目录 / 变量 / loading 都不得被它写
+    settled[0]({
+      deployVersions: CATALOG_DEFAULT,
+      versionCatalogState: "AVAILABLE",
+      variables: [],
+    });
+    await flushPromises();
+    expect(wrapper.vm.deployVersions).toHaveLength(0);
+    expect(wrapper.vm.loadingDeployConfig).toBe(true);
+    // X-01：未返回前不渲染选项列表（状态 D）在重叠读取下同样成立
+    expect(versionAnchor().querySelector(".version-value")).toBeNull();
+
+    // 最新那次落定：这一次才写目录、才收 loading
+    settled[1]({
+      deployVersions: CATALOG_SINGLE,
+      versionCatalogState: "AVAILABLE",
+      variables: [],
+    });
+    await flushPromises();
+    expect(wrapper.vm.deployVersions.map((e) => e.versionId)).toEqual(["only-1"]);
+    expect(wrapper.vm.loadingDeployConfig).toBe(false);
+    expect(
+      versionAnchor().querySelector(".version-value").textContent,
+    ).toContain("默认版本");
   });
 });
 
