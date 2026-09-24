@@ -1,0 +1,946 @@
+
+> game-platform-manager@1.0.0 test:run
+> vitest run
+
+[33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consider using "deps.optimizer.web.include"[39m
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend[39m
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m应该有正确的初始状态[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m应该有正确的验证规则[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m用户名长度应该在2-50个字符之间[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m密码长度应该在6-20个字符之间[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m空用户名应该阻止登录[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m空密码应该阻止登录[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m用户名太短应该阻止登录[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m表单验证[2m > [22m[2m密码太短应该阻止登录[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m记住密码功能[2m > [22m[2m应该读取记住的用户名[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m记住密码功能[2m > [22m[2m没有记住密码时不应该读取[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录成功应该保存记住密码设置[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录成功不记住密码应该清除存储[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录失败应该清空密码[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+Login failed: Error: 登录失败
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\views\login.test.js:307:35
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:135:14
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:60:26
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:17[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mconnect[2m > [22m[2m应该成功连接 WebSocket[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mconnect[2m > [22m[2m应该在 URL 中添加 token 参数[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mconnect[2m > [22m[2m应该处理已有查询参数的 URL[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mconnect[2m > [22m[2m如果已连接应该返回现有连接[22m[39m
+[WebSocket] Connected
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录成功应该跳转到dashboard[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录成功应该跳转到redirect页面[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2msend[2m > [22m[2m应该发送字符串消息[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2msend[2m > [22m[2m应该发送 JSON 对象消息[22m[39m
+[WebSocket] Connected
+
+[90mstderr[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2msend[2m > [22m[2m连接未打开时应该返回 false[22m[39m
+[WebSocket] Connection is not open
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2msendBinary[2m > [22m[2m应该发送二进制数据[22m[39m
+[WebSocket] Connected
+
+[90mstderr[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2msendBinary[2m > [22m[2m连接未打开时应该返回 false[22m[39m
+[WebSocket] Connection is not open
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mclose[2m > [22m[2m应该关闭连接[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1000[39m 
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2mclose[2m > [22m[2m应该使用指定的关闭码和原因[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1001[39m Going Away
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m心跳机制[2m > [22m[2m应该定期发送心跳消息[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m心跳机制[2m > [22m[2m关闭连接时应该停止心跳[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1000[39m 
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m消息处理[2m > [22m[2m应该触发 onMessage 回调[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m消息处理[2m > [22m[2m应该忽略 pong 消息[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m重连机制[2m > [22m[2m应该在连接断开时尝试重连[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1000[39m 
+[WebSocket] Reconnecting... (1/3)
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m重连机制[2m > [22m[2m手动关闭时不应重连[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1000[39m 
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m重连机制[2m > [22m[2m达到最大重连次数后应停止重连[22m[39m
+[WebSocket] Connected
+[WebSocket] Closed: [33m1000[39m 
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m状态方法[2m > [22m[2mgetReadyState 应该返回正确的状态[22m[39m
+[WebSocket] Connected
+
+[90mstdout[2m | src/tests/utils/websocket.test.js[2m > [22m[2mwebsocket.js[2m > [22m[2mWebSocketClient[2m > [22m[2m状态方法[2m > [22m[2misConnected 应该返回正确的连接状态[22m[39m
+[WebSocket] Connected
+
+ [32m✓[39m src/tests/utils/websocket.test.js [2m ([22m[2m26 tests[22m[2m)[22m[90m 48[2mms[22m[39m
+[90mstderr[2m | src/tests/views/login.test.js[2m > [22m[2mLogin Component[2m > [22m[2m登录逻辑[2m > [22m[2m登录成功应该显示成功消息[22m[39m
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-input
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-checkbox
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-form
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m✓[39m src/tests/views/login.test.js [2m ([22m[2m16 tests[22m[2m)[22m[90m 115[2mms[22m[39m
+ [32m✓[39m src/tests/api/host.test.js [2m ([22m[2m28 tests[22m[2m)[22m[90m 178[2mms[22m[39m
+ [32m✓[39m src/tests/api/instance.test.js [2m ([22m[2m34 tests[22m[2m)[22m[90m 187[2mms[22m[39m
+ [32m✓[39m src/tests/stores/instance.test.js [2m ([22m[2m27 tests[22m[2m)[22m[90m 57[2mms[22m[39m
+ [32m✓[39m src/tests/stores/backup.test.js [2m ([22m[2m21 tests[22m[2m)[22m[90m 61[2mms[22m[39m
+[90mstderr[2m | src/tests/stores/user.test.js[2m > [22m[2muser store[2m > [22m[2mActions[2m > [22m[2mlogout[2m > [22m[2m即使 API 失败也应该清除状态[22m[39m
+Logout error: Error: Network error
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\stores\user.test.js:171:42
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:11[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7
+    at withEnv [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:83:5[90m)[39m
+
+[90mstderr[2m | src/tests/stores/user.test.js[2m > [22m[2muser store[2m > [22m[2mActions[2m > [22m[2minitUserState[2m > [22m[2m获取用户信息失败时不应抛出错误[22m[39m
+Failed to fetch user info: Error: Network error
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\stores\user.test.js:333:47
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:135:14
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:60:26
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:17[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+
+ [32m✓[39m src/tests/stores/user.test.js [2m ([22m[2m25 tests[22m[2m)[22m[90m 62[2mms[22m[39m
+ [32m✓[39m src/tests/plugins/pluginStore.test.js [2m ([22m[2m27 tests[22m[2m)[22m[90m 38[2mms[22m[39m
+ [32m✓[39m src/tests/views/instance.test.js [2m ([22m[2m19 tests[22m[2m)[22m[90m 192[2mms[22m[39m
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleReady[2m > [22m[2m应该处理 READY 事件并触发 onReady 回调[22m[39m
+[PluginCommunication] Plugin ready: { version: [32m'1.0.0'[39m, capabilities: [ [32m'api'[39m ] }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleNavigate[2m > [22m[2m应该处理 NAVIGATE 事件[22m[39m
+[PluginCommunication] Navigate request: { path: [32m'/instances/1'[39m, query: { tab: [32m'config'[39m } }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleNotify[2m > [22m[2m应该处理 NOTIFY 事件[22m[39m
+[PluginCommunication] Notify request: { type: [32m'success'[39m, title: [32m'操作成功'[39m, message: [32m'数据已保存'[39m }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleConfirm[2m > [22m[2m应该处理 CONFIRM 事件 - 确认[22m[39m
+[PluginCommunication] Confirm request: { requestId: [32m'req-123'[39m, title: [32m'确认删除'[39m, message: [32m'确定要删除吗？'[39m }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleConfirm[2m > [22m[2m应该处理 CONFIRM 事件 - 取消[22m[39m
+[PluginCommunication] Confirm request: { requestId: [32m'req-456'[39m, title: [32m'确认删除'[39m, message: [32m'确定要删除吗？'[39m }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleApiRequest[2m > [22m[2m应该处理 API_REQUEST 事件 - 成功[22m[39m
+[PluginCommunication] API request: { requestId: [32m'req-789'[39m, method: [32m'GET'[39m, url: [32m'/api/instances/1'[39m }
+
+[90mstdout[2m | src/tests/plugins/pluginCommunication.test.js[2m > [22m[2mpluginCommunication[2m > [22m[2mhandleApiRequest[2m > [22m[2m应该处理 API_REQUEST 事件 - 失败[22m[39m
+[PluginCommunication] API request: { requestId: [32m'req-error'[39m, method: [32m'GET'[39m, url: [32m'/api/not-exist'[39m }
+
+[90mstdout[2m | src/tests/plugins/pluginSDK.test.js[2m > [22m[2mpluginSDK[2m > [22m[2m构造函数[2m > [22m[2m应该使用自定义选项创建实例[22m[39m
+[PluginSDK] SDK initialized
+[PluginSDK] SDK destroyed
+
+[90mstderr[2m | src/tests/plugins/pluginSDK.test.js[2m > [22m[2mpluginSDK[2m > [22m[2minit[2m > [22m[2mWujie 上下文不存在时应该警告[22m[39m
+[PluginSDK] Wujie context not found, make sure running inside Wujie sandbox
+
+[90mstderr[2m | src/tests/plugins/pluginSDK.test.js[2m > [22m[2mpluginSDK[2m > [22m[2mgetInstanceInfo[2m > [22m[2m应该返回 null（初始状态）[22m[39m
+[PluginSDK] Wujie context not found, make sure running inside Wujie sandbox
+
+ [32m✓[39m src/tests/plugins/pluginCommunication.test.js [2m ([22m[2m18 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+[90mstdout[2m | src/tests/plugins/pluginSDK.test.js[2m > [22m[2mpluginSDK[2m > [22m[2mdebug 模式[2m > [22m[2mdebug 模式应该输出日志[22m[39m
+[PluginSDK] SDK destroyed
+
+ [32m✓[39m src/tests/plugins/pluginSDK.test.js [2m ([22m[2m39 tests[22m[2m)[22m[90m 273[2mms[22m[39m
+ [32m✓[39m src/tests/api/backup.test.js [2m ([22m[2m16 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+[90mstderr[2m | src/tests/utils/request.test.js[2m > [22m[2mrequest.js[2m > [22m[2m请求拦截器[2m > [22m[2m应该处理请求错误[22m[39m
+Request error: Error: Request error
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\utils\request.test.js:115:21
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:11[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7
+    at withEnv [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:83:5[90m)[39m
+    at run [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:105:3[90m)[39m
+
+ [32m✓[39m src/tests/utils/request.test.js [2m ([22m[2m15 tests[22m[2m)[22m[90m 172[2mms[22m[39m
+ [32m✓[39m src/tests/api/game.test.js [2m ([22m[2m18 tests[22m[2m)[22m[90m 57[2mms[22m[39m
+ [32m✓[39m src/tests/plugins/PluginTab.test.js [2m ([22m[2m19 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [32m✓[39m src/tests/stores/host.test.js [2m ([22m[2m20 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32m✓[39m src/tests/api/auth.test.js [2m ([22m[2m17 tests[22m[2m)[22m[90m 61[2mms[22m[39m
+ [32m✓[39m src/tests/utils/index.test.js [2m ([22m[2m35 tests[22m[2m)[22m[90m 50[2mms[22m[39m
+ [32m✓[39m src/tests/plugins/PluginContainer.test.js [2m ([22m[2m20 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [32m✓[39m src/tests/plugins/PluginMenu.test.js [2m ([22m[2m12 tests[22m[2m)[22m[90m 15[2mms[22m[39m
+ [32m✓[39m src/tests/utils/instanceStatus.test.js [2m ([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/tests/api/system.test.js [2m ([22m[2m7 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+ [32m✓[39m src/tests/views/host.test.js [2m ([22m[2m15 tests[22m[2m)[22m[33m 4162[2mms[22m[39m
+[1m[33m[@vue/compiler-sfc][0m[33m `v-model` cannot update a `const` reactive binding `deployVariablesValues`. The compiler has transformed it to `let` to make the update work.[0m
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+ [32m✓[39m src/tests/components/BackupProgress.test.js [2m ([22m[2m19 tests[22m[2m)[22m[90m 173[2mms[22m[39m
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+[90mstderr[2m | src/tests/plugins/crossPluginInstanceNav.test.js[2m > [22m[2mSidebar.handleSelect 跨插件导航[2m > [22m[2m跨插件（gameCode 变化）导航不应携带旧 instanceId[22m[39m
+[Vue warn]: Invalid event arguments: event validation failed for event "select".
+[wujie warn]: plugin-gameB:NAVIGATE_TO 事件订阅数量为空 [90mundefined[39m
+
+[90mstderr[2m | src/tests/plugins/crossPluginInstanceNav.test.js[2m > [22m[2mSidebar.handleSelect 跨插件导航[2m > [22m[2m同插件内切换菜单应保留 instanceId[22m[39m
+[Vue warn]: Invalid event arguments: event validation failed for event "select".
+[wujie warn]: plugin-gameA:NAVIGATE_TO 事件订阅数量为空 [90mundefined[39m
+
+ [32m✓[39m src/tests/components/AdoptInstanceDialog.test.js [2m ([22m[2m5 tests[22m[2m)[22m[33m 744[2mms[22m[39m
+ [32m✓[39m src/tests/components/DeployProgress.test.js [2m ([22m[2m22 tests[22m[2m)[22m[33m 900[2mms[22m[39m
+ [32m✓[39m src/tests/plugins/crossPluginInstanceNav.test.js [2m ([22m[2m6 tests[22m[2m)[22m[33m 323[2mms[22m[39m
+ [32m✓[39m src/tests/components/RestoreConfirm.test.js [2m ([22m[2m21 tests[22m[2m)[22m[33m 1837[2mms[22m[39m
+ [32m✓[39m src/tests/components/BackupForm.test.js [2m ([22m[2m18 tests[22m[2m)[22m[33m 2266[2mms[22m[39m
+[90mstderr[2m | src/tests/views/deploy.test.js[2m > [22m[2mF-04 步骤 2 目标版本控件 · P1 谓词（ui-spec §5 / §6.4）[2m > [22m[2m目录读取失败 ⇒ 与前项同形，且不把它当「声明不合法」输出提示（RISK-13）[22m[39m
+Failed to load deploy config: Error: boom
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\views\deploy.test.js:234:50
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:135:14
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:60:26
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:17[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at processImmediate (node:internal/timers:453:9)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+
+ [32m✓[39m src/tests/views/deploy.test.js [2m ([22m[2m32 tests[22m[2m)[22m[33m 17467[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m30 passed[39m[22m[90m (30)[39m
+[2m      Tests [22m [1m[32m601 passed[39m[22m[90m (601)[39m
+[2m   Start at [22m 01:20:17
+[2m   Duration [22m 29.12s[2m (transform 12.31s, setup 5.48s, collect 64.44s, tests 29.67s, environment 20.09s, prepare 9.75s)[22m
+

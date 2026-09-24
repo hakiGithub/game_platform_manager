@@ -137,6 +137,10 @@ const deployVariables = ref([]);
 const deployVariablesValues = reactive({});
 const loadingDeployConfig = ref(false);
 const variableFormRef = ref(null);
+// 重叠读取的序列号守卫（ui-spec X-01）：作用域 = gameCode + deployType，快速连换游戏时会有
+// 多个 GET 并行，先发的响应可能后到。只有**最新**一次请求的落定可以写状态（目录 / 变量 /
+// loading）——否则过期响应会盖上最新目录，或把最新那次仍在读的 loading 提前置假。
+let deployConfigSeq = 0;
 
 // ── 目标版本（F-04 / F-05，ui-spec §5 谓词、§6.1 词面、§7 X-02 / X-04 / X-10 / X-11）──
 // P1（控件渲染）⇔ 目录可用（读取成功 且 条目数 ≥ 1）。载荷里的 versionId 是否在条目中
@@ -168,6 +172,14 @@ const isOffCatalogVersion = computed(
 // 区块可见性：目录可用时渲染；读取中按 §4.1 D（W2）占位渲染，不出现空选项。
 const versionBlockVisible = computed(
   () => versionCatalogAvailable.value || loadingDeployConfig.value,
+);
+
+// §4.1 D 状态 D：目录读取未返回时值区必须走占位（禁用 + loading + 占位文案
+// 「版本目录读取中…」），**不得**先渲染选择值 /「默认版本」（D-01b：读取中不得出现
+// 空选项的假定性呈现）。选择值本身不动，只是读取中不下发给控件——只有控件认为无值
+// （`hasModelValue` 假）才会走它自己的 placeholder 分支，让出登记词面。
+const versionSelectModelValue = computed(() =>
+  loadingDeployConfig.value ? undefined : selectedVersionId.value,
 );
 
 // §6.1「↳ 选项排序」：「默认版本」恒为第一项；目录里 default = true 的条目若不在声明序
@@ -395,6 +407,8 @@ function isComposeVariableDeploy() {
 // 读取成功但 0 条目 ⇒ P1 假（控件与摘要行都不出现，AC-24）；读取失败同理不渲染，
 // 且**不得**把它当「声明不合法」输出提示（RISK-13，提示行只在部署日志）。
 async function loadDeployConfig({ notifyReset = false } = {}) {
+  // 先自增：同步分支（非 compose / 未选游戏）也要让在途的异步响应失效
+  const seq = ++deployConfigSeq;
   const previous = selectedVersionId.value;
   // 旧选择是否来自「上一次目录读取」——只有这种来源才适用 X-02 的回落；
   // 目录外既存值（G2）按 X-11 不得回落、不得清除。
@@ -410,6 +424,8 @@ async function loadDeployConfig({ notifyReset = false } = {}) {
         selectedGame.value.id,
         selectedDeployMethod.value,
       );
+      // 过期响应（其间游戏 / 部署方式已再变）一律不落地：目录与变量都不写
+      if (seq !== deployConfigSeq) return;
       deployVariables.value = data?.variables || [];
       nextVersions = Array.isArray(data?.deployVersions)
         ? data.deployVersions
@@ -425,14 +441,20 @@ async function loadDeployConfig({ notifyReset = false } = {}) {
         }
       });
     } catch (error) {
+      // 过期请求的失败同样不落地，也不弹错（屏上早已是另一次读取的状态）
+      if (seq !== deployConfigSeq) return;
       console.error("Failed to load deploy config:", error);
       ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
       deployVariables.value = [];
     } finally {
-      loadingDeployConfig.value = false;
+      // loading 只由**最新**那次请求的落定决定，不能被先返回的那次提前置假（X-01）
+      if (seq === deployConfigSeq) loadingDeployConfig.value = false;
     }
   } else {
     deployVariables.value = [];
+    // 本次（已是最新）不产生读取 ⇒ loading 必须当场收掉：否则上一次 compose 读取的响应
+    // 回来时已被判过期、不再写 loading，状态 D 会永久停留（disabled + 「版本目录读取中…」）。
+    loadingDeployConfig.value = false;
   }
   deployVersions.value = nextVersions;
 
@@ -1280,13 +1302,15 @@ onMounted(() => {
                   </div>
                   <div class="version-row">
                     <el-select
-                      v-model="selectedVersionId"
+                      :model-value="versionSelectModelValue"
+                      @update:model-value="selectedVersionId = $event"
                       data-ext-version-select
                       aria-label="目标版本"
                       aria-labelledby="ext-version-section-title"
                       popper-class="version-select-popper"
                       class="version-select"
                       :disabled="loadingDeployConfig"
+                      :loading="loadingDeployConfig"
                       :placeholder="
                         loadingDeployConfig ? '版本目录读取中…' : ''
                       "
