@@ -138,6 +138,169 @@ const deployVariablesValues = reactive({});
 const loadingDeployConfig = ref(false);
 const variableFormRef = ref(null);
 
+// ── 目标版本（F-04 / F-05，ui-spec §5 谓词、§6.1 词面、§7 X-02 / X-04 / X-10 / X-11）──
+// P1（控件渲染）⇔ 目录可用（读取成功 且 条目数 ≥ 1）。载荷里的 versionId 是否在条目中
+// **不**并入 P1——那半只决定当前值怎么显示（G2 态），不决定控件出不出现。
+const deployVersions = ref([]);
+// 选择值：VERSION_DEFAULT = 「默认版本」（S2，提交省略 deployVersion 键）；其余一律是
+// 某个条目的 versionId。目录外既存值（G2）也原样落在这里，不得回落、不得清除（X-11）。
+// 哨位串含 `:`（versionId 字符集 [A-Za-z0-9._-] 不含它），不可能与真实版号撞值。
+const VERSION_DEFAULT = "::default::";
+const selectedVersionId = ref(VERSION_DEFAULT);
+const versionPreviewExpanded = ref(true);
+
+const versionCatalogAvailable = computed(() => deployVersions.value.length >= 1);
+const defaultVersionEntry = computed(
+  () => deployVersions.value.find((v) => v.isDefault === true) || null,
+);
+const selectedVersionEntry = computed(
+  () =>
+    deployVersions.value.find((v) => v.versionId === selectedVersionId.value) ||
+    null,
+);
+const isVersionDefault = computed(
+  () => selectedVersionId.value === VERSION_DEFAULT,
+);
+// G2：目录可用 ∧ 载荷含 deployVersion ∧ 该 versionId 不在目录条目中（§4.1 G2 / §7 X-11）
+const isOffCatalogVersion = computed(
+  () => !isVersionDefault.value && selectedVersionEntry.value === null,
+);
+// 区块可见性：目录可用时渲染；读取中按 §4.1 D（W2）占位渲染，不出现空选项。
+const versionBlockVisible = computed(
+  () => versionCatalogAvailable.value || loadingDeployConfig.value,
+);
+
+// §6.1「↳ 选项排序」：「默认版本」恒为第一项；目录里 default = true 的条目若不在声明序
+// 首位，渲染时上提（只动渲染层，不改声明、不做字典序重排）；无该条目时首位是合成项（支②）。
+const versionOptions = computed(() => {
+  if (!versionCatalogAvailable.value) return [];
+  const def = defaultVersionEntry.value;
+  const options = [
+    { key: "__default__", value: VERSION_DEFAULT, entry: def, isDefault: true },
+  ];
+  deployVersions.value.forEach((entry) => {
+    if (def && entry.versionId === def.versionId) return; // 已上提，不重复渲染
+    options.push({
+      key: entry.versionId,
+      value: entry.versionId,
+      entry,
+      isDefault: false,
+    });
+  });
+  return options;
+});
+
+function versionDisplayName(entry) {
+  return (entry && (entry.displayName || entry.versionId)) || "";
+}
+
+function versionStepSummary(entry) {
+  return entry && Array.isArray(entry.stepSummary) ? entry.stepSummary : [];
+}
+
+function versionStepTotal(entry) {
+  return versionStepSummary(entry).length;
+}
+
+// §6.1「↳ 步数徽标与选项行右侧步数」：〈总数〉为 0 一律走「不执行」档，禁渲染「0 个步骤」。
+// 默认项恒走「不执行」档——停在默认版本即 S2，本次不进入扩展阶段。
+function versionOptionNote(option) {
+  const total = option.isDefault ? 0 : versionStepTotal(option.entry);
+  return total > 0 ? `含 ${total} 个部署扩展步骤` : "不执行部署扩展";
+}
+
+function versionBadgeText(entry) {
+  const total = versionStepTotal(entry);
+  return total > 0 ? `将执行 ${total} 个部署扩展步骤` : "不执行部署扩展步骤";
+}
+
+// 选项主文本：默认项恒为「默认版本」四字（即使该条目声明了 displayName 也有意吞掉不用）；
+// 其余取 displayName（缺省回退 versionId，服务端已回退，此处只做兜底）。
+function versionOptionMainText(option) {
+  return option.isDefault ? "默认版本" : versionDisplayName(option.entry);
+}
+
+// 选项副标：目录条目（含默认条目）恒渲染自己的 versionId；无 default = true 条目时首位是
+// 合成项、不是目录条目 ⇒ 不渲染副标，且不得为它编造字符串（§6.1 默认项副标取值 支②）。
+function versionOptionSubText(option) {
+  return option.entry ? option.entry.versionId : "";
+}
+
+// 收起态值区（§8.2）：主文本 + versionId mono 副标两段，与选项文本同源。
+const versionValueMainText = computed(() => {
+  if (isVersionDefault.value) return "默认版本";
+  if (selectedVersionEntry.value) {
+    return versionDisplayName(selectedVersionEntry.value);
+  }
+  // G2：目录里没有这个条目，displayName 无从解析，只能报出载荷里真实存在的那个值
+  return selectedVersionId.value;
+});
+const versionValueSubText = computed(() => {
+  if (isVersionDefault.value) {
+    return defaultVersionEntry.value ? defaultVersionEntry.value.versionId : "";
+  }
+  // G2 不给该值渲染 versionId 副标：该串已在值区与紧邻说明句里完整出现，再补一遍等于
+  // 把「伪装成正常取值」的形状做回来（§6.1「↳ 控件当前值 G2」）
+  return selectedVersionEntry.value ? selectedVersionEntry.value.versionId : "";
+});
+
+// 步数徽标：G2 无从解析步骤集 ⇒ 不渲染；目录不可用 ⇒ 整块不渲染。
+const versionBadgeVisible = computed(
+  () => versionCatalogAvailable.value && !isOffCatalogVersion.value,
+);
+// 徽标文本与摘要徽标同源（同一机械核对对象）
+const selectedVersionBadge = computed(() =>
+  versionBadgeText(selectedVersionEntry.value),
+);
+
+// 步骤预览（X-03 / X-04）：只读声明文本，不探测来源可达性（N-09）。
+// 停在默认版本（S2）与目录外值（G2）都无从（或无需）解析步骤集 ⇒ 不渲染。
+const versionPreviewSteps = computed(() => {
+  if (isVersionDefault.value || isOffCatalogVersion.value) return [];
+  return versionStepSummary(selectedVersionEntry.value);
+});
+const versionPreviewVisible = computed(
+  () => versionCatalogAvailable.value && versionPreviewSteps.value.length > 0,
+);
+
+function versionStepKindText(type) {
+  if (type === "PATCH") return "补丁替换";
+  if (type === "SCRIPT") return "脚本执行";
+  return "";
+}
+
+// §6.2 缺 label 的渲染回退用「种类 + 序号」，不让声明侧 PATCH / SCRIPT 字面量上界面。
+function versionStepLabelText(step, index) {
+  if (step && step.label) return step.label;
+  return `${versionStepKindText(step && step.type)} ${index}`;
+}
+
+function versionStepFatalText(fatal) {
+  return fatal ? "失败即终止" : "失败可继续";
+}
+
+// 提交载荷里的版本键值：非默认选择写该 versionId、默认选择省略该键（F-05）。
+// P2 与载荷共用这一个来源——摘要行的有无不由目录状态推导（§5 末段健壮性要求）。
+const payloadDeployVersion = computed(() =>
+  isVersionDefault.value ? null : selectedVersionId.value,
+);
+
+// 步骤 5 摘要行（§5 P2）：渲染 ⇔ P1 ∨ 提交载荷含 deployVersion；取值与下拉同源。
+const versionSummaryVisible = computed(
+  () => versionCatalogAvailable.value || payloadDeployVersion.value !== null,
+);
+// 摘要徽标只在选到目录内非默认条目时出现（停在默认版本 = 本次不执行扩展步骤，无徽标）
+const versionSummaryBadgeVisible = computed(
+  () => !isVersionDefault.value && !isOffCatalogVersion.value,
+);
+
+// 目录外既存值：与 W9 同款的「沿用实例配置」标识；目录可用（G2）时另加「不在当前可选版本中」
+const versionOffCatalogNote = computed(() =>
+  isOffCatalogVersion.value && versionCatalogAvailable.value
+    ? "不在当前可选版本中"
+    : "",
+);
+
 // 部署方式选项
 const deployMethodOptions = [
   {
@@ -226,34 +389,64 @@ function isComposeVariableDeploy() {
   );
 }
 
-async function loadDeployConfig() {
-  if (!isComposeVariableDeploy() || !selectedGame.value) {
+// 一次 GET 同时供两个读者（design §16.4：不新增接口，也不重复拉取）：
+// ① 步骤 3 的 Compose 变量元信息与默认值；② 步骤 2 的版本目录（deployVersions）。
+// 作用域 = gameCode + deployType，故「选定游戏」与「切换部署方式」都重取一次。
+// 读取成功但 0 条目 ⇒ P1 假（控件与摘要行都不出现，AC-24）；读取失败同理不渲染，
+// 且**不得**把它当「声明不合法」输出提示（RISK-13，提示行只在部署日志）。
+async function loadDeployConfig({ notifyReset = false } = {}) {
+  const previous = selectedVersionId.value;
+  // 旧选择是否来自「上一次目录读取」——只有这种来源才适用 X-02 的回落；
+  // 目录外既存值（G2）按 X-11 不得回落、不得清除。
+  const previousWasCatalogEntry =
+    previous === VERSION_DEFAULT ||
+    deployVersions.value.some((e) => e.versionId === previous);
+
+  let nextVersions = [];
+  if (isComposeVariableDeploy() && selectedGame.value) {
+    loadingDeployConfig.value = true;
+    try {
+      const data = await getDeployConfig(
+        selectedGame.value.id,
+        selectedDeployMethod.value,
+      );
+      deployVariables.value = data?.variables || [];
+      nextVersions = Array.isArray(data?.deployVersions)
+        ? data.deployVersions
+        : [];
+      // 重置变量值，并回填每个变量的默认值
+      // 之前未回填默认值，导致提交时变量值为空，后端 .env 生成缺失关键变量
+      Object.keys(deployVariablesValues).forEach(
+        (k) => delete deployVariablesValues[k],
+      );
+      deployVariables.value.forEach((v) => {
+        if (v.defaultValue !== undefined && v.defaultValue !== null) {
+          deployVariablesValues[v.name] = v.defaultValue;
+        }
+      });
+    } catch (error) {
+      console.error("Failed to load deploy config:", error);
+      ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
+      deployVariables.value = [];
+    } finally {
+      loadingDeployConfig.value = false;
+    }
+  } else {
     deployVariables.value = [];
-    return;
   }
-  loadingDeployConfig.value = true;
-  try {
-    const data = await getDeployConfig(
-      selectedGame.value.id,
-      selectedDeployMethod.value,
-    );
-    deployVariables.value = data.variables || [];
-    // 重置变量值，并回填每个变量的默认值
-    // 之前未回填默认值，导致提交时变量值为空，后端 .env 生成缺失关键变量
-    Object.keys(deployVariablesValues).forEach(
-      (k) => delete deployVariablesValues[k],
-    );
-    deployVariables.value.forEach((v) => {
-      if (v.defaultValue !== undefined && v.defaultValue !== null) {
-        deployVariablesValues[v.name] = v.defaultValue;
-      }
-    });
-  } catch (error) {
-    console.error("Failed to load deploy config:", error);
-    ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
-    deployVariables.value = [];
-  } finally {
-    loadingDeployConfig.value = false;
+  deployVersions.value = nextVersions;
+
+  // X-02：切换部署方式须重取目录；新版号仍存在则保留选择，不存在则回落「默认版本」并提示，
+  // 不得静默改选。
+  if (
+    previous !== VERSION_DEFAULT &&
+    previousWasCatalogEntry &&
+    !nextVersions.some((e) => e.versionId === previous)
+  ) {
+    selectedVersionId.value = VERSION_DEFAULT;
+    if (notifyReset) {
+      ElMessage.info("部署方式已切换，目标版本已重置为默认版本");
+    }
   }
 }
 
@@ -271,6 +464,10 @@ function selectGame(game) {
       ? game.supportedDeployTypes
       : ["docker"];
   selectedDeployMethod.value = supportMethods[0] || "docker";
+
+  // 换游戏即换目录作用域（gameCode + deployType）：目录与选择一并复位，默认版本起手
+  selectedVersionId.value = VERSION_DEFAULT;
+  deployVersions.value = [];
 
   // 设置默认端口
   // 优先使用 deployConfig.defaultPorts 中的 game 端口；其次 defaultPort 字段；最后兜底 25565
@@ -426,17 +623,24 @@ watch(
   },
 );
 
-// 监听部署方式变化：docker-compose / linuxgsm-docker 时加载变量配置
+// 部署配置（Compose 变量元信息 + 版本目录）的作用域 = gameCode + deployType
+// （X-01 / X-02）：选定游戏或切换部署方式都重取一次。
+// 只有「同一游戏内切换部署方式」才给回落提示——换游戏是整块重来，不报重置。
 watch(
-  () => selectedDeployMethod.value,
-  (method) => {
-    if (isComposeVariableDeploy() && selectedGame.value) {
-      loadDeployConfig();
-    } else {
-      deployVariables.value = [];
-    }
+  () => [selectedGame.value?.id ?? null, selectedDeployMethod.value],
+  ([gameId, deployType], previous) => {
+    const methodChanged =
+      previous !== undefined &&
+      gameId === previous[0] &&
+      deployType !== previous[1];
+    loadDeployConfig({ notifyReset: methodChanged });
   },
 );
+
+// 选到新条目时步骤预览回到展开态（X-03 / X-04）
+watch(selectedVersionId, () => {
+  versionPreviewExpanded.value = true;
+});
 
 // 添加环境变量
 function addEnvVar() {
@@ -713,6 +917,13 @@ async function handleDeploy() {
         ...(isComposeVariableDeploy()
           ? { ...deployVariablesValues }
           : {}),
+        // F-05：非默认选择写 configInfo.deployVersion（值精确等于所选条目的 versionId）；
+        // 默认选择省略该键——删键由服务层 applyVersionSelection 承担，前端不做删除动作。
+        // 载荷与现状的差异只多这一个键；不读、不写、不清理坏键 gameVersion（D-N16 / F-11 / RISK-10）。
+        // 该键只由选择值推导，**不**依赖目录状态：目录外既存值原样携带，不回落、不清除（X-11）。
+        ...(payloadDeployVersion.value === null
+          ? {}
+          : { deployVersion: payloadDeployVersion.value }),
       },
     });
 
@@ -1057,6 +1268,127 @@ onMounted(() => {
                   </el-radio-group>
                   <div class="method-description">
                     {{ getDeployMethodInfo(selectedDeployMethod).description }}
+                  </div>
+                </div>
+
+                <!-- F-04 目标版本：紧随「部署方式」之后，沿用既有 .detail-section 形态。
+                     目录不可用（含 dnf-tw 缺口期空目录）时整块不渲染，连标题与外边距都不产生。 -->
+                <div v-if="versionBlockVisible" class="detail-section">
+                  <div id="ext-version-section-title" class="section-title">
+                    <el-icon><Collection /></el-icon>
+                    目标版本
+                  </div>
+                  <div class="version-row">
+                    <el-select
+                      v-model="selectedVersionId"
+                      data-ext-version-select
+                      aria-label="目标版本"
+                      aria-labelledby="ext-version-section-title"
+                      popper-class="version-select-popper"
+                      class="version-select"
+                      :disabled="loadingDeployConfig"
+                      :placeholder="
+                        loadingDeployConfig ? '版本目录读取中…' : ''
+                      "
+                    >
+                      <template #label>
+                        <span
+                          class="version-value"
+                          :class="{ 'is-off-catalog': isOffCatalogVersion }"
+                        >
+                          <span
+                            class="version-value-main"
+                            :title="versionValueMainText"
+                            >{{ versionValueMainText }}</span
+                          >
+                          <span
+                            v-if="versionValueSubText"
+                            class="version-id-sub"
+                            >{{ versionValueSubText }}</span
+                          >
+                        </span>
+                      </template>
+                      <el-option
+                        v-for="option in versionOptions"
+                        :key="option.key"
+                        :value="option.value"
+                        :label="versionOptionMainText(option)"
+                      >
+                        <div class="version-option">
+                          <span class="version-option-main">
+                            <span
+                              class="version-option-text"
+                              :title="versionOptionMainText(option)"
+                              >{{ versionOptionMainText(option) }}</span
+                            >
+                            <span
+                              v-if="versionOptionSubText(option)"
+                              class="version-id-sub"
+                              >{{ versionOptionSubText(option) }}</span
+                            >
+                          </span>
+                          <small class="version-option-note">{{
+                            versionOptionNote(option)
+                          }}</small>
+                        </div>
+                      </el-option>
+                    </el-select>
+                    <span v-if="versionBadgeVisible" class="version-badge">
+                      <el-tag size="small" effect="plain">{{
+                        selectedVersionBadge
+                      }}</el-tag>
+                    </span>
+                  </div>
+                  <!-- G2 承载 (a)（§6.1「↳ 控件当前值 G2」/ §8.3）：值区只放组件回显的值，
+                       异常标识与该 versionId 一并落在紧邻的 field-description 段内。 -->
+                  <div
+                    v-if="isOffCatalogVersion"
+                    class="field-description version-off-catalog"
+                  >
+                    <el-icon class="version-off-icon"><WarningFilled /></el-icon>
+                    <span>
+                      实例配置要求的版本
+                      <code class="version-off-catalog-id">{{
+                        selectedVersionId
+                      }}</code>
+                      由既往部署写入实例配置、本次未改选，而它不在当前可选版本中。
+                      可在此改选下列任一条目；不改选直接提交时，本次提交仍携带该版本要求、
+                      不会被静默改为默认版本、也不会清除该键，判定发生在扩展阶段入口。
+                    </span>
+                  </div>
+                  <!-- 步骤预览（X-03 / X-04）：只读声明文本，不探测来源可达性（N-09） -->
+                  <div v-if="versionPreviewVisible" class="version-preview">
+                    <div class="version-preview-head">
+                      <span>部署扩展步骤预览</span>
+                      <el-button
+                        link
+                        type="primary"
+                        @click="versionPreviewExpanded = !versionPreviewExpanded"
+                        >{{ versionPreviewExpanded ? "收起" : "展开" }}</el-button
+                      >
+                    </div>
+                    <ul
+                      v-show="versionPreviewExpanded"
+                      class="version-preview-list"
+                    >
+                      <li
+                        v-for="(step, index) in versionPreviewSteps"
+                        :key="step.index ?? index"
+                      >
+                        <span class="version-preview-no"
+                          >{{ step.index }}/{{ versionPreviewSteps.length }}</span
+                        >
+                        <span class="version-preview-kind">{{
+                          versionStepKindText(step.type)
+                        }}</span>
+                        <span class="version-preview-label">{{
+                          versionStepLabelText(step, step.index)
+                        }}</span>
+                        <span class="version-preview-fatal">{{
+                          versionStepFatalText(step.fatal)
+                        }}</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
 
@@ -1570,6 +1902,46 @@ onMounted(() => {
                     :is="getDeployMethodInfo(selectedDeployMethod).icon"
                 /></el-icon>
                 {{ getDeployMethodInfo(selectedDeployMethod).label }}
+              </el-descriptions-item>
+              <!-- F-04 目标版本摘要行（P2：P1 ∨ 载荷含 deployVersion；用 v-if 而非 v-show）：
+                   取值与下拉同源（主文本 displayName ?? versionId + versionId 副标），
+                   有无与内容一律由提交载荷推导，不由目录状态推导。 -->
+              <el-descriptions-item
+                v-if="versionSummaryVisible"
+                label="目标版本"
+              >
+                <span class="version-summary">
+                  <span class="version-summary-main">{{
+                    versionValueMainText
+                  }}</span>
+                  <span v-if="versionValueSubText" class="version-id-sub">{{
+                    versionValueSubText
+                  }}</span>
+                  <span
+                    v-if="isOffCatalogVersion"
+                    class="version-summary-off"
+                  >
+                    <el-tag size="small" effect="plain" type="warning"
+                      >沿用实例配置</el-tag
+                    >
+                  </span>
+                  <span
+                    v-if="versionOffCatalogNote"
+                    class="version-summary-note"
+                  >
+                    <el-tag size="small" effect="plain">{{
+                      versionOffCatalogNote
+                    }}</el-tag>
+                  </span>
+                  <span
+                    v-if="versionSummaryBadgeVisible"
+                    class="version-summary-badge"
+                  >
+                    <el-tag size="small" effect="plain">{{
+                      selectedVersionBadge
+                    }}</el-tag>
+                  </span>
+                </span>
               </el-descriptions-item>
               <el-descriptions-item label="实例名称">{{
                 deployForm.name
@@ -2681,6 +3053,149 @@ onMounted(() => {
   background: var(--platform-surface-2);
 }
 
+/* 目标版本区块（F-04）：区间距与控件尺寸沿用 §8.2 的既有惯例。
+   下拉选项行与 .version-id-sub 因弹层被传送到 <body> 下，样式放在本文件末尾的
+   非 scoped 块里（scoped 选择器取不到弹层节点）。 */
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.version-select {
+  width: 300px;
+}
+
+.version-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.version-value-main {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 收起态值区的副标按 §8.2 取 11px（弹层选项行的副标是 10px，见文件末尾非 scoped 块） */
+.version-value .version-id-sub {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+/* G2（§6.1「↳ 控件当前值 G2」/ §8.2）：值区内只放组件回显的那个值——amber mono 11px */
+.version-value.is-off-catalog .version-value-main {
+  font-family: var(--el-font-family-mono);
+  font-size: 11px;
+  color: var(--platform-amber);
+}
+
+.version-badge {
+  flex: 0 0 auto;
+}
+
+.field-description.version-off-catalog {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.version-off-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--platform-amber);
+}
+
+.version-off-catalog-id {
+  font-family: var(--el-font-family-mono);
+  color: var(--platform-text-regular);
+}
+
+.version-preview {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--platform-line);
+  border-radius: var(--border-radius-base);
+  background: var(--platform-surface-2);
+}
+
+.version-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--platform-font-size-xs);
+  color: var(--platform-text-secondary);
+}
+
+.version-preview-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--el-font-family-mono);
+  font-size: 11px;
+  line-height: 1.5;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    & + li {
+      margin-top: 5px;
+    }
+  }
+}
+
+.version-preview-no,
+.version-preview-kind {
+  flex: 0 0 auto;
+  color: var(--platform-text-secondary);
+}
+
+.version-preview-kind {
+  padding: 0 6px;
+  font-size: 10px;
+  border: 1px solid var(--platform-line);
+  border-radius: 3px;
+}
+
+.version-preview-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--platform-text-regular);
+}
+
+.version-preview-fatal {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--platform-amber);
+}
+
+.version-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.version-summary-main {
+  word-break: break-word;
+}
+
+.version-summary-off,
+.version-summary-note,
+.version-summary-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 @media screen and (max-width: 900px) {
   .deploy-workbench {
     grid-template-columns: 190px minmax(0, 1fr);
@@ -2736,5 +3251,49 @@ onMounted(() => {
   .stage-index {
     font-size: 22px;
   }
+}
+</style>
+
+<style lang="scss">
+/* 目标版本下拉选项行（非 scoped：el-select 的弹层被传送到 <body> 下，scoped 选择器取不到）。
+   类名以 .version-* 为前缀，仅服务 F-04 的这一个控件。 */
+.version-select-popper .el-select-dropdown__item {
+  /* §8.2 下拉选项行：行高随两行内容自然撑开（主文本 + versionId 副标），padding: 7px 12px */
+  height: auto;
+  line-height: 1.4;
+  padding: 7px 12px;
+}
+
+.version-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.version-option-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.version-option-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.version-id-sub {
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  color: var(--platform-text-secondary);
+}
+
+.version-option-note {
+  flex: 0 0 auto;
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  color: var(--platform-text-secondary);
 }
 </style>
