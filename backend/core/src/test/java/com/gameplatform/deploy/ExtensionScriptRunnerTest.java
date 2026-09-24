@@ -339,6 +339,139 @@ class ExtensionScriptRunnerTest {
         }
     }
 
+    // ==================== R-1：单步耗时预算（§8.1 / §15.2） ====================
+
+    @Nested
+    @DisplayName("单步总墙钟收进同一个 timeoutMs")
+    class StepTimeBudget {
+
+        // ---------- 预算算术：不读时钟，逐档可断言 ----------
+
+        @Test
+        @DisplayName("缺省档：下载子帽与执行额度都落在 600 s 这一个额度里")
+        void defaultTierDrawsFromOneBudget() {
+            ExtensionScriptRunner.StepBudget budget = ExtensionScriptRunner.planStepBudget(600_000L, 0L);
+
+            assertEquals(600_000L, budget.downloadTimeoutMs());
+            assertEquals(600_000L, budget.executeTimeoutMs());
+            assertEquals(600L, budget.shellSeconds());
+        }
+
+        @Test
+        @DisplayName("声明档：下载子帽跟着声明额度收，不再是恒为 600 s 的独立预算")
+        void declaredTierCapsDownloadAtStepBudget() {
+            // §15.2 的合法下界。旧行为在这里传的是 DOWNLOAD_TIMEOUT_MS = 600_000
+            // ⇒ 声明 1 s 的插件实际拿到 601 s，「timeoutMs 是唯一护栏」不成立。这条断言就是那枚钉子。
+            ExtensionScriptRunner.StepBudget budget = ExtensionScriptRunner.planStepBudget(1_000L, 0L);
+
+            assertEquals(1_000L, budget.downloadTimeoutMs(), "下载段不得超出单步额度");
+            assertEquals(1L, budget.shellSeconds());
+        }
+
+        @Test
+        @DisplayName("实际用掉多少，执行段就只剩多少（秒的粒度仍向上取整）")
+        void executeTierUsesActualRemaining() {
+            assertEquals(15_000L, ExtensionScriptRunner.planStepBudget(60_000L, 45_000L).executeTimeoutMs());
+
+            // 旧行为按「声明的 timeoutMs」算远端秒数 = 3 s，等于额度只剩 500 ms 时又多给 2.5 s
+            assertEquals(1L, ExtensionScriptRunner.planStepBudget(3_000L, 2_500L).shellSeconds(),
+                    "剩 500 ms 只该拿到向上取整的 1 s，而不是按声明算的 3 s");
+        }
+
+        @Test
+        @DisplayName("剩余耗尽档：额度用光即判不可执行，不另给时间")
+        void exhaustedTierIsNotExecutable() {
+            ExtensionScriptRunner.StepBudget budget = ExtensionScriptRunner.planStepBudget(2_000L, 2_000L);
+
+            assertFalse(budget.executable());
+            assertEquals(0L, budget.executeTimeoutMs());
+            assertEquals(0L, budget.shellSeconds(), "不可执行时不得给出一个正的远端秒数");
+            assertEquals(0L, ExtensionScriptRunner.planStepBudget(2_000L, 5_000L).downloadTimeoutMs(),
+                    "超额消耗也不该留下负的下载帽");
+        }
+
+        @Test
+        @DisplayName("不变量：任一时刻各段之和不超过 timeoutMs，超出部分不足 1 s（ceil 的代价）")
+        void noTierExceedsStepBudget() {
+            for (long timeoutMs : new long[]{1_000L, 45_000L, 600_000L, 1_800_000L}) {
+                for (long consumed = 0; consumed <= timeoutMs + 1_000L; consumed += 1_000L) {
+                    ExtensionScriptRunner.StepBudget budget = ExtensionScriptRunner.planStepBudget(timeoutMs, consumed);
+                    String at = "timeoutMs=" + timeoutMs + ", consumed=" + consumed + " -> " + budget;
+
+                    assertTrue(budget.downloadTimeoutMs() <= Math.max(0L, timeoutMs - consumed),
+                            "下载段只从剩余额度里拿：" + at);
+                    assertTrue(budget.executeTimeoutMs() <= Math.max(0L, timeoutMs - consumed),
+                            "执行段只从剩余额度里拿：" + at);
+                    if (budget.executable()) {
+                        assertTrue(consumed + budget.shellSeconds() * 1000L <= timeoutMs + 999L,
+                                "远端只比剩余额度多拿不到 1 s：" + at);
+                    }
+                }
+            }
+        }
+
+        // ---------- 行为面：走真下载与真 mock 宿主机 ----------
+
+        @Test
+        @DisplayName("慢速源拖过额度：下载段被单步帽截断，宿主机零交互")
+        void slowSourceIsCutByStepBudget() throws Exception {
+            // 声明 1 s（§15.2 合法下界），源 1.5 s 后才吐正文。
+            // 旧行为：下载段拿独立的 600 s ⇒ 1.5 s 后下载成功并照常建目录、上传、发 bash；
+            // 新行为：下载帽 = min(600 s, 剩余额度 1 s) ⇒ read timeout 截断，全程不碰宿主机。
+            String url = fixtureUrlDelayed("echo ok\n", 1_500L);
+
+            ScriptPreconditionException e = assertThrows(ScriptPreconditionException.class,
+                    () -> runner.run(urlScript(url, null, 1_000L), 2, HOST_ID, WORK_DIR));
+
+            assertEquals(ScriptPrecondition.DOWNLOAD_FAILED, e.getPrecondition());
+            verifyNoInteractions(fileAccessService);
+        }
+
+        @Test
+        @DisplayName("上传段用光额度：不再发出 bash，按超时处置")
+        void exhaustedBudgetBeforeExecuteNeverIssuesCommand() {
+            org.mockito.Mockito.doAnswer(invocation -> {
+                Thread.sleep(1_200L);
+                return null;
+            }).when(fileAccessService).uploadLocalFile(anyLong(), anyString(), anyString());
+
+            ScriptRunResult result = runner.run(hostScript("true", 1_000L), 2, HOST_ID, WORK_DIR);
+
+            assertTrue(result.timedOut());
+            assertNull(result.exitCode());
+            assertFalse(result.succeeded());
+            assertEquals(1_000L, result.timeoutMs());
+            assertEquals(0L, result.elapsedMs(), "没发过命令，命令耗时即 0，不与「远端被 timeout 杀掉」那种超时混读");
+            assertTrue(commands.stream().noneMatch(c -> c.startsWith("timeout ")),
+                    "额度已尽不得再发执行命令：" + commands);
+            verify(fileAccessService).deleteFile(HOST_ID, SCRIPT_FILE);
+        }
+
+        @Test
+        @DisplayName("404 带错误页：判 DOWNLOAD_FAILED，错误页不会被当成正面脚本，宿主机零交互")
+        void clientErrorPageIsNotTreatedAsScript() throws Exception {
+            String url = fixtureUrlWithStatus(404, "<html><body>Not Found</body></html>");
+
+            ScriptPreconditionException e = assertThrows(ScriptPreconditionException.class,
+                    () -> runner.run(urlScript(url, null, null), 2, HOST_ID, WORK_DIR));
+
+            assertEquals(ScriptPrecondition.DOWNLOAD_FAILED, e.getPrecondition());
+            verifyNoInteractions(fileAccessService);
+        }
+
+        @Test
+        @DisplayName("500 带错误页：同上（该分类源自 HttpUtil 的抛出，本类无 isOk() 判据，故钉成契约）")
+        void serverErrorPageIsNotTreatedAsScript() throws Exception {
+            String url = fixtureUrlWithStatus(500, "<html><body>Internal Server Error</body></html>");
+
+            ScriptPreconditionException e = assertThrows(ScriptPreconditionException.class,
+                    () -> runner.run(urlScript(url, null, null), 2, HOST_ID, WORK_DIR));
+
+            assertEquals(ScriptPrecondition.DOWNLOAD_FAILED, e.getPrecondition());
+            verifyNoInteractions(fileAccessService);
+        }
+    }
+
     // ==================== 桩与工具 ====================
 
     private String executionCommand() {
@@ -359,7 +492,11 @@ class ExtensionScriptRunnerTest {
     }
 
     private static ScriptStepDeclaration urlScript(String url, String sha256) {
-        return new ScriptStepDeclaration("脚本", null, url, sha256, null, true, null);
+        return urlScript(url, sha256, null);
+    }
+
+    private static ScriptStepDeclaration urlScript(String url, String sha256, Long timeoutMs) {
+        return new ScriptStepDeclaration("脚本", null, url, sha256, null, true, timeoutMs);
     }
 
     private static FileAccessService.CommandResult commandResult(int exitCode, String output, String error) {
@@ -374,16 +511,37 @@ class ExtensionScriptRunnerTest {
     // ==================== 受控夹具 HTTP 源 ====================
 
     private static String fixtureUrl(String body) throws IOException {
+        return serve(200, body, 0L);
+    }
+
+    /** 错误页夹具：状态码非 2xx，但 body 是一段「看着像脚本正文」的错误页。 */
+    private static String fixtureUrlWithStatus(int status, String body) throws IOException {
+        return serve(status, body, 0L);
+    }
+
+    /** 慢速源夹具：先回头部，再拖 {@code delayMillis} 才吐正文——把「下载段实际耗时 > 单步额度」做成可复现的夹具。 */
+    private static String fixtureUrlDelayed(String body, long delayMillis) throws IOException {
+        return serve(200, body, delayMillis);
+    }
+
+    private static String serve(int status, String body, long delayMillis) throws IOException {
         if (fixtureServer == null) {
             fixtureServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             fixtureServer.start();
             fixtureBaseUrl = "http://127.0.0.1:" + fixtureServer.getAddress().getPort();
         }
-        String path = "/s-" + System.nanoTime() + ".sh";
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        String path = "/s-" + System.nanoTime() + ".sh";
         fixtureServer.createContext(path, exchange -> {
-            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.sendResponseHeaders(status, bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
+                if (delayMillis > 0) {
+                    try {
+                        Thread.sleep(delayMillis);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 out.write(bytes);
             }
         });

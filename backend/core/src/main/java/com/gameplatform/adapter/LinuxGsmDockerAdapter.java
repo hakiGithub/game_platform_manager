@@ -312,6 +312,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
     public boolean ensureRunningForExtension(Long instanceId, Map<String, Object> config) {
         InstanceHostInfo info = getInstanceHostInfo(instanceId);
         if (info == null) {
+            log.warn("扩展阶段收尾起回失败（实例或主机不存在）: instanceId={}", instanceId);
             return false;
         }
 

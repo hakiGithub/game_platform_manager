@@ -30,6 +30,10 @@ import java.nio.file.Path;
  * 不保证宿主机上的脚本进程已被终止——远端 {@code timeout} 发的是 SIGTERM，
  * 脚本可自行 trap，其子进程也可能存活。不得对运维宣称「已终止」。
  *
+ * <p><b>单步总墙钟 ≤ {@code timeoutMs}</b>（§8.1 预算表 / §15.2「步骤级 {@code timeoutMs} 因此是唯一的
+ * 上限护栏」）：「下载 → 上传 → 执行」各段从<b>同一个</b>额度里扣，见 {@link #planStepBudget}。
+ * 额度已尽时执行段不再发命令，按超时处置。
+ *
  * <p><b>与 §14.13.3 字面的一处偏离（已在回传里登记）</b>：发出的命令是
  * {@code timeout <秒> bash <file>} 而不是裸 {@code bash <file>}。原因是代码事实
  * §15.2「实现落点」那一行不成立——{@code SshUtil.executeCommand} 的 {@code timeoutMs}
@@ -60,7 +64,7 @@ public class ExtensionScriptRunner {
     /** GNU {@code timeout} 判定为超时的退出码。 */
     private static final int SHELL_TIMEOUT_EXIT_CODE = 124;
 
-    /** 平台侧下载预算，与补丁链路同量级（{@code PatchInstallExecutor#platformDownload}）。 */
+    /** 平台侧下载预算的上限，与补丁链路同量级（{@code PatchInstallExecutor#platformDownload}）；实际取 min(本值, 剩余额度)。 */
     private static final int DOWNLOAD_TIMEOUT_MS = 600_000;
 
     private final FileAccessService fileAccessService;
@@ -78,7 +82,7 @@ public class ExtensionScriptRunner {
      */
     public ScriptRunResult run(ScriptStepDeclaration step, int stepIndex, Long hostId, String workDir) {
         long timeoutMs = step.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : step.timeoutMs();
-        long shellSeconds = shellTimeoutSeconds(timeoutMs);
+        long stepStartedAt = System.currentTimeMillis();
         String scriptDir = workDir + "/" + SCRIPT_DIR_NAME;
         String scriptFile = scriptDir + "/E-" + stepIndex + ".sh";
         Path localScript = null;
@@ -86,21 +90,33 @@ public class ExtensionScriptRunner {
         // 若在之后才置真，这半个文件就没人删了（V-13 的 finally 删除）。
         boolean mayExistOnHost = false;
         try {
-            localScript = materializeLocalScript(step);
+            localScript = materializeLocalScript(step,
+                    planStepBudget(timeoutMs, System.currentTimeMillis() - stepStartedAt).downloadTimeoutMs());
             fileAccessService.executeCommand(hostId, "mkdir -p " + shellQuote(scriptDir));
             mayExistOnHost = true;
             fileAccessService.uploadLocalFile(hostId, scriptFile, localScript.toString());
 
+            StepBudget budget = planStepBudget(timeoutMs, System.currentTimeMillis() - stepStartedAt);
+            if (!budget.executable()) {
+                // 额度被下载/上传用光 ⇒ 不再发命令，按超时处置（§15.2「timeoutMs 是唯一的上限护栏」）。
+                // elapsedMs 的语义是「从发出命令到不再等待」，本步没发过命令因此是 0，
+                // 与「远端 timeout 把进程杀掉」那种超时区分开。
+                log.warn("扩展脚本步骤 {} 额度已被下载/上传用光，不再发命令，按超时处置: hostId={}, scriptFile={}, "
+                                + "timeoutMs={}, 已耗时={}ms", stepIndex, hostId, scriptFile, timeoutMs,
+                        System.currentTimeMillis() - stepStartedAt);
+                return new ScriptRunResult(null, true, timeoutMs, 0L, truncate(""), truncate(""));
+            }
+
             // 命令标识 + 脚本文件名，不含正文（§8.3「命令文本」行）
             log.info("扩展脚本步骤 {} 开始: hostId={}, scriptFile={}, timeoutMs={}", stepIndex, hostId, scriptFile, timeoutMs);
-            String command = "timeout " + shellSeconds + " bash " + shellQuote(scriptFile);
+            String command = "timeout " + budget.shellSeconds() + " bash " + shellQuote(scriptFile);
             long startedAt = System.currentTimeMillis();
             FileAccessService.CommandResult result = fileAccessService.executeCommand(hostId, command, timeoutMs);
             long elapsedMs = System.currentTimeMillis() - startedAt;
 
             // 判超时必须对齐「远端实际被杀的时刻」而不是声明的毫秒数：shell timeout 只有秒的粒度，
             // 用 timeoutMs 本身比会把一次真超时误判成普通的 exitCode == 124（违反 §14.6 规则 4）
-            boolean timedOut = result.getExitCode() == SHELL_TIMEOUT_EXIT_CODE && elapsedMs >= shellSeconds * 1000L;
+            boolean timedOut = result.getExitCode() == SHELL_TIMEOUT_EXIT_CODE && elapsedMs >= budget.shellSeconds() * 1000L;
             Integer exitCode = timedOut ? null : result.getExitCode();
             log.info("扩展脚本步骤 {} 结束: scriptFile={}, exitCode={}, timedOut={}, elapsedMs={}",
                     stepIndex, scriptFile, exitCode, timedOut, elapsedMs);
@@ -114,10 +130,47 @@ public class ExtensionScriptRunner {
         }
     }
 
+    /**
+     * 单步耗时预算的分配（§8.1 预算表、§15.2「步骤级 {@code timeoutMs} 因此是<b>唯一</b>的上限护栏」）。
+     *
+     * <p>「下载 → 上传 → 执行」各段都从<b>同一个</b> {@code timeoutMs} 额度里扣。下载段不再另拿一份
+     * {@code DOWNLOAD_TIMEOUT_MS}：那会让单步最坏墙钟变成 {@code 600 s + timeoutMs}——缺省档 1200 s
+     * 越界 §8.1 的 600 s，声明档 4200 s 越界 1800 s 上限，而且越界的量恒为 600 s、与插件声明无关
+     * （声明 {@code timeoutMs = 1000} 的插件实际拿到 601 s）。
+     *
+     * <p>下载段的<b>实际</b>耗时无法预知——{@code HttpUtil} 那个参数是 {@code HttpURLConnection} 的
+     * read timeout（单次读的空闲窗口），慢速滴流的响应体能把它拉得远超该值——所以执行段必须按
+     * <b>实际</b>剩余额度重新规划，不能照搬下载段的规划值。这也是「额度已尽就不再发命令」这一支存在的原因。
+     *
+     * @param timeoutMs  本步额度（缺省已解析）
+     * @param consumedMs 本段开始前已用掉的毫秒数
+     */
+    static StepBudget planStepBudget(long timeoutMs, long consumedMs) {
+        long remaining = timeoutMs - consumedMs;
+        if (remaining <= 0) {
+            return new StepBudget(0L, 0L, 0L);
+        }
+        return new StepBudget(Math.min(DOWNLOAD_TIMEOUT_MS, remaining), remaining, shellTimeoutSeconds(remaining));
+    }
+
+    /**
+     * 一个执行段在某一时刻可动用的额度。
+     *
+     * @param downloadTimeoutMs 平台侧下载子帽，喂给 {@code HttpUtil.downloadFile}
+     * @param executeTimeoutMs  远端执行段的剩余额度；{@code 0} 表示额度已尽，不再发命令
+     * @param shellSeconds      远端 {@code timeout} 的秒数，按 {@code executeTimeoutMs} 向上取整
+     */
+    record StepBudget(long downloadTimeoutMs, long executeTimeoutMs, long shellSeconds) {
+
+        boolean executable() {
+            return executeTimeoutMs > 0;
+        }
+    }
+
     // ==================== 脚本物化 ====================
 
     /** 正文脚本落临时文件；URL 脚本先平台侧下载并校验——校验不过就不会走到上传，宿主机上不留文件。 */
-    private Path materializeLocalScript(ScriptStepDeclaration step) {
+    private Path materializeLocalScript(ScriptStepDeclaration step, long downloadTimeoutMs) {
         try {
             Path local = Files.createTempFile("platform-extension-", ".sh");
             if (step.content() != null && !step.content().isEmpty()) {
@@ -131,7 +184,7 @@ public class ExtensionScriptRunner {
             requireHttpScheme(url);
             long size;
             try {
-                size = HttpUtil.downloadFile(url, local.toFile(), DOWNLOAD_TIMEOUT_MS);
+                size = HttpUtil.downloadFile(url, local.toFile(), (int) downloadTimeoutMs);
             } catch (RuntimeException e) {
                 throw new ScriptPreconditionException(ScriptPrecondition.DOWNLOAD_FAILED, null, null, e.getMessage());
             }
@@ -168,7 +221,7 @@ public class ExtensionScriptRunner {
 
     /**
      * 远端 {@code timeout} 只有秒的粒度，这里<b>向上</b>取整（下界 1 s，防「timeout 0 = 不限时」）：
-     * 向下取整会在声明预算还没用满前就把脚本杀掉（1400 ms → 1 s），那是「主应用覆盖声明」的一种，
+     * 向下取整会在剩余额度还没用满前就把脚本杀掉（1400 ms → 1 s），那是「主应用覆盖声明」的一种，
      * BR-04 禁止。代价是预算最多被放宽不到 1 s，而 {@code timeoutMs} 的下界本就是 1 s（§15.2）。
      */
     private static long shellTimeoutSeconds(long timeoutMs) {
@@ -268,7 +321,12 @@ public class ExtensionScriptRunner {
         SOURCE_ABSENT,
         /** 非 http(s) 源（§8.4）。 */
         URL_SCHEME_UNSUPPORTED,
-        /** 平台侧下载失败或响应为空。 */
+        /**
+         * 平台侧下载失败或响应为空。非 2xx（404 / 500 带错误页正文）同样归这一支——
+         * 由 {@code HttpUtil.downloadFile} 抛出而被 {@code materializeLocalScript} 兜住，
+         * 本类不额外判 {@code isOk()}；<b>错误页绝不允许被当成正面脚本上传执行</b>，
+         * 该分类由 {@code ExtensionScriptRunnerTest} 的 4xx 契约用例钉住（升级 Hutool 时若退化会翻红）。
+         */
         DOWNLOAD_FAILED,
         /** 声明了 {@code sha256} 且与实际不符。 */
         CHECKSUM_MISMATCH

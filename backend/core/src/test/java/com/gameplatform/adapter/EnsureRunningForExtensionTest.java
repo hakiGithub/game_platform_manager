@@ -190,6 +190,22 @@ class EnsureRunningForExtensionTest {
             assertFalse(adapter.ensureRunningForExtension(INSTANCE_ID, config()));
             assertTrue(commands.stream().noneMatch(c -> c.endsWith(" ps")));
         }
+
+        @Test
+        @DisplayName("实例或主机查不到：判失败、一条命令都不发")
+        void missingInstanceOrHostFailsWithoutTouchingHost() {
+            commands.clear();
+            assertFalse(adapter.ensureRunningForExtension(99L, config()), "实例不存在");
+
+            GameInstance orphan = new GameInstance();
+            orphan.setId(INSTANCE_ID);
+            orphan.setHostId(42L);
+            lenient().when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(orphan);
+            commands.clear();
+            assertFalse(adapter.ensureRunningForExtension(INSTANCE_ID, config()), "主机不存在");
+
+            assertTrue(commands.isEmpty(), "两支都不该碰宿主机：" + commands);
+        }
     }
 
     // ==================== linuxgsm-docker ====================
@@ -273,6 +289,22 @@ class EnsureRunningForExtensionTest {
                     ? result(true, "Docker Compose v2", 0) : result(true, "", 0);
             assertFalse(adapter.ensureRunningForExtension(INSTANCE_ID, config()));
             assertTrue(commands.stream().noneMatch(c -> c.contains("docker inspect")));
+        }
+
+        @Test
+        @DisplayName("实例或主机查不到：判失败、一条命令都不发")
+        void missingInstanceOrHostFailsWithoutTouchingHost() {
+            commands.clear();
+            assertFalse(adapter.ensureRunningForExtension(99L, config()), "实例不存在");
+
+            GameInstance orphan = new GameInstance();
+            orphan.setId(INSTANCE_ID);
+            orphan.setHostId(42L);
+            lenient().when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(orphan);
+            commands.clear();
+            assertFalse(adapter.ensureRunningForExtension(INSTANCE_ID, config()), "主机不存在");
+
+            assertTrue(commands.isEmpty(), "两支都不该碰宿主机：" + commands);
         }
     }
 
