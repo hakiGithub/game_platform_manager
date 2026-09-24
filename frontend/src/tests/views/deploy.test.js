@@ -268,7 +268,7 @@ describe("F-04 步骤 2 目标版本控件 · P1 谓词（ui-spec §5 / §6.4）
 });
 
 describe("F-04 状态 D（§4.1 D / D-01b / X-01：目录读取未返回）", () => {
-  it("三支齐备：禁用 + loading + 登记词面占位「版本目录读取中…」", async () => {
+  it("三支齐备（禁用 + loading + 登记词面占位），且读取中不渲染选择值 /「默认版本」", async () => {
     const wrapper = await mountDeploy({ pending: true });
     const anchor = versionAnchor();
     // versionBlockVisible = P1 ∨ 读取中：读取中该区块仍占位渲染（D-01b）
@@ -282,12 +282,9 @@ describe("F-04 状态 D（§4.1 D / D-01b / X-01：目录读取未返回）", ()
     // 支③ 占位文案 = §4.1 D 登记词面逐字，落在组件自己的 placeholder 节点内
     const placeholderEl = anchor.querySelector(".el-select__placeholder");
     expect(placeholderEl?.textContent?.trim()).toBe("版本目录读取中…");
-  });
 
-  it("读取中不渲染选择值 /「默认版本」（D-01b：不得出现空选项的假定性呈现）", async () => {
-    const wrapper = await mountDeploy({ pending: true });
-    const anchor = versionAnchor();
-    // §8.2 两段式值区在读取中整体让位给占位，不先亮出哨位值
+    // 读取中不得渲染选择值 /「默认版本」（D-01b：不得出现空选项的假定性呈现）
+    // §8.2 两段式值区整体让位给占位，不先亮出哨位值
     expect(anchor.querySelector(".version-value")).toBeNull();
     expect(anchor.textContent).not.toContain("默认版本");
     expect(anchor.textContent).not.toContain("::default::");
@@ -567,26 +564,71 @@ describe("F-04 / §7 X-01 · 重叠读取的序列号守卫", () => {
     settled[0]({
       deployVersions: CATALOG_DEFAULT,
       versionCatalogState: "AVAILABLE",
-      variables: [],
+      variables: [{ name: "STALE_VAR", defaultValue: "1" }],
     });
     await flushPromises();
     expect(wrapper.vm.deployVersions).toHaveLength(0);
+    expect(wrapper.vm.deployVariables).toHaveLength(0);
+    expect(wrapper.vm.deployVariablesValues.STALE_VAR).toBeUndefined();
     expect(wrapper.vm.loadingDeployConfig).toBe(true);
     // X-01：未返回前不渲染选项列表（状态 D）在重叠读取下同样成立
     expect(versionAnchor().querySelector(".version-value")).toBeNull();
 
-    // 最新那次落定：这一次才写目录、才收 loading
+    // 最新那次落定：这一次才写目录与变量、才收 loading
     settled[1]({
       deployVersions: CATALOG_SINGLE,
       versionCatalogState: "AVAILABLE",
-      variables: [],
+      variables: [{ name: "LATEST_VAR", defaultValue: "2" }],
     });
     await flushPromises();
     expect(wrapper.vm.deployVersions.map((e) => e.versionId)).toEqual(["only-1"]);
+    expect(wrapper.vm.deployVariables.map((v) => v.name)).toEqual(["LATEST_VAR"]);
+    expect(wrapper.vm.deployVariablesValues.LATEST_VAR).toBe("2");
     expect(wrapper.vm.loadingDeployConfig).toBe(false);
     expect(
       versionAnchor().querySelector(".version-value").textContent,
     ).toContain("默认版本");
+  });
+
+  it("在途读取被切到「不产生读取」的部署方式取代 ⇒ loading 当场收掉，不停留在状态 D", async () => {
+    const GAME_NATIVE = {
+      ...GAME,
+      id: 9,
+      gameCode: "stub-native",
+      gameName: "验收资产 native",
+      supportedDeployTypes: ["docker-compose", "native"],
+    };
+    mockGetGameList.mockResolvedValue([GAME_NATIVE]);
+    let staleSettle;
+    mockGetDeployConfig.mockReturnValue(
+      new Promise((resolve) => {
+        staleSettle = resolve;
+      }),
+    );
+    const wrapper = mount(Deploy, {
+      attachTo: document.body,
+      global: { components: { ...ElementPlusIcons } },
+    });
+    await flushPromises();
+    wrapper.vm.selectGame(GAME_NATIVE); // compose 类型 ⇒ 发起读取（在途）
+    await flushPromises();
+    expect(wrapper.vm.loadingDeployConfig).toBe(true);
+
+    // 切到非 compose 类型：本次（最新）请求不发起 GET，loading 必须由它收掉
+    wrapper.vm.selectedDeployMethod = "native";
+    await flushPromises();
+    expect(wrapper.vm.loadingDeployConfig).toBe(false);
+
+    // 被取代的那次响应随后返回：已被判过期，不得把 loading 再翻回去
+    staleSettle({
+      deployVersions: CATALOG_DEFAULT,
+      versionCatalogState: "AVAILABLE",
+      variables: [],
+    });
+    await flushPromises();
+    expect(wrapper.vm.deployVersions).toHaveLength(0);
+    expect(wrapper.vm.loadingDeployConfig).toBe(false);
+    expect(versionAnchor()).toBeNull(); // P1 假且非读取中 ⇒ 整块不渲染
   });
 });
 

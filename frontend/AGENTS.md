@@ -1111,7 +1111,7 @@ npm run lint
 5. **WebSocket**: 已封装重连机制
 6. **样式**: 使用 SCSS，遵循 BEM 命名规范
 7. **国际化**: 使用 Element Plus 内置中文语言包
-8. **`el-select` `label` 插槽（版本下限）**: 目标版本控件（`src/views/instance/deploy.vue`）的收起态值区两段式（主文本 + `versionId` mono 副标）依赖 `el-select` 的 `label` 具名插槽（自 **2.7.4** 起提供，2.7.3 及以前只声明 `header`/`footer`/`tag`/`prefix`/`empty`/`default`/`loading`）⇒ `package.json` 的 `element-plus` 区间**不得回落**到 2.7.4 以下，否则值区静默空渲染且不抛错。
+8. **`el-select` `label` 插槽（版本下限）**: 目标版本控件（`src/views/instance/deploy.vue`）的收起态值区两段式（主文本 + `versionId` mono 副标）依赖 `el-select` 的 `label` 具名插槽（自 **2.7.4** 起提供；实测 2.7.3 的该组件只声明 `default`/`empty`/`footer`/`header`/`loading`/`prefix`/`tag`，无 `label`）⇒ `package.json` 的 `element-plus` 区间**不得回落**到 2.7.4 以下，否则值区静默空渲染且不抛错。
 
 ---
 

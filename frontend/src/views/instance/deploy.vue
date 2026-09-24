@@ -452,6 +452,9 @@ async function loadDeployConfig({ notifyReset = false } = {}) {
     }
   } else {
     deployVariables.value = [];
+    // 本次（已是最新）不产生读取 ⇒ loading 必须当场收掉：否则上一次 compose 读取的响应
+    // 回来时已被判过期、不再写 loading，状态 D 会永久停留（disabled + 「版本目录读取中…」）。
+    loadingDeployConfig.value = false;
   }
   deployVersions.value = nextVersions;
 
