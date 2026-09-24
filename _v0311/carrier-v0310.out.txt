@@ -1,0 +1,19 @@
+[PASS] SshUtil:356 建连吃 timeoutMs  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] SshUtil:368 命令执行不吃超时  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] FileAccessService:254 三参重载在位  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] TaskMutexManager:52 同值即判占用成功  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] TaskMutexManager:68 按值 CAS 删除  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] DockerComposeAdapter:260 现场已用 shell timeout  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] LinuxGsmDockerAdapter:223 现场已用 shell timeout  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] compose 现场注释写明「仅作用于建连」  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] lgsm 现场注释写明同一事实  — 3c5df3e=ok; MERC-8-extensi=ok
+[PASS] 护栏 = timeout <秒> bash <file>  — merc-20=ok
+[PASS] 秒粒度向上取整 + 下界 1 s  — merc-20=ok
+[PASS] 超时按远端被杀时刻识别（124 ∧ elapsed）  — merc-20=ok
+[PASS] 清理 = 删自建脚本文件  — merc-20=ok
+[PASS] 清理 = 再尝试 rmdir（非 rm -rf）  — merc-20=ok
+[PASS] holder = EXT:<instanceId>:<进程内自增>  — merc-20=ok
+[PASS] holder 前缀仍是 EXT:  — merc-20=ok
+[PASS] installSync 定稿签名两参（无步骤序号位）  — merc-20=ok
+
+== carrier 核对  PASS 17 / FAIL 0 ==
