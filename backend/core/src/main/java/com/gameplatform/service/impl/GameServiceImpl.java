@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
+import com.gameplatform.deploy.CatalogState;
+import com.gameplatform.deploy.CatalogView;
+import com.gameplatform.deploy.DeployVersionCatalogService;
 import com.gameplatform.dto.GameCreateDTO;
 import com.gameplatform.dto.GameUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
@@ -18,6 +21,7 @@ import com.gameplatform.plugin.service.PluginFrameworkService;
 import com.gameplatform.service.GameService;
 import com.gameplatform.vo.DeployConfigVO;
 import com.gameplatform.vo.GameVO;
+import com.gameplatform.vo.VersionEntryVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -44,6 +48,7 @@ public class GameServiceImpl implements GameService {
     private final GameMetadataMapper gameMetadataMapper;
     private final GameInstanceMapper gameInstanceMapper;
     private final PluginFrameworkService pluginFrameworkService;
+    private final DeployVersionCatalogService deployVersionCatalogService;
 
     /** 主应用支持的部署类型 code（与 DeployAdapter.DeployType 一致） */
     private static final Set<String> SUPPORTED_DEPLOY_TYPES =
@@ -223,7 +228,38 @@ public class GameServiceImpl implements GameService {
             }
         }
 
+        // 版本目录（design.md §16.4）：读的是 versionCatalogService 自己的表快照，
+        // 不参与上面的整节替换——那条通道不作用于部署执行路径（§16.1 / RISK-D07）
+        applyVersionCatalog(vo, game.getGameCode(), deployType);
+
         return vo;
+    }
+
+    /**
+     * 把 {@link CatalogView} 汇入向导响应：四态可区分、空目录给空数组不给 {@code null}。
+     */
+    private void applyVersionCatalog(DeployConfigVO vo, String gameCode, String deployType) {
+        CatalogView catalog = deployVersionCatalogService.read(gameCode, deployType);
+        vo.setVersionCatalogState(catalog.state().name());
+        vo.setVersionCatalogReason(catalog.invalidReason());
+        if (catalog.state() != CatalogState.AVAILABLE) {
+            return;
+        }
+        vo.setDeployVersions(catalog.entries().stream().map(entry -> {
+            VersionEntryVO item = new VersionEntryVO();
+            item.setVersionId(entry.versionId());
+            item.setDisplayName(entry.displayName());
+            item.setIsDefault(entry.defaultEntry());
+            item.setStepSummary(entry.stepSummary().stream().map(step -> {
+                VersionEntryVO.StepSummaryVO summary = new VersionEntryVO.StepSummaryVO();
+                summary.setIndex(step.index());
+                summary.setLabel(step.label());
+                summary.setType(step.type().name());
+                summary.setFatal(step.fatal());
+                return summary;
+            }).collect(Collectors.toList()));
+            return item;
+        }).collect(Collectors.toList()));
     }
 
     /**

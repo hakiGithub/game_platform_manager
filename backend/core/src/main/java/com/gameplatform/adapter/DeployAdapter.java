@@ -187,6 +187,20 @@ public interface DeployAdapter {
     }
 
     /**
+     * 扩展阶段收尾：把「部署动作即起容器」的实例恢复到运行态，供后续 HEALTH_CHECK 按既有判据探测。
+     *
+     * <p>默认不支持：本期仅 docker-compose / linuxgsm-docker 覆写（design.md §14.13.1），
+     * 集合外的声明已在 §8.1 判不合法，走到这里属实现缺陷 ⇒ 抛异常，绝不静默返回 true。
+     *
+     * @param instanceId 实例ID
+     * @param config     部署配置
+     * @return 是否已恢复到运行态
+     */
+    default boolean ensureRunningForExtension(Long instanceId, Map<String, Object> config) {
+        throw new UnsupportedOperationException("该部署方式不支持扩展阶段收尾起回");
+    }
+
+    /**
      * 更新实例
      *
      * @param instanceId 实例ID

@@ -44,7 +44,7 @@
 | Vue | 3.4.21 | 前端框架 |
 | Vue Router | 4.3.0 | 路由管理 |
 | Pinia | 2.1.7 | 状态管理 |
-| Element Plus | 2.6.1 | UI组件库 |
+| Element Plus | 2.7.4 | UI组件库（下限：目标版本控件依赖 `label` 插槽） |
 | Axios | 1.6.8 | HTTP请求 |
 | XTerm.js | 5.3.0 | Web终端 |
 | Wujie | - | 微前端插件集成 |

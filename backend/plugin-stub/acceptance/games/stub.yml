@@ -1,0 +1,54 @@
+# 验收资产 · 桩游戏元数据（design.md §3.3 组 K、§7.5 T-02、§14.4「dnf-tw 是否受益」行；PRD §8.6 第三行 / §5.1.1）
+#
+# 投放方式：<本文件> 复制到主应用工作目录的 ./games/（game-platform.metadata.external-dir，
+#           application.yml:222 默认值），由既有扫描器落库；**不得**放进
+#           backend/core/src/main/resources/games/（那是 core resources，属产品发布物）。
+# 回收方式：验收后从 ./games/ 删除并确认库内 stub 记录已清（AC-26 ② 的核对物之一）。
+# 边界：本文件与桩插件、夹具同性质 —— 不主张「本期新增了一个受支持的游戏」（N-11），
+#       不进发布物、不写进 plugin-dnf-tw 的目录（BR-15 ② / §8.6 三不得）。
+#
+# 为什么要它：AC-14 验的是「目录条目声明的 imageTag 真的落进生成的 compose」，
+# 而该机制的前提是这个 deployType 声明了保留变量 PLATFORM_IMAGE_TAG（校验规则 N1/N2）。
+# dnf_tw.yml 本期一字不改（§5.1 第 5 项 / BR-02），所以只能由一份独立 gameCode 承载。
+
+game:
+  code: stub
+  # 与 StubExtension#getGameName 取同一个串（清单与元数据两处读者读到同名，不给验收留对不上的两份值）。
+  # 「验收资产」四字是夹具自标注、不是界面词面：OP-05 未关闭 ⇒ 本票不新增任何用户可见措辞，
+  # 也不把 PATCH/SCRIPT/fatal 这类声明侧字面量投到界面上。
+  name: 验收资产
+  description: 部署扩展步骤框架的验收资产，仅用于证明框架通用性；不随产品发布（FR-24 / BR-15 ②）
+  version: "acceptance"
+
+  deployTypes:
+    - docker-compose
+
+  dockerCompose:
+    # 容器内数据根：桩容器没有游戏数据，取文件系统根即可（宿主 bind 到实例安装目录）
+    workingDir: /
+
+    # 镜像 tag 走 compose 原生 ${VAR:-default} 插值（design.md §14.4「游戏元数据侧」行的写法）。
+    # N2 要求模板含字面量 ${PLATFORM_IMAGE_TAG；N3 要求默认值与本文件 variables 的 defaultValue
+    # 都过 tag 格式校验。alpine 是刻意选的：体积极小、必然可拉、常驻命令简单（sleep），
+    # 使「扩展阶段停 → 步骤 → 起回」的观测不被业务进程启动时间污染。
+    composeTemplate: |
+      version: "2.3"
+
+      services:
+        stub:
+          image: alpine:${PLATFORM_IMAGE_TAG:-3.20}
+          command: ["sleep", "infinity"]
+          restart: "no"
+          stop_grace_period: 5s
+
+    variables:
+      # 声明期保留键：值一律由平台在部署配置组装期写入（design.md §14.4 两级门控 ②），
+      # 用户或插件在 configInfo 里提交的该键值不进 .env、也不报错（§14.4.2）。
+      # AC-14 ④ 核对的正是这一条。
+      - name: PLATFORM_IMAGE_TAG
+        label: 平台保留 · 镜像 tag
+        type: string
+        defaultValue: "3.20"
+        required: false
+        hidden: true
+        description: 验收夹具用保留键：由平台按版本目录条目的 imageTag 写入（AC-14）

@@ -22,6 +22,9 @@ const emit = defineEmits(["update:visible", "complete"]);
 const progress = ref(0);
 const status = ref("pending");
 const statusText = ref("准备中...");
+// DeployProgressVO 顶层新增 stage（直投 DeployTaskStatus.stage，design §14.11）：
+// 只用于「当前正在扩展」的激活态，不参与阶段带是否出现的判定。
+const stage = ref("");
 const logs = ref([]);
 const error = ref("");
 const startTime = ref(null);
@@ -33,6 +36,15 @@ let elapsedTimer = null;
 
 // 日志容器引用
 const logsContainerRef = ref(null);
+
+// 扩展阶段常量（design §14.6 字段契约）
+const EXTENSION_STAGE = "EXTENSION";
+// 步骤种类词面（ui-spec §6.1）：界面一律走中文词，声明侧 PATCH / SCRIPT 字面量不得出现（§6.4）
+const STEP_KIND_LABELS = { PATCH: "补丁替换", SCRIPT: "脚本执行" };
+// 进「步骤」形状的 stepEvent：START / SUCCESS / FAILURE 三行一组（ui-spec §6.2）
+const STEP_ROW_EVENTS = ["START", "SUCCESS", "FAILURE"];
+// 既有的五个步骤点，及其原有 20% 分桶阈值（插入「扩展」点不得改变它们，X-08）
+const BASE_PROGRESS_STEPS = ["准备", "下载", "安装", "配置", "启动"];
 
 // 状态映射
 const statusMap = {
@@ -68,9 +80,9 @@ const isSuccess = computed(() => {
   return status.value === "completed";
 });
 
-// 格式化耗时
-const formattedElapsedTime = computed(() => {
-  const seconds = elapsedTime.value;
+// 格式化耗时：参数化为纯函数（design §14.6 末段 / SUG-6），
+// 对话框顶部「已用时」与扩展阶段步骤行共用同一套读法（N秒 / N分N秒 / N小时N分，不引入裸 ms）
+function formatElapsed(seconds) {
   if (seconds < 60) {
     return `${seconds}秒`;
   } else if (seconds < 3600) {
@@ -82,7 +94,76 @@ const formattedElapsedTime = computed(() => {
     const mins = Math.floor((seconds % 3600) / 60);
     return `${hours}小时${mins}分`;
   }
+}
+
+// 格式化耗时
+const formattedElapsedTime = computed(() => formatElapsed(elapsedTime.value));
+
+// elapsedMs（毫秒权威值）→ 秒：Math.max(1, Math.round(ms / 1000))。
+// <1000ms 渲染成「0秒」等于没显示（AC-03「耗时可见」），故下限取 1 秒；
+// 字段缺失（null / undefined）时不编造数字，该段整体不出（换算只发生在渲染层，design §14.6）。
+function stepElapsedSeconds(ms) {
+  if (ms == null || ms === "") return null;
+  const value = Number(ms);
+  if (!Number.isFinite(value)) return null;
+  return Math.max(1, Math.round(value / 1000));
+}
+
+// P3「本次真的进过扩展阶段」= latch（design §14.11）：任一日志行的 stage 为 EXTENSION。
+// 组件已累计全部日志行并按 log.id 去重，故该谓词在 HEALTH_CHECK 之后仍为真，
+// 不需要额外状态位；statusText 会变、progress 会跨过，都不能当 latch。
+//
+// 阶段带恒在该阶段第一行之前（ui-spec §6.2 规则 1 / §7 X-07 锚点一），故两者同源一个谓词。
+const firstExtensionLogIndex = computed(() =>
+  logs.value.findIndex((l) => l.stage === EXTENSION_STAGE),
+);
+
+const hasExtensionStage = computed(() => firstExtensionLogIndex.value >= 0);
+
+// 「扩展」步骤点的状态：激活态取顶层 stage；终止 / 完成取部署终态（ui-spec §4.2 K…V）。
+// 不由百分比分桶猜（design §14.11）。
+const extensionStepState = computed(() => {
+  if (!hasExtensionStage.value) return "";
+  if (stage.value === EXTENSION_STAGE) return "active";
+  if (isCompleted.value && !isSuccess.value) return "terminated";
+  if (isCompleted.value && isSuccess.value) return "completed";
+  return "";
 });
+
+// 步骤点：既有 5 项之上，进入扩展阶段时在「配置」与「启动」之间插入「扩展」（ui-spec §3.2-2）；
+// 五个既有点的 completed / active 一律沿用原有阈值，插入瞬间逐项不变（§7 X-08）。
+const progressSteps = computed(() => {
+  const base = BASE_PROGRESS_STEPS.map((label, index) => ({
+    key: label,
+    label,
+    ext: false,
+    completed: progress.value >= (index + 1) * 20,
+    active: progress.value >= index * 20 && progress.value < (index + 1) * 20,
+  }));
+
+  if (!hasExtensionStage.value) return base;
+
+  const extState = extensionStepState.value;
+  const extension = {
+    key: "扩展",
+    label: "扩展",
+    ext: true,
+    active: extState === "active",
+    completed: extState === "completed",
+    terminated: extState === "terminated",
+  };
+
+  return [...base.slice(0, 4), extension, ...base.slice(4)];
+});
+
+// 归一化日志级别（design §14.9 / F-01）：
+// 后端 appendLog 写入的取值集合是 INFO / WARN / ERROR / SUCCESS（大写，见 DeployService.java:565），
+// 而本组件的分支键是小写、且 WARN 与 warning 词根也不同，故先 toLowerCase() 再把 warn 别名为 warning。
+// 未知取值一律落默认（log-info / InfoFilled），不抛异常。
+function normalizeLogLevel(level) {
+  const key = String(level ?? "").toLowerCase();
+  return key === "warn" ? "warning" : key;
+}
 
 // 获取日志级别样式
 function getLogClass(level) {
@@ -93,7 +174,7 @@ function getLogClass(level) {
     error: "log-error",
     debug: "log-debug",
   };
-  return classes[level] || "log-info";
+  return classes[normalizeLogLevel(level)] || "log-info";
 }
 
 // 获取日志图标
@@ -105,7 +186,73 @@ function getLogIcon(level) {
     error: "CircleClose",
     debug: "View",
   };
-  return icons[level] || "InfoFilled";
+  return icons[normalizeLogLevel(level)] || "InfoFilled";
+}
+
+// ---- 扩展阶段日志行的呈现（design §14.6 契约驱动、ui-spec §6.2 词面） ----
+// 条目类型分支：stepId != null 且 stepEvent ∈ 三行一组 ⇒ 「步骤」形状，按字段渲染；
+// stepId == null 的七类阶段级行（进入 / 交棒 / 停实例 / BR-12 拦截 / 目录不合法说明 /
+// 收尾 / 阶段完成）不进「步骤」形状，直出服务端 message。
+function isStepRow(log) {
+  return (
+    !!log && log.stepId != null && STEP_ROW_EVENTS.includes(log.stepEvent)
+  );
+}
+
+function stepKindLabel(stepType) {
+  return STEP_KIND_LABELS[stepType] || "";
+}
+
+// label 缺省时的渲染回退（ui-spec §6.2）：种类 + 序号 ⇒「补丁替换 〈序号〉」/「脚本执行 〈序号〉」，
+// 绝不让 PATCH / SCRIPT 字面量出现在界面（§6.4）
+function stepDisplayLabel(log) {
+  if (log.stepLabel) return log.stepLabel;
+  const kind = stepKindLabel(log.stepType);
+  return kind ? `${kind} ${log.stepIndex}` : `${log.stepIndex}`;
+}
+
+// 步骤终态行结果段：非致命失败取 WARN（ui-spec §6.2 三行一组）
+function stepOutcomeLabel(log) {
+  if (normalizeLogLevel(log.level) === "warning") return "失败（非致命）";
+  return log.stepEvent === "SUCCESS" ? "成功" : "失败";
+}
+
+// 失败行的原因段（ui-spec §6.3：以「原因：」引导并置于行尾），内容承载在 message
+function stepReason(log) {
+  return String(log.message ?? "").replace(/^原因：/, "");
+}
+
+// 步骤行文本：`步骤 〈序号〉/〈总数〉 〈步骤标签〉 · 〈种类〉 [· 成功 · 耗时 〈时长〉 · 原因：〈原因〉]`
+// （步骤开始行见下，`开始` 前是空格——ui-spec §6.2 表逐字）
+function stepRowText(log) {
+  const kind = stepKindLabel(log.stepType);
+  const head =
+    log.stepTotal == null
+      ? `步骤 ${log.stepIndex} ${stepDisplayLabel(log)}`
+      : `步骤 ${log.stepIndex}/${log.stepTotal} ${stepDisplayLabel(log)}`;
+
+  const parts = [head];
+  if (kind) parts.push(kind);
+
+  if (log.stepEvent === "START") {
+    // ui-spec §6.2 步骤开始行：`步骤 〈序号〉/〈总数〉 〈步骤标签〉 · 〈种类〉 开始`
+    // ——「开始」前的分隔符是空格，不是 `·`。
+    return `${parts.join(" · ")} 开始`;
+  }
+
+  parts.push(stepOutcomeLabel(log));
+
+  const seconds = stepElapsedSeconds(log.elapsedMs);
+  if (seconds !== null) parts.push(`耗时 ${formatElapsed(seconds)}`);
+
+  const reason = stepReason(log);
+  if (reason) parts.push(`原因：${reason}`);
+
+  return parts.join(" · ");
+}
+
+function logRowText(log) {
+  return isStepRow(log) ? stepRowText(log) : log.message;
 }
 
 // 滚动到底部
@@ -176,6 +323,8 @@ async function fetchProgress() {
     status.value = data.status || "pending";
     statusText.value =
       data.statusText || statusMap[status.value]?.text || "处理中...";
+    // 顶层 stage（DeployProgressVO 新增字段）：仅驱动「当前正在扩展」的激活态
+    stage.value = data.stage || "";
 
     // 添加新日志（按 id 去重）
     if (data.logs && data.logs.length > 0) {
@@ -254,6 +403,7 @@ function handleRetry() {
   logs.value = [];
   progress.value = 0;
   status.value = "pending";
+  stage.value = "";
   elapsedTime.value = 0;
   startTime.value = Date.now();
 
@@ -292,6 +442,7 @@ watch(
       // 重置状态
       progress.value = 0;
       status.value = "pending";
+      stage.value = "";
       logs.value = [];
       error.value = "";
       elapsedTime.value = 0;
@@ -381,17 +532,18 @@ onBeforeUnmount(() => {
           />
           <div class="progress-steps">
             <div
-              v-for="(step, index) in ['准备', '下载', '安装', '配置', '启动']"
-              :key="index"
+              v-for="step in progressSteps"
+              :key="step.key"
               class="progress-step"
               :class="{
-                'is-active':
-                  progress >= index * 20 && progress < (index + 1) * 20,
-                'is-completed': progress >= (index + 1) * 20,
+                'is-active': step.active,
+                'is-completed': step.completed,
+                'is-terminated': step.terminated,
+                ext: step.ext,
               }"
             >
               <div class="step-dot" />
-              <div class="step-label">{{ step }}</div>
+              <div class="step-label">{{ step.label }}</div>
             </div>
           </div>
         </div>
@@ -437,19 +589,30 @@ onBeforeUnmount(() => {
         </div>
 
         <div ref="logsContainerRef" class="logs-container">
-          <div
-            v-for="(log, index) in logs"
-            :key="log.id || index"
-            class="log-item"
-            :class="getLogClass(log.level)"
-          >
-            <el-icon :size="14" class="log-icon">
-              <component :is="getLogIcon(log.level)" />
-            </el-icon>
-            <span class="log-time">{{ log.time }}</span>
-            <span class="log-level">[{{ log.level?.toUpperCase() }}]</span>
-            <span class="log-message">{{ log.message }}</span>
-          </div>
+          <template v-for="(log, index) in logs" :key="log.id || index">
+            <!-- 阶段带：恒在扩展阶段第一行（「进入部署扩展阶段」）之前，只插一次 -->
+            <div
+              v-if="index === firstExtensionLogIndex"
+              class="log-stage-band"
+            >
+              部署扩展
+            </div>
+
+            <div
+              class="log-item"
+              :class="[getLogClass(log.level), { 'log-step': isStepRow(log) }]"
+              :data-step-index="isStepRow(log) ? log.stepIndex : undefined"
+              :data-step-total="isStepRow(log) ? log.stepTotal : undefined"
+              :data-step-event="isStepRow(log) ? log.stepEvent : undefined"
+            >
+              <el-icon :size="14" class="log-icon">
+                <component :is="getLogIcon(log.level)" />
+              </el-icon>
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-level">[{{ log.level?.toUpperCase() }}]</span>
+              <span class="log-message">{{ logRowText(log) }}</span>
+            </div>
+          </template>
 
           <!-- 实时指示器 -->
           <div v-if="!isCompleted" class="log-item log-pending">
@@ -648,6 +811,24 @@ onBeforeUnmount(() => {
           color: var(--el-color-success);
         }
       }
+
+      // 「扩展」步骤点（ui-spec §8.1 本期新增的 ext 描边）
+      &.ext {
+        outline: 1px dashed rgba(242, 184, 75, 0.6);
+        outline-offset: 4px;
+        border-radius: 4px;
+      }
+
+      // 扩展阶段终止态（ui-spec §4.2 N / P / Q / R / S）
+      &.is-terminated {
+        .step-dot {
+          background: var(--platform-red);
+        }
+
+        .step-label {
+          color: var(--platform-red);
+        }
+      }
     }
   }
 }
@@ -694,6 +875,26 @@ onBeforeUnmount(() => {
   font-family: var(--el-font-family-mono);
   font-size: 13px;
   line-height: 1.6;
+}
+
+// 日志阶段带（ui-spec §8.2：本期新增的视觉元素之一，色值取既有 --platform-amber）
+.log-stage-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+  font-family: var(--el-font-family-mono);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.09em;
+  color: var(--platform-amber);
+
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(242, 184, 75, 0.35);
+  }
 }
 
 .log-item {

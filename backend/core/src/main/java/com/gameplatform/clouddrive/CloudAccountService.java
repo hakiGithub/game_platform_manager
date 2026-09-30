@@ -14,6 +14,7 @@ import com.haki.clouddrive.sdk.CloudDriveClient;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import java.util.Optional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@DependsOn({"databaseInitializer", "extensionStoreInitializer"})
 public class CloudAccountService {
 
     public static final String STATUS_HEALTHY = "HEALTHY";
@@ -43,7 +45,15 @@ public class CloudAccountService {
     private final CloudDriveClient client;
     private final ObjectMapper objectMapper;
 
-    /** 启动对账：把扩展表中的账号全量同步进 SDK 引擎 */
+    /**
+     * 启动对账：把扩展表中的账号全量同步进 SDK 引擎。
+     * <p>
+     * 类上的 {@code @DependsOn} 是必需的：{@code extensions} 表由
+     * {@code ExtensionStoreInitializer} 建、核心表由 {@code DatabaseInitializer} 建，
+     * 三者同为 {@code @PostConstruct} 且无依赖关系时 Spring 按扫描顺序实例化
+     * （{@code clouddrive} 排在 {@code config} 之前），全新空库上本方法会先于建表执行而
+     * 抛 {@code no such table: extensions} 并使上下文启动失败。
+     */
     @PostConstruct
     public void syncOnStartup() {
         List<CloudAccountResource> accounts = hostExtensionClient.listAll(CloudAccountResource.class);

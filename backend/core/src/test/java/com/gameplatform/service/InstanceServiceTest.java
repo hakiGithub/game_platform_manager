@@ -84,6 +84,9 @@ class InstanceServiceTest {
     @Mock
     private com.gameplatform.instanceinfo.InstanceInfoService instanceInfoService;
 
+    @Mock
+    private com.gameplatform.deploy.DeployVersionCatalogService deployVersionCatalogService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
@@ -95,6 +98,10 @@ class InstanceServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 被测对象与本用例集无关的目录读者：默认「无插件声明目录」，即现状行为
+        lenient().when(deployVersionCatalogService.read(any(), any()))
+                .thenReturn(com.gameplatform.deploy.CatalogView.absent());
+
         // classify 真实语义由 DeploymentAccessTest 锁定，此处按实例 deployType 原样返回
         lenient().when(deployAccess.classify(any()))
                 .thenAnswer(inv -> DeployAdapter.DeployType.fromCode(inv.getArgument(0)));
@@ -645,5 +652,109 @@ class InstanceServiceTest {
         testInstance.setRunStatus(DeployAdapter.InstanceStatus.UPDATING.getCode());
         result = instanceService.getInstanceById(1L);
         assertEquals("更新中", result.getRunStatusDesc());
+    }
+
+    // ============================================================
+    // B-12 / design.md §14.8 / AC-27：updateInstance 合并式写入
+    // ============================================================
+
+    @Test
+    @DisplayName("更新实例-(a) 载荷不含 deployVersion 的 map → 键保留且值精确不变")
+    void testUpdateInstanceKeepsVersionKeyOmittedFromPayload() {
+        // Given: 库里既有配置带着历史选定的非默认版本
+        testInstance.getConfigInfo().put("deployVersion", "2.0.0-patched");
+        when(instanceMapper.selectById(1L)).thenReturn(testInstance);
+        InstanceUpdateDTO dto = plainUpdate(Map.of("maxPlayers", 32));
+
+        // When
+        instanceService.updateInstance(dto);
+
+        // Then: 省略键不再等于删键 —— 这是 BR-16 的合并式写入，
+        // 整表替换会让「用户没碰版本」的一次普通保存静默解除版本要求
+        Map<String, Object> saved = savedConfigInfo();
+        assertEquals("2.0.0-patched", saved.get("deployVersion"));
+        assertEquals(32, saved.get("maxPlayers"), "本次载荷仍逐键覆盖");
+        assertEquals("normal", saved.get("difficulty"), "其余既有键一并保留");
+    }
+
+    @Test
+    @DisplayName("更新实例-(b) 配置管理入口保存 {configFile, content, restart} → 三键照写、其余保留")
+    void testUpdateInstanceFromConfigEntryKeepsOtherKeys() {
+        testInstance.getConfigInfo().put("deployVersion", "2.0.0-patched");
+        when(instanceMapper.selectById(1L)).thenReturn(testInstance);
+        Map<String, Object> entryPayload = new HashMap<>();
+        entryPayload.put("configFile", "server.cfg");
+        entryPayload.put("content", "sv_max_players 32");
+        entryPayload.put("restart", true);
+        InstanceUpdateDTO dto = plainUpdate(entryPayload);
+
+        instanceService.updateInstance(dto);
+
+        Map<String, Object> saved = savedConfigInfo();
+        assertEquals("server.cfg", saved.get("configFile"));
+        assertEquals("sv_max_players 32", saved.get("content"));
+        assertEquals(true, saved.get("restart"));
+        assertEquals("2.0.0-patched", saved.get("deployVersion"));
+    }
+
+    @Test
+    @DisplayName("更新实例-(c) 同入口再做普通保存 → 返回成功，不是「失败也算过」")
+    void testUpdateInstanceFromConfigEntryStillSucceeds() {
+        testInstance.getConfigInfo().put("deployVersion", "2.0.0-patched");
+        when(instanceMapper.selectById(1L)).thenReturn(testInstance);
+        InstanceUpdateDTO dto = plainUpdate(Map.of("configFile", "server.cfg", "content", "x", "restart", false));
+
+        // Then: 合并式不引入任何失败条件
+        InstanceVO result = assertDoesNotThrow(() -> instanceService.updateInstance(dto));
+        assertNotNull(result);
+        assertEquals("2.0.0-patched", savedConfigInfo().get("deployVersion"));
+    }
+
+    @Test
+    @DisplayName("更新实例-(d) 连续三次无关保存后重部署仍看得见版本键（buildDeployConfig 读得到）")
+    void testVersionKeySurvivesRepeatedUnrelatedSaves() {
+        testInstance.getConfigInfo().put("deployVersion", "2.0.0-patched");
+        when(instanceMapper.selectById(1L)).thenReturn(testInstance);
+        when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
+
+        for (int i = 1; i <= 3; i++) {
+            instanceService.updateInstance(plainUpdate(Map.of("configFile", "server" + i + ".cfg")));
+            assertEquals("2.0.0-patched", savedConfigInfo().get("deployVersion"), "第 " + i + " 次保存后");
+        }
+    }
+
+    @Test
+    @DisplayName("创建实例-无目录时不注入 deployVersion（AC-02 / AC-24 ② 首次部署载荷形状不变）")
+    void testCreateInstanceWithoutCatalogKeepsPayloadShape() {
+        when(instanceMapper.selectByHostIdAndInstanceName(any(), any())).thenReturn(null);
+        when(hostMapper.selectById(1L)).thenReturn(testHost);
+        when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
+        when(instanceMapper.insert(any(GameInstance.class))).thenAnswer(inv -> {
+            ((GameInstance) inv.getArgument(0)).setId(2L);
+            return 1;
+        });
+        createDTO.setConfigInfo(new HashMap<>(Map.of("maxPlayers", 20)));
+
+        instanceService.createInstance(createDTO);
+
+        ArgumentCaptor<GameInstance> inserted = ArgumentCaptor.forClass(GameInstance.class);
+        verify(instanceMapper).insert(inserted.capture());
+        Map<String, Object> saved = inserted.getValue().getConfigInfo();
+        assertFalse(saved.containsKey("deployVersion"));
+        assertEquals(Map.of("maxPlayers", 20), saved);
+    }
+
+    private InstanceUpdateDTO plainUpdate(Map<String, Object> configInfo) {
+        InstanceUpdateDTO dto = new InstanceUpdateDTO();
+        dto.setId(1L);
+        dto.setInstanceName(testInstance.getInstanceName());
+        dto.setConfigInfo(new HashMap<>(configInfo));
+        return dto;
+    }
+
+    private Map<String, Object> savedConfigInfo() {
+        ArgumentCaptor<GameInstance> captor = ArgumentCaptor.forClass(GameInstance.class);
+        verify(instanceMapper, atLeastOnce()).updateById(captor.capture());
+        return captor.getValue().getConfigInfo();
     }
 }

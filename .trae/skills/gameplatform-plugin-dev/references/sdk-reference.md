@@ -1,7 +1,7 @@
 # SDK 接口签名速查
 
 > **权威来源**：`backend/plugin/src/main/java/com/gameplatform/plugin/`。在平台仓库内编码时以源码为准，本文件是跨项目场景的离线快照，签名有疑义先对源码。本文件只回答"方法长什么样"；实现约束、语义与示例见各主题文件。
-> 当前对齐版本：v3.9.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系）
+> 当前对齐版本：v3.11.0（ADR-0001 菜单归属权迁移 / ADR-0009 平台能力三项扩展 / ADR-0011 定时任务体系 / ADR-0029 部署扩展声明）
 
 ## 扩展点
 
@@ -26,6 +26,8 @@ default String getIcon();              // 相对 ui/，默认 assets/icon.png
 default String getFrontendEntry();     // 默认 index.html
 default String getBasePackage();       // Spring 扫描包
 default List<String> getDependencies();
+default List<DeployVersionDeclaration> getDeployVersions(String deployType);          // v3.11.0 ADR-0029：静态版本目录（默认空列表）
+default List<DeployExtensionStepDeclaration> getDeployExtensionSteps(DeployExtensionContext ctx); // v3.11.0：按实例动态算步骤集（默认空列表）
 ```
 
 ### PluginMenuDeclaration (v3.1.0 ADR-0001)
@@ -64,6 +66,47 @@ default String getMutexKey(TaskPayload payload);  // null=默认规则，""=不�
 // 生命周期：onBeforeExecute / onAfterExecute / onSuccess / onFailure / onCancel / onRetry
 ```
 实现约束（无状态、取消/超时检查、互斥键语义、maxRetryCount 选取）见 `references/async-tasks.md`。
+
+### 部署扩展声明类型（v3.11.0 ADR-0029，包 `com.gameplatform.plugin.extension.deploy`）
+
+```java
+// 版本目录条目（静态，无实例上下文也可读）
+public record DeployVersionDeclaration(String versionId, String displayName, String imageTag,
+                                       Boolean defaultEntry,
+                                       List<PatchStepDeclaration> patches,
+                                       List<ScriptStepDeclaration> scripts) {}
+
+// 步骤集公共上界：sealed，两个 permitted 实现就是下面那两个 record（故必须同包）
+public sealed interface DeployExtensionStepDeclaration
+        permits PatchStepDeclaration, ScriptStepDeclaration {
+    String label();      // 展示位
+    boolean fatal();     // 致命性；PRD 口径缺省致命，但原始 boolean 的 Java 缺省是 false ⇒ 声明须显式写 true
+    StepKind kind();     // 执行器分派位（Java 17 无 pattern-matching switch）
+}
+
+public record PatchStepDeclaration(String label, String url, String targetPath, String sha256,
+                                   String includePattern, String format, boolean fatal)
+        implements DeployExtensionStepDeclaration {}
+
+public record ScriptStepDeclaration(String label, String content, String url, String sha256,
+                                    ScriptPosition position, boolean fatal, Long timeoutMs)
+        implements DeployExtensionStepDeclaration {}
+
+public enum StepKind { PATCH, SCRIPT }
+public enum ScriptPosition { HOST, CONTAINER }   // CONTAINER 本期由主应用校验期判不合法
+
+// 动态步骤集入口的上下文
+public record DeployExtensionContext(Long instanceId, String gameCode, String deployType,
+                                     String selectedVersionId, Map<String, Object> configInfo) {}
+```
+
+**要点**（语义权威是 `docs/design/MERC-3/design.md` §16.2 / PRD §8.1～§8.3，此处只记形状与坑）：
+- 步骤集解析只有一条顺序：`getDeployExtensionSteps(ctx)` 非空 → 用它；否则取所选目录条目的 `patches` 拼接 `scripts`；都空 → 不进入扩展阶段。
+- 拼接**必须带显式类型见证**：`Stream.<DeployExtensionStepDeclaration>concat(patches.stream(), scripts.stream()).toList()`。不带见证在 javac 17 下编译失败（`List<INT#1>无法转换为List<DeployExtensionStepDeclaration>`），因为泛型不变、两个 `? extends T` 各自推导后取成交类型。
+- 版本目录**不挂进 `getDeployConfigs()`**：那条整节替换通道只作用于 VO 读取路径，不作用于部署执行路径，挂上去会得到「向导看得见、部署看不见」的目录（design.md §16.1）。
+- 校验全在主应用侧、声明读取期逐条做，任一不合规即**整目录**判不可用（禁止部分采纳）；SDK 层不做校验、不含游戏语义。
+- `imageTag` 的落位机制是「该 deployType 声明了保留变量 `PLATFORM_IMAGE_TAG` ⇒ 值由平台写入 `.env`」，没有第二种落位方式；模板缺 `${PLATFORM_IMAGE_TAG` 占位而条目声明了 `imageTag` ⇒ 不合法。
+- 本期只有 `docker-compose` / `linuxgsm-docker` 两类 deployType 允许声明扩展步骤，集合外带步骤或 `imageTag` 即不合法。
 
 ## ExtensionClient（持久化唯一入口，绑定 pluginId）
 
@@ -166,6 +209,33 @@ default CommandResult executeCommand(Long hostId, String command);
 // 内部类：FileInfo{name,path,directory,size,lastModified,permissions,owner}
 //         CommandResult{success,exitCode,output,error}
 ```
+
+### PatchInstallService（ADR-0006；v3.11.0 ADR-0029 新增 `installSync`）
+```java
+String install(PatchInstallRequest request);                       // 异步提交任务中心，返回 taskId
+default void installSync(PatchInstallRequest request,
+                         PatchInstallProgressListener listener);   // v3.11.0：调用方线程内阻塞
+HostCapabilities probeHost(Long hostId);
+```
+```java
+// v3.11.0 新接口，形状照宿主执行器既有回调（三个方法）
+public interface PatchInstallProgressListener {
+    void onProgress(int percent, String message);
+    void onLog(String message);
+    boolean isCancelled();
+}
+```
+
+- `install()` 的签名与行为**未变**；但它是异步提交路径，载荷只透传 `instanceId/url/targetPath/format/sha256`
+  ⇒ 请求对象上的 `includePattern` / `headers` 经这条路**不生效**。需要 `includePattern` 用 `installSync`
+  （对象引用直传执行器，不经 JSON 往返）。该丢字段缺陷本期不修（受影响方只有既有 `install()` 调用方）。
+- `installSync` 与 `install` 走**同一个**宿主执行器、同一份代码路径（不是第二套补丁实现）：
+  全局并发闸 3、可重试错误自动重试 2 次（5s/20s 退避）、SSH 600 s 一并继承；
+  **每宿主机互斥**由宿主实现承任务中心同一个内存键 `PATCH_INSTALL:<hostId>`（等待预算 600 s、`finally` 释放）
+  ⇒ 调用方不得在外面再套一层重试。
+- 默认实现抛 `UnsupportedOperationException("该宿主未提供同步补丁通道")`，不静默成功；
+  宿主未实现时属实现缺失，调用方按致命失败处置。
+- `isCancelled()` 在部署扩展阶段固定传 `() -> false`（部署主流程不经任务中心，没有取消入口）。
 
 ### SshTunnelService（v3.7.0 ADR-0009，SSH 本地端口转发）
 ```java
