@@ -144,6 +144,9 @@ public class InstanceServiceImpl implements InstanceService {
                     .config(buildDeployConfig(instance))
                     .autoRollback(false)
                     .autoStart(true)
+                    // 部署向导提交是 deployVersion 唯一的写入口，走到这里的版本值就是「本次所选」；
+                    // retry-deploy 只重放库中既存键，不传该标志（BR-12 两支词面的区分锚点）
+                    .explicitVersionSelection(true)
                     .build();
 
             deployService.deployAsync(context);

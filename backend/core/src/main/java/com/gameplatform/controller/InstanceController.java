@@ -489,6 +489,7 @@ public class InstanceController {
         vo.setProgress(status.getProgress());
         vo.setStatus(status.getStatus());
         vo.setStatusText(mapStatusText(status.getStatus()));
+        vo.setStage(status.getStage());
         vo.setCompleted(status.isCompleted());
         vo.setSuccess(status.isSuccess());
         vo.setError(status.getError());
@@ -501,6 +502,14 @@ public class InstanceController {
             leVo.setMessage(le.getMessage());
             leVo.setStage(le.getStage());
             leVo.setTime(le.getTime() != null ? le.getTime().format(fmt) : "");
+            leVo.setStepId(le.getStepId());
+            leVo.setStepIndex(le.getStepIndex());
+            leVo.setStepTotal(le.getStepTotal());
+            leVo.setStepLabel(le.getStepLabel());
+            leVo.setStepType(le.getStepType());
+            leVo.setStepEvent(le.getStepEvent());
+            leVo.setElapsedMs(le.getElapsedMs());
+            leVo.setExitCode(le.getExitCode());
             return leVo;
         }).toList();
         vo.setLogs(logVOs);
@@ -877,6 +886,11 @@ public class InstanceController {
         private Integer progress;
         private String status;
         private String statusText;
+        /**
+         * 当前阶段名（design.md §14.11「当前正在扩展」的激活态驱动源，取 {@code DeployTaskStatus.stage}）。
+         * 阶段带 / 「扩展」步骤点的出现与否不归它，归 {@code logs[].stage} 的 latch。
+         */
+        private String stage;
         private List<LogEntryVO> logs;
         private Boolean completed;
         private Boolean success;
@@ -885,6 +899,11 @@ public class InstanceController {
 
     /**
      * 日志条目 VO
+     *
+     * <p>后八个属性是部署扩展阶段的呈现契约字段位（design.md §14.6 / §6.1，SUG-18：
+     * 六个字段位在 VO 上展开为 8 个属性）。扩展字段只在本接口（{@code deploy-progress}）
+     * 结构化；{@code GET /instances/{id}/logs} 把条目摊平成文本行，那里读不到它们（§6.1 v0.3.1）。
+     * 非扩展部署这些字段恒为 {@code null}。</p>
      */
     @Data
     public static class LogEntryVO {
@@ -893,6 +912,15 @@ public class InstanceController {
         private String message;
         private String stage;
         private String time;
+
+        private String stepId;
+        private Integer stepIndex;
+        private Integer stepTotal;
+        private String stepLabel;
+        private String stepType;
+        private String stepEvent;
+        private Long elapsedMs;
+        private Integer exitCode;
     }
 
     /**

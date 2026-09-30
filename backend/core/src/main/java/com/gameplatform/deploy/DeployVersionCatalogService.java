@@ -371,8 +371,11 @@ public class DeployVersionCatalogService {
      *
      * <p>拼接处的显式类型见证不可省：{@code concat} 的两个 {@code ? extends T} 独立推导后取交
      * 得到 {@code T = INT#1}，泛型不变 ⇒ 不带见证的写法在 javac 17 下编译不过（§16.2 推导规则）。
+     *
+     * <p>公开的原因：向导读目录的步骤预览（§16.4 {@code stepSummary}）与扩展阶段的实际执行
+     * （B-09）必须是<b>同一个</b>推导实现，否则「界面预览了 N 步、部署只跑 M 步」在本期可达。
      */
-    static List<DeployExtensionStepDeclaration> stepsOf(DeployVersionDeclaration d) {
+    public static List<DeployExtensionStepDeclaration> stepsOf(DeployVersionDeclaration d) {
         List<PatchStepDeclaration> patches = d.patches() == null ? List.of() : d.patches();
         List<ScriptStepDeclaration> scripts = d.scripts() == null ? List.of() : d.scripts();
         return Stream.<DeployExtensionStepDeclaration>concat(patches.stream(), scripts.stream()).toList();
