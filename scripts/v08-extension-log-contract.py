@@ -33,6 +33,14 @@ V-08 机械核对脚本（design.md §10 V-08 / §14.6 规则 1-2；KPI-02、AC-
 import json
 import sys
 
+# Windows 控制台默认按代码页编码 stdout（本机 cp936），判定行里的「⇔」会抛
+# UnicodeEncodeError，让一次全 PASS 的核对以 exit=1 收场。核对物必须换代码页也可复跑。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 EXTENSION = "EXTENSION"
 TERMINAL_EVENTS = {"SUCCESS", "FAILURE"}
 STEP_EVENTS = {"START", "SUCCESS", "FAILURE", "ROLLBACK", "NOTE"}
@@ -50,6 +58,11 @@ def load_payload(path):
         raise SystemExit(
             "%s: 不是 deploy-progress 的响应体（缺 logs）。若是 /api/instances/{id}/logs，"
             "那条通道把 LogEntry 摊平成文本行，扩展字段不在那里 —— 用它当输入是误判。" % path)
+    rows = candidate["logs"]
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise SystemExit(
+            "%s: logs 是文本行而不是结构化行 —— 取到的是 /api/instances/{id}/logs 那条摊平通道，"
+            "扩展字段不在那里，用它当输入是误判（§6.1 SUG-10）。" % path)
     return candidate
 
 
