@@ -37,6 +37,7 @@
 | [0026](0026-host-tooling-container.md) | 工具容器宿主能力（platform-tools 临时容器通用化 + HostToolingService） | Accepted | 2026-09-15 |
 | [0027](0027-l4d2-map-recognition-launch-commands.md) | L4D2 地图识别与开图命令（analyzeVpk 语义方法 + 摘要键控共享识别 + 开图命令流） | Accepted | 2026-09-15 |
 | [0028](0028-map-center-incremental-crawl.md) | 地图中心增量爬取水位线早停（库内派生水位线 + 乱序保护） | Accepted | 2026-09-17 |
+| [0029](0029-long-lived-api-token.md) | 长期可吊销 API Token（凭证方案 A，与登录 JWT 并存） | Accepted | 2026-10-02 |
 
 ## 术语表
 
