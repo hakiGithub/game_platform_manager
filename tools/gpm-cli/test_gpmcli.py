@@ -601,5 +601,31 @@ class DetailCommandsTest(TempHomeTestCase):
         self.assertEqual(payload["error"]["code"], 1201)
 
 
+class HumanRenderListTest(TempHomeTestCase):
+    """T5 人类模式列表渲染：分页结果逐条一行，不输出 Python repr。"""
+
+    def test_paged_human_render(self):
+        data = {"current": 1, "size": 10, "total": 2, "pages": 1,
+                "records": [{"id": 1, "name": "node-a"}, {"id": 2, "name": "node-b"}]}
+        t = fake_transport(200, envelope(200, data=data))
+        code, out, err = run_main(["--token", "gpm_tok_12345678", "hosts", "list"],
+                                  transport=t)
+        self.assertEqual(code, 0)
+        self.assertIn("total=2", out)
+        self.assertIn("pages=1", out)
+        self.assertIn('"name": "node-a"', out)
+        self.assertIn('"name": "node-b"', out)
+        self.assertNotIn("records=", out)  # 不再整包吐 records repr
+
+    def test_plain_list_human_render(self):
+        data = [{"id": 1, "name": "g1"}, {"id": 2, "name": "g2"}]
+        t = fake_transport(200, envelope(200, data=data))
+        code, out, err = run_main(["--token", "gpm_tok_12345678", "games", "list"],
+                                  transport=t)
+        self.assertEqual(code, 0)
+        self.assertIn('"name": "g1"', out)
+        self.assertIn('"name": "g2"', out)
+
+
 if __name__ == "__main__":
     unittest.main()

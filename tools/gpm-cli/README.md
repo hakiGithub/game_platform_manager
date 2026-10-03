@@ -8,13 +8,44 @@ Python3 标准库单文件 CLI（零第三方依赖），用于管理 GPM 游戏
 python3 tools/gpm-cli/gpmcli.py [--json] [--verbose] <command> [args]
 ```
 
-## 命令（T4 范围）
+## 命令
+
+### 基础（T4）
 
 | 命令 | REST | 说明 |
 |---|---|---|
 | `ping` | `GET /system/health` | 认证 + 健康探测二合一（**需有效凭据**）；`--identity` 附带当前身份 |
 | `whoami` | `GET /auth/info` | 当前身份（用户名/ID） |
 | `system info` | `GET /system/info` | 平台版本/OS/JVM/内存 |
+
+### 只读域（T5）
+
+所有列表命令统一 `--page`/`--size`（缺省 page=1；size 缺省 hosts/instances/games=10、tasks/schedules=20），按端点自动映射为 `current`（hosts/instances/games）或 `page`（tasks/schedules）（规格 C2）。
+
+| 命令 | REST | 说明 |
+|---|---|---|
+| `hosts list` | `GET /hosts` | `--keyword --order-by --order`；`--page`→`current` |
+| `hosts get <id>` | `GET /hosts/{id}` | 主机详情（不存在→exit 5） |
+| `hosts status <id>` | `GET /hosts/{id}/status` | 在线状态 + 资源占用 |
+| `hosts resources <id>` | `GET /hosts/{id}/resources` | CPU/内存/磁盘/网络 |
+| `instances list` | `GET /instances` | `--keyword --game-code`；`--page`→`current` |
+| `instances get <id>` | `GET /instances/{id}` | 静态详情 |
+| `instances metrics <id>` | `GET /instances/{id}/metrics` | 动态指标（含 available/reason） |
+| `instances status <id>` | `GET /instances/{id}/status` | 仅呈现 `status`/`runStatusDesc` |
+| `instances logs <id>` | `GET /instances/{id}/logs` | `--lines`（默认 100）/`--tail` 别名、`--type`（默认 stdout） |
+| `tasks list` | `GET /tasks` | `--status --task-type --source --scope-key --submitter --keyword --start-time --end-time`；`--page`→`page` |
+| `tasks get <taskId>` | `GET /tasks/{taskId}` | 任务详情（含 status/progress/errorMessage） |
+| `tasks logs <taskId>` | `GET /tasks/{taskId}/logs` | `--after-id` 增量拉取 |
+| `tasks stats` | `GET /tasks/stats` | `--start-time --end-time`（ISO） |
+| `tasks types` | `GET /tasks/types` | 已注册任务类型 |
+| `games list` | `GET /games/list` | `--keyword` |
+| `games get <id>` | `GET /games/{id}` | 游戏元数据详情 |
+| `backups list <instanceId>` | `GET /instances/{instanceId}/backups` | `--target-type`（DATABASE/FILES） |
+| `backups get <instanceId> <backupId>` | `GET /instances/{instanceId}/backups/{backupId}` | 备份详情 |
+| `schedules list` | `GET /schedules` | `--source --handler-key --keyword --enabled`；`--page`→`page` |
+| `schedules runs <id>` | `GET /schedules/{id}/runs` | `--status`；`--page`→`page` |
+
+数值型 `<id>` 传非正整数 → 用法错误（exit 2）。写命令（instances start/stop/restart、tasks cancel/retry）属 T6 范围。
 
 ## 凭据（优先级：命令行 > 环境变量 > 配置文件）
 

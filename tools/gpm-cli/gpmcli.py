@@ -603,7 +603,22 @@ def lookup_spec(group: Optional[str], action: Optional[str]) -> CommandSpec:
 # 分节 9：输出渲染（--json 契约：成功 stdout / 失败 stderr）
 # =========================================================================
 
+def _render_record(v: Any) -> str:
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v)
+
+
 def _human_render(data: Any) -> str:
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        # 平台分页结构：摘要行 + 每条记录一行（机读友好的紧凑 JSON）
+        head = "total=%s pages=%s current=%s size=%s" % (
+            data.get("total"), data.get("pages"),
+            data.get("current"), data.get("size"))
+        lines = [head] + [_render_record(r) for r in data["records"]]
+        return "\n".join(lines)
+    if isinstance(data, list):
+        return "\n".join(_render_record(x) for x in data)
     if isinstance(data, dict):
         parts = []
         for k, v in data.items():
