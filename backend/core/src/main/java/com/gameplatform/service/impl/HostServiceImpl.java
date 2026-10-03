@@ -2,7 +2,6 @@ package com.gameplatform.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.crypto.SecureUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -17,6 +16,7 @@ import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.service.SshTunnelManager;
 import com.gameplatform.service.HostService;
+import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
@@ -46,11 +46,6 @@ public class HostServiceImpl implements HostService {
     private final DeploymentAccess deployAccess;
     private final SshTunnelManager sshTunnelManager;
     private final JdbcTemplate jdbcTemplate;
-
-    /**
-     * 加密密钥(生产环境应从配置读取)
-     */
-    private static final String ENCRYPT_KEY = "GamePlatform2024";
 
     /**
      * SSH连接超时时间(毫秒)
@@ -86,14 +81,14 @@ public class HostServiceImpl implements HostService {
         // 局域网标识：DTO 未传时默认 false（详见 ADR-0004）
         host.setIsLanHost(Boolean.TRUE.equals(dto.getIsLanHost()));
 
-        // 加密SSH密码
+        // 加密SSH密码（写侧唯一加密点，读侧对应 DeploymentAccess 一次解密）
         if (dto.getSshPassword() != null && !dto.getSshPassword().isEmpty()) {
-            host.setSshPassword(encrypt(dto.getSshPassword()));
+            host.setSshPassword(encryptOnce(dto.getSshPassword()));
         }
 
         // 加密SSH私钥
         if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
-            host.setSshPrivateKey(encrypt(dto.getSshPrivateKey()));
+            host.setSshPrivateKey(encryptOnce(dto.getSshPrivateKey()));
         }
 
         // 初始状态为离线
@@ -144,14 +139,14 @@ public class HostServiceImpl implements HostService {
             host.setIsLanHost(dto.getIsLanHost());
         }
 
-        // 加密SSH密码
+        // 加密SSH密码（写侧唯一加密点，读侧对应 DeploymentAccess 一次解密）
         if (dto.getSshPassword() != null && !dto.getSshPassword().isEmpty()) {
-            host.setSshPassword(encrypt(dto.getSshPassword()));
+            host.setSshPassword(encryptOnce(dto.getSshPassword()));
         }
 
         // 加密SSH私钥
         if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
-            host.setSshPrivateKey(encrypt(dto.getSshPrivateKey()));
+            host.setSshPrivateKey(encryptOnce(dto.getSshPrivateKey()));
         }
 
         hostMapper.updateById(host);
@@ -366,10 +361,13 @@ public class HostServiceImpl implements HostService {
     }
 
     /**
-     * 加密
+     * 写侧加密（幂等）：已是密文则原样返回，保证「写一次、读一次」对称
      */
-    private String encrypt(String content) {
-        return SecureUtil.aes(ENCRYPT_KEY.getBytes()).encryptBase64(content);
+    private String encryptOnce(String content) {
+        if (AesUtil.isEncrypted(content)) {
+            return content;
+        }
+        return AesUtil.encrypt(content);
     }
 
     /**
