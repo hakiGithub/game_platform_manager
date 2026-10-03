@@ -482,5 +482,124 @@ class PagedListTest(TempHomeTestCase):
         self.assertIn("enabled=true", url)
 
 
+class DetailCommandsTest(TempHomeTestCase):
+    """T5 详情类命令：路径参数替换、数值校验、instances status 裁剪、logs 参数。"""
+
+    TOKEN = "gpm_e2e_secret_token_123"
+
+    def _argv(self, *rest):
+        return ["--token", self.TOKEN] + list(rest)
+
+    def _get(self, *rest, data=None):
+        cap = []
+        t = fake_transport(200, envelope(200, data=data if data is not None
+                                         else {"id": 1}), cap)
+        code, out, err = run_main(self._argv("--json", *rest), transport=t)
+        payload = json.loads(out) if out else None
+        url = cap[0]["url"] if cap else ""
+        return code, payload, url, url.split("?")[0], err
+
+    def test_hosts_get_path_substitution(self):
+        code, payload, url, path, _ = self._get("hosts", "get", "42")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/42"))
+        self.assertNotIn("?", url)
+
+    def test_hosts_get_rejects_non_numeric_id(self):
+        code, _, _, _, err = self._get("hosts", "get", "abc")
+        self.assertEqual(code, 2)
+        self.assertIn("须为正整数", err)
+
+    def test_hosts_status_and_resources(self):
+        code, _, url, path, _ = self._get("hosts", "status", "7")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/7/status"))
+        code, _, url, path, _ = self._get("hosts", "resources", "7")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/7/resources"))
+
+    def test_instances_get_and_metrics(self):
+        code, _, url, path, _ = self._get("instances", "get", "9")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9"))
+        code, _, url, path, _ = self._get("instances", "metrics", "9")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9/metrics"))
+
+    def test_instances_status_trimmed_to_status_fields(self):
+        vo = {"id": 9, "name": "l4d2", "status": "running", "runStatusDesc": "运行中",
+              "hostIp": "192.168.3.50", "gameCode": "l4d2"}
+        code, payload, url, path, _ = self._get("instances", "status", "9", data=vo)
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9/status"))
+        self.assertEqual(payload["data"], {"status": "running",
+                                           "runStatusDesc": "运行中"})
+
+    def test_instances_logs_defaults(self):
+        cap = []
+        t = fake_transport(200, envelope(200, data={"logs": [], "raw": ""}), cap)
+        code, _, _ = run_main(self._argv("--json", "instances", "logs", "5"),
+                              transport=t)
+        self.assertEqual(code, 0)
+        url = cap[0]["url"]
+        self.assertTrue(url.split("?")[0].endswith("/instances/5/logs"))
+        self.assertIn("lines=100", url)
+        self.assertIn("type=stdout", url)
+
+    def test_instances_logs_tail_alias_and_type(self):
+        cap = []
+        t = fake_transport(200, envelope(200, data={"logs": [], "raw": ""}), cap)
+        code, _, _ = run_main(self._argv("--json", "instances", "logs", "5",
+                                         "--tail", "50", "--type", "stderr"),
+                              transport=t)
+        self.assertEqual(code, 0)
+        url = cap[0]["url"]
+        self.assertIn("lines=50", url)
+        self.assertNotIn("tail=", url)
+        self.assertIn("type=stderr", url)
+
+    def test_tasks_get_and_logs_after_id(self):
+        code, _, url, path, _ = self._get("tasks", "get", "MAIN:deploy:1")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/tasks/MAIN%3Adeploy%3A1"))
+        code, _, url, path, _ = self._get("tasks", "logs", "MAIN:deploy:1",
+                                    "--after-id", "log-42")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/tasks/MAIN%3Adeploy%3A1/logs"))
+        self.assertIn("afterId=log-42", url)
+
+    def test_games_get(self):
+        code, _, url, path, _ = self._get("games", "get", "3")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/games/3"))
+
+    def test_backups_list_and_get(self):
+        code, _, url, path, _ = self._get("backups", "list", "5",
+                                    "--target-type", "FILES")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/5/backups"))
+        self.assertIn("targetType=FILES", url)
+        code, _, url, path, _ = self._get("backups", "get", "5", "12")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/5/backups/12"))
+
+    def test_schedules_runs(self):
+        code, _, url, path, _ = self._get("schedules", "runs", "sched-1",
+                                    "--page", "2", "--status", "SUCCEEDED")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/schedules/sched-1/runs"))
+        self.assertIn("page=2", url)
+        self.assertIn("status=SUCCEEDED", url)
+
+    def test_instances_get_not_found_exit5(self):
+        t = fake_transport(200, envelope(1201, "实例不存在"))
+        code, out, err = run_main(self._argv("--json", "instances", "get", "999"),
+                                  transport=t)
+        self.assertEqual(code, 5)
+        payload = json.loads(err)
+        self.assertEqual(payload["error"]["kind"], "not_found")
+        self.assertEqual(payload["error"]["code"], 1201)
+
+
 if __name__ == "__main__":
     unittest.main()

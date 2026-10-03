@@ -346,7 +346,8 @@ class Param:
     kind: str = "flag"          # flag|query|path|body
     default: Any = None
     action: str = "store"       # store|store_true
-    query_name: str = ""        # 出站查询参数名（缺省同 dest）
+    query_name: str = ""        # 出站查询参数名（缺省同 dest）；path 参数为 URL 占位符名
+    numeric: bool = False       # path 参数须为正整数（Long 型 @PathVariable）
     help: str = ""
 
 
@@ -380,6 +381,20 @@ def cmd_ping(cfg: Config, args: argparse.Namespace, spec: CommandSpec,
     return Outcome("ok", EXIT_OK, outcome.code, outcome.http, outcome.message, data=data)
 
 
+def cmd_instances_status(cfg: Config, args: argparse.Namespace, spec: CommandSpec,
+                         transport: Optional[Transport]) -> Outcome:
+    """instances status：平台返回完整 InstanceVO，按规格 §2.1 仅呈现
+    status/runStatusDesc（--json 与人类模式一致，便于 T6 --wait 轮询复用）。"""
+    outcome = http_request(cfg, spec.method, _build_path(spec, args),
+                           transport=transport)
+    if outcome.kind != "ok":
+        return outcome
+    vo = outcome.data if isinstance(outcome.data, dict) else {}
+    trimmed = {"status": vo.get("status"), "runStatusDesc": vo.get("runStatusDesc")}
+    return Outcome("ok", EXIT_OK, outcome.code, outcome.http, outcome.message,
+                   data=trimmed)
+
+
 COMMANDS: List[CommandSpec] = [
     CommandSpec(
         cli="ping", group="ping", action=None, method="GET", path="/system/health",
@@ -409,6 +424,23 @@ COMMANDS: List[CommandSpec] = [
         help="主机分页列表（--page 映射为 current）",
     ),
     CommandSpec(
+        cli="hosts get", group="hosts", action="get", method="GET", path="/hosts/{id}",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="主机 ID")],
+        help="主机详情（不存在 → 退出码 5）",
+    ),
+    CommandSpec(
+        cli="hosts status", group="hosts", action="status", method="GET",
+        path="/hosts/{id}/status",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="主机 ID")],
+        help="主机在线状态 + 资源占用",
+    ),
+    CommandSpec(
+        cli="hosts resources", group="hosts", action="resources", method="GET",
+        path="/hosts/{id}/resources",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="主机 ID")],
+        help="主机 CPU/内存/磁盘/网络",
+    ),
+    CommandSpec(
         cli="instances list", group="instances", action="list", method="GET", path="/instances",
         paged=True, default_size=10,
         params=[
@@ -417,6 +449,37 @@ COMMANDS: List[CommandSpec] = [
                   help="游戏代码过滤（如 l4d2）"),
         ],
         help="实例分页列表（--page 映射为 current）",
+    ),
+    CommandSpec(
+        cli="instances get", group="instances", action="get", method="GET",
+        path="/instances/{id}",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="实例 ID")],
+        help="实例静态详情（不存在 → 退出码 5）",
+    ),
+    CommandSpec(
+        cli="instances metrics", group="instances", action="metrics", method="GET",
+        path="/instances/{id}/metrics",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="实例 ID")],
+        help="实例动态指标（含 available/reason）",
+    ),
+    CommandSpec(
+        cli="instances status", group="instances", action="status", method="GET",
+        path="/instances/{id}/status",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="实例 ID")],
+        handler=cmd_instances_status,
+        help="实例运行状态（仅呈现 status/runStatusDesc）",
+    ),
+    CommandSpec(
+        cli="instances logs", group="instances", action="logs", method="GET",
+        path="/instances/{id}/logs",
+        params=[
+            Param(flags=(), dest="id", kind="path", numeric=True, help="实例 ID"),
+            Param(flags=("--lines", "--tail"), dest="lines", kind="query", default=100,
+                  help="日志行数（默认 100；--tail 为别名）"),
+            Param(flags=("--type",), dest="type", kind="query", default="stdout",
+                  help="日志类型（默认 stdout）"),
+        ],
+        help="实例运行日志（--lines 默认 100，--tail 别名；--type 默认 stdout）",
     ),
     CommandSpec(
         cli="tasks list", group="tasks", action="list", method="GET", path="/tasks",
@@ -436,6 +499,23 @@ COMMANDS: List[CommandSpec] = [
                   help="结束时间（ISO yyyy-MM-dd'T'HH:mm:ss）"),
         ],
         help="任务分页列表（--page 映射为 page）",
+    ),
+    CommandSpec(
+        cli="tasks get", group="tasks", action="get", method="GET", path="/tasks/{taskId}",
+        params=[Param(flags=(), dest="task_id", kind="path", query_name="taskId",
+                      help="任务 ID（String）")],
+        help="任务详情（含 status/progress/errorMessage；不存在 → 退出码 5）",
+    ),
+    CommandSpec(
+        cli="tasks logs", group="tasks", action="logs", method="GET",
+        path="/tasks/{taskId}/logs",
+        params=[
+            Param(flags=(), dest="task_id", kind="path", query_name="taskId",
+                  help="任务 ID（String）"),
+            Param(flags=("--after-id",), dest="after_id", kind="query", query_name="afterId",
+                  help="增量拉取：上次最后一条日志 ID"),
+        ],
+        help="任务日志（不传 --after-id 返回最近 100 条）",
     ),
     CommandSpec(
         cli="tasks types", group="tasks", action="types", method="GET", path="/tasks/types",
@@ -460,6 +540,33 @@ COMMANDS: List[CommandSpec] = [
         help="游戏列表（支持关键词；--page/--size 按约定映射为 current/size）",
     ),
     CommandSpec(
+        cli="games get", group="games", action="get", method="GET", path="/games/{id}",
+        params=[Param(flags=(), dest="id", kind="path", numeric=True, help="游戏 ID")],
+        help="游戏元数据详情（不存在 → 退出码 5）",
+    ),
+    CommandSpec(
+        cli="backups list", group="backups", action="list", method="GET",
+        path="/instances/{instanceId}/backups",
+        params=[
+            Param(flags=(), dest="instance_id", kind="path", query_name="instanceId",
+                  numeric=True, help="实例 ID"),
+            Param(flags=("--target-type",), dest="target_type", kind="query",
+                  query_name="targetType", help="目标类型过滤（DATABASE/FILES）"),
+        ],
+        help="实例备份列表（不存在 → 退出码 5）",
+    ),
+    CommandSpec(
+        cli="backups get", group="backups", action="get", method="GET",
+        path="/instances/{instanceId}/backups/{backupId}",
+        params=[
+            Param(flags=(), dest="instance_id", kind="path", query_name="instanceId",
+                  numeric=True, help="实例 ID"),
+            Param(flags=(), dest="backup_id", kind="path", query_name="backupId",
+                  numeric=True, help="备份 ID"),
+        ],
+        help="备份详情（不存在 → 退出码 5）",
+    ),
+    CommandSpec(
         cli="schedules list", group="schedules", action="list", method="GET", path="/schedules",
         paged=True, default_size=20,
         params=[
@@ -471,6 +578,16 @@ COMMANDS: List[CommandSpec] = [
                   help="启用状态过滤（true/false）"),
         ],
         help="计划任务分页列表（--page 映射为 page）",
+    ),
+    CommandSpec(
+        cli="schedules runs", group="schedules", action="runs", method="GET",
+        path="/schedules/{id}/runs",
+        paged=True, default_size=20,
+        params=[
+            Param(flags=(), dest="id", kind="path", help="计划 ID（String）"),
+            Param(flags=("--status",), dest="status", kind="query", help="执行状态过滤"),
+        ],
+        help="计划任务触发记录分页（不存在 → 退出码 5）",
     ),
 ]
 
@@ -530,10 +647,29 @@ def emit_error(err: GpmError, cfg: Config) -> int:
 # 分节 12：命令处理器（T4 命令多为注册表驱动默认执行）
 # =========================================================================
 
+def _build_path(spec: CommandSpec, args: argparse.Namespace) -> str:
+    """把 kind="path" 参数代入 spec.path 的 {占位符}；numeric 参数校验为正整数。"""
+    path = spec.path
+    for prm in spec.params:
+        if prm.kind != "path":
+            continue
+        v = getattr(args, prm.dest, None)
+        if v is None:
+            raise GpmError("usage", EXIT_USAGE,
+                           message="缺少路径参数：%s" % prm.dest)
+        if prm.numeric and not str(v).isdigit():
+            raise GpmError("usage", EXIT_USAGE,
+                           message="参数 %s 非法（须为正整数）：%s" % (prm.dest, v))
+        path = path.replace("{" + (prm.query_name or prm.dest) + "}",
+                            urllib.parse.quote(str(v), safe=""))
+    return path
+
+
 def dispatch(cfg: Config, args: argparse.Namespace, spec: CommandSpec,
              transport: Optional[Transport]) -> Outcome:
     if spec.handler is not None:
         return spec.handler(cfg, args, spec, transport)
+    path = _build_path(spec, args)
     params: Dict[str, Any] = {}
     for prm in spec.params:
         if prm.kind == "query":
@@ -546,7 +682,7 @@ def dispatch(cfg: Config, args: argparse.Namespace, spec: CommandSpec,
         page = getattr(args, "page", None) or 1
         size = getattr(args, "size", None) or spec.default_size
         params.update(pagination_query(spec.group, page, size))
-    return http_request(cfg, spec.method, spec.path, params=params, transport=transport)
+    return http_request(cfg, spec.method, path, params=params, transport=transport)
 
 
 # =========================================================================
@@ -597,6 +733,8 @@ def build_parser() -> argparse.ArgumentParser:
             if prm.action == "store_true":
                 sp.add_argument(*prm.flags, dest=prm.dest, action="store_true",
                                 default=argparse.SUPPRESS, help=prm.help)
+            elif prm.kind == "path":  # 位置参数（路径占位符）
+                sp.add_argument(prm.dest, metavar=prm.dest.upper(), help=prm.help)
             else:
                 sp.add_argument(*prm.flags, dest=prm.dest, default=prm.default,
                                 help=prm.help)
