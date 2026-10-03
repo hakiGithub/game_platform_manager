@@ -298,3 +298,29 @@ CREATE TABLE IF NOT EXISTS sys_setting (
   setting_group VARCHAR(50) PRIMARY KEY,
   setting_value TEXT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =====================================================
+-- 10. API 令牌表 (api_token) — ADR-0029 长期可吊销凭证
+-- 索引内联（MySQL/MariaDB 不支持 CREATE INDEX IF NOT EXISTS，ADR-0015）
+-- 注意：MySQL/PG 存量库无增量迁移机制，上线需人工执行本段 DDL（ADR-0015 已知限制）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS api_token (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name         VARCHAR(100) NOT NULL,
+    token_prefix VARCHAR(16)  NOT NULL,
+    token_hash   VARCHAR(128) NOT NULL,
+    scope        VARCHAR(20)  NOT NULL DEFAULT 'read',
+    user_id      BIGINT       NOT NULL,
+    expires_at   DATETIME NULL,
+    revoked      TINYINT      NOT NULL DEFAULT 0,
+    revoked_at   DATETIME NULL,
+    last_used_at DATETIME NULL,
+    create_time  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time  DATETIME NULL COMMENT '刻意无 ON UPDATE：last_used_at 节流写不得刷新它（ADR-0029 D6）',
+    is_deleted   TINYINT DEFAULT 0,
+    remark       TEXT,
+    UNIQUE KEY uk_api_token_hash (token_hash),
+    KEY idx_api_token_user_id (user_id),
+    KEY idx_api_token_is_deleted (is_deleted),
+    CONSTRAINT fk_api_token_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

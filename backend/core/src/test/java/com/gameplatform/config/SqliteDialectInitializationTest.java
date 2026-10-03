@@ -29,7 +29,8 @@ class SqliteDialectInitializationTest {
     private static final String[] ALL_TABLES = {
             "sys_user", "host_info", "game_metadata", "game_instance", "plugin_info",
             "backup_record", "task_record", "task_log",
-            "scheduled_task", "scheduled_task_run", "scheduled_task_run_log"
+            "scheduled_task", "scheduled_task_run", "scheduled_task_run_log",
+            "api_token"
     };
 
     @TempDir
