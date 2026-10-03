@@ -394,5 +394,238 @@ class EndToEndTest(TempHomeTestCase):
         self.assertEqual(cap[0]["headers"]["Authorization"], "Bearer gpm_filetok_12345678")
 
 
+class PagedListTest(TempHomeTestCase):
+    """T5 分页列表：--page/--size 按 C2 分流（current/page），带端点默认值。"""
+
+    TOKEN = "gpm_e2e_secret_token_123"
+
+    def _argv(self, *rest):
+        return ["--token", self.TOKEN] + list(rest)
+
+    def _paged(self, *rest):
+        """跑一个 paged 命令并返回 (exit_code, payload, captured_url)。"""
+        cap = []
+        t = fake_transport(200, envelope(200, data={"current": 1, "size": 10,
+                                                    "total": 0, "pages": 0,
+                                                    "records": []}), cap)
+        code, out, err = run_main(self._argv("--json", *rest), transport=t)
+        payload = json.loads(out) if out else None
+        return code, payload, cap[0]["url"] if cap else ""
+
+    def test_hosts_list_maps_current(self):
+        code, payload, url = self._paged("hosts", "list", "--page", "2", "--size", "5")
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertIn("/hosts?", url)
+        self.assertIn("current=2", url)
+        self.assertIn("size=5", url)
+        self.assertNotIn("page=2", url)
+
+    def test_hosts_list_defaults(self):
+        code, _, url = self._paged("hosts", "list")
+        self.assertEqual(code, 0)
+        self.assertIn("current=1", url)
+        self.assertIn("size=10", url)
+
+    def test_hosts_list_keyword_and_order(self):
+        code, _, url = self._paged("hosts", "list", "--keyword", "web",
+                                   "--order-by", "create_time", "--order", "asc")
+        self.assertEqual(code, 0)
+        self.assertIn("keyword=web", url)
+        self.assertIn("orderBy=create_time", url)
+        self.assertIn("order=asc", url)
+
+    def test_tasks_list_maps_page(self):
+        code, _, url = self._paged("tasks", "list", "--page", "3", "--size", "20")
+        self.assertEqual(code, 0)
+        self.assertIn("/tasks?", url)
+        self.assertIn("page=3", url)
+        self.assertIn("size=20", url)
+        self.assertNotIn("current=", url)
+
+    def test_tasks_list_defaults_and_filters(self):
+        code, _, url = self._paged("tasks", "list", "--status", "RUNNING",
+                                   "--task-type", "deploy", "--keyword", "l4d2",
+                                   "--start-time", "2026-10-01T00:00:00",
+                                   "--end-time", "2026-10-02T00:00:00")
+        self.assertEqual(code, 0)
+        self.assertIn("page=1", url)
+        self.assertIn("size=20", url)
+        self.assertIn("status=RUNNING", url)
+        self.assertIn("taskType=deploy", url)
+        self.assertIn("keyword=l4d2", url)
+        self.assertIn("startTime=2026-10-01T00%3A00%3A00", url)
+        self.assertIn("endTime=2026-10-02T00%3A00%3A00", url)
+
+    def test_instances_list_game_code(self):
+        code, _, url = self._paged("instances", "list", "--game-code", "l4d2",
+                                   "--keyword", " infected")
+        self.assertEqual(code, 0)
+        self.assertIn("gameCode=l4d2", url)
+        self.assertIn("keyword=+infected", url)
+
+    def test_games_list_uses_current_style(self):
+        code, _, url = self._paged("games", "list", "--keyword", "l4d2", "--page", "1")
+        self.assertEqual(code, 0)
+        self.assertIn("/games/list?", url)
+        self.assertIn("keyword=l4d2", url)
+        self.assertIn("current=1", url)
+
+    def test_schedules_list_maps_page_and_filters(self):
+        code, _, url = self._paged("schedules", "list", "--source", "SCHEDULE",
+                                   "--handler-key", "l4d2-crawler", "--enabled", "true")
+        self.assertEqual(code, 0)
+        self.assertIn("page=1", url)
+        self.assertIn("size=20", url)
+        self.assertIn("source=SCHEDULE", url)
+        self.assertIn("handlerKey=l4d2-crawler", url)
+        self.assertIn("enabled=true", url)
+
+
+class DetailCommandsTest(TempHomeTestCase):
+    """T5 详情类命令：路径参数替换、数值校验、instances status 裁剪、logs 参数。"""
+
+    TOKEN = "gpm_e2e_secret_token_123"
+
+    def _argv(self, *rest):
+        return ["--token", self.TOKEN] + list(rest)
+
+    def _get(self, *rest, data=None):
+        cap = []
+        t = fake_transport(200, envelope(200, data=data if data is not None
+                                         else {"id": 1}), cap)
+        code, out, err = run_main(self._argv("--json", *rest), transport=t)
+        payload = json.loads(out) if out else None
+        url = cap[0]["url"] if cap else ""
+        return code, payload, url, url.split("?")[0], err
+
+    def test_hosts_get_path_substitution(self):
+        code, payload, url, path, _ = self._get("hosts", "get", "42")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/42"))
+        self.assertNotIn("?", url)
+
+    def test_hosts_get_rejects_non_numeric_id(self):
+        code, _, _, _, err = self._get("hosts", "get", "abc")
+        self.assertEqual(code, 2)
+        self.assertIn("须为正整数", err)
+
+    def test_hosts_status_and_resources(self):
+        code, _, url, path, _ = self._get("hosts", "status", "7")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/7/status"))
+        code, _, url, path, _ = self._get("hosts", "resources", "7")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/hosts/7/resources"))
+
+    def test_instances_get_and_metrics(self):
+        code, _, url, path, _ = self._get("instances", "get", "9")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9"))
+        code, _, url, path, _ = self._get("instances", "metrics", "9")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9/metrics"))
+
+    def test_instances_status_trimmed_to_status_fields(self):
+        vo = {"id": 9, "name": "l4d2", "status": "running", "runStatusDesc": "运行中",
+              "hostIp": "192.168.3.50", "gameCode": "l4d2"}
+        code, payload, url, path, _ = self._get("instances", "status", "9", data=vo)
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/9/status"))
+        self.assertEqual(payload["data"], {"status": "running",
+                                           "runStatusDesc": "运行中"})
+
+    def test_instances_logs_defaults(self):
+        cap = []
+        t = fake_transport(200, envelope(200, data={"logs": [], "raw": ""}), cap)
+        code, _, _ = run_main(self._argv("--json", "instances", "logs", "5"),
+                              transport=t)
+        self.assertEqual(code, 0)
+        url = cap[0]["url"]
+        self.assertTrue(url.split("?")[0].endswith("/instances/5/logs"))
+        self.assertIn("lines=100", url)
+        self.assertIn("type=stdout", url)
+
+    def test_instances_logs_tail_alias_and_type(self):
+        cap = []
+        t = fake_transport(200, envelope(200, data={"logs": [], "raw": ""}), cap)
+        code, _, _ = run_main(self._argv("--json", "instances", "logs", "5",
+                                         "--tail", "50", "--type", "stderr"),
+                              transport=t)
+        self.assertEqual(code, 0)
+        url = cap[0]["url"]
+        self.assertIn("lines=50", url)
+        self.assertNotIn("tail=", url)
+        self.assertIn("type=stderr", url)
+
+    def test_tasks_get_and_logs_after_id(self):
+        code, _, url, path, _ = self._get("tasks", "get", "MAIN:deploy:1")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/tasks/MAIN%3Adeploy%3A1"))
+        code, _, url, path, _ = self._get("tasks", "logs", "MAIN:deploy:1",
+                                    "--after-id", "log-42")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/tasks/MAIN%3Adeploy%3A1/logs"))
+        self.assertIn("afterId=log-42", url)
+
+    def test_games_get(self):
+        code, _, url, path, _ = self._get("games", "get", "3")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/games/3"))
+
+    def test_backups_list_and_get(self):
+        code, _, url, path, _ = self._get("backups", "list", "5",
+                                    "--target-type", "FILES")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/5/backups"))
+        self.assertIn("targetType=FILES", url)
+        code, _, url, path, _ = self._get("backups", "get", "5", "12")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/instances/5/backups/12"))
+
+    def test_schedules_runs(self):
+        code, _, url, path, _ = self._get("schedules", "runs", "sched-1",
+                                    "--page", "2", "--status", "SUCCEEDED")
+        self.assertEqual(code, 0)
+        self.assertTrue(path.endswith("/schedules/sched-1/runs"))
+        self.assertIn("page=2", url)
+        self.assertIn("status=SUCCEEDED", url)
+
+    def test_instances_get_not_found_exit5(self):
+        t = fake_transport(200, envelope(1201, "实例不存在"))
+        code, out, err = run_main(self._argv("--json", "instances", "get", "999"),
+                                  transport=t)
+        self.assertEqual(code, 5)
+        payload = json.loads(err)
+        self.assertEqual(payload["error"]["kind"], "not_found")
+        self.assertEqual(payload["error"]["code"], 1201)
+
+
+class HumanRenderListTest(TempHomeTestCase):
+    """T5 人类模式列表渲染：分页结果逐条一行，不输出 Python repr。"""
+
+    def test_paged_human_render(self):
+        data = {"current": 1, "size": 10, "total": 2, "pages": 1,
+                "records": [{"id": 1, "name": "node-a"}, {"id": 2, "name": "node-b"}]}
+        t = fake_transport(200, envelope(200, data=data))
+        code, out, err = run_main(["--token", "gpm_tok_12345678", "hosts", "list"],
+                                  transport=t)
+        self.assertEqual(code, 0)
+        self.assertIn("total=2", out)
+        self.assertIn("pages=1", out)
+        self.assertIn('"name": "node-a"', out)
+        self.assertIn('"name": "node-b"', out)
+        self.assertNotIn("records=", out)  # 不再整包吐 records repr
+
+    def test_plain_list_human_render(self):
+        data = [{"id": 1, "name": "g1"}, {"id": 2, "name": "g2"}]
+        t = fake_transport(200, envelope(200, data=data))
+        code, out, err = run_main(["--token", "gpm_tok_12345678", "games", "list"],
+                                  transport=t)
+        self.assertEqual(code, 0)
+        self.assertIn('"name": "g1"', out)
+        self.assertIn('"name": "g2"', out)
+
+
 if __name__ == "__main__":
     unittest.main()
