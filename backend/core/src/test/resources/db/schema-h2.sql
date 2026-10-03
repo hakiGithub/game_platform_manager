@@ -153,3 +153,22 @@ CREATE TABLE IF NOT EXISTS task_log (
 
 CREATE INDEX IF NOT EXISTS idx_task_log_task_id ON task_log(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_log_create_time ON task_log(create_time);
+
+-- API 令牌表（ADR-0029）
+-- 沿用本文件既有风格（内联 UNIQUE、无独立索引）；新表按生产口径写 is_deleted，不沿用旧表的 deleted 列名。
+CREATE TABLE IF NOT EXISTS api_token (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    token_prefix VARCHAR(16) NOT NULL,
+    token_hash VARCHAR(128) NOT NULL UNIQUE,
+    scope VARCHAR(20) NOT NULL DEFAULT 'read',
+    user_id BIGINT NOT NULL,
+    expires_at TIMESTAMP,
+    revoked TINYINT NOT NULL DEFAULT 0,
+    revoked_at TIMESTAMP,
+    last_used_at TIMESTAMP,
+    remark VARCHAR(500),
+    is_deleted TINYINT DEFAULT 0,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP
+);

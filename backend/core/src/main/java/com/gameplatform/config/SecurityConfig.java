@@ -94,18 +94,29 @@ public class SecurityConfig {
                                 "/cloud/**"
                         ).hasRole("ADMIN")
 
+                        // API 令牌管理（ADR-0029）：仅管理员，且 API 令牌主体永不含 ROLE_ADMIN ⇒ 令牌无法管令牌
+                        .requestMatchers("/tokens/**").hasRole("ADMIN")
+
                         // 其他所有请求都需要认证
                         .anyRequest().authenticated()
                 )
                 
                 // 未认证（含 JWT 过期/无效）统一返回 401 JSON，
                 // 前端据此自动跳转登录页（默认 EntryPoint 会返回 403，导致前端无法区分"未登录"与"无权限"）
-                .exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, ex) -> {
-                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    response.setCharacterEncoding("UTF-8");
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.UNAUTHORIZED)));
-                }))
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint((request, response, ex) -> {
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.UNAUTHORIZED)));
+                        })
+                        // 已认证但权限不足（含 read 令牌越权、令牌主体访问 /tokens|/cloud）返回 403 JSON（ADR-0029 D7）
+                        .accessDeniedHandler((request, response, ex) -> {
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.getWriter().write(objectMapper.writeValueAsString(Result.fail(ResultCode.FORBIDDEN)));
+                        }))
 
                 // 添加JWT过滤器
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

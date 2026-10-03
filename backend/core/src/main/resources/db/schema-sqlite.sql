@@ -3,7 +3,8 @@
 -- 数据库: SQLite
 -- 版本: 1.1.0（ADR-0015 多方言拆分：本文件含历次迁移累积的最新完整列结构，
 --       game_instance.game_code 与 plugin_info 扩展列原由迁移补齐，现并入建表；
---       任务中心/定时计划表仍由 db/migration/V1.5、V1.7 负责）
+--       任务中心/定时计划表仍由 db/migration/V1.5、V1.7 负责；
+--       API 令牌表 api_token（ADR-0029）由 db/migration/V1.11 负责增量，本文件含最新结构）
 -- =====================================================
 
 -- =====================================================
@@ -217,3 +218,29 @@ AFTER UPDATE ON backup_record
 BEGIN
   UPDATE backup_record SET update_time = datetime('now', 'localtime') WHERE id = NEW.id;
 END;
+
+-- =====================================================
+-- 10. API 令牌表 (api_token) — ADR-0029 长期可吊销凭证
+-- =====================================================
+CREATE TABLE IF NOT EXISTS api_token (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         VARCHAR(100) NOT NULL,
+    token_prefix VARCHAR(16)  NOT NULL,
+    token_hash   VARCHAR(128) NOT NULL,
+    scope        VARCHAR(20)  NOT NULL DEFAULT 'read',
+    user_id      INTEGER      NOT NULL,
+    expires_at   DATETIME,
+    revoked      INTEGER      NOT NULL DEFAULT 0,
+    revoked_at   DATETIME,
+    last_used_at DATETIME,
+    create_time  DATETIME DEFAULT (datetime('now', 'localtime')),
+    -- 刻意不建 trg_api_token_update_time：节流写 last_used_at 不得刷新 update_time（ADR-0029 D6）
+    update_time  DATETIME DEFAULT (datetime('now', 'localtime')),
+    is_deleted   INTEGER DEFAULT 0,
+    remark       TEXT,
+    FOREIGN KEY (user_id) REFERENCES sys_user(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_api_token_hash ON api_token(token_hash);
+CREATE INDEX IF NOT EXISTS idx_api_token_user_id ON api_token(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_token_is_deleted ON api_token(is_deleted);

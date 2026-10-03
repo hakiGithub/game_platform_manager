@@ -51,6 +51,8 @@ public class SchemaMigrationRunner implements InitializingBean {
         ensureSqlFileExecuted("scheduled_task", "db/migration/V1.7__scheduled_task.sql");
         // V1.8: RCON 标准键归一化（ADR-0016 决策 4，数据迁移；UPDATE 的 WHERE 条件使其幂等可重放）
         runDataMigration("db/migration/V1.8__normalize_rcon_config_keys.sql");
+        // V1.11: API 令牌表（ADR-0029 长期可吊销凭证）
+        ensureSqlFileExecuted("api_token", "db/migration/V1.11__api_token.sql");
     }
 
     /**
