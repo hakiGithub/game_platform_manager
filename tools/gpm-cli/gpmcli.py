@@ -359,6 +359,8 @@ class CommandSpec:
     path: str
     params: List[Param] = field(default_factory=list)
     write: bool = False
+    paged: bool = False         # True = 支持 --page/--size（按 PAGINATION_STYLE 分流）
+    default_size: int = 10      # 分页默认 size（hosts/instances/games=10；tasks/schedules=20）
     handler: Optional[Callable] = None
     help: str = ""
 
@@ -393,6 +395,82 @@ COMMANDS: List[CommandSpec] = [
     CommandSpec(
         cli="system info", group="system", action="info", method="GET", path="/system/info",
         help="平台版本/OS/JVM/内存",
+    ),
+    # ---------------- T5：只读域命令 ----------------
+    CommandSpec(
+        cli="hosts list", group="hosts", action="list", method="GET", path="/hosts",
+        paged=True, default_size=10,
+        params=[
+            Param(flags=("--keyword",), dest="keyword", kind="query", help="关键词过滤"),
+            Param(flags=("--order-by",), dest="order_by", kind="query", query_name="orderBy",
+                  help="排序字段"),
+            Param(flags=("--order",), dest="order", kind="query", help="排序方式 asc/desc"),
+        ],
+        help="主机分页列表（--page 映射为 current）",
+    ),
+    CommandSpec(
+        cli="instances list", group="instances", action="list", method="GET", path="/instances",
+        paged=True, default_size=10,
+        params=[
+            Param(flags=("--keyword",), dest="keyword", kind="query", help="关键词过滤"),
+            Param(flags=("--game-code",), dest="game_code", kind="query", query_name="gameCode",
+                  help="游戏代码过滤（如 l4d2）"),
+        ],
+        help="实例分页列表（--page 映射为 current）",
+    ),
+    CommandSpec(
+        cli="tasks list", group="tasks", action="list", method="GET", path="/tasks",
+        paged=True, default_size=20,
+        params=[
+            Param(flags=("--status",), dest="status", kind="query", help="任务状态过滤"),
+            Param(flags=("--task-type",), dest="task_type", kind="query", query_name="taskType",
+                  help="任务类型过滤"),
+            Param(flags=("--source",), dest="source", kind="query", help="来源过滤"),
+            Param(flags=("--scope-key",), dest="scope_key", kind="query", query_name="scopeKey",
+                  help="作用域键过滤"),
+            Param(flags=("--submitter",), dest="submitter", kind="query", help="提交者过滤"),
+            Param(flags=("--keyword",), dest="keyword", kind="query", help="关键词过滤"),
+            Param(flags=("--start-time",), dest="start_time", kind="query", query_name="startTime",
+                  help="起始时间（ISO yyyy-MM-dd'T'HH:mm:ss）"),
+            Param(flags=("--end-time",), dest="end_time", kind="query", query_name="endTime",
+                  help="结束时间（ISO yyyy-MM-dd'T'HH:mm:ss）"),
+        ],
+        help="任务分页列表（--page 映射为 page）",
+    ),
+    CommandSpec(
+        cli="tasks types", group="tasks", action="types", method="GET", path="/tasks/types",
+        help="已注册任务类型（source:taskType）",
+    ),
+    CommandSpec(
+        cli="tasks stats", group="tasks", action="stats", method="GET", path="/tasks/stats",
+        params=[
+            Param(flags=("--start-time",), dest="start_time", kind="query", query_name="startTime",
+                  help="起始时间（ISO yyyy-MM-dd'T'HH:mm:ss）"),
+            Param(flags=("--end-time",), dest="end_time", kind="query", query_name="endTime",
+                  help="结束时间（ISO yyyy-MM-dd'T'HH:mm:ss）"),
+        ],
+        help="任务统计（按状态/来源/类型聚合）",
+    ),
+    CommandSpec(
+        cli="games list", group="games", action="list", method="GET", path="/games/list",
+        paged=True, default_size=10,
+        params=[
+            Param(flags=("--keyword",), dest="keyword", kind="query", help="关键词过滤"),
+        ],
+        help="游戏列表（支持关键词；--page/--size 按约定映射为 current/size）",
+    ),
+    CommandSpec(
+        cli="schedules list", group="schedules", action="list", method="GET", path="/schedules",
+        paged=True, default_size=20,
+        params=[
+            Param(flags=("--source",), dest="source", kind="query", help="来源过滤"),
+            Param(flags=("--handler-key",), dest="handler_key", kind="query", query_name="handlerKey",
+                  help="处理器 key 过滤"),
+            Param(flags=("--keyword",), dest="keyword", kind="query", help="名称模糊过滤"),
+            Param(flags=("--enabled",), dest="enabled", kind="query",
+                  help="启用状态过滤（true/false）"),
+        ],
+        help="计划任务分页列表（--page 映射为 page）",
     ),
 ]
 
@@ -462,6 +540,12 @@ def dispatch(cfg: Config, args: argparse.Namespace, spec: CommandSpec,
             v = getattr(args, prm.dest, None)
             if v is not None:
                 params[prm.query_name or prm.dest] = v
+    if spec.paged:
+        # C2/§3.1：CLI 统一 --page/--size，出站按端点分流；缺省 page=1、
+        # size 按端点默认（hosts/instances/games=10，tasks/schedules=20）
+        page = getattr(args, "page", None) or 1
+        size = getattr(args, "size", None) or spec.default_size
+        params.update(pagination_query(spec.group, page, size))
     return http_request(cfg, spec.method, spec.path, params=params, transport=transport)
 
 
@@ -517,21 +601,25 @@ def build_parser() -> argparse.ArgumentParser:
                 sp.add_argument(*prm.flags, dest=prm.dest, default=prm.default,
                                 help=prm.help)
 
+    # 两级子命令组（system/hosts/instances/...）：同组多个 action 共享一个组 parser
+    group_parsers: Dict[str, Tuple[argparse.ArgumentParser,
+                                   argparse._SubParsersAction]] = {}
     for spec in COMMANDS:
         if spec.action is None:  # 单词命令：ping / whoami
             sp = sub.add_parser(spec.group, help=spec.help, description=spec.help)
             _add_global_options(sp)
             _add_params(sp, spec)
             sp.set_defaults(spec=spec)
-        else:  # 两级子命令：system info
-            gp = sub.add_parser(spec.group, help="%s 命令组" % spec.group)
-            gsub = gp.add_subparsers(dest="action", metavar="<action>", required=True)
-            for member in [s for s in COMMANDS if s.group == spec.group and s.action]:
-                sp = gsub.add_parser(member.action, help=member.help,
-                                     description=member.help)
-                _add_global_options(sp)
-                _add_params(sp, member)
-                sp.set_defaults(spec=member)
+        else:
+            if spec.group not in group_parsers:
+                gp = sub.add_parser(spec.group, help="%s 命令组" % spec.group)
+                gsub = gp.add_subparsers(dest="action", metavar="<action>", required=True)
+                group_parsers[spec.group] = (gp, gsub)
+            _, gsub = group_parsers[spec.group]
+            sp = gsub.add_parser(spec.action, help=spec.help, description=spec.help)
+            _add_global_options(sp)
+            _add_params(sp, spec)
+            sp.set_defaults(spec=spec)
     return parser
 
 

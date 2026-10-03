@@ -394,5 +394,93 @@ class EndToEndTest(TempHomeTestCase):
         self.assertEqual(cap[0]["headers"]["Authorization"], "Bearer gpm_filetok_12345678")
 
 
+class PagedListTest(TempHomeTestCase):
+    """T5 分页列表：--page/--size 按 C2 分流（current/page），带端点默认值。"""
+
+    TOKEN = "gpm_e2e_secret_token_123"
+
+    def _argv(self, *rest):
+        return ["--token", self.TOKEN] + list(rest)
+
+    def _paged(self, *rest):
+        """跑一个 paged 命令并返回 (exit_code, payload, captured_url)。"""
+        cap = []
+        t = fake_transport(200, envelope(200, data={"current": 1, "size": 10,
+                                                    "total": 0, "pages": 0,
+                                                    "records": []}), cap)
+        code, out, err = run_main(self._argv("--json", *rest), transport=t)
+        payload = json.loads(out) if out else None
+        return code, payload, cap[0]["url"] if cap else ""
+
+    def test_hosts_list_maps_current(self):
+        code, payload, url = self._paged("hosts", "list", "--page", "2", "--size", "5")
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertIn("/hosts?", url)
+        self.assertIn("current=2", url)
+        self.assertIn("size=5", url)
+        self.assertNotIn("page=2", url)
+
+    def test_hosts_list_defaults(self):
+        code, _, url = self._paged("hosts", "list")
+        self.assertEqual(code, 0)
+        self.assertIn("current=1", url)
+        self.assertIn("size=10", url)
+
+    def test_hosts_list_keyword_and_order(self):
+        code, _, url = self._paged("hosts", "list", "--keyword", "web",
+                                   "--order-by", "create_time", "--order", "asc")
+        self.assertEqual(code, 0)
+        self.assertIn("keyword=web", url)
+        self.assertIn("orderBy=create_time", url)
+        self.assertIn("order=asc", url)
+
+    def test_tasks_list_maps_page(self):
+        code, _, url = self._paged("tasks", "list", "--page", "3", "--size", "20")
+        self.assertEqual(code, 0)
+        self.assertIn("/tasks?", url)
+        self.assertIn("page=3", url)
+        self.assertIn("size=20", url)
+        self.assertNotIn("current=", url)
+
+    def test_tasks_list_defaults_and_filters(self):
+        code, _, url = self._paged("tasks", "list", "--status", "RUNNING",
+                                   "--task-type", "deploy", "--keyword", "l4d2",
+                                   "--start-time", "2026-10-01T00:00:00",
+                                   "--end-time", "2026-10-02T00:00:00")
+        self.assertEqual(code, 0)
+        self.assertIn("page=1", url)
+        self.assertIn("size=20", url)
+        self.assertIn("status=RUNNING", url)
+        self.assertIn("taskType=deploy", url)
+        self.assertIn("keyword=l4d2", url)
+        self.assertIn("startTime=2026-10-01T00%3A00%3A00", url)
+        self.assertIn("endTime=2026-10-02T00%3A00%3A00", url)
+
+    def test_instances_list_game_code(self):
+        code, _, url = self._paged("instances", "list", "--game-code", "l4d2",
+                                   "--keyword", " infected")
+        self.assertEqual(code, 0)
+        self.assertIn("gameCode=l4d2", url)
+        self.assertIn("keyword=+infected", url)
+
+    def test_games_list_uses_current_style(self):
+        code, _, url = self._paged("games", "list", "--keyword", "l4d2", "--page", "1")
+        self.assertEqual(code, 0)
+        self.assertIn("/games/list?", url)
+        self.assertIn("keyword=l4d2", url)
+        self.assertIn("current=1", url)
+
+    def test_schedules_list_maps_page_and_filters(self):
+        code, _, url = self._paged("schedules", "list", "--source", "SCHEDULE",
+                                   "--handler-key", "l4d2-crawler", "--enabled", "true")
+        self.assertEqual(code, 0)
+        self.assertIn("page=1", url)
+        self.assertIn("size=20", url)
+        self.assertIn("source=SCHEDULE", url)
+        self.assertIn("handlerKey=l4d2-crawler", url)
+        self.assertIn("enabled=true", url)
+
+
 if __name__ == "__main__":
     unittest.main()
