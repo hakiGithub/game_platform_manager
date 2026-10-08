@@ -452,6 +452,7 @@ class DeployExtensionExecutorTest {
 
             assertTrue(run());
 
+            verify(adapter, times(2)).getStatus(eq(INSTANCE_ID), any());
             assertTrue(anyStartWith(sink.lines, "实例已停止"));
             assertEquals(List.of("E-1"), stepIds(sink.lines));
         }
