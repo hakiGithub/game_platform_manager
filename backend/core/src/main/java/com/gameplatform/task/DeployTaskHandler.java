@@ -2,6 +2,7 @@ package com.gameplatform.task;
 
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployProgressCallback;
+import com.gameplatform.deploy.DeployVersionCatalogService;
 import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskPayload;
@@ -116,6 +117,11 @@ public class DeployTaskHandler implements TaskHandler {
                 : Map.of();
         boolean autoRollback = payload.getBoolean("autoRollback", false);
         boolean autoStart = payload.getBoolean("autoStart", true);
+        // BR-12 两支词面的区分锚点。POST /api/tasks 是通用提交口（taskType 由调用方指定），
+        // 这一路真能走到部署主干 ⇒ 必须给该标志：payload 的 config 是本次提交自带的配置，
+        // 其中带 deployVersion 就是「本次所选」（①支）；不带则该版本只可能来自库中既存实例配置（②支）。
+        // 缺省 false 会把①支念成②支（「由既往部署写入」），正是该分支要避免的误归因。
+        boolean explicitVersionSelection = config.containsKey(DeployVersionCatalogService.VERSION_KEY);
 
         context.log("开始部署: instanceId=" + instanceId
                 + ", hostId=" + hostId + ", deployType=" + deployTypeStr);
@@ -128,6 +134,7 @@ public class DeployTaskHandler implements TaskHandler {
                 .config(config)
                 .autoRollback(autoRollback)
                 .autoStart(autoStart)
+                .explicitVersionSelection(explicitVersionSelection)
                 .build();
 
         // 将 DeployProgressCallback 适配为 TaskContext 调用

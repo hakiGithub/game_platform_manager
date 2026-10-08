@@ -169,18 +169,40 @@ class DeployExtensionExecutorTest {
         }
 
         @Test
-        @DisplayName("① 支 SPI 抛异常 ⇒ 回落 ②，异常不外泄成未分类失败")
-        void dynamicEntryExceptionFallsBackToEntry() {
+        @DisplayName("① 支 SPI 抛异常 ⇒ 不回落 ②，按 BR-12 同形制拦截判致命（G2 裁定 ②）")
+        void dynamicEntryExceptionInterceptsAsBr12() {
             givenCatalog(CatalogView.available(List.of(entry(VERSION_ID,
                     List.of(patch("条目补丁", true)), List.of()))));
             when(pluginFrameworkService.getExtensionByGameCode(GAME_CODE)).thenReturn(extension);
             when(extension.getDeployExtensionSteps(any())).thenThrow(new IllegalStateException("插件内部异常"));
             givenStageCanFinish();
 
-            assertTrue(run());
+            Outcome outcome = runExpectingFailure();
 
-            assertEquals(List.of("E-1"), stepIds(sink.lines));
-            assertEquals("条目补丁", label(sink.lines, "E-1"));
+            // 回落 ② 会静默改用条目自带的配方（违 AC-18 / V-24），回落「无步骤」则零步骤交付还报成功
+            assertEquals(List.of(), outcome.stepIds, "一条步骤行都不许产");
+            assertEquals("进入部署扩展阶段", outcome.texts.get(0));
+            assertTrue(outcome.texts.get(1).contains("本次所选版本 " + VERSION_ID),
+                    "词面逐字取既有 BR-12 ① 支，不新造词");
+            assertFalse(anyStartWith(outcome.rows, "部署扩展阶段收尾"), "拦截那一路不得有收尾行");
+            assertFalse(anyStartWith(outcome.rows, "部署扩展阶段完成"));
+            verify(adapter, never()).stop(anyLong(), any());
+            verify(patchInstallService, never()).installSync(any(), any());
+        }
+
+        @Test
+        @DisplayName("① 支异常 + 配置既存键 ⇒ 拦截行走 ② 支词面（含恢复路径行），同样致命")
+        void dynamicEntryExceptionUsesExistingKeyWording() {
+            givenCatalog(CatalogView.available(List.of(entry(VERSION_ID,
+                    List.of(patch("条目补丁", true)), List.of()))));
+            when(pluginFrameworkService.getExtensionByGameCode(GAME_CODE)).thenReturn(extension);
+            when(extension.getDeployExtensionSteps(any())).thenThrow(new IllegalStateException("插件内部异常"));
+
+            Outcome outcome = runExpectingFailure(false);
+
+            assertTrue(anyStartWith(outcome.rows, "部署终止：实例配置要求的版本"));
+            assertTrue(anyStartWith(outcome.rows, "恢复路径："));
+            assertEquals(List.of(), outcome.stepIds);
         }
 
         @Test
@@ -199,6 +221,21 @@ class DeployExtensionExecutorTest {
             assertEquals(DEPLOY_TYPE, ctx.deployType());
             assertEquals(VERSION_ID, ctx.selectedVersionId());
             assertEquals(instance.getConfigInfo(), ctx.configInfo());
+        }
+
+        @Test
+        @DisplayName("configInfo 含 null 值条目 ⇒ 原样带进 ctx，接线处不抛 NPE（界面上清空一个配置项就是 null）")
+        void configInfoWithNullValueSurvivesTheCopy() {
+            instance.getConfigInfo().put("motd", null);
+            givenSteps(List.of(patch("补丁一", true)), List.of());
+            when(extension.getDeployExtensionSteps(any())).thenReturn(List.of());
+
+            assertTrue(run(), "一条正常配置不得把部署崩成失败（与三个适配器同形：new HashMap<>）");
+
+            ArgumentCaptor<DeployExtensionContext> captor = ArgumentCaptor.forClass(DeployExtensionContext.class);
+            verify(extension).getDeployExtensionSteps(captor.capture());
+            assertTrue(captor.getValue().configInfo().containsKey("motd"));
+            assertNull(captor.getValue().configInfo().get("motd"));
         }
     }
 
@@ -236,26 +273,35 @@ class DeployExtensionExecutorTest {
         }
 
         @Test
-        @DisplayName("本次显式选择 ⇒ 「本次所选」词面，且恢复路径行不出现")
+        @DisplayName("本次显式选择 ⇒ 「本次所选」词面，2 条 ERROR，恢复路径行不出现")
         void explicitSelectionWordingBranch() {
             givenCatalog(CatalogView.absent());
 
             Outcome outcome = runExpectingFailure(true);
 
+            assertEquals(3, outcome.rows.size(), "进入行 + 两条拦截行（ui-spec §6.3 ①）");
             assertTrue(outcome.texts.get(1).contains("本次所选版本 " + VERSION_ID), outcome.texts.get(1));
+            assertEquals("实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本",
+                    outcome.texts.get(2), "① 支的追加行承载 BR-12 的承诺，一字不能少");
+            assertEquals(List.of("ERROR", "ERROR"), levels(outcome.rows.subList(1, 3)));
             assertFalse(anyStartWith(outcome.rows, "恢复路径："));
         }
 
         @Test
-        @DisplayName("配置既存键 ⇒ 「由既往部署写入」词面 + 恢复路径行")
+        @DisplayName("配置既存键 ⇒ 3 条拦截行 = 两条 ERROR + 一条恢复路径 WARN（§6.3「上一行 + 恢复路径」）")
         void existingKeyWordingBranch() {
             givenCatalog(CatalogView.absent());
 
             Outcome outcome = runExpectingFailure(false);
 
+            assertEquals(4, outcome.rows.size(), "进入行 + 终止行 + 上一行 + 恢复路径行");
             assertTrue(outcome.texts.get(1).contains("实例配置要求的版本"), outcome.texts.get(1));
             assertTrue(outcome.texts.get(1).contains("由既往部署写入实例配置"));
-            assertTrue(anyStartWith(outcome.rows, "恢复路径："));
+            assertEquals("实例未启动、未交付，状态置为异常；该版本要求不会被静默改为默认版本",
+                    outcome.texts.get(2), "「上一行」必须随行，它是「不得静默按默认版本交付」的承载行（G2 M-2）");
+            assertTrue(outcome.texts.get(3).startsWith("恢复路径："), outcome.texts.get(3));
+            assertEquals(List.of("ERROR", "ERROR", "WARN"), levels(outcome.rows.subList(1, 4)),
+                    "恢复路径是出路不是第二条失败");
         }
 
         @Test
@@ -284,6 +330,7 @@ class DeployExtensionExecutorTest {
         void invalidWithoutKeyEmitsNoteOnCurrentStage() {
             instance.setConfigInfo(new HashMap<>());
             givenCatalog(CatalogView.invalid("条目「x」的 versionId 含 [A-Za-z0-9._-] 之外的字符"));
+            when(pluginFrameworkService.getExtensionByGameCode(GAME_CODE)).thenReturn(extension);
 
             assertFalse(run());
 
@@ -294,12 +341,16 @@ class DeployExtensionExecutorTest {
             assertNull(note.stepId());
             assertTrue(note.message().contains("条目「x」的 versionId"), "〈校验失败要点〉槽位取 invalidReason");
             verify(adapter, never()).stop(anyLong(), any());
+            // V-29 边界（G2 裁定 ①）：read 必须无条件（否则这条说明行无从产出），动态入口则零调用
+            verify(catalogService, times(1)).read(GAME_CODE, DEPLOY_TYPE);
+            verify(extension, never()).getDeployExtensionSteps(any());
         }
 
         @Test
         @DisplayName("无键 + ABSENT / EMPTY / AVAILABLE（默认条目）⇒ 零行（AC-24 ③⑤、AC-02 / AC-15 同族）")
         void noKeyWithoutInvalidEmitsNothing() {
             instance.setConfigInfo(new HashMap<>());
+            when(pluginFrameworkService.getExtensionByGameCode(GAME_CODE)).thenReturn(extension);
             for (CatalogView view : List.of(CatalogView.absent(), CatalogView.empty(),
                     CatalogView.available(List.of(entry(VERSION_ID, List.of(), List.of()))))) {
                 sink = new RecordingSink();
@@ -307,6 +358,9 @@ class DeployExtensionExecutorTest {
                 assertFalse(run(), "state=" + view.state());
                 assertEquals(List.of(), sink.lines, "state=" + view.state());
             }
+            // V-29 边界（G2 裁定 ①）：注入点之外的这一步只读目录，动态步骤入口在 return 之前就不碰了
+            verify(catalogService, times(3)).read(GAME_CODE, DEPLOY_TYPE);
+            verify(extension, never()).getDeployExtensionSteps(any());
         }
     }
 
@@ -356,6 +410,50 @@ class DeployExtensionExecutorTest {
 
             assertEquals(List.of(), outcome.stepIds);
             verify(adapter, never()).getStatus(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("getStatus 全程抛异常 ⇒ 「未确认停止」不是「已停止」：三探后判致命（G2 Blocker B-1）")
+        void probingThrowIsNotConfirmedStopped() {
+            givenSteps(List.of(patch("补丁一", true)), List.of());
+            when(adapter.getStatus(anyLong(), any())).thenThrow(new IllegalStateException("容器 inspect 失败"));
+
+            assertThrows(DeployExtensionExecutor.ExtensionPhaseException.class, () -> run());
+
+            verify(adapter, times(DeployExtensionExecutor.STOP_POLL_ATTEMPTS)).getStatus(eq(INSTANCE_ID), any());
+            assertEquals(List.of(), stepIds(sink.lines), "状态未知时不许落任何步骤行");
+            assertFalse(anyStartWith(sink.lines, "实例已停止"), "探测失败不得被读成停止成立");
+            assertTrue(anyStartWith(sink.lines, "实例停止失败：3 次 × 2 秒判定后仍未确认实例已停止"),
+                    "〈原因〉槽位填观测值：" + sink.texts());
+            assertFalse(anyStartWith(sink.lines, "部署扩展阶段收尾"));
+        }
+
+        @Test
+        @DisplayName("getStatus 返回 null ⇒ 同样按未确认处置，三探后判致命")
+        void probingNullIsNotConfirmedStopped() {
+            givenSteps(List.of(patch("补丁一", true)), List.of());
+            when(adapter.getStatus(anyLong(), any())).thenReturn(null);
+
+            Outcome outcome = runExpectingFailure();
+
+            verify(adapter, times(DeployExtensionExecutor.STOP_POLL_ATTEMPTS)).getStatus(eq(INSTANCE_ID), any());
+            assertEquals(List.of(), outcome.stepIds);
+            assertTrue(anyStartWith(outcome.rows, "实例停止失败：3 次 × 2 秒判定后仍未确认实例已停止"),
+                    outcome.texts.toString());
+        }
+
+        @Test
+        @DisplayName("探测未确认 ⇒ 继续下一次判定（§14.5 的 3 次是「重试到成立」，不是「一次不成立即失败」）")
+        void unconfirmedProbeContinuesToNextAttempt() {
+            givenSteps(List.of(patch("补丁一", true)), List.of());
+            when(adapter.getStatus(anyLong(), any()))
+                    .thenThrow(new IllegalStateException("容器 inspect 失败"))
+                    .thenReturn(DeployAdapter.InstanceStatus.STOPPED);
+
+            assertTrue(run());
+
+            assertTrue(anyStartWith(sink.lines, "实例已停止"));
+            assertEquals(List.of("E-1"), stepIds(sink.lines));
         }
     }
 
@@ -457,7 +555,7 @@ class DeployExtensionExecutorTest {
         }
 
         @Test
-        @DisplayName("规则 4 超时支：exitCode == null 且原因段指名 timeoutMs（与非零退出可靠区分）")
+        @DisplayName("规则 4 超时支：exitCode == null，message 恰等于原因段本体（不是整句，G2 裁定 ③）")
         void timeoutKeepsExitCodeNullAndNamesBudget() {
             givenSteps(List.of(), List.of(script("脚本一", true)));
             when(scriptRunner.run(any(), anyInt(), anyLong(), anyString())).thenReturn(
@@ -467,9 +565,42 @@ class DeployExtensionExecutorTest {
 
             ExtensionLogLine terminal = terminal(outcome.rows);
             assertNull(terminal.exitCode());
-            assertTrue(terminal.message().contains("60000"), "〈timeoutMs〉 槽位有值（原因段，非机械判据）");
-            assertTrue(terminal.message().contains("未返回，判失败"));
-            assertTrue(terminal.message().contains("脚本可能仍在宿主机后台继续执行"), "§15.3 的诚实限制随行");
+            // contains 断言「整句」与「段本体」两种形状都能过，钉不住跨票分工；这里改成可区分的等值断言
+            assertEquals("脚本执行超过 60000 未返回，判失败。脚本可能仍在宿主机后台继续执行", terminal.message(),
+                    "〈timeoutMs〉槽位有值 + §15.3 的诚实限制随行，全部落在原因段内");
+            assertReasonSegmentOnly(terminal);
+        }
+
+        @Test
+        @DisplayName("V-06 SCRIPT 侧：摘要不符的原因段带出异常的期望 / 实际（结构化字段，不做文本匹配）")
+        void scriptChecksumMismatchCarriesExpectedAndActual() {
+            givenSteps(List.of(), List.of(script("脚本一", true)));
+            when(scriptRunner.run(any(), anyInt(), anyLong(), anyString())).thenThrow(
+                    new ExtensionScriptRunner.ScriptPreconditionException(
+                            ExtensionScriptRunner.ScriptPrecondition.CHECKSUM_MISMATCH,
+                            "deadbeef", "cafefood", "downloaded size 1234"));
+
+            Outcome outcome = runExpectingFailure();
+
+            ExtensionLogLine terminal = terminal(outcome.rows);
+            assertEquals("FAILURE", terminal.stepEvent());
+            assertNull(terminal.exitCode(), "脚本未开始执行 ⇒ 无退出码（字段面与超时支不可区分，见 V-08 第 4 条豁免）");
+            assertEquals("CHECKSUM_MISMATCH: downloaded size 1234（期望 deadbeef，实际 cafefood）",
+                    terminal.message(), "〈期望〉〈实际〉取 ui-spec §6.3 摘要不符行的既有形状，不另造句式");
+            assertReasonSegmentOnly(terminal);
+        }
+
+        @Test
+        @DisplayName("SCRIPT 前置支不带期望 / 实际时不拼空话（下载失败 / 源缺失 / 非 http(s)）")
+        void scriptPreconditionWithoutChecksumAddsNoPlaceholder() {
+            givenSteps(List.of(), List.of(script("脚本一", true)));
+            when(scriptRunner.run(any(), anyInt(), anyLong(), anyString())).thenThrow(
+                    new ExtensionScriptRunner.ScriptPreconditionException(
+                            ExtensionScriptRunner.ScriptPrecondition.DOWNLOAD_FAILED, null, null, "404 Not Found"));
+
+            Outcome outcome = runExpectingFailure();
+
+            assertEquals("DOWNLOAD_FAILED: 404 Not Found", terminal(outcome.rows).message());
         }
 
         @Test
@@ -571,10 +702,9 @@ class DeployExtensionExecutorTest {
 
             ExtensionLogLine terminal = terminal(outcome.rows);
             assertNull(terminal.exitCode());
-            assertTrue(terminal.message().contains("期望 deadbeef"), terminal.message());
-            assertTrue(terminal.message().contains("实际 cafefood"));
-            // 跨票口径：步骤级失败行的 message 不含引导词「原因：」（前端自己补）
-            assertFalse(terminal.message().startsWith("原因："), terminal.message());
+            assertEquals("补丁 sha256 校验失败: 期望 deadbeef，实际 cafefood", terminal.message(),
+                    "〈原因〉= 宿主执行器的技术归因原样，整句归界面");
+            assertReasonSegmentOnly(terminal);
         }
     }
 
@@ -602,6 +732,9 @@ class DeployExtensionExecutorTest {
             assertEquals("E-2", failure.stepId());
             assertEquals("WARN", failure.level());
             assertEquals(3, failure.exitCode());
+            // 裁定 ③：非致命支与致命支同形，「失败（非致命）」由界面按 level=WARN 渲染，服务端不写整句
+            assertEquals("脚本退出码 3（非 0 即判失败）", failure.message());
+            assertReasonSegmentOnly(failure);
             assertTrue(anyStartWith(sink.lines, "该步骤声明为非致命，继续执行后续步骤"));
             assertEquals(1, countEvent(rowsOf(sink.lines, "E-3"), "SUCCESS"), "非致命失败后第 3 步仍执行");
             assertFalse(anyStartWith(sink.lines, "致命步骤失败"), "非致命不触发致命终止");
@@ -902,8 +1035,11 @@ class DeployExtensionExecutorTest {
 
     // ---- 机械判据小工具：只读契约字段 ----
 
-    private static List<String> stepIds(List<ExtensionLogLine> rows) {
-        return rows.stream().map(ExtensionLogLine::stepId).filter(Objects::nonNull).distinct().toList();
+    private static List<String> levels(List<ExtensionLogLine> rows) {
+        return rows.stream().map(ExtensionLogLine::level).toList();
+    }
+
+    private static List<String> stepIds(List<ExtensionLogLine> rows) {        return rows.stream().map(ExtensionLogLine::stepId).filter(Objects::nonNull).distinct().toList();
     }
 
     private static List<String> stepIdSequence(List<ExtensionLogLine> rows) {
@@ -963,8 +1099,20 @@ class DeployExtensionExecutorTest {
         return labels;
     }
 
-    private static boolean anyStartWith(List<ExtensionLogLine> rows, String prefix) {
-        return rows.stream().anyMatch(r -> r.message() != null && r.message().startsWith(prefix));
+    private static boolean anyStartWith(List<ExtensionLogLine> rows, String prefix) {        return rows.stream().anyMatch(r -> r.message() != null && r.message().startsWith(prefix));
+    }
+
+    /**
+     * 跨票契约（G2 裁定 ③）：步骤级失败行的 {@code message} 只到<b>原因段本体</b>。
+     * 整句（{@code 步骤 〈序号〉/〈总数〉 … · 〈种类〉 · 失败 · 耗时 … · 原因：…}）由界面按字段拼装，
+     * 服务端写整句会被渲染成重复内容。这几条断言是「可区分」的：{@code contains} 挡不住两种形状。
+     */
+    private static void assertReasonSegmentOnly(ExtensionLogLine failure) {
+        String message = failure.message();
+        assertFalse(message.startsWith("步骤 "), message);
+        assertFalse(message.contains(" · 失败 · "), message);
+        assertFalse(message.contains("耗时 "), message);
+        assertFalse(message.startsWith("原因："), message);
     }
 
     /**

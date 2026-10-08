@@ -1,26 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-V-08 机械核对脚本（design.md §10 V-08 / §14.6 规则 1-2；KPI-02、AC-03、AC-16 数据侧）。
+V-08 机械核对脚本（design.md §10 V-08 / §14.6 规则 1-5；KPI-02、AC-03、AC-16 数据侧）。
 
 判据（全部只读字段，脚本内不出现任何 message 匹配）：
   1. 取值域 = 扩展阶段内的行（不是 logs 全部行）：
        - stepId != null 的行必带 stage == "EXTENSION"
-       - stepId == null 的行按 §14.6 stage 行的钉值归属，两条条件行（BR-12 拦截行 /
-         目录不合法说明行）不得让脚本误报：BR-12 拦截行在取值域内（取 EXTENSION），
+       - 所有 stage == "EXTENSION" 的行在 logs 序列里构成**连续块**（中间夹进一条异 stage
+         的行 ⇒ 既存阶段的行被错归进扩展块，或扩展块被切开）
+       - 块首行必为进入行形状：stepId == null ∧ stepEvent == null ∧ level == "INFO"
+       - 两条 stepId == null 的条件行不得让脚本误报：BR-12 拦截行在取值域内（取 EXTENSION），
          目录不合法说明行在取值域外（归它实际发生的既有阶段，本期 "DEPLOY"）
-       - 段外的既存阶段行不得取 "EXTENSION" 常量
   2. 统计对象 = stepId != null 的行；分母 = 非空 stepId 的去重计数
        （进入 / 交棒 / 停实例 / BR-12 / 目录不合法 / 收尾 / 阶段完成 七类阶段级行一律不进分母）
   3. 每个非空 stepId 恰有一个 START 行 + 恰有一个终态行（SUCCESS 或 FAILURE），
        且该终态行 elapsedMs != null  —— 三项齐备
   4. KPI-02 = 齐备步骤数 / 分母，目标 100%
   5. 规则 3 串行可见：步骤 N 的终态行之后才允许出现步骤 N+1 的 START 行
-  6. 规则 4 退出码：SCRIPT 的终态行 stepEvent == FAILURE <=> exitCode != 0
-       （超时那一支 exitCode == null，由 timedOut 语义承载，脚本按 exitCode 字段判，不读文本）
-       PATCH 的终态行与所有阶段级行 exitCode 恒为 null
+  6. 规则 4 退出码的**可判部分**：
+       - SCRIPT 终态行 SUCCESS ⇒ exitCode == 0
+       - SCRIPT 终态行 FAILURE 且 exitCode 非空 ⇒ exitCode != 0
+       - PATCH 终态行、所有非终态行、所有阶段级行 ⇒ exitCode 恒为 null
+     **不判的方向**（G2 附加裁定）：FAILURE ∧ exitCode == null 覆盖「超时」与「脚本未开始
+     （下载失败 / 摘要不符 / 源缺失 / 非 http(s)）」两类，两者在字段面完全同形，而 AC-03 又禁读
+     message ⇒ 该支按豁免清单回写，脚本只数出「有几行落在不可判支」并显式说明，不据此判 FAIL，
+     也不得把它读成「已确认超时」。
   7. 规则 5 回滚记录位：某 PATCH 步骤终态为 FAILURE => 该 stepId 下、终态行之后、
        下一步骤 START 之前恰有一行 ROLLBACK
+  8. 阶段级行取值域（§14.6 elapsedMs / exitCode 两行）：stepId == null 的行
+       - exitCode 恒为 null
+       - elapsedMs 非空仅当 stepEvent ∈ {"SUCCESS", "FAILURE"}（收尾两支与阶段完成行）
+
+字段面不可判、因此**不判**的边角（写在这里，不沉默）：
+  - 七类阶段级行（进入 / 停实例前置 / 停实例完成 / 交棒 / BR-12 拦截 / 恢复路径 / 致命终止）
+    里，除 level 与 stepEvent 之外没有区分位；本脚本只判上面第 1 条给的块首形状，
+    不判它们各自的条数与先后。
+  - 「目录不合法说明行被实现前移进 EXTENSION 块内」与一条 BR-12 拦截行同形
+    （stepId == null ∧ stepEvent == null ∧ stage == "EXTENSION"），字段面区分不了 ——
+    钉的是「行归它实际发生的阶段」这条判据，不是字面量（§14.6 v0.3.5 拆分裁定）。
+  - 超时 vs 脚本未开始：见第 6 条。
 
 用法：
     python scripts/v08-extension-log-contract.py <deploy-progress.json> [...]
@@ -76,23 +94,39 @@ def index_rows(rows):
 
 
 def check_domain(rows, report):
-    """判据 1：取值域。"""
+    """判据 1：取值域 + 扩展块的边界形状（G2 M-5 补齐的「有牙」部分）。"""
     for row in rows:
         stage = row.get("stage")
         step_id = row.get("stepId")
         if step_id is not None and stage != EXTENSION:
             report.error("stepId=%s 的行 stage=%s，必带 EXTENSION" % (step_id, stage))
-        if step_id is None and stage == EXTENSION:
-            # 阶段级行里只有 BR-12 拦截那一支归 EXTENSION（stepId == null），
-            # 但它带 stepEvent == null 且没有步骤行跟着它 —— 不构成误报；
-            # 真正的误报源是「段外既存阶段行取了 EXTENSION」，那由下一句判。
-            pass
-    extension_rows = [r for r in rows if r.get("stage") == EXTENSION]
-    if extension_rows:
-        first = extension_rows[0]
-        if first.get("stepId") is None and first.get("stepEvent") is not None:
-            report.warn("EXTENSION 段的第一行是带 stepEvent 的阶段级行（%s），"
-                        "正常序列里它应是进入行（stepEvent 为 null）" % first.get("stepEvent"))
+
+    positions = [i for i, r in enumerate(rows) if r.get("stage") == EXTENSION]
+    if not positions:
+        return
+    if positions != list(range(positions[0], positions[-1] + 1)):
+        gaps = [i for i in range(positions[0], positions[-1] + 1) if rows[i].get("stage") != EXTENSION]
+        report.error("EXTENSION 行不构成连续块：第 %s 行夹在非扩展行之间（既存阶段被卷进扩展块，"
+                     "或扩展块被切开）" % ",".join(str(i) for i in gaps[:8]))
+    head = rows[positions[0]]
+    if head.get("stepId") is not None or head.get("stepEvent") is not None or head.get("level") != "INFO":
+        report.error("EXTENSION 块首行形状不合法（应=进入行 stepId/stepEvent 皆空 + level INFO）："
+                     "stepId=%s stepEvent=%s level=%s"
+                     % (head.get("stepId"), head.get("stepEvent"), head.get("level")))
+
+
+def check_stage_level_domains(rows, report):
+    """判据 8：阶段级行（stepId == null）的 exitCode / elapsedMs 取值域。"""
+    for row in rows:
+        if row.get("stepId") is not None:
+            continue
+        if row.get("exitCode") is not None:
+            report.error("阶段级行带 exitCode=%s（§14.6：exitCode 仅 SCRIPT 终态行非空）"
+                         % row.get("exitCode"))
+        if row.get("elapsedMs") is not None and row.get("stepEvent") not in TERMINAL_EVENTS:
+            report.error("阶段级行 stepEvent=%s 却带 elapsedMs=%s"
+                         "（§14.6：仅 SUCCESS/FAILURE 与阶段完成行非空）"
+                         % (row.get("stepEvent"), row.get("elapsedMs")))
 
 
 def check_serial(rows, report):
@@ -146,8 +180,9 @@ def check_complete(grouped, report):
 
 
 def check_exit_code(grouped, report):
-    """判据 6：退出码承载位。"""
-    for step_id, rows in grouped.items():
+    """判据 6：退出码承载位的**可判部分**（不可判支显式说明，不静默降级）。"""
+    exempt = []
+    for step_id, rows in sorted(grouped.items()):
         terminals = [r for r in rows if r.get("stepEvent") in TERMINAL_EVENTS]
         if not terminals:
             continue
@@ -157,16 +192,26 @@ def check_exit_code(grouped, report):
         if step_type == "PATCH":
             if exit_code is not None:
                 report.error("%s 是 PATCH 步骤却带 exitCode=%s（恒应为 null）" % (step_id, exit_code))
-            continue
-        if step_type == "SCRIPT":
+        elif step_type == "SCRIPT":
             event = terminal.get("stepEvent")
-            if event == "FAILURE" and exit_code is not None and exit_code == 0:
-                report.error("%s 判 FAILURE 却 exitCode==0（规则 4 双向不成立）" % step_id)
             if event == "SUCCESS" and exit_code != 0:
-                report.error("%s 判 SUCCESS 却 exitCode=%s（规则 4 双向不成立）" % (step_id, exit_code))
+                report.error("%s 判 SUCCESS 却 exitCode=%s（规则 4：成功 ⇒ 恰为 0）" % (step_id, exit_code))
+            if event == "FAILURE" and exit_code is not None and exit_code == 0:
+                report.error("%s 判 FAILURE 却 exitCode==0（规则 4：失败 ⇒ 不得为 0）" % step_id)
+            if event == "FAILURE" and exit_code is None:
+                exempt.append(step_id)
+        else:
+            report.warn("%s 的终态行 stepType=%s 不在 {PATCH, SCRIPT} 内，退出码判据对它不成立"
+                        % (step_id, step_type))
         for row in rows:
             if row.get("stepEvent") not in TERMINAL_EVENTS and row.get("exitCode") is not None:
                 report.error("%s 的非终态行带 exitCode（承载位错位）" % step_id)
+    if exempt:
+        # 附加裁定（G2 M-6 → M-5 第 4 条）：这一支**不是判据**，只是把不可判的范围摊开写清楚
+        report.warn("规则 4 的豁免支：%s 判 FAILURE 且 exitCode == null —— 字段面覆盖「超时」与"
+                    "「脚本未开始（下载失败 / 摘要不符 / 源缺失 / 非 http(s)）」两类，二者不可区分"
+                    "（AC-03 禁读 message）。本脚本不据此判 FAIL，也不得把它读成「已确认超时」。"
+                    % ",".join(exempt))
 
 
 def check_rollback(rows, grouped, report):
@@ -220,6 +265,7 @@ def check_file(path, report):
     grouped = index_rows(rows)
     report.ok("%s：logs 行数 = %d，非空 stepId 去重计数（分母）= %d" % (path, len(rows), len(grouped)))
     check_domain(rows, report)
+    check_stage_level_domains(rows, report)
     check_serial(rows, report)
     check_complete(grouped, report)
     check_exit_code(grouped, report)
@@ -251,8 +297,12 @@ def main(argv):
     if report.errors:
         print("V-08 判定：FAIL（%d 项违例）" % len(report.errors))
         return 1
-    print("V-08 判定：PASS —— 取值域 / 三项齐备 / 串行可见 / 退出码 ⇔ 失败 / 回滚记录位 全部成立，"
-          "KPI-02 = 100%")
+    print("V-08 判定：PASS —— 覆盖面按本文件头的判据清单，不超出：")
+    print("  判到：取值域 + 扩展块连续性与块首形状 / 三项齐备与 KPI-02 / 串行可见 / "
+          "退出码可判支（SUCCESS⇒0、FAILURE 非空⇒非 0、PATCH 与非终态行与阶段级行恒 null）/ "
+          "阶段级行 elapsedMs 域 / 回滚记录位的位置与数量")
+    print("  没判（字段面不可判，不做静默降级）：FAILURE ∧ exitCode==null 的「超时 / 脚本未开始」两类、"
+          "七类同形阶段级行各自的条数与先后、「目录不合法说明行」被前移进 EXTENSION 块的情形")
     return 0
 
 

@@ -11,10 +11,17 @@ import java.util.List;
  * 记录位的转写词面）、§8.3（截断说明行）。登记里没有的行形制（如 {@code stdout}/{@code stderr}
  * 行的通道标识）在本类里一律不造，只把宿主侧技术归因填进<b>已登记的槽位</b>，缺口回贴。</p>
  *
- * <p><b>{@code message} 的分工</b>（design.md §14.6 末段 + 跨票口径）：它是给人读的，
- * 不是核对对象。步骤级 {@code FAILURE} 行只写<b>原因段本体</b>，引导词「原因：」由界面补
- * （ui-spec §6.2 规则 5 把引导词写进行模板，服务端再写一遍就是重复前缀）；
- * 阶段级行（{@code stepId == null}）不受此限，按 §6.2 整句词面直出。</p>
+ * <p><b>{@code message} 的分工</b>（design.md §14.6 末段 + 跨票口径，按消费面分工而非单向不对称）：
+ * 它是给人读的，不是核对对象。渲染整句由界面拼（MERC-19 的 {@code DeployProgress.vue} 对
+ * START / SUCCESS / FAILURE 一律按字段拼装），服务端只给界面消费的那一段：</p>
+ * <ul>
+ *   <li>步骤级 {@code FAILURE} 行——<b>致命与非致命同形</b>——只写<b>原因段本体</b>：界面读
+ *       {@code message} 当原因段（剥前导「原因：」后自己补上），写整句会渲染成重复内容。
+ *       「失败（非致命）」不是服务端的文案分支，由界面按 {@code level == WARN} 渲染；</li>
+ *   <li>步骤级 {@code SUCCESS} 行界面不消费 {@code message}，服务端按 §6.2 整句词面直出（design
+ *       §14.6 的成功行例子正是这一支）；</li>
+ *   <li>阶段级行（{@code stepId == null}）不受此限，按 §6.2 整句词面直出。</li>
+ * </ul>
  *
  * @author GamePlatform
  * @version 1.0.0
@@ -54,6 +61,12 @@ final class Words {
     // ---- ui-spec §6.3：原因段与 BR-12 两支、对话框错误条 ----
     private static final String REASON_SCRIPT_EXIT = "脚本退出码 %d（非 0 即判失败）";
     private static final String REASON_SCRIPT_TIMEOUT = "脚本执行超过 %d 未返回，判失败";
+    /**
+     * ui-spec §6.3「摘要不符」行的槽位形状（登记在补丁包那一行）。SCRIPT 侧的同一形态没有登记行
+     * （缺口 #2 维持登记），这里只借用它把 {@code ScriptPreconditionException} 的结构化期望 / 实际
+     * 带进原因段，不另造句式。
+     */
+    private static final String REASON_EXPECTED_ACTUAL = "（期望 %s，实际 %s）";
     /** design.md §15.3：超时行必须随行写明「不再等待」不等于「远端已终止」。 */
     private static final String TIMEOUT_NOT_KILLED = "脚本可能仍在宿主机后台继续执行";
     private static final String CATALOG_INVALID_NOTE =
@@ -144,6 +157,11 @@ final class Words {
     /**
      * BR-12 拦截行。两支的区分锚点是「本次所选」vs「实例配置要求的…由既往部署写入」，
      * 且恢复路径行只在既存键那一支出现（ui-spec §6.3）。
+     *
+     * <p>既存键那一支是 <b>3 行</b>不是 2 行：§6.3 分支 ② 的追加行原文写作「<b>上一行</b> +
+     * {@code 恢复路径：…}」，「上一行」= ① 的追加行（未启动、未交付那句），它承载 BR-12
+     * 「不得静默按默认版本交付」的承诺；实物屏 LF 也数过一遍 =「两条 ERROR + 一条恢复路径 WARN」。
+     * 恢复路径取 {@code WARN}：它是出路，不是第二条失败。</p>
      */
     static List<ExtensionLogLine> br12Interception(String versionId, boolean chosenThisSubmission) {
         if (chosenThisSubmission) {
@@ -151,7 +169,8 @@ final class Words {
                     stage(ExtensionLogLine.Level.ERROR, BR12_CHOSEN_EXTRA));
         }
         return List.of(stage(ExtensionLogLine.Level.ERROR, String.format(BR12_FROM_CONFIG, versionId)),
-                stage(ExtensionLogLine.Level.ERROR, BR12_RECOVERY));
+                stage(ExtensionLogLine.Level.ERROR, BR12_CHOSEN_EXTRA),
+                stage(ExtensionLogLine.Level.WARN, BR12_RECOVERY));
     }
 
     // ==================== 步骤行 ====================
@@ -173,6 +192,7 @@ final class Words {
     /**
      * 步骤失败行：{@code message} 只写<b>原因段本体</b>（不含引导词「原因：」，跨票口径），
      * 致命取 {@code ERROR}、非致命取 {@code WARN}（§14.6 {@code level} 口径 / ui-spec §6.2）。
+     * 两支<b>同形</b>——「失败（非致命）」由界面按 {@code level} 渲染，不是这里的文案分支。
      */
     static ExtensionLogLine stepFailure(ExtensionLogLine.StepIdentity identity, ExtensionLogLine.Level level,
                                         String reasonSegment, long elapsedMs, Integer exitCode) {
@@ -211,6 +231,19 @@ final class Words {
 
     static String scriptTimeoutReason(long timeoutMs) {
         return String.format(REASON_SCRIPT_TIMEOUT, timeoutMs) + "。" + TIMEOUT_NOT_KILLED;
+    }
+
+    /**
+     * 脚本没能开始执行的原因段：宿主技术归因 + 摘要不符时的期望 / 实际。
+     *
+     * <p>{@code expectedSha256} / {@code actualSha256} 只在 {@code CHECKSUM_MISMATCH} 一支非空，
+     * 其余支（下载失败 / 源缺失 / 非 http(s)）原样返回技术归因，不拼出「期望 null」这种空话。</p>
+     */
+    static String scriptPreconditionReason(String technicalCause, String expectedSha256, String actualSha256) {
+        if (expectedSha256 == null || actualSha256 == null) {
+            return technicalCause;
+        }
+        return technicalCause + String.format(REASON_EXPECTED_ACTUAL, expectedSha256, actualSha256);
     }
 
     /** §8.3 的截断说明行文本（{@code ExtensionScriptRunner.TruncatedOutput#truncationNote()} 的同义实现）。 */

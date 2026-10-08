@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -76,6 +77,8 @@ public class DeployExtensionExecutor {
 
     /** §8.1 阶段预算里停实例那一档的观察值，只进 {@code 〈原因〉} 槽位的技术归因。 */
     private static final String STOP_STILL_RUNNING = "3 次 × 2 秒判定后实例状态仍为 RUNNING";
+    /** 三次判定一次都没读到状态（探测抛异常或返回 {@code null}）——同样是「未确认停止」的观测值。 */
+    private static final String STOP_UNCONFIRMED = "3 次 × 2 秒判定后仍未确认实例已停止";
 
     private final DeployVersionCatalogService catalogService;
     private final PluginFrameworkService pluginFrameworkService;
@@ -126,7 +129,8 @@ public class DeployExtensionExecutor {
      * @return 本次部署是否<b>执行了</b>扩展步骤——{@code true} 时主流程按 §14.7 把
      *         {@code HEALTH_CHECK} 的顶层 {@code progress} 报 85；{@code false} 时该分支
      *         一个字都不动（AC-15 / KPI-04 的回归前提）
-     * @throws ExtensionPhaseException 致命失败（停不下来 / 致命步骤失败 / 收尾失败 / BR-12 拦截）
+     * @throws ExtensionPhaseException 致命失败（停不下来 / ① 支动态入口异常按 BR-12 拦截 /
+     *                                 致命步骤失败 / 收尾失败 / BR-12 拦截）
      * @throws DeployService.DeployException 脚本无处落位（{@code workDir} 为空）
      */
     public boolean runExtensionPhase(Request request, ExtensionStageSink sink) {
@@ -151,10 +155,21 @@ public class DeployExtensionExecutor {
 
         VersionEntry entry = catalog.findEntry(selectedVersionId).orElse(null);
         if (catalog.state() != CatalogState.AVAILABLE || entry == null) {
-            interceptAndFail(request, sink, selectedVersionId);
+            throw interceptAndFail(request, sink, selectedVersionId);
         }
 
-        List<DeployExtensionStepDeclaration> steps = resolveSteps(instance, selectedVersionId, entry);
+        List<DeployExtensionStepDeclaration> steps;
+        try {
+            steps = resolveSteps(instance, selectedVersionId, entry);
+        } catch (Exception e) {
+            // G2 裁定 ②：步骤集解析（① 支的动态入口，含取插件扩展那一步）抛异常<b>不得</b>回落 ② 支——
+            // 回落的两个出口都有害（条目带静态步骤 = 静默换一份配方；条目不带 = 用户选的版本零步骤交付
+            // 还报成功），正是 BR-12 / §14.5 决策 3 要消除的「静默换内容」。按 BR-12 同形制拦截判失败，
+            // 原始异常只进服务端日志，不进用户可见行（§16.3 对姊妹 SPI 的处置同向）。
+            log.warn("插件 [{}] 的动态步骤集入口异常，按 BR-12 拦截处置: instanceId={}, cause={}",
+                    instance.getGameCode(), instance.getId(), e.toString());
+            throw interceptAndFail(request, sink, selectedVersionId);
+        }
         if (steps.isEmpty()) {
             // §16.2 解析顺序 ③：两路都空 ⇒ 本段整体不存在，序列与改造前逐字相同（零行）。
             return false;
@@ -184,6 +199,9 @@ public class DeployExtensionExecutor {
      * {@code patches ++ scripts}（声明序）；③ 都空由调用方判「不进入扩展阶段」。
      *
      * <p>两条路汇入同一个消费者 ⇒ AC-18「两实例步骤集互不串用」在 ① ② 上同一套判定（V-24）。</p>
+     *
+     * <p>① 支的 SPI 异常<b>不在此处吞掉</b>：异常向上传播，由 {@code runExtensionPhase} 按 BR-12
+     * 同形制拦截。吞掉它会静默改用 ② 支的配方（V-24 / AC-18 打在「同一个版本读到同一份步骤集」上）。</p>
      */
     private List<DeployExtensionStepDeclaration> resolveSteps(GameInstance instance,
                                                              String selectedVersionId,
@@ -193,17 +211,10 @@ public class DeployExtensionExecutor {
         if (extension != null) {
             DeployExtensionContext context = new DeployExtensionContext(instance.getId(),
                     instance.getGameCode(), instance.getDeployType(), selectedVersionId,
-                    instance.getConfigInfo() == null ? Map.of() : Map.copyOf(instance.getConfigInfo()));
-            try {
-                List<DeployExtensionStepDeclaration> dynamic = extension.getDeployExtensionSteps(context);
-                if (dynamic != null && !dynamic.isEmpty()) {
-                    return List.copyOf(dynamic);
-                }
-            } catch (Exception e) {
-                // 插件侧数据不可信：SPI 抛异常不外泄成部署侧的 500（与 §16.3 目录读取同一处置口径），
-                // 按「① 支未给出步骤集」继续走 ② 支。
-                log.warn("插件 [{}] 的动态步骤集入口异常，按「无动态步骤」继续: instanceId={}, cause={}",
-                        instance.getGameCode(), instance.getId(), e.toString());
+                    instance.getConfigInfo() == null ? Map.of() : new HashMap<>(instance.getConfigInfo()));
+            List<DeployExtensionStepDeclaration> dynamic = extension.getDeployExtensionSteps(context);
+            if (dynamic != null && !dynamic.isEmpty()) {
+                return List.copyOf(dynamic);
             }
         }
         // ② 支：条目自带步骤。拼接复用目录服务的同一个实现（显式类型见证必需，§16.2 推导规则）。
@@ -231,8 +242,12 @@ public class DeployExtensionExecutor {
     // ==================== 停实例（§14.5） ====================
 
     /**
-     * 进入行之后、任何步骤之前执行。判定只认 {@code getStatus} 非 RUNNING（3 次 × 2 s），
+     * 进入行之后、任何步骤之前执行。判定只认 {@code getStatus} 读到非 RUNNING（3 次 × 2 s），
      * <b>不</b>看 {@code stop()} 的返回值——设计把「已停止」的可观察定义钉在轮询上。
+     *
+     * <p>§14.5「成立才算停止完成」= 只有<b>读到</b>非 RUNNING 才算成立；探测抛异常或返回
+     * {@code null} 是「未确认」，与读到 RUNNING 一样继续下一次判定。三次都不成立即致命——
+     * 在状态未知的实例上替换文件正是要消除的中间态。</p>
      *
      * <p>期间不回写实例状态：本方法只调适配器，PRD §9 要求扩展阶段期间 {@code run_status}
      * 恒为 {@code INSTALLING(5)}（§5.5）。现有 {@code DeployService.stop()} 会写 {@code STOPPED}，
@@ -254,21 +269,26 @@ public class DeployExtensionExecutor {
                 failToStop(sink, "等待停止判定的间隔被中断");
             }
             lastSeen = observeStatus(request.adapter(), instanceId, config);
-            if (!DeployAdapter.InstanceStatus.RUNNING.name().equals(lastSeen)) {
+            if (lastSeen != null && !DeployAdapter.InstanceStatus.RUNNING.name().equals(lastSeen)) {
                 sink.append(Words.stopDone());
                 return;
             }
         }
-        failToStop(sink, STOP_STILL_RUNNING);
+        // 〈原因〉槽位取观测值：读到过 RUNNING 与一次都没读到状态是两种不同的失败形状
+        failToStop(sink, lastSeen == null ? STOP_UNCONFIRMED : STOP_STILL_RUNNING);
     }
 
-    /** 观察实例状态名；探测异常按「未确认停止」处置，继续下一次判定。 */
+    /**
+     * 观察实例状态名。探测异常或适配器返回 {@code null} 一律取 {@code null}，
+     * 语义是<b>「未确认停止」</b>——与读到 {@code RUNNING} 同样不成立，由调用方继续下一次判定。
+     */
     private String observeStatus(DeployAdapter adapter, Long instanceId, Map<String, Object> config) {
         try {
             DeployAdapter.InstanceStatus status = adapter.getStatus(instanceId, config);
             return status == null ? null : status.name();
         } catch (Exception e) {
-            log.warn("扩展阶段停止判定探测异常，继续下一次判定: instanceId={}, cause={}", instanceId, e.toString());
+            log.warn("扩展阶段停止判定探测异常，按「未确认停止」继续下一次判定: instanceId={}, cause={}",
+                    instanceId, e.toString());
             return null;
         }
     }
@@ -395,8 +415,11 @@ public class DeployExtensionExecutor {
         } catch (ExtensionScriptRunner.ScriptPreconditionException e) {
             // 脚本没能开始执行（下载失败 / 摘要不符 / 源缺失 / 非 http(s)）：宿主机上不留文件（B-13）。
             elapsedMs = System.currentTimeMillis() - startedAt;
+            // V-06 的「期望 / 实际」由异常的结构化字段带出，不靠对宿主文案做文本匹配（缺口 #2 维持登记）
             String technical = e.getMessage() == null ? e.getPrecondition().name() : e.getMessage();
-            return StepResult.failure(elapsedMs, null, List.of(technical), noteRows, null);
+            return StepResult.failure(elapsedMs, null,
+                    List.of(Words.scriptPreconditionReason(technical, e.getExpectedSha256(), e.getActualSha256())),
+                    noteRows, null);
         }
     }
 
@@ -452,13 +475,20 @@ public class DeployExtensionExecutor {
      * <p>该次部署的阶段以「入口判定不合法」短暂成立（§3.2 {@code :81}）：其后无步骤行、
      * 无收尾 / 阶段完成 / 交棒行。拦截行的 {@code stage} 取 {@code "EXTENSION"}（§14.6 ① 钉值），
      * 阶段带 latch 因此成立。绝不静默按默认版本交付。</p>
+     *
+     * <p>触发面含两个入口：目录 {@code ABSENT}/{@code INVALID}/版本不在条目中，以及
+     * <b>① 支动态步骤入口抛异常</b>（G2 裁定 ②）。后者复用同一词面是按「不新造词」的红线取的，
+     * 已知表述边界：拦截行「——」后半句面向版本目录，对动态入口异常不完全精确 —— 已登记 design
+     * 回写批（把该异常纳入 BR-12 触发面表述或另给最小表述），本轮动码不动词面。</p>
+     *
+     * @return 交由调用方 {@code throw} 的致命异常（本方法必定走到这一行，返回值不表示正常结束）
      */
-    private void interceptAndFail(Request request, ExtensionStageSink sink, String selectedVersionId) {
+    private ExtensionPhaseException interceptAndFail(Request request, ExtensionStageSink sink, String selectedVersionId) {
         sink.reportProgress(PROGRESS_FLOOR);
         sink.append(Words.enterStage());
         List<ExtensionLogLine> lines = Words.br12Interception(selectedVersionId, request.explicitVersionSelection());
         lines.forEach(sink::append);
-        throw new ExtensionPhaseException(lines.get(0).message());
+        return new ExtensionPhaseException(lines.get(0).message());
     }
 
     // ==================== 取值与算术 ====================

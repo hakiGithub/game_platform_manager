@@ -51,6 +51,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -286,6 +287,7 @@ class DeployServiceExtensionTest {
                         new ExtensionScriptRunner.TruncatedOutput("", 0L, false)));
         org.springframework.test.util.ReflectionTestUtils.setField(deployService, "deployExtensionExecutor",
                 new DeployExtensionExecutor(catalog, plugins, patchInstallService, scriptRunner));
+        when(adapter.getStatus(anyLong(), any())).thenReturn(DeployAdapter.InstanceStatus.STOPPED);
         when(adapter.ensureRunningForExtension(anyLong(), any())).thenReturn(true);
 
         assertTrue(deployService.deploy(context(), sampler()));
@@ -300,6 +302,53 @@ class DeployServiceExtensionTest {
         assertTrue(stepRows.stream().allMatch(r -> "EXTENSION".equals(r.getStage())),
                 "V-08 取值域：stepId != null 的行必带 EXTENSION");
         assertEquals(1.0, kpi02(stepRows), 0.0);
+    }
+
+    @Test
+    @DisplayName("真执行器 + 失败形状：FAILURE 与 ROLLBACK 行落进核对物（规则 4/5 不在纯 happy path 上空真）")
+    void realExecutorFailureLinesReachTheVo() throws Exception {
+        // E-1 非致命 PATCH 失败（带回滚信号）⇒ FAILURE(WARN) + 恰一行 ROLLBACK；
+        // E-2 致命 SCRIPT 退出 3 ⇒ FAILURE(ERROR) + exitCode 3 ⇒ 致命终止，不收尾、不进 HEALTH_CHECK
+        PatchStepDeclaration patchStep = new PatchStepDeclaration("桩失败补丁",
+                "http://127.0.0.1:8099/patch/stub-version-marker.zip", "stub-patch", null, null, null, false);
+        ScriptStepDeclaration scriptStep = new ScriptStepDeclaration("桩退出脚本", "echo STUB-MARKER",
+                null, null, ScriptPosition.HOST, true, null);
+        DeployVersionDeclaration declaration = new DeployVersionDeclaration("2.0.0-patched", "桩改造版",
+                null, false, List.of(patchStep), List.of(scriptStep));
+        VersionEntry entry = new VersionEntry(declaration, "桩改造版", false, List.of());
+        DeployVersionCatalogService catalog = mock(DeployVersionCatalogService.class);
+        when(catalog.read(anyString(), anyString())).thenReturn(CatalogView.available(List.of(entry)));
+        PluginFrameworkService plugins = mock(PluginFrameworkService.class);
+        when(plugins.getExtensionByGameCode(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ((com.gameplatform.plugin.patch.PatchInstallProgressListener) invocation.getArgument(1))
+                    .onLog("已回滚备份");
+            throw new RuntimeException("补丁包写入目标路径失败");
+        }).when(patchInstallService).installSync(any(), any());
+        when(scriptRunner.run(any(), anyInt(), anyLong(), anyString())).thenReturn(
+                new ExtensionScriptRunner.ScriptRunResult(3, false, 600_000L, 9L,
+                        new ExtensionScriptRunner.TruncatedOutput("STUB-FAIL", 9L, false),
+                        new ExtensionScriptRunner.TruncatedOutput("", 0L, false)));
+        org.springframework.test.util.ReflectionTestUtils.setField(deployService, "deployExtensionExecutor",
+                new DeployExtensionExecutor(catalog, plugins, patchInstallService, scriptRunner));
+        when(adapter.getStatus(anyLong(), any())).thenReturn(DeployAdapter.InstanceStatus.STOPPED);
+
+        assertFalse(deployService.deploy(context(), sampler()));
+
+        InstanceController.DeployProgressVO vo = controller().getDeployProgress(INSTANCE_ID).getData();
+        writeEvidence("deploy-progress-with-failure.json");
+
+        List<InstanceController.LogEntryVO> rows = vo.getLogs();
+        List<InstanceController.LogEntryVO> failures = rows.stream()
+                .filter(r -> "FAILURE".equals(r.getStepEvent()) && r.getStepId() != null).toList();
+        assertEquals(2, failures.size(), "两支失败行都在");
+        assertEquals(List.of("WARN", "ERROR"), failures.stream()
+                .map(InstanceController.LogEntryVO::getLevel).toList(), "非致命 WARN / 致命 ERROR");
+        assertEquals(java.util.Arrays.asList(null, 3), failures.stream()
+                .map(InstanceController.LogEntryVO::getExitCode).toList(), "PATCH 恒 null；SCRIPT 带退出码");
+        assertEquals(1, rows.stream().filter(r -> "ROLLBACK".equals(r.getStepEvent())).count(), "规则 5");
+        assertTrue(rows.stream().noneMatch(r -> r.getMessage() != null && r.getMessage().startsWith("部署扩展阶段收尾")),
+                "致命终止那一路不收尾（X-07 C）");
     }
 
     /** KPI-02 的机械比例：分子 = 三项齐备的步骤数，分母 = 非空 stepId 去重计数。 */
