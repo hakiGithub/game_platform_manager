@@ -38,6 +38,9 @@
 | [0027](0027-l4d2-map-recognition-launch-commands.md) | L4D2 地图识别与开图命令（analyzeVpk 语义方法 + 摘要键控共享识别 + 开图命令流） | Accepted | 2026-09-15 |
 | [0028](0028-map-center-incremental-crawl.md) | 地图中心增量爬取水位线早停（库内派生水位线 + 乱序保护） | Accepted | 2026-09-17 |
 | [0029](0029-deploy-extension-steps.md) | 部署扩展步骤（部署期自动化）与 dnf-tw 指定版本部署 | Accepted | 2026-09-20 |
+| [0029](0029-long-lived-api-token.md) | 长期可吊销 API Token（凭证方案 A，与登录 JWT 并存） | Accepted | 2026-10-02 |
+
+> **编号重复待裁定**：上两条都占 `0029`（两条各自独立创建、互不知情）。按顺序号约定，后创建的一条应改号 `0030`——`0029-deploy-extension-steps.md` 已被 `CONTEXT.md`、`.scratch/spec/*`、插件开发 SKILL 三副本按 `0029` 广泛引用，改它牵连面大，故此处保留原号、并列列出，等人类裁定改哪一条并同步引用。
 
 ## 术语表
 

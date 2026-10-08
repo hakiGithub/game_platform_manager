@@ -51,7 +51,7 @@ application-prod.yml
 *.sqlite3
 
 # Plugin
-plugins/
+/plugins/
 
 # Node.js
 node_modules/

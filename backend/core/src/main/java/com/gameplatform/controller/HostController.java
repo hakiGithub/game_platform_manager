@@ -8,7 +8,6 @@ import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.service.HostService;
-import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
@@ -69,13 +68,9 @@ public class HostController {
     /**
      * 新增主机
      */
-    @Operation(summary = "新增主机", description = "新增主机,SSH私钥加密存储")
+    @Operation(summary = "新增主机", description = "新增主机,SSH凭据由服务层统一加密存储")
     @PostMapping
     public Result<HostVO> create(@Valid @RequestBody HostCreateDTO dto) {
-        // 加密SSH私钥
-        if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
-            dto.setSshPrivateKey(AesUtil.encrypt(dto.getSshPrivateKey()));
-        }
         HostVO hostVO = hostService.createHost(dto);
         return Result.success(hostVO);
     }
@@ -88,13 +83,6 @@ public class HostController {
     public Result<HostVO> update(@Parameter(description = "主机ID") @PathVariable Long id,
                                   @Valid @RequestBody HostUpdateDTO dto) {
         dto.setId(id);
-        // 加密SSH私钥
-        if (dto.getSshPrivateKey() != null && !dto.getSshPrivateKey().isEmpty()) {
-            // 判断是否已加密
-            if (!AesUtil.isEncrypted(dto.getSshPrivateKey())) {
-                dto.setSshPrivateKey(AesUtil.encrypt(dto.getSshPrivateKey()));
-            }
-        }
         HostVO hostVO = hostService.updateHost(dto);
         return Result.success(hostVO);
     }

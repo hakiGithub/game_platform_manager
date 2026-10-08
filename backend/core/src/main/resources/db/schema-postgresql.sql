@@ -310,3 +310,28 @@ CREATE TABLE IF NOT EXISTS sys_setting (
   setting_group VARCHAR(50) PRIMARY KEY,
   setting_value TEXT NOT NULL
 );
+
+-- =====================================================
+-- 10. API 令牌表 (api_token) — ADR-0029 长期可吊销凭证
+-- 注意：MySQL/PG 存量库无增量迁移机制，上线需人工执行本段 DDL（ADR-0015 已知限制）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS api_token (
+    id           BIGSERIAL PRIMARY KEY,
+    name         VARCHAR(100) NOT NULL,
+    token_prefix VARCHAR(16)  NOT NULL,
+    token_hash   VARCHAR(128) NOT NULL,
+    scope        VARCHAR(20)  NOT NULL DEFAULT 'read',
+    user_id      BIGINT       NOT NULL,
+    expires_at   TIMESTAMP NULL,
+    revoked      INTEGER      NOT NULL DEFAULT 0,
+    revoked_at   TIMESTAMP NULL,
+    last_used_at TIMESTAMP NULL,
+    create_time  TIMESTAMP DEFAULT LOCALTIMESTAMP,
+    update_time  TIMESTAMP NULL,
+    is_deleted   INTEGER DEFAULT 0,
+    remark       TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_api_token_hash ON api_token(token_hash);
+CREATE INDEX IF NOT EXISTS idx_api_token_user_id ON api_token(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_token_is_deleted ON api_token(is_deleted);

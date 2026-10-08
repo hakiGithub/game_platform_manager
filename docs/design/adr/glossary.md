@@ -5,6 +5,14 @@
 
 ## 术语
 
+### A
+
+- **API Token（长期访问令牌）**
+  - **定义**：面向脚本/CLI 的长期凭证，形态 `gpm_` + `base64url(32 随机字节)`（定长 47 字符），库中只存 `SHA-256(明文)` 十六进制摘要；明文仅签发响应返回一次。与登录 JWT 并存于同一 `Authorization: Bearer` 头，由 `JwtAuthenticationFilter` 按前缀分流。
+  - **不变量**：令牌认证出的主体权限固定为 `ROLE_USER` + `ROLE_API_TOKEN`，**永不含 `ROLE_ADMIN`** ⇒ 令牌不能管理令牌，也不能访问 `hasRole('ADMIN')` 资产。
+  - **生命周期**：吊销置 `revoked=1`（不使用 `is_deleted`，吊销记录必须仍可见可审计）；过期判定在 Java 侧比较 `expires_at`（NULL = 不过期，仅运维直连库可造）。
+  - **引入**：ADR-0029
+
 ### C
 
 - **capabilities**
@@ -213,6 +221,18 @@
 - **会话钉住（session pinning）**
   - **定义**：TunnelHandle 引用 SshUtil 会话池中的 CachedSession 并计数，reaper 跳过被钉住的会话。取代早期"隧道句柄纳入 reaper 空闲回收周期"的表述——隧道转发流量不刷新 CachedSession.lastUsed，字面空闲回收会误杀活跃隧道。
   - **引入**：ADR-0009
+
+### T
+
+- **Token Scope（令牌作用域）**
+  - **定义**：`api_token.scope` 的两档取值 `read` / `write`。`read` 只允许安全方法（GET/HEAD/OPTIONS），非安全方法一律 403；`write` 放开非安全方法但仍受角色规则约束。作用域与角色是两条正交的线——作用域判"方法"，角色判"端点"。
+  - **裁定位置**：与有效性（存在/未吊销/未过期）合并为单一入口 `ApiTokenService.authenticate(plainToken, httpMethod)`，返回 `ALLOW / INVALID / SCOPE_DENIED`；`INVALID` 对外不区分不存在/吊销/过期，具体原因只进服务端日志。
+  - **引入**：ADR-0029
+
+- **last_used_at（令牌最近使用时刻）**
+  - **定义**：令牌审计用的最近使用时间，best-effort 更新，由一条条件 UPDATE 在库内自行判定是否要写（`WHERE last_used_at IS NULL OR last_used_at < now - throttle`，默认节流 60s），不用进程内缓存。
+  - **配套约定**：`api_token.update_time` 刻意不挂自动刷新（区别于 V1.10 的四表触发器），以免节流写把"记录变更时间"刷成"最近使用时间"。
+  - **引入**：ADR-0029
 
 ### V
 

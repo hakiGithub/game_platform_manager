@@ -19,6 +19,7 @@
 - [8. 系统设置模块](#8-系统设置模块)
 - [9. 错误码说明](#9-错误码说明)
 - [10. Docker 实例管理模块](#10-docker-实例管理模块)
+- [11. API 令牌管理模块](#11-api-令牌管理模块)
 
 ---
 
@@ -3935,5 +3936,110 @@ ws://localhost:8080/ws/ssh/1?token=xxx
 
 ---
 
-**文档版本**: v1.2.0  
-**最后更新**: 2026-08-02
+## 11. API 令牌管理模块
+
+> ADR-0029：长期可吊销 API Token。供 CLI 等程序化调用方使用，凭证形如 `gpm_` + 43 位 Base64url（总长 47）。
+> 权限：仅管理员（`ROLE_ADMIN`）可管理令牌；API 令牌主体恒为 `ROLE_USER + ROLE_API_TOKEN`（永不含 `ROLE_ADMIN`，令牌无法管理令牌）。
+> 认证方式：`Authorization: Bearer gpm_xxx`，与 JWT 同一头形式，服务端按前缀分流。
+
+### 11.1 签发令牌
+
+- **接口**: `POST /api/tokens`
+- **权限**: JWT + `ROLE_ADMIN`
+- **说明**: 明文令牌仅在本次响应返回一次，平台不落库、不入日志、不进列表
+
+**请求体**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | String | 是 | 令牌名，≤100 字符，同一用户未吊销令牌不允许重名 |
+| scope | String | 否 | `read`（缺省）/ `write`；read 只允许 GET/HEAD/OPTIONS |
+| expiresInDays | Integer | 否 | 有效天数，1~3650，缺省 365 |
+
+**请求示例**:
+
+```bash
+curl -s -X POST $BASE/tokens -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+     -d '{"name":"gpmcli","scope":"read"}'
+```
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "id": 1,
+    "name": "gpmcli",
+    "token": "gpm_AAAA-BBBB_CCCC-DDDD_EEEE-FFFF_GGGG-HHHH_IIII-JJJJ",
+    "scope": "read",
+    "expiresAt": "2027-10-03T12:00:00"
+  },
+  "timestamp": 1711084800000
+}
+```
+
+### 11.2 令牌列表
+
+- **接口**: `GET /api/tokens`
+- **权限**: JWT + `ROLE_ADMIN`
+- **说明**: 返回当前用户全部令牌（含已吊销），不分页；投影不含明文与哈希
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "id": 1,
+      "name": "gpmcli",
+      "prefix": "gpm_AAAA-BBBB",
+      "scope": "read",
+      "expiresAt": "2027-10-03T12:00:00",
+      "revoked": 0,
+      "revokedAt": null,
+      "lastUsedAt": "2026-10-03T20:00:00",
+      "createTime": "2026-10-03T12:00:00"
+    }
+  ],
+  "timestamp": 1711084800000
+}
+```
+
+### 11.3 吊销令牌
+
+- **接口**: `DELETE /api/tokens/{id}`
+- **权限**: JWT + `ROLE_ADMIN`
+- **说明**: 幂等；已吊销再次调用不报错、不覆盖 revoked_at。未知 id 沿用平台「业务错误 HTTP 200 + body code」口径返回 `code=404`
+
+**成功响应**: `data` 为吊销后的令牌投影（`revoked=1`、`revokedAt` 非空）。
+
+**未知 id 响应**（HTTP 200）:
+
+```json
+{
+  "code": 404,
+  "message": "API 令牌不存在: 99",
+  "data": null,
+  "timestamp": 1711084800000
+}
+```
+
+### 11.4 错误语义（供 CLI 映射）
+
+| 场景 | HTTP | body code | body message |
+|------|------|-----------|--------------|
+| 无凭据 / `gpm_` 不存在 / 已吊销 / 已过期 | 401 | 401 | 未授权,请先登录 |
+| `read` 令牌发非安全方法（POST/PUT/DELETE/PATCH） | 403 | 403 | 没有相关权限 |
+| 令牌主体访问 `/tokens/**`、`/cloud/**` | 403 | 403 | 没有相关权限 |
+| 参数非法（含 scope 非 read/write） | 400 | 400 | 参数校验失败 |
+| 令牌名重复 / 超配额（每用户 20 个） | 200 | 400 | 具体文案 |
+| DELETE 未知 id | 200 | 404 | API 令牌不存在: \<id\> |
+
+---
+
+**文档版本**: v1.2.1  
+**最后更新**: 2026-10-03

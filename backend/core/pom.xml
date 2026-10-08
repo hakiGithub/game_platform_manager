@@ -91,6 +91,13 @@
             <groupId>org.apache.sshd</groupId>
             <artifactId>sshd-sftp</artifactId>
         </dependency>
+        <!-- PLUT-46：SSHD 2.12.1 将 ed25519 解析依赖 net.i2p.crypto:eddsa 声明为 optional，
+             classpath 缺失时 ed25519 私钥解析失败（报「未解析到任何密钥对」），需显式引入 -->
+        <dependency>
+            <groupId>net.i2p.crypto</groupId>
+            <artifactId>eddsa</artifactId>
+            <version>0.3.0</version>
+        </dependency>
 
         <dependency>
             <groupId>com.github.docker-java</groupId>
