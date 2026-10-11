@@ -102,8 +102,9 @@ class DnfTwPluginLoadTest {
             assertTrue(names.contains("version-catalog.yml"), "版本目录模板要打进 JAR（声明来源 = 插件 JAR 内）");
             assertTrue(names.contains("plugin.properties"), "PF4J 插件元数据要打进 JAR");
         }
-        assertTrue(Files.notExists(Path.of("..", "frontend")),
-                "模块不得建 frontend/ 子工程（FR-22 / AC-23 ④；ADR-0003 亦不引入 standalone 模式）");
+        Path moduleRoot = Path.of("..").toAbsolutePath().normalize();
+        assertTrue(Files.notExists(moduleRoot.resolve("frontend")),
+                "模块不得建 frontend/ 子工程（FR-22 / AC-23 ④；ADR-0003 亦不引入 standalone 模式）：" + moduleRoot);
     }
 
     private GameEnhancementExtension loadedExtension() {

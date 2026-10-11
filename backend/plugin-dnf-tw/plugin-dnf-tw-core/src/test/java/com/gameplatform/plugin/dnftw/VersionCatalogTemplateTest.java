@@ -68,12 +68,10 @@ class VersionCatalogTemplateTest {
     @DisplayName("模板文件与模块元数据两处都带「占位模板，不可上线」，且正文无任何示例值（AC-24 ⑤⑥）")
     void templateCarriesTheNoticeAndHoldsNoExampleValues() {
         String template = shippedTemplateText();
-        assertTrue(template.contains(VersionCatalogTemplate.PLACEHOLDER_NOTICE),
+        assertTrue(template.contains(DnfTwExtension.PLACEHOLDER_NOTICE),
                 "AC-24 ⑤：模板文件本身要显式标注「占位模板，不可上线」");
-        assertEquals(VersionCatalogTemplate.PLACEHOLDER_NOTICE, DnfTwExtension.PLACEHOLDER_NOTICE,
-                "两处标注必须是同一句登记词面，不能各写一套");
-        assertTrue(new DnfTwExtension().getDescription().contains(VersionCatalogTemplate.PLACEHOLDER_NOTICE),
-                "模块元数据侧（扩展点 description → 插件清单）也要看得见这句标注");
+        assertTrue(new DnfTwExtension().getDescription().contains(DnfTwExtension.PLACEHOLDER_NOTICE),
+                "模块元数据侧（扩展点 description → 插件清单）也要看得见同一句标注");
 
         // AC-24 ⑥：正文（去掉注释后）每个带值的字段只能还是未填充标记
         for (String line : template.split("\r?\n")) {
@@ -200,6 +198,34 @@ class VersionCatalogTemplateTest {
                         content: echo UT
                         position: ssh
                 """));
+    }
+
+    @Test
+    @DisplayName("步骤字段出错时归因指名到步骤，不只报到条目层")
+    void stepLevelFailuresNameTheStepPath() {
+        IllegalStateException positionBad = assertThrows(IllegalStateException.class,
+                () -> VersionCatalogTemplate.parse("""
+                        versions:
+                          - versionId: ut-filled-a
+                            scripts:
+                              - label: UT
+                                content: echo UT
+                                position: ssh
+                        """));
+        assertTrue(positionBad.getMessage().contains("versions[0].scripts[0].position"),
+                "归因必须落到具体步骤字段：" + positionBad.getMessage());
+
+        IllegalStateException unknownStepKey = assertThrows(IllegalStateException.class,
+                () -> VersionCatalogTemplate.parse("""
+                        versions:
+                          - versionId: ut-filled-a
+                            patches:
+                              - url: http://127.0.0.1/ut/patch.zip
+                                targetPath: ut-patch
+                                headers: nope
+                        """));
+        assertTrue(unknownStepKey.getMessage().contains("versions[0].patches[0]"),
+                "步骤内未知字段同样指名到步骤：" + unknownStepKey.getMessage());
     }
 
     private static String shippedTemplateText() {

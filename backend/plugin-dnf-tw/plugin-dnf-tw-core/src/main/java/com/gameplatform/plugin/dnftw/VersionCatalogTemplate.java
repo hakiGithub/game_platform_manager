@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
  * dnf-tw 版本目录模板的唯一读取路径（design.md §7.3 B-15；PRD §8.6 / FR-23）。
@@ -47,9 +47,6 @@ final class VersionCatalogTemplate {
 
     /** 未填充标记（PRD §8.6 各待填字段的标记写法）。 */
     static final String UNFILLED_MARKER = "UNFILLED";
-
-    /** 模板必须显式携带的标注（AC-24 ⑤：模板文件与模块元数据两处都可见）。 */
-    static final String PLACEHOLDER_NOTICE = "占位模板，不可上线";
 
     private static final Logger LOG = LoggerFactory.getLogger(VersionCatalogTemplate.class);
 
@@ -122,26 +119,27 @@ final class VersionCatalogTemplate {
                 text(entry, "displayName"),
                 text(entry, "imageTag"),
                 flag(entry, "default", false, at),
-                toSteps(entry.get("patches"), at + ".patches", PATCH_KEYS, step -> new PatchStepDeclaration(
+                toSteps(entry.get("patches"), at + ".patches", PATCH_KEYS, (step, stepAt) -> new PatchStepDeclaration(
                         text(step, "label"),
                         text(step, "url"),
                         text(step, "targetPath"),
                         text(step, "sha256"),
                         text(step, "includePattern"),
                         text(step, "format"),
-                        flag(step, "fatal", true, at))),
-                toSteps(entry.get("scripts"), at + ".scripts", SCRIPT_KEYS, step -> new ScriptStepDeclaration(
+                        flag(step, "fatal", true, stepAt))),
+                toSteps(entry.get("scripts"), at + ".scripts", SCRIPT_KEYS, (step, stepAt) -> new ScriptStepDeclaration(
                         text(step, "label"),
                         text(step, "content"),
                         text(step, "url"),
                         text(step, "sha256"),
-                        position(step, at),
-                        flag(step, "fatal", true, at),
-                        number(step, "timeoutMs", at))));
+                        position(step, stepAt),
+                        flag(step, "fatal", true, stepAt),
+                        number(step, "timeoutMs", stepAt))));
     }
 
+    /** stepAt 一并交给 mapper：出错时要指名到「哪一条目的第几个步骤的哪个字段」，不能只报到条目层。 */
     private static <T> List<T> toSteps(Object raw, String at, Set<String> knownKeys,
-                                       Function<Map<String, Object>, T> mapper) {
+                                       BiFunction<Map<String, Object>, String, T> mapper) {
         if (raw == null) {
             return List.of();
         }
@@ -151,7 +149,7 @@ final class VersionCatalogTemplate {
             String stepAt = at + "[" + i + "]";
             Map<String, Object> step = requireMap(steps.get(i), stepAt);
             requireKnownKeys(step, knownKeys, stepAt);
-            mapped.add(mapper.apply(step));
+            mapped.add(mapper.apply(step, stepAt));
         }
         return List.copyOf(mapped);
     }
