@@ -2,6 +2,9 @@ package com.gameplatform.plugin.extension;
 
 import com.gameplatform.plugin.constant.PluginConstants;
 import com.gameplatform.plugin.context.PluginContext;
+import com.gameplatform.plugin.extension.deploy.DeployExtensionContext;
+import com.gameplatform.plugin.extension.deploy.DeployExtensionStepDeclaration;
+import com.gameplatform.plugin.extension.deploy.DeployVersionDeclaration;
 import org.pf4j.ExtensionPoint;
 
 import java.util.Collections;
@@ -253,6 +256,44 @@ public interface GameEnhancementExtension extends ExtensionPoint {
      * @return 部署方式声明列表；未声明返回空列表
      */
     default List<DeployConfigDeclaration> getDeployConfigs() {
+        return Collections.emptyList();
+    }
+
+    // ==================== 部署扩展声明（ADR-0029） ====================
+
+    /**
+     * 声明本游戏的部署版本目录（ADR-0029 决策 9、design.md §16.2）。
+     *
+     * <p>静态目录：部署向导步骤 2 时还没有实例，故签名不含 instanceId。
+     * 主应用侧唯一读者是版本目录服务（design.md §16.3），三处读取（向导 / 提交期三态 /
+     * 部署执行）共用同一读者，避免「向导看得见、部署看不见」的通道不对称（design.md §16.1）。
+     * 因此本方法<b>不</b>挂进 {@link #getDeployConfigs()}——整节替换通道不作用于部署执行路径。</p>
+     *
+     * <p>返回空列表是可交付状态而非降级：目录为空的与「无插件 / 未加载 / 读取抛异常」
+     * 由主应用分列处置（design.md §16.3 四态）。字段口径与校验见 PRD §8.1～§8.3。</p>
+     *
+     * @param deployType 部署方式编码（本期支持扩展步骤的集合见 design.md §14.13.1）
+     * @return 版本目录条目声明列表，按声明序；未声明返回空列表，不可为 null
+     * @since 2.2.0
+     */
+    default List<DeployVersionDeclaration> getDeployVersions(String deployType) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * 按实例配置动态计算本次部署的扩展步骤集（ADR-0029 决策 2、design.md §16.2）。
+     *
+     * <p>适用方：步骤集需要按实例配置（含所选版本）算出的插件。纯声明型插件不必实现，
+     * 返回空即由所选目录条目自带的 {@code patches} + {@code scripts} 承担。</p>
+     *
+     * <p>唯一解析顺序（design.md §16.2）：本方法非空 → 用它；否则取所选目录条目步骤集；
+     * 都空 → 不进入扩展阶段。两条路汇入同一个消费者，故按实例区分步骤集的语义在两路上同时成立。</p>
+     *
+     * @param ctx 实例上下文，含 gameCode / deployType / 所选版本 / 完整 configInfo
+     * @return 有序步骤声明清单，序号自 1 起按清单序编号；无步骤返回空列表，不可为 null
+     * @since 2.2.0
+     */
+    default List<DeployExtensionStepDeclaration> getDeployExtensionSteps(DeployExtensionContext ctx) {
         return Collections.emptyList();
     }
 }

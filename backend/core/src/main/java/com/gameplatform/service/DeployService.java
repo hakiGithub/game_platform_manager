@@ -9,8 +9,10 @@ import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
+import com.gameplatform.service.deploy.DeployExtensionExecutor;
+import com.gameplatform.service.deploy.ExtensionLogLine;
+import com.gameplatform.service.deploy.ExtensionStageSink;
 import com.gameplatform.util.SshUtil;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -53,14 +55,20 @@ public class DeployService {
     @Autowired
     private DeploymentAccess deployAccess;
 
+    @Autowired
+    private DeployExtensionExecutor deployExtensionExecutor;
+
     // 部署任务状态缓存
     private final Map<Long, DeployTaskStatus> taskStatusMap = new ConcurrentHashMap<>();
 
     /**
      * 日志条目
+     *
+     * <p>后八个属性是部署扩展阶段的呈现契约字段位（design.md §14.6：六个字段位、
+     * {@code stepIndex}/{@code stepTotal} 与 {@code stepLabel}/{@code stepType} 各含两个属性）。
+     * 既有阶段一律传 {@code null} ⇒ 非扩展部署的响应形状与改造前逐字相同（AC-15）。</p>
      */
     @Data
-    @AllArgsConstructor
     @NoArgsConstructor
     public static class LogEntry {
         private long id;          // 日志ID（自增，前端去重用）
@@ -68,6 +76,37 @@ public class DeployService {
         private String message;
         private String stage;     // 关联阶段
         private LocalDateTime time;
+
+        private String stepId;
+        private Integer stepIndex;
+        private Integer stepTotal;
+        private String stepLabel;
+        private String stepType;
+        private String stepEvent;
+        private Long elapsedMs;
+        private Integer exitCode;
+
+        public LogEntry(long id, String level, String message, String stage, LocalDateTime time) {
+            this(id, level, message, stage, time, null, null, null, null, null, null, null, null);
+        }
+
+        public LogEntry(long id, String level, String message, String stage, LocalDateTime time,
+                        String stepId, Integer stepIndex, Integer stepTotal, String stepLabel,
+                        String stepType, String stepEvent, Long elapsedMs, Integer exitCode) {
+            this.id = id;
+            this.level = level;
+            this.message = message;
+            this.stage = stage;
+            this.time = time;
+            this.stepId = stepId;
+            this.stepIndex = stepIndex;
+            this.stepTotal = stepTotal;
+            this.stepLabel = stepLabel;
+            this.stepType = stepType;
+            this.stepEvent = stepEvent;
+            this.elapsedMs = elapsedMs;
+            this.exitCode = exitCode;
+        }
     }
 
     /**
@@ -105,6 +144,14 @@ public class DeployService {
         private Map<String, Object> config;
         private boolean autoRollback;
         private boolean autoStart;
+        /**
+         * 本次部署的版本值是否来自<b>部署向导本次提交</b>（{@code true}），还是来自实例配置的既存键
+         * （{@code false}：重部署 / retry 只读库中 {@code configInfo}，不接受新选择）。
+         *
+         * <p>它是 BR-12 拦截两支词面（ui-spec §6.3「本次所选」vs「实例配置要求的…由既往部署写入」）
+         * 唯一的区分依据：两条路落到运行期都是同一张 {@code configInfo} map，值本身分不出来源。</p>
+         */
+        private boolean explicitVersionSelection;
     }
 
     /**
@@ -159,7 +206,7 @@ public class DeployService {
         taskStatusMap.put(instanceId, status);
 
         // 包装 callback，收集日志到 taskStatus
-        DeployProgressCallback collectingCallback = new LogCollectingCallback(instanceId, callback);
+        LogCollectingCallback collectingCallback = new LogCollectingCallback(instanceId, callback);
 
         DeployAdapter adapter = adapterFactory.getAdapter(deployType);
         boolean success = false;
@@ -213,8 +260,20 @@ public class DeployService {
             }
             notifyStageComplete(collectingCallback, "DEPLOY", true, "部署完成");
 
+            // 5.5 部署扩展阶段（design.md §3.2 / §14.6 / B-10）：存在条件两支化——
+            //     解析出步骤集 ≥1，或无步骤集但入口判定不合法须按 BR-12 拦截（短暂成立）；
+            //     两者皆无 ⇒ 本段整体不存在，下面的序列与改造前逐字相同（AC-15 / KPI-04）。
+            //     adapter 用主流程已解析的那一个（§14.13.2：禁止在执行器里按类型分派或自行拼命令）。
+            boolean extensionSteps = deployExtensionExecutor.runExtensionPhase(
+                    new DeployExtensionExecutor.Request(instanceId, context.getHostId(), adapter,
+                            context.getConfig(), instanceMapper.selectById(instanceId), "DEPLOY",
+                            context.isExplicitVersionSelection()),
+                    extensionSink(instanceId));
+
             // 6. 健康检查
-            updateTaskStatus(instanceId, "HEALTH_CHECK", 80, "执行健康检查");
+            //     §14.7 条件分配：只有本分支真跑过扩展步骤时，顶层 progress 起点才由 80 改报 85
+            //     （扩展段占 [80,84]，两分支都保持单调不减）；无扩展步骤时该字面量一字不动。
+            updateTaskStatus(instanceId, "HEALTH_CHECK", extensionSteps ? 85 : 80, "执行健康检查");
             if (!adapter.healthCheck(instanceId, context.getConfig())) {
                 throw new DeployException("健康检查失败");
             }
@@ -270,10 +329,17 @@ public class DeployService {
 
             // 失败时标记为异常状态
             updateInstanceStatus(instanceId, DeployAdapter.InstanceStatus.ERROR);
-            appendLog(instanceId, "ERROR", e.getMessage(),
-                    taskStatusMap.get(instanceId) != null ? taskStatusMap.get(instanceId).getStage() : "UNKNOWN");
-            notifyError(collectingCallback, e.getMessage(),
-                    taskStatusMap.get(instanceId) != null ? taskStatusMap.get(instanceId).getStage() : "UNKNOWN", false);
+            String errorStage = taskStatusMap.get(instanceId) != null
+                    ? taskStatusMap.get(instanceId).getStage() : "UNKNOWN";
+            if (e instanceof DeployExtensionExecutor.ExtensionPhaseException) {
+                // 该阶段的终态行（致命终止 / 收尾失败 / 停实例失败 / BR-12 拦截）已由执行器按
+                // §14.6 契约产齐；主流程再补一条同 stage 的行会破掉 ui-spec §7 X-07 锚点二 B
+                // 「收尾失败行必为该阶段末行」。终态与对外通知照旧，只是不重复产行。
+                collectingCallback.onErrorWithoutLog(e.getMessage(), errorStage, false);
+            } else {
+                appendLog(instanceId, "ERROR", e.getMessage(), errorStage);
+                notifyError(collectingCallback, e.getMessage(), errorStage, false);
+            }
 
             // 自动回滚
             if (context.isAutoRollback()) {
@@ -611,12 +677,62 @@ public class DeployService {
         return switch (stage) {
             case "INIT", "ENV_CHECK", "PORT_CHECK", "RESOURCE_CHECK" -> "preparing";
             case "PRE_DEPLOY" -> "downloading";
-            case "DEPLOY" -> "installing";
+            // EXTENSION 与 DEPLOY 同词（design.md §14.11：避免冒出「扩展阶段显示 preparing」的第三种状态）
+            case "DEPLOY", "EXTENSION" -> "installing";
             case "HEALTH_CHECK" -> "checking";
             case "START", "UPDATE_STATUS" -> "starting";
             case "COMPLETE" -> "completed";
             default -> "preparing";
         };
+    }
+
+    /**
+     * 扩展阶段回传部署主流程的接缝实现（design.md §14.6 产行 / §14.7 条件进度）。
+     *
+     * <p>两件事分开：{@code append} 只写日志行（id 与时间戳在这里补，契约字段原样透传）；
+     * {@code reportProgress} 只动顶层 {@code stage}/{@code progress}，<b>不产行</b>——
+     * V-10 的核对对象正是这个顶层值（§14.7 v0.3 订正：不是「进入行」）。</p>
+     */
+    private ExtensionStageSink extensionSink(Long instanceId) {
+        return new ExtensionStageSink() {
+
+            @Override
+            public void append(ExtensionLogLine line) {
+                appendLog(instanceId, line);
+            }
+
+            @Override
+            public void reportProgress(int progress) {
+                DeployTaskStatus status = taskStatusMap.get(instanceId);
+                if (status != null) {
+                    synchronized (status) {
+                        status.setStage(DeployExtensionExecutor.EXTENSION_STAGE);
+                        status.setProgress(progress);
+                        status.setStatus(mapStageToStatus(DeployExtensionExecutor.EXTENSION_STAGE));
+                    }
+                }
+            }
+        };
+    }
+
+    /**
+     * 向任务状态追加扩展阶段的契约行（design.md §14.6 的八个属性原样落地）。
+     *
+     * <p>{@code stage} 由行自带而非取顶层 {@code DeployTaskStatus.stage}：「目录不合法说明行」
+     * 归它实际发生所在的既有阶段，扩展阶段行才归 {@code "EXTENSION"}（§14.6 ①／② 两支钉值不同）。</p>
+     */
+    private void appendLog(Long instanceId, ExtensionLogLine line) {
+        DeployTaskStatus status = taskStatusMap.get(instanceId);
+        if (status == null) {
+            return;
+        }
+        synchronized (status) {
+            long logId = status.getLogIdCounter() + 1;
+            status.setLogIdCounter(logId);
+            status.getLogs().add(new LogEntry(logId, line.level(), line.message(), line.stage(),
+                    LocalDateTime.now(), line.stepId(), line.stepIndex(), line.stepTotal(),
+                    line.stepLabel(), line.stepType(), line.stepEvent(), line.elapsedMs(), line.exitCode()));
+        }
     }
 
     /**
@@ -697,6 +813,23 @@ public class DeployService {
             String stage = status != null ? status.getStage() : "UNKNOWN";
             appendLog(instanceId, level, message, stage);
             delegate.onLog(level, message);
+        }
+
+        /**
+         * 与 {@link #onError} 同效但不重复产行日志行：终态字段与对外回调照旧送达。
+         *
+         * <p>只给扩展阶段的失败用——那一阶段的终止行已由 design.md §14.6 的契约产到位置，
+         * 主流程的补行会把行序列判破（ui-spec §7 X-07 锚点二 B）。</p>
+         */
+        void onErrorWithoutLog(String error, String stage, boolean recoverable) {
+            DeployTaskStatus status = taskStatusMap.get(instanceId);
+            if (status != null) {
+                synchronized (status) {
+                    status.setError(error);
+                    status.setStatus("failed");
+                }
+            }
+            delegate.onError(error, stage, recoverable);
         }
 
         @Override

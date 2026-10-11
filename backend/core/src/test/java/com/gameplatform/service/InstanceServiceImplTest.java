@@ -73,11 +73,18 @@ class InstanceServiceImplTest {
     @Mock
     private com.gameplatform.instanceinfo.InstanceInfoService instanceInfoService;
 
+    @Mock
+    private com.gameplatform.deploy.DeployVersionCatalogService deployVersionCatalogService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
     @BeforeEach
     void setUp() {
+        // 被测对象与本用例集无关的目录读者：默认「无插件声明目录」，即现状行为
+        lenient().when(deployVersionCatalogService.read(any(), any()))
+                .thenReturn(com.gameplatform.deploy.CatalogView.absent());
+
         // classify 真实语义由 DeploymentAccessTest 锁定；测试数据 deployType 均为 "docker"
         lenient().when(deployAccess.classify(any()))
                 .thenReturn(DeployAdapter.DeployType.DOCKER);

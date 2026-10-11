@@ -1,0 +1,49 @@
+MERC-22 G2 第 1 轮返工 · 交付命令与输出（2026-10-09，本机 Git Bash）
+
+基线：上一轮交付 tip = 8e584f0。本轮返工全部落在其后的提交上（tip 以回评点名为准）。
+
+== 1) 后端全量单测（返工后）
+  cd backend && mvn test
+    [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0        (plugin)
+    [INFO] Tests run: 882, Failures: 0, Errors: 0, Skipped: 0      (core；上一轮 827，本轮 +7 执行器用例 +1 接线取证用例，
+                                                                   其余增量为用户侧 api-token 回放用例)
+    [INFO] Tests run: 497, Failures: 0, Errors: 0, Skipped: 0      (plugin-l4d2-core)
+    [INFO] BUILD SUCCESS
+    [INFO] Total time:  03:50 min（core 03:09）
+  注：core 的 882 含用户本地目录回放带来的 api-token 测试（JwtAuthenticationFilterTest / ApiToken*Test 等），
+      不是本票改动；本票两类的计数见下。
+
+== 2) 本票三个测试类单独跑
+  mvn -pl core -am test -Dtest=DeployExtensionExecutorTest -Dsurefire.failIfNoSpecifiedTests=false
+    Tests run: 48, Failures: 0, Errors: 0, Skipped: 0     （上一轮 41，本轮 +7）
+  mvn -pl core -am test -Dtest=DeployServiceExtensionTest -Dsurefire.failIfNoSpecifiedTests=false
+    Tests run: 7, Failures: 0, Errors: 0, Skipped: 0      （上一轮 6，本轮 +1 支 FAILURE+ROLLBACK 取证用例）
+  mvn -pl core -am test -Dtest=DeployProgressSamplingBaselineTest -Dsurefire.failIfNoSpecifiedTests=false
+    Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+
+== 3) V-08 机械核对（三份核对物：happy / 失败形状 / 无扩展）
+  python scripts/v08-extension-log-contract.py \
+      backend/core/target/evidence/deploy-progress-with-extension.json \
+      backend/core/target/evidence/deploy-progress-with-failure.json \
+      backend/core/target/evidence/deploy-progress-no-extension.json
+  完整输出见 merc22-r2-v08-output.txt（同一份内容原样落盘）
+  新增核对物 merc22-r2-deploy-progress-with-failure.json：E-1 非致命 PATCH 失败 + ROLLBACK、
+  E-2 致命 SCRIPT exit 3，规则 4/5 首次在含 FAILURE 与 ROLLBACK 的样本上真判。
+
+== 4) V-08 判据的牙齿自检（临时反例，跑完即删，不进仓库）
+  反例 1 打散 EXTENSION 连续块            → FAIL 2 项（stepId 行 stage 错位 + 块不连续）      exit=1
+  反例 2 阶段级行带 exitCode / elapsedMs  → FAIL 2 项（新增的两条域检各命中一次）             exit=1
+  反例 3 SCRIPT SUCCESS 的 exitCode 改 null → FAIL 1 项（成功 ⇒ 恰为 0）                      exit=1
+  反例 4 SCRIPT FAILURE + exitCode null    → exit=0，只出 WARN（豁免支，不判 FAIL 也不读成超时）
+  前三条证明本轮补的判据会真的红；第四条证明豁免支是「显式不判」而不是「静默通过」。
+
+== 5) V-10 改造前后逐值比对（五项比对面）
+  bash scripts/v10-compare-baseline.sh
+    == 4/4 逐字节比对 ==
+    V-10 无扩展分支：PASS —— 五项比对面逐值相同（AC-15 / KPI-04 的分母对象未被改动）
+  基线侧 = origin/release/MERC-8-extension-steps-dnf-tw（892c333）
+
+== 6) 仍未执行的核对项（本机结构上跑不了，与上一轮同口径）
+  V-11 的 docker inspect 逐类采样、V-27 ① 两类适配器真机起回、V-28 真 retry 全量重放、
+  慢速源 + 小 timeoutMs 的下载帽效应实测；前端 npm run test:run / e2e（本 worktree 无 node_modules，
+  本票改动全在 backend/core 与 scripts，前端零改动）。

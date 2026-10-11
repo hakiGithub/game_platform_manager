@@ -277,4 +277,20 @@
         </plugins>
     </build>
 
+    <profiles>
+        <!--
+          验收资产（design.md §3.3 组 K、§9.1 上线顺序 ③；PRD FR-24 / BR-15 ② / AC-26 ②）。
+
+          桩插件刻意不进默认 <modules>：日常的 mvn clean compile|package 与
+          scripts/rebuild-restart-all.ps1、start-all.sh 都不构建它 ⇒ 产品发布物里没有它。
+          需要时显式打开：cd backend && mvn -Pacceptance-assets test -pl plugin-stub -am
+        -->
+        <profile>
+            <id>acceptance-assets</id>
+            <modules>
+                <module>plugin-stub</module>
+            </modules>
+        </profile>
+    </profiles>
+
 </project>

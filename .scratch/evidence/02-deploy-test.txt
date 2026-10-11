@@ -1,0 +1,42 @@
+[33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consider using "deps.optimizer.web.include"[39m
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend[39m
+
+[1m[33m[@vue/compiler-sfc][0m[33m `v-model` cannot update a `const` reactive binding `deployVariablesValues`. The compiler has transformed it to `let` to make the update work.[0m
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+[90mstderr[2m | src/tests/views/deploy.test.js[2m > [22m[2mF-04 步骤 2 目标版本控件 · P1 谓词（ui-spec §5 / §6.4）[2m > [22m[2m目录读取失败 ⇒ 与前项同形，且不把它当「声明不合法」输出提示（RISK-13）[22m[39m
+Failed to load deploy config: Error: boom
+    at [90mC:\Users\haki\multica_workspaces_desktop-hakisite.duckdns.org-8443\mercury-cvw-7a9404e4c101\merc-21-a734ea8f3a54\worktree\frontend\[39msrc\tests\views\deploy.test.js:234:50
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:135:14
+    at [90mfile:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:60:26
+    at runTest [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:781:17[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at processImmediate (node:internal/timers:453:9)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:909:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:958:5[90m)[39m
+    at startTests [90m(file:///C:/Users/haki/multica_workspaces_desktop-hakisite.duckdns.org-8443/mercury-cvw-7a9404e4c101/merc-21-a734ea8f3a54/worktree/frontend/[39mnode_modules/[4m@vitest[24m/runner/dist/index.js:967:3[90m)[39m
+
+ [32m✓[39m src/tests/views/deploy.test.js [2m ([22m[2m32 tests[22m[2m)[22m[33m 17125[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m32 passed[39m[22m[90m (32)[39m
+[2m   Start at [22m 01:20:49
+[2m   Duration [22m 25.02s[2m (transform 3.64s, setup 116ms, collect 7.01s, tests 17.13s, environment 269ms, prepare 169ms)[22m
+

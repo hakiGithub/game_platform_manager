@@ -42,4 +42,19 @@ public class DeployConfigVO {
      * linuxgsm-docker 类型包含 shortname/imageRepo/imageTag 等字段
      */
     private Map<String, Object> config;
+
+    /**
+     * 版本目录条目（design.md §16.4）：仅 {@code versionCatalogState == AVAILABLE} 时为合法条目，
+     * 其余三态一律是空数组而非 {@code null}——前端「是否渲染版本控件」的谓词因此是条目数 ≥ 1。
+     */
+    private List<VersionEntryVO> deployVersions = List.of();
+
+    /**
+     * 目录读取状态 {@code ABSENT/EMPTY/INVALID/AVAILABLE}，让「空目录」与「声明不合法」
+     * 在响应里可区分（RISK-13 / AC-24 ③）。界面是否使用它归 @Designer。
+     */
+    private String versionCatalogState;
+
+    /** 仅 {@code INVALID} 非空：校验失败要点，供部署日志说明行与验收归因，不进界面。 */
+    private String versionCatalogReason;
 }

@@ -1,0 +1,17 @@
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：logs 行数 = 27，非空 stepId 去重计数（分母）= 2
+  PASS  KPI-02 = 2/2 = 100%
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：阶段级行数（不进分母）= 22，其中带 stepEvent 的收尾/完成行 = 2
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：顶层 stage = COMPLETE
+  PASS  backend/core/target/evidence/deploy-progress-with-failure.json：logs 行数 = 25，非空 stepId 去重计数（分母）= 2
+  PASS  KPI-02 = 2/2 = 100%
+  PASS  backend/core/target/evidence/deploy-progress-with-failure.json：阶段级行数（不进分母）= 19，其中带 stepEvent 的收尾/完成行 = 0
+  PASS  backend/core/target/evidence/deploy-progress-with-failure.json：顶层 stage = EXTENSION
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：logs 行数 = 16，非空 stepId 去重计数（分母）= 0
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：阶段级行数（不进分母）= 16，其中带 stepEvent 的收尾/完成行 = 0
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：顶层 stage = COMPLETE
+  WARN  分母为 0：本次部署没有扩展步骤（KPI-02 在本份样本上不适用，不判 FAIL）
+
+V-08 判定：PASS —— 覆盖面按本文件头的判据清单，不超出：
+  判到：取值域 + 扩展块连续性与块首形状 / 三项齐备与 KPI-02 / 串行可见 / 退出码可判支（SUCCESS⇒0、FAILURE 非空⇒非 0、PATCH 与非终态行与阶段级行恒 null）/ 阶段级行 elapsedMs 域 / 回滚记录位的位置与数量
+  没判（字段面不可判，不做静默降级）：FAILURE ∧ exitCode==null 的「超时 / 脚本未开始」两类、七类同形阶段级行各自的条数与先后、「目录不合法说明行」被前移进 EXTENSION 块的情形
+exit=0

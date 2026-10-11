@@ -1,0 +1,10 @@
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：logs 行数 = 27，非空 stepId 去重计数（分母）= 2
+  PASS  KPI-02 = 2/2 = 100%
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：阶段级行数（不进分母）= 22，其中带 stepEvent 的收尾/完成行 = 2
+  PASS  backend/core/target/evidence/deploy-progress-with-extension.json：顶层 stage = COMPLETE
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：logs 行数 = 16，非空 stepId 去重计数（分母）= 0
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：阶段级行数（不进分母）= 16，其中带 stepEvent 的收尾/完成行 = 0
+  PASS  backend/core/target/evidence/deploy-progress-no-extension.json：顶层 stage = COMPLETE
+  WARN  分母为 0：本次部署没有扩展步骤（KPI-02 在本份样本上不适用，不判 FAIL）
+
+V-08 判定：PASS —— 取值域 / 三项齐备 / 串行可见 / 退出码 ⇔ 失败 / 回滚记录位 全部成立，KPI-02 = 100%

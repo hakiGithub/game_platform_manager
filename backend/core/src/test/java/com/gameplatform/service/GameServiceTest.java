@@ -2,6 +2,8 @@ package com.gameplatform.service;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
+import com.gameplatform.deploy.CatalogView;
+import com.gameplatform.deploy.VersionEntry;
 import com.gameplatform.dto.GameCreateDTO;
 import com.gameplatform.dto.GameUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
@@ -9,9 +11,13 @@ import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.plugin.extension.DeployConfigDeclaration;
 import com.gameplatform.plugin.extension.GameEnhancementExtension;
+import com.gameplatform.plugin.extension.deploy.DeployVersionDeclaration;
+import com.gameplatform.plugin.extension.deploy.PatchStepDeclaration;
+import com.gameplatform.plugin.extension.deploy.StepKind;
 import com.gameplatform.service.impl.GameServiceImpl;
 import com.gameplatform.vo.DeployConfigVO;
 import com.gameplatform.vo.GameVO;
+import com.gameplatform.vo.VersionEntryVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -53,6 +60,9 @@ class GameServiceTest {
     @Mock
     private com.gameplatform.plugin.service.PluginFrameworkService pluginFrameworkService;
 
+    @Mock
+    private com.gameplatform.deploy.DeployVersionCatalogService deployVersionCatalogService;
+
     @InjectMocks
     private GameServiceImpl gameService;
 
@@ -62,6 +72,10 @@ class GameServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 被测对象与本用例集无关的目录读者：默认「无插件声明目录」，即现状响应
+        lenient().when(deployVersionCatalogService.read(any(), any()))
+                .thenReturn(com.gameplatform.deploy.CatalogView.absent());
+
         // Given: 初始化测试数据
         testGame = new GameMetadata();
         testGame.setId(1L);
@@ -456,5 +470,103 @@ class GameServiceTest {
         assertNull(result.getEnvironmentDeps());
         assertNull(result.getDeployConfig());
         assertNull(result.getCustomOperations());
+    }
+
+    // ============================================================
+    // B-06 / design.md §16.4：GET 侧版本目录契约
+    // ============================================================
+
+    @Test
+    @DisplayName("deploy-config 携带版本目录：versionId 与声明精确相等且同序（AC-01 接口侧 / V-21）")
+    void testGetDeployConfig_carriesCatalogInDeclarationOrder() {
+        stubCatalogGame();
+        when(deployVersionCatalogService.read("minecraft", "docker")).thenReturn(CatalogView.available(
+                List.of(versionEntry("1.0.0", "初版", true), versionEntry("2.0.0", null, false, 2))));
+
+        DeployConfigVO vo = gameService.getDeployConfig(1L, "docker");
+
+        assertEquals("AVAILABLE", vo.getVersionCatalogState());
+        assertNull(vo.getVersionCatalogReason());
+        assertEquals(List.of("1.0.0", "2.0.0"),
+                vo.getDeployVersions().stream().map(VersionEntryVO::getVersionId).toList());
+        assertEquals(List.of("初版", "2.0.0"),
+                vo.getDeployVersions().stream().map(VersionEntryVO::getDisplayName).toList());
+        assertEquals(List.of(true, false),
+                vo.getDeployVersions().stream().map(VersionEntryVO::getIsDefault).toList());
+        // 步骤预览只能在服务端算（步骤集解析顺序在 core 侧）
+        assertEquals(List.of(1, 2), vo.getDeployVersions().get(1).getStepSummary().stream()
+                .map(VersionEntryVO.StepSummaryVO::getIndex).toList());
+        assertEquals("PATCH", vo.getDeployVersions().get(1).getStepSummary().get(0).getType());
+    }
+
+    @Test
+    @DisplayName("ABSENT / EMPTY / INVALID 三态的 deployVersions 都是空数组而非 null，且状态可区分（RISK-13）")
+    void testGetDeployConfig_nonAvailableStatesYieldEmptyArrayNotNull() {
+        stubCatalogGame();
+
+        for (com.gameplatform.deploy.CatalogView catalog : List.of(
+                com.gameplatform.deploy.CatalogView.absent(),
+                com.gameplatform.deploy.CatalogView.empty(),
+                com.gameplatform.deploy.CatalogView.invalid("versionId 字符集外"))) {
+            when(deployVersionCatalogService.read("minecraft", "docker")).thenReturn(catalog);
+
+            DeployConfigVO vo = gameService.getDeployConfig(1L, "docker");
+
+            assertEquals(catalog.state().name(), vo.getVersionCatalogState());
+            assertNotNull(vo.getDeployVersions(), catalog.state().name());
+            assertTrue(vo.getDeployVersions().isEmpty(), catalog.state().name());
+        }
+    }
+
+    @Test
+    @DisplayName("EMPTY 不产生任何「不合法」说明（AC-24 ③）；仅 INVALID 携带归因")
+    void testGetDeployConfig_emptyCatalogCarriesNoReason() {
+        stubCatalogGame();
+        when(deployVersionCatalogService.read("minecraft", "docker"))
+                .thenReturn(com.gameplatform.deploy.CatalogView.empty());
+        assertEquals(null, gameService.getDeployConfig(1L, "docker").getVersionCatalogReason());
+
+        when(deployVersionCatalogService.read("minecraft", "docker"))
+                .thenReturn(com.gameplatform.deploy.CatalogView.invalid("N2 表侧模板缺占位符"));
+        assertEquals("N2 表侧模板缺占位符", gameService.getDeployConfig(1L, "docker").getVersionCatalogReason());
+    }
+
+    @Test
+    @DisplayName("目录字段是加法：既有 config/variables 的读取结果不因汇入而变")
+    void testGetDeployConfig_catalogFieldsDoNotDisturbExistingFields() {
+        stubCatalogGame();
+        when(deployVersionCatalogService.read("minecraft", "docker"))
+                .thenReturn(com.gameplatform.deploy.CatalogView.absent());
+
+        DeployConfigVO vo = gameService.getDeployConfig(1L, "docker");
+
+        assertEquals("docker-image", vo.getConfig().get("image"));
+        assertEquals("docker", vo.getDeployType());
+    }
+
+    private void stubCatalogGame() {
+        GameMetadata game = new GameMetadata();
+        game.setId(1L);
+        game.setGameCode("minecraft");
+        game.setDeployConfig(Map.of("docker", Map.of("image", "docker-image")));
+        when(gameMetadataMapper.selectById(1L)).thenReturn(game);
+    }
+
+    private static VersionEntry versionEntry(String versionId, String displayName, boolean defaultEntry) {
+        return versionEntry(versionId, displayName, defaultEntry, 0);
+    }
+
+    private static VersionEntry versionEntry(String versionId, String displayName, boolean defaultEntry,
+                                             int patchStepCount) {
+        List<PatchStepDeclaration> patches = new ArrayList<>();
+        List<VersionEntry.StepSummary> summary = new ArrayList<>();
+        for (int i = 1; i <= patchStepCount; i++) {
+            patches.add(new PatchStepDeclaration("补丁" + i, "http://127.0.0.1:8099/p" + i + ".zip",
+                    "target" + i, null, null, null, true));
+            summary.add(new VersionEntry.StepSummary(i, "补丁" + i, StepKind.PATCH, true));
+        }
+        DeployVersionDeclaration declaration = new DeployVersionDeclaration(
+                versionId, displayName, null, defaultEntry, patches, List.of());
+        return new VersionEntry(declaration, displayName == null ? versionId : displayName, defaultEntry, summary);
     }
 }
