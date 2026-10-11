@@ -24,6 +24,7 @@
         <module>plugin</module>
         <module>core</module>
         <module>plugin-l4d2</module>
+        <module>plugin-dnf-tw</module>
     </modules>
 
     <properties>
