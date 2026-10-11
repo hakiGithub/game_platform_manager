@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gameplatform</groupId>
+        <artifactId>game-platform-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <!--
+      dnf-tw 交付载体的插件 JAR（design.md §3.3 组 J、§7.3 B-14/B-15）。
+
+      两条刻意与 plugin-l4d2 不同：
+        1. 无 frontend/ —— 本模块不提供插件前端（FR-22 / AC-23 ④），ADR-0003 也不引入 standalone 模式；
+        2. finalName 取 ${project.artifactId}-${plugin.version} —— §9.1 上线顺序 ② 的热部署命令
+           按 plugin-dnf-tw-core-1.0.0.jar 点名（走「指定 jar + 环境变量覆盖」那条路，不改脚本），
+           版本号只写在 plugin.version 一处。
+
+      与验收资产 plugin-stub 的区别：本模块挂在 backend/pom.xml 的默认 <modules> 上，
+      是产品模块；桩插件只在 acceptance-assets profile 里出现、不进发布物（AC-26 ②③）。
+    -->
+    <artifactId>plugin-dnf-tw-core</artifactId>
+    <packaging>jar</packaging>
+    <name>DNF Tw Plugin Core</name>
+    <description>DNF台服 游戏增强插件 - 核心 JAR（版本目录为占位模板，不可上线）</description>
+
+    <properties>
+        <plugin.id>plugin-dnf-tw</plugin.id>
+        <plugin.class>com.gameplatform.plugin.dnftw.DnfTwPlugin</plugin.class>
+        <plugin.version>1.0.0</plugin.version>
+        <plugin.provider>GamePlatform</plugin.provider>
+        <plugin.description>DNF台服 部署扩展声明插件（版本目录为占位模板，不可上线）</plugin.description>
+    </properties>
+
+    <dependencies>
+        <!-- 插件 SDK：扩展点与部署扩展声明类型（运行期由主应用提供） -->
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-plugin</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.gameplatform</groupId>
+            <artifactId>game-platform-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- PF4J 插件框架 -->
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 版本目录模板载体是 YAML：与主应用同一份 snakeyaml（parentFirst 委派，插件不自带） -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 模块直接使用 slf4j；显式声明避免靠传递依赖调解 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- 见上文注释 2：产物名 = plugin-dnf-tw-core-<plugin.version>.jar -->
+        <finalName>${project.artifactId}-${plugin.version}</finalName>
+        <plugins>
+            <!-- 显式声明 maven-compiler-plugin，确保用 UTF-8 读取源文件（Windows 默认 GBK 会坏中文常量） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+            <!-- PF4J 插件清单 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Plugin-Id>${plugin.id}</Plugin-Id>
+                            <Plugin-Class>${plugin.class}</Plugin-Class>
+                            <Plugin-Version>${plugin.version}</Plugin-Version>
+                            <Plugin-Provider>${plugin.provider}</Plugin-Provider>
+                            <Plugin-Description>${plugin.description}</Plugin-Description>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+                <executions>
+                    <!-- 提前到 process-test-classes 再打一份到 target/plugins/，让「经 PF4J 真实加载」
+                         用例在 test 阶段就能拿到插件 JAR。必须带 classifier，否则与 package 阶段
+                         的 default-jar 同坐标会被 maven-jar-plugin 拒绝。 -->
+                    <execution>
+                        <id>stage-plugin-jar-for-load-test</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/plugins</outputDirectory>
+                            <classifier>staged</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

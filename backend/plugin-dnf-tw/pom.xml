@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.gameplatform</groupId>
+        <artifactId>game-platform-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <!--
+      交付载体（design.md §3.3 组 J、§7.3 B-14；PRD FR-22 / FR-23 / AC-23 / AC-24）。
+
+      本期 OP-02 裁决把 dnf-tw 定性为「框架 + 版本目录占位模板，显式标注不可上线」，
+      所以本聚合模块的元数据也带着那句标注：插件清单与模块元数据两处都要可见（AC-24 ⑤）。
+      布局参照 plugin-l4d2，但**不建 frontend**（FR-22 / AC-23 ④；ADR-0003 亦不引入 standalone 模式）。
+    -->
+    <artifactId>plugin-dnf-tw</artifactId>
+    <packaging>pom</packaging>
+    <name>DNF Tw Plugin Aggregator</name>
+    <description>DNF台服 游戏增强插件聚合模块（core）——版本目录为占位模板，不可上线</description>
+
+    <modules>
+        <module>plugin-dnf-tw-core</module>
+    </modules>
+
+</project>
