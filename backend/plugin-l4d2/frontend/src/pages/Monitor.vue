@@ -228,6 +228,7 @@ import {
   type SystemMetricVO
 } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
+import { usePolling } from '@/composables/usePolling'
 
 const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
@@ -278,7 +279,6 @@ async function handleSwitchChange(val: boolean | string | number) {
 
 // ===== 实时状态 =====
 const currentStatus = ref<MonitorStatusVO | null>(null)
-let statusTimer: ReturnType<typeof setInterval> | null = null
 
 const cpuPercent = computed(() => round(currentStatus.value?.cpuPercent, 1, 0, 100))
 const cpuStatus = computed<'success' | 'warning' | 'exception' | ''>(() => {
@@ -503,16 +503,13 @@ onMounted(async () => {
   await loadConfig()
   resetHistoryRange()
   await Promise.all([refreshStatus(), loadHistory()])
-  // 1 秒轮询实时状态
-  statusTimer = setInterval(refreshStatus, 1000)
   window.addEventListener('resize', handleResize)
 })
 
+// 1 秒轮询实时状态（usePolling 的在途守卫保证慢接口下不堆叠请求）
+usePolling(refreshStatus, { intervalMs: 1000 })
+
 onBeforeUnmount(() => {
-  if (statusTimer) {
-    clearInterval(statusTimer)
-    statusTimer = null
-  }
   window.removeEventListener('resize', handleResize)
   historyChart?.dispose()
   historyChart = null

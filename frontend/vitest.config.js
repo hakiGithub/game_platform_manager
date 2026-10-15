@@ -45,7 +45,13 @@ export default defineConfig({
         statements: 70
       },
       // 包含和排除的文件
-      include: ['src/utils/**/*.js', 'src/stores/**/*.js', 'src/api/**/*.js', 'src/plugins/**/*.js'],
+      include: [
+        'src/utils/**/*.js',
+        'src/stores/**/*.js',
+        'src/api/**/*.js',
+        'src/plugins/**/*.js',
+        'src/composables/**/*.js'
+      ],
       exclude: ['src/tests/**', 'node_modules/**']
     },
     // 设置文件
