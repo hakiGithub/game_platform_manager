@@ -192,7 +192,7 @@ jobs:
 
 **`.github/workflows/e2e-nightly.yml`** — 该文件不存在，当前没有任何定时或 CI 触发的 E2E 作业。
 
-> 若要落地，下面 YAML 里的 `npx playwright test` 需换成受管入口 `npm run e2e`（`e2e/runner.mjs`）：真实用例集由 runner 临时拉起后端+前端并在结束后清理，裸调 Playwright 不会起被测栈。牺牲主机凭据缺失时，主机类用例整组 `SKIP (no test host)`（见 `frontend/e2e/README.md`）。
+> 若要落地，下面 YAML 里的 `npx playwright test` 需换成受管入口 `npm run e2e`（`e2e/runner.mjs`）：真实用例集由 runner 临时拉起后端+前端并在结束后清理，裸调 Playwright 不会起被测栈。这里的"清理"含 `killPort(3000/8080)`，在 CI 容器里无害，但与本机开发混跑时会杀掉无关进程（见 §5 的端口副作用警告）。牺牲主机凭据缺失时，主机类用例整组 `SKIP (no test host)`（见 `frontend/e2e/README.md`）。
 
 ```yaml
 name: E2E Tests (Nightly)
@@ -318,6 +318,14 @@ cd frontend && npm ci && npm run test:run
 ```
 
 E2E 不属于 CI 门禁，用受管入口单独跑：`cd frontend && npm run e2e`（整轮编排 `npm run e2e:round`，报告 `npm run e2e:report`）。
+
+> ⚠️ **受管模式会杀掉端口上的进程，不管那是谁。** `e2e/runner.mjs` 的 `startStack()`/`stopStack()` 无条件 `killPort(FRONTEND_PORT)` 与 `killPort(BACKEND_PORT)`，端口取自 `E2E_BASE_URL` / `E2E_BACKEND_URL`（缺省 `3000` / `8080`，见 `e2e/support/env.js`）。若 3000 被本仓库以外的应用占用，跑一次 E2E 就会终止它。规避：显式改端口
+>
+> ```bash
+> E2E_BASE_URL=http://localhost:3100 E2E_BACKEND_URL=http://localhost:8080 npm run e2e
+> ```
+>
+> 或用附着模式 `npm run e2e:attach` —— 该模式不起栈也不清理（`runner.mjs` 中 `if (!ATTACH) stopStack()`），因此不碰任何端口，但要求被测栈已在运行。
 
 ### 5.1 一键模拟脚本（提案，未落地）
 
