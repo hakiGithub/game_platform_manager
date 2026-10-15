@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { usePolling } from "@/composables/usePolling";
 import { ElMessage } from "element-plus";
 import {
   getHostDetail,
@@ -22,7 +23,6 @@ const host = ref(null);
 const statusSnapshot = ref(null);
 const resources = ref(null);
 const connectionResult = ref(null);
-let refreshTimer = null;
 
 const currentStatus = computed(
   () => statusSnapshot.value?.status ?? host.value?.status ?? 0,
@@ -174,13 +174,12 @@ function parseTags(value) {
 
 onMounted(() => {
   fetchHostDetail();
-  refreshTimer = setInterval(() => {
-    if (isOnline.value) refreshHostTelemetry();
-  }, 10000);
 });
 
-onBeforeUnmount(() => {
-  if (refreshTimer) clearInterval(refreshTimer);
+// 遥测轮询：主机离线时门控为假 → 定时器根本不跑（原先定时器照跑、只跳过拉取）
+usePolling(refreshHostTelemetry, {
+  intervalMs: 10000,
+  enabled: () => isOnline.value,
 });
 </script>
 

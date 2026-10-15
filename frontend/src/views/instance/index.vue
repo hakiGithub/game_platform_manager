@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -13,6 +13,7 @@ import {
 import { getHostList } from "@/api/host";
 import DeployProgress from "@/components/DeployProgress.vue";
 import { statusType, statusIcon, statusColor, ACTIVE_STATUSES } from "@/utils/instanceStatus";
+import { usePolling } from "@/composables/usePolling";
 
 const router = useRouter();
 
@@ -106,8 +107,8 @@ async function handleRetryDeploy(row) {
     );
     await retryDeploy(row.id);
     ElMessage.success("已重新触发部署");
+    // fetchData 后实例进入过渡态，usePolling 的 enabled 自动翻真 → 轮询恢复
     fetchData();
-    startAutoRefresh();
   } catch (e) {
     if (e !== "cancel") {
       ElMessage.error("重试部署失败: " + (e.message || "未知错误"));
@@ -152,29 +153,15 @@ async function fetchData() {
   }
 }
 
-// 列表自动刷新（存在活跃过渡态时）
-let autoRefreshTimer = null;
-
-function startAutoRefresh() {
-  stopAutoRefresh();
-  autoRefreshTimer = setInterval(() => {
-    const hasActive = tableData.value.some((row) =>
-      ACTIVE_STATUSES.includes(row.status)
-    );
-    if (hasActive) {
-      fetchData();
-    } else {
-      stopAutoRefresh();
-    }
-  }, 5000);
-}
-
-function stopAutoRefresh() {
-  if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer);
-    autoRefreshTimer = null;
-  }
-}
+// 列表自动刷新（存在活跃过渡态时）—— 门控交给 usePolling 的 enabled，
+// 自停后由用户动作 / 状态刷新让门控翻真即可恢复（原先只在 onMounted 武装一次，
+// 自停后再无恢复路径）。
+// 有意不取 refresh：本视图多处直接调 fetchData() 做「用户动作后立即刷新」，
+// 而 refresh 在途时会 no-op，语义不等价。
+usePolling(fetchData, {
+  intervalMs: 5000,
+  enabled: () => tableData.value.some((row) => ACTIVE_STATUSES.includes(row.status)),
+});
 
 // 搜索
 function handleSearch() {
@@ -392,11 +379,7 @@ function formatRefreshTime() {
 
 onMounted(() => {
   fetchHostOptions();
-  fetchData().then(() => startAutoRefresh());
-});
-
-onBeforeUnmount(() => {
-  stopAutoRefresh();
+  fetchData();
 });
 </script>
 

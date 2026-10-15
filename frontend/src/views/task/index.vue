@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -11,6 +11,7 @@ import {
   deleteTask,
 } from "@/api/task";
 import SchedulePanel from "./SchedulePanel.vue";
+import { usePolling } from "@/composables/usePolling";
 
 const router = useRouter();
 
@@ -40,9 +41,6 @@ const query = reactive({
 
 // 操作加载状态
 const opLoading = ref({});
-
-// 自动刷新定时器（仅当有未完成任务时启动）
-let refreshTimer = null;
 
 // ==================== 状态选项 ====================
 
@@ -88,8 +86,8 @@ async function fetchTaskList() {
     taskList.value = data?.records || [];
     total.value = data?.total || 0;
     lastRefreshAt.value = formatRefreshTime();
-    // 根据是否有未完成任务决定是否启动自动刷新
-    updateAutoRefresh();
+    // 自动刷新的起停由 usePolling 的 enabled 响应 taskList 变化自动完成，
+    // 不再需要在此手工重新武装
   } catch (error) {
     ElMessage.error("获取任务列表失败：" + (error.message || ""));
     taskList.value = [];
@@ -124,24 +122,13 @@ function hasUnfinishedTasks() {
   );
 }
 
-function updateAutoRefresh() {
-  if (hasUnfinishedTasks()) {
-    if (!refreshTimer) {
-      refreshTimer = setInterval(() => {
-        fetchTaskList();
-      }, 5000);
-    }
-  } else {
-    stopAutoRefresh();
-  }
-}
+// ==================== 自动刷新 ====================
 
-function stopAutoRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-}
+// 仅当存在未完成任务时轮询（enabled 是唯一真值源，起停自动跟随）
+usePolling(fetchTaskList, {
+  intervalMs: 5000,
+  enabled: hasUnfinishedTasks,
+});
 
 // ==================== 操作 ====================
 
@@ -314,10 +301,6 @@ onMounted(() => {
   fetchTaskTypes();
   fetchTaskStats();
   fetchTaskList();
-});
-
-onUnmounted(() => {
-  stopAutoRefresh();
 });
 </script>
 

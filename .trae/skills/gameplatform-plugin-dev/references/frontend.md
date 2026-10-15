@@ -90,6 +90,7 @@ plugin-{gameCode}/frontend/
 主应用为暗色 "Night Operations" 设计语言，插件前端必须对齐，否则嵌入时白底刺眼、视觉割裂。
 
 - **token 复制而非共享**：Wujie shadow DOM 不继承宿主 CSS 变量，构建期跨目录 import 又破坏插件独立打包——把主应用 `frontend/src/styles/variables.scss` 完整复制到 `plugin-{gameCode}/frontend/src/styles/variables.scss`，两份文件头部互相注明同步关系；小工具（`utils/terminalTheme.js` 等）同样复制。
+- **行为类工具同样复制（ADR-0030）**：带逻辑、会演化的模块（如 `composables/usePolling.ts`）也走复制，不跨构建共享。与常量/样式副本不同：主应用是 `.js`、插件侧是 `.ts`，同步是**移植逻辑**而非整文件覆盖；两侧单测保持同一组用例，作为「行为等价」的可执行约定。同步点见 ADR-0030 的 Consequences。
 - **暗色单主题**：`main.ts` 直接 `document.documentElement.classList.add('dark')`，不实现 themeInfo 明暗切换（Wujie 是唯一生产运行模式，宿主永远暗色）。
 - **页面模式**：统一页头（mono kicker `GAMECODE COMMAND / XXX` + 标题 + 描述 + 操作区）、状态用 `status-dot` + `--platform-status-*`、卡片 surface-1 + 1px line 边框 + 6px 圆角无阴影、卡片内不再出现裸十六进制浅色。
 - **⚠️ sass 私有成员陷阱**：主应用 variables.scss 的变量名以 `$--` 开头（如 `$--color-primary`）。主应用用旧版 `@import` 能读；插件若用 `@use ... as *`（vite additionalData 注入），**前导 `-` 的成员是私有的、不可见**，会报 Undefined variable。复制到插件时须去掉 `$--` 前缀（`$--color-primary` → `$color-primary`）。
