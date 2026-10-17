@@ -19,7 +19,7 @@
     跳过后端编译步骤
 
 .PARAMETER FrontendPort
-    前端端口（默认 3000）
+    前端端口（默认 3000）；传 0 自动选择空闲端口
 
 .PARAMETER DbPath
     自定义数据库路径（默认：backend/data/game_platform.db）
@@ -81,6 +81,7 @@ $script:STARTUP_LOG_FILE = Join-Path $LOG_DIR "restart-all.log"
 function Write-Log {
     param(
         [string]$Level = "INFO",
+        [AllowEmptyString()]
         [string]$Message = ""
     )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -206,7 +207,15 @@ if (-not $FrontendOnly) {
     Write-LogInfo "后端应用日志: $BACKEND_DIR\logs\application.log"
 }
 if (-not $BackendOnly) {
-    Write-LogInfo "前端访问地址: http://localhost:$FrontendPort"
+    $actualFrontendPort = $FrontendPort
+    $frontendPortFile = Join-Path $PROJECT_DIR "logs\frontend.port"
+    if (Test-Path $frontendPortFile) {
+        $savedFrontendPort = Get-Content $frontendPortFile -ErrorAction SilentlyContinue
+        if ($savedFrontendPort -match '^\d+$') {
+            $actualFrontendPort = [int]$savedFrontendPort
+        }
+    }
+    Write-LogInfo "前端访问地址: http://localhost:$actualFrontendPort"
     Write-LogInfo "前端应用日志: $FRONTEND_DIR\logs\frontend.log"
 }
 

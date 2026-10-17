@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login } from "../../support/api.js";
+import { createApi, login, removeHostsByName } from "../../support/api.js";
 
 skipWithoutTestHost();
 
@@ -35,6 +35,17 @@ test.describe.serial("l4d2 插件子应用", () => {
   let api = null;
   let instanceId = null;
 
+  /**
+   * Wujie 子应用在连续页面跳转时会保留上次渲染一瞬。等待目标页根节点，
+   * 确保后续断言针对的是新页面而不是过渡期快照。
+   */
+  async function gotoPluginPage(page, path, rootSelector) {
+    await page.goto(`/extensions/app/l4d2/${path}?instanceId=${instanceId}`);
+    await expect(page.locator(rootSelector)).toBeVisible({
+      timeout: 30_000,
+    });
+  }
+
   test.beforeAll(async () => {
     // beforeAll 钩子超时默认等于用例超时（30s），显式放宽以容纳部署轮询
     test.setTimeout(30 * 60_000);
@@ -45,6 +56,7 @@ test.describe.serial("l4d2 插件子应用", () => {
       e2eEnv.adminPass,
     );
     api = createApi(e2eEnv.backendUrl, token);
+    await removeHostsByName(api, HOST_NAME);
 
     const created = await api.post("/api/hosts", {
       name: HOST_NAME,
@@ -128,7 +140,11 @@ test.describe.serial("l4d2 插件子应用", () => {
     await page.goto("/extensions/plugins/list");
 
     const card = page.locator(".plugin-card", { hasText: "l4d2" });
-    await card.getByRole("button", { name: "进入工作区" }).click();
+    const workspaceButton = card.getByRole("button", {
+      name: "进入工作区",
+    });
+    await expect(workspaceButton).toBeVisible({ timeout: 30_000 });
+    await workspaceButton.click();
     // 单实例直跳；多实例时弹出选择框——选第一行（两种分支都归一到工作区 URL）
     const selectDialog = page.getByRole("dialog", { hasText: "选择管理目标" });
     try {
@@ -162,11 +178,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/dashboard?instanceId=${instanceId}`);
-
-    await expect(page.locator(".dashboard-page")).toBeVisible({
-      timeout: 30_000,
-    });
+    await gotoPluginPage(page, "dashboard", ".dashboard-page");
     // 运行中实例：hero 状态与指标卡
     await expect(page.locator(".hero-state")).toContainText("运行", {
       timeout: 15_000,
@@ -179,7 +191,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/rcon?instanceId=${instanceId}`);
+    await gotoPluginPage(page, "rcon", ".rcon-page");
 
     const input = page.getByPlaceholder("输入 RCON 命令...");
     await expect(input).toBeVisible({ timeout: 30_000 });
@@ -203,7 +215,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(3 * 60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/maps?instanceId=${instanceId}`);
+    await gotoPluginPage(page, "maps", ".maps-page");
 
     // 上传 fixtures VPK（分片上传）
     await page.getByRole("button", { name: "上传地图" }).click();
@@ -272,8 +284,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(2 * 60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/plugins?instanceId=${instanceId}`);
-
+    await gotoPluginPage(page, "plugins", ".plugins-page");
     await page.getByRole("button", { name: "上传插件" }).click();
     const dialog = page.getByRole("dialog").first();
     await expect(dialog).toContainText("上传插件");
@@ -312,7 +323,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/plugins?instanceId=${instanceId}`);
+    await gotoPluginPage(page, "plugins", ".plugins-page");
 
     // 切到「远端仓库」tab（lazy 挂载后触发列表加载）
     await page.getByRole("tab", { name: "远端仓库" }).click();
@@ -336,7 +347,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/maps?instanceId=${instanceId}`);
+    await gotoPluginPage(page, "maps", ".maps-page");
 
     const row = page.locator(".el-table__row", { hasText: "e2e-test-map.vpk" });
     await expect(row).toBeVisible({ timeout: 30_000 });
@@ -356,9 +367,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
 
     const nameInput = page.getByLabel("服务器名称");
     await expect(nameInput).toBeVisible({ timeout: 30_000 });
@@ -373,20 +382,28 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(90_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
 
     const formItem = (label) =>
       page.locator(".el-form-item", { hasText: label });
+    await expect(page.getByLabel("服务器名称")).toBeVisible({
+      timeout: 30_000,
+    });
     await formItem("最大玩家数").locator("input").fill("10");
     await page.getByPlaceholder("c1m1_hotel").fill("c9m2_parish");
 
-    // 下拉：游戏模式 → 对抗 (versus)；难度 → 专家 (impossible)
-    await formItem("游戏模式").locator(".el-select").click();
-    await page.getByRole("option", { name: /versus/ }).click();
-    await formItem("难度").locator(".el-select").click();
-    await page.getByRole("option", { name: /impossible/ }).click();
+    // Wujie + ElSelect teleport 下鼠标定位不稳定，用输入框键盘选择真实枚举值。
+    const gameModeSelect = formItem("游戏模式").locator(".el-select");
+    await gameModeSelect.click();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+
+    const difficultySelect = formItem("难度").locator(".el-select");
+    await difficultySelect.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
 
     await page.getByRole("button", { name: "保存配置" }).click();
     await expect(page.getByText(/已保存并同步/)).toBeVisible({
@@ -401,18 +418,25 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(page.getByPlaceholder("c1m1_hotel")).toHaveValue(
       "c9m2_parish",
     );
+    await expect(
+      formItem("游戏模式").locator(".el-select__placeholder:visible"),
+    ).toHaveText(/versus/);
+    await expect(
+      formItem("难度").locator(".el-select__placeholder:visible"),
+    ).toHaveText(/impossible/);
   });
 
   test("额外配置 KV 行增删与持久化", async ({ page }) => {
     test.setTimeout(90_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
+
+    const addRowButton = page.getByRole("button", { name: "增加行" });
+    await expect(addRowButton).toBeVisible({ timeout: 30_000 });
 
     // 1. 增加一行，填唯一键值
-    await page.getByRole("button", { name: "增加行" }).click();
+    await addRowButton.click();
     const row = page.locator(".el-table__row").last();
     await row.getByPlaceholder("如 sv_consistency").fill("sv_e2e_test");
     await row.getByPlaceholder("如 1").fill("1");
@@ -425,6 +449,7 @@ test.describe.serial("l4d2 插件子应用", () => {
 
     // 3. 刷新回读
     await page.reload();
+    await expect(addRowButton).toBeVisible({ timeout: 30_000 });
     await expect(
       page.getByPlaceholder("如 sv_consistency").first(),
     ).toHaveValue("sv_e2e_test", { timeout: 30_000 });
@@ -441,9 +466,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
 
     const textarea = page.getByPlaceholder(/在此输入自定义配置/);
     await expect(textarea).toBeVisible({ timeout: 30_000 });
@@ -459,26 +482,30 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
 
+    await expect(page.getByPlaceholder(/在此输入自定义配置/)).toBeVisible({
+      timeout: 30_000,
+    });
     await page.getByRole("button", { name: "查看原始文件" }).click();
     const dialog = page.getByRole("dialog", {
       hasText: "查看 / 编辑原始配置文件",
     });
     await expect(dialog).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.locator("textarea").first()).not.toBeEmpty();
+    await expect(dialog.locator("textarea").first()).not.toBeEmpty({
+      timeout: 30_000,
+    });
   });
 
   test("重载配置指令下发", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(
-      `/extensions/app/l4d2/server-config?instanceId=${instanceId}`,
-    );
+    await gotoPluginPage(page, "server-config", ".server-config-page");
 
+    await expect(page.getByLabel("服务器名称")).toBeVisible({
+      timeout: 30_000,
+    });
     await page.getByRole("button", { name: "重载配置" }).click();
     // 确认框（RCON 密码受 retag 镜像限制，发送成功/失败均视为链路正常）
     await page
@@ -494,7 +521,7 @@ test.describe.serial("l4d2 插件子应用", () => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto(`/extensions/app/l4d2/restart?instanceId=${instanceId}`);
+    await gotoPluginPage(page, "restart", ".restart-page");
 
     await expect(page.getByRole("radio", { name: "RCON 模式" })).toBeVisible({
       timeout: 30_000,

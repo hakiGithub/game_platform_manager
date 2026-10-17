@@ -20,7 +20,7 @@
     跳过前端重启
 
 .PARAMETER FrontendPort
-    前端端口（默认 3000）
+    前端端口（默认 3000）；传 0 自动选择空闲端口
 
 .EXAMPLE
     .\rebuild-restart-all.ps1
@@ -70,8 +70,8 @@ function Write-Log {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Level,
-        [Parameter(Mandatory = $true)]
-        [string]$Message
+        [AllowEmptyString()]
+        [string]$Message = ""
     )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
@@ -155,9 +155,19 @@ if (-not $SkipFrontend) {
     # 改为检查指定端口是否监听。
     $frontendOk = $false
     if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+        $expectedFrontendPort = $FrontendPort
+        if ($expectedFrontendPort -eq 0) {
+            $frontendPortFile = Join-Path $PROJECT_DIR "logs\frontend.port"
+            if (Test-Path $frontendPortFile) {
+                $savedFrontendPort = Get-Content $frontendPortFile -ErrorAction SilentlyContinue
+                if ($savedFrontendPort -match '^\d+$') {
+                    $expectedFrontendPort = [int]$savedFrontendPort
+                }
+            }
+        }
         for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep -Seconds 1
-            $listening = netstat -ano | Select-String ":$FrontendPort\s+.*LISTENING"
+            $listening = netstat -ano | Select-String ":$expectedFrontendPort\s+.*LISTENING"
             if ($listening) { $frontendOk = $true; break }
         }
     } else {
@@ -165,11 +175,32 @@ if (-not $SkipFrontend) {
     }
 
     if (-not $frontendOk) {
-        Write-LogError "前端重启失败 (exit code: $LASTEXITCODE, $FrontendPort 端口未监听)"
+        Write-LogError "前端重启失败 (exit code: $LASTEXITCODE, $expectedFrontendPort 端口未监听)"
         exit 1
     }
 
-    Write-LogInfo "前端重启成功"
+    $actualFrontendPort = $FrontendPort
+    $frontendPortFile = Join-Path $PROJECT_DIR "logs\frontend.port"
+    if (Test-Path $frontendPortFile) {
+        $savedFrontendPort = Get-Content $frontendPortFile -ErrorAction SilentlyContinue
+        if ($savedFrontendPort -match '^\d+$') {
+            $actualFrontendPort = [int]$savedFrontendPort
+        }
+    }
+    Write-LogInfo "前端重启成功 (端口 $actualFrontendPort)"
+
+    # 前端脚本启动后等待端口监听，但启动器可能在端口出现后稍晚退出；
+    # 统一回写实际监听 PID，避免根 logs/frontend.pid 与 Vite 进程不一致。
+    $frontendPidFile = Join-Path $PROJECT_DIR "logs\frontend.pid"
+    for ($i = 0; $i -lt 10; $i++) {
+        $listener = Get-NetTCPConnection -LocalPort $actualFrontendPort -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($listener) {
+            $listener.OwningProcess | Out-File -FilePath $frontendPidFile -Encoding ascii -Force
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
 } else {
     Write-LogWarn "跳过前端重启"
 }
@@ -180,6 +211,14 @@ Write-LogInfo "#          全栈编译并重启完成                      #"
 Write-LogInfo "###################################################"
 Write-LogInfo "后端访问: http://localhost:8080"
 if (-not $SkipFrontend) {
-    Write-LogInfo "前端访问: http://localhost:$FrontendPort"
+    $finalFrontendPort = $FrontendPort
+    $finalPortFile = Join-Path $PROJECT_DIR "logs\frontend.port"
+    if (Test-Path $finalPortFile) {
+        $savedFinalPort = Get-Content $finalPortFile -ErrorAction SilentlyContinue
+        if ($savedFinalPort -match '^\d+$') {
+            $finalFrontendPort = [int]$savedFinalPort
+        }
+    }
+    Write-LogInfo "前端访问: http://localhost:$finalFrontendPort"
 }
 Write-LogInfo "默认账号: admin / admin123"

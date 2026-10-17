@@ -150,8 +150,11 @@ const currentGameRunningCount = computed(
 // 实例展开缓存：{ [gameId]: { loading, loaded, list } }
 const instanceMap = ref({});
 
+let gameListRequestId = 0;
+
 // 获取游戏列表
 async function fetchGameList() {
+  const requestId = ++gameListRequestId;
   loading.value = true;
   try {
     const data = await getGamePage({
@@ -159,16 +162,20 @@ async function fetchGameList() {
       size: pagination.size,
       keyword: searchForm.keyword || undefined,
     });
+    if (requestId !== gameListRequestId) return;
     gameList.value = data.records || [];
     pagination.total = data.total || 0;
     lastRefreshAt.value = formatRefreshTime();
     // 重置实例缓存
     instanceMap.value = {};
   } catch (error) {
+    if (requestId !== gameListRequestId) return;
     console.error("Failed to fetch game list:", error);
     ElMessage.error("获取游戏列表失败");
   } finally {
-    loading.value = false;
+    if (requestId === gameListRequestId) {
+      loading.value = false;
+    }
   }
 }
 

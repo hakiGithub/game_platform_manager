@@ -22,6 +22,7 @@ const instanceDialogVisible = ref(false);
 const instanceLoading = ref(false);
 const instanceList = ref([]);
 const currentPluginForInstance = ref(null);
+const enteringPluginId = ref(null);
 
 const gameLabels = {
   minecraft: "Minecraft",
@@ -87,6 +88,8 @@ async function handleEnterPlugin(row) {
     ElMessage.warning("插件未运行，请先启动");
     return;
   }
+  if (enteringPluginId.value) return;
+
   const gameCode = extractGameCode(row.pluginId);
   if (!gameCode) {
     ElMessage.error("无法识别插件游戏编码");
@@ -94,36 +97,37 @@ async function handleEnterPlugin(row) {
   }
 
   // 先查实例列表：0 个提示部署、1 个自动选中进入、多个弹窗选择
+  enteringPluginId.value = row.pluginId;
   instanceLoading.value = true;
   instanceList.value = [];
   try {
     const data = await getInstanceList({ gameCode, current: 1, size: 100 });
     instanceList.value = data?.records || [];
+
+    if (instanceList.value.length === 0) {
+      ElMessage.warning(`未找到游戏编码 ${gameCode} 的实例，请先部署对应游戏`);
+      return;
+    }
+    if (instanceList.value.length === 1) {
+      // 唯一实例：默认选中直接进入，无需弹窗
+      enterPluginWithInstance(gameCode, instanceList.value[0]);
+      return;
+    }
+
+    currentPluginForInstance.value = { row, gameCode };
+    instanceDialogVisible.value = true;
   } catch (error) {
     ElMessage.error("获取实例列表失败：" + (error.message || ""));
+  } finally {
     instanceLoading.value = false;
-    return;
+    enteringPluginId.value = null;
   }
-
-  if (instanceList.value.length === 0) {
-    ElMessage.warning(`未找到游戏编码 ${gameCode} 的实例，请先部署对应游戏`);
-    return;
-  }
-  if (instanceList.value.length === 1) {
-    // 唯一实例：默认选中直接进入，无需弹窗
-    enterPluginWithInstance(gameCode, instanceList.value[0]);
-    return;
-  }
-
-  currentPluginForInstance.value = { row, gameCode };
-  instanceDialogVisible.value = true;
-  instanceLoading.value = false;
 }
 
 /** 进入插件（实例信息仅传 instanceId，其余由插件页反查补全） */
 function enterPluginWithInstance(gameCode, instance) {
   router.push({
-    path: `/plugin/${gameCode}`,
+    path: `/extensions/app/${gameCode}/dashboard`,
     query: { instanceId: instance.id },
   });
 }
@@ -353,7 +357,8 @@ onMounted(fetchPluginList);
           <el-button
             class="workspace-button"
             type="primary"
-            :disabled="!row.running"
+            :disabled="!row.running || enteringPluginId === row.pluginId"
+            :loading="enteringPluginId === row.pluginId"
             @click="handleEnterPlugin(row)"
           >
             进入工作区

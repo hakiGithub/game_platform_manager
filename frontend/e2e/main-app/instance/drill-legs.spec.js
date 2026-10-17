@@ -11,7 +11,7 @@
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login } from "../../support/api.js";
+import { createApi, login, removeHostsByName } from "../../support/api.js";
 import {
   cleanupStaleE2EContainers,
   waitForLinuxGsmReady,
@@ -52,6 +52,7 @@ test.describe.serial("dst / sdtd 演练腿", () => {
       e2eEnv.adminPass,
     );
     api = createApi(e2eEnv.backendUrl, token);
+    await removeHostsByName(api, HOST_NAME);
     const created = await api.post("/api/hosts", {
       name: HOST_NAME,
       ip: e2eEnv.testHost.address,

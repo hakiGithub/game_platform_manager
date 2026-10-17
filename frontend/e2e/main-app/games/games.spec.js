@@ -13,7 +13,11 @@ import { test, expect } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { injectSession } from "../../support/session.js";
-import { createApi, login } from "../../support/api.js";
+import {
+  createApi,
+  login,
+  removeGamesByCode,
+} from "../../support/api.js";
 import { e2eEnv } from "../../support/env.js";
 
 const FIXTURE_YML = join(
@@ -22,6 +26,18 @@ const FIXTURE_YML = join(
 );
 
 test.describe.serial("游戏元数据", () => {
+  let api = null;
+
+  test.beforeAll(async () => {
+    const token = await login(
+      e2eEnv.backendUrl,
+      e2eEnv.adminUser,
+      e2eEnv.adminPass,
+    );
+    api = createApi(e2eEnv.backendUrl, token);
+    await removeGamesByCode(api, "e2edrill");
+  });
+
   test("元数据全量注册守护（yml 与配置类不同步会表现为注册数骤降）", async ({
     request,
   }) => {
@@ -48,7 +64,9 @@ test.describe.serial("游戏元数据", () => {
     await injectSession(page);
     await page.goto("/services/games/list");
 
-    await expect(page.getByRole("heading", { name: "游戏目录" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "游戏目录" })).toBeVisible({
+      timeout: 15_000,
+    });
     // 元数据 139 个游戏分页展示，l4d2 未必在第一页——用关键词筛选定位
     await page.getByPlaceholder("例如：minecraft").fill("l4d2");
     await page.getByRole("button", { name: "应用筛选" }).click();

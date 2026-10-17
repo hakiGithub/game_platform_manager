@@ -59,3 +59,69 @@ export function createApi(backendUrl, token) {
     delete: (path) => request("DELETE", path),
   };
 }
+
+export async function findHostsByName(api, name) {
+  const res = await api.get("/api/hosts");
+  const data = res.body?.data;
+  const list = Array.isArray(data) ? data : (data?.records ?? data?.list ?? []);
+  return list.filter((host) => host.name === name);
+}
+
+export async function removeHostsByName(api, name) {
+  for (const host of await findHostsByName(api, name)) {
+    await api.delete(`/api/hosts/${host.id}`).catch(() => {});
+  }
+  const remaining = await findHostsByName(api, name);
+  if (remaining.length > 0) {
+    throw new Error(
+      `测试前置清理失败：主机 ${name} 仍存在（${remaining.map((h) => h.id).join(", ")}）`,
+    );
+  }
+}
+
+export async function removeHostsByPrefix(api, prefix) {
+  const res = await api.get("/api/hosts");
+  const data = res.body?.data;
+  const list = Array.isArray(data) ? data : (data?.records ?? data?.list ?? []);
+  for (const host of list.filter((item) => item.name?.startsWith(prefix))) {
+    await api.delete(`/api/hosts/${host.id}`).catch(() => {});
+  }
+  const remainingRes = await api.get("/api/hosts");
+  const remainingData = remainingRes.body?.data;
+  const remainingList = Array.isArray(remainingData)
+    ? remainingData
+    : (remainingData?.records ?? remainingData?.list ?? []);
+  const remaining = remainingList.filter((host) =>
+    host.name?.startsWith(prefix),
+  );
+  if (remaining.length > 0) {
+    throw new Error(
+      `测试前置清理失败：名称前缀 ${prefix} 的主机仍存在（${remaining
+        .map((h) => `${h.name}:${h.id}`)
+        .join(", ")}）`,
+    );
+  }
+}
+
+export async function removeGamesByCode(api, gameCode) {
+  const findGames = async () => {
+    const res = await api.get(
+      `/api/games?keyword=${encodeURIComponent(gameCode)}&size=100`,
+    );
+    return (res.body?.data?.records ?? []).filter(
+      (game) => game.gameCode === gameCode,
+    );
+  };
+
+  for (const game of await findGames()) {
+    await api.delete(`/api/games/${game.id}`).catch(() => {});
+  }
+  const remaining = await findGames();
+  if (remaining.length > 0) {
+    throw new Error(
+      `测试前置清理失败：游戏 ${gameCode} 仍存在（${remaining
+        .map((g) => g.id)
+        .join(", ")}）`,
+    );
+  }
+}

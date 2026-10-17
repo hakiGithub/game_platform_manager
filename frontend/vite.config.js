@@ -16,7 +16,8 @@ export default defineConfig({
     }),
     // 自动导入组件
     Components({
-      resolvers: [ElementPlusResolver()],
+      // 主入口已全量加载 Element Plus 样式，避免组件级样式被懒发现后触发开发服务器整页重载。
+      resolvers: [ElementPlusResolver({ importStyle: false })],
       dts: 'src/components.d.ts'
     })
   ],

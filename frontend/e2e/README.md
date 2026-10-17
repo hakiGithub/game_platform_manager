@@ -8,6 +8,7 @@
 cd frontend
 
 # 受管模式（推荐）：临时 SQLite 起后端+前端 → 跑全部用例 → 报告 → 清理
+# 前端自动选择空闲端口；不会占用或杀掉被 WSL 转发等进程占用的 3000/3001。
 npm run e2e
 
 # 整轮编排：六个分组保序执行（无主机用例 → 主机 → 生命周期 → 插件 → 演练腿），
@@ -57,7 +58,7 @@ E2E_TEST_HOST_AUTH=你的密码
 
 | 变量 | 缺省 | 说明 |
 |------|------|------|
-| `E2E_BASE_URL` | `http://localhost:3000` | 前端地址 |
+| `E2E_BASE_URL` | 读取 `logs/frontend.port`，否则 `http://localhost:3000` | 前端地址 |
 | `E2E_BACKEND_URL` | `http://localhost:8080` | 后端地址（API 断言通道） |
 | `E2E_ADMIN_USER` / `E2E_ADMIN_PASS` | `admin` / `admin123` | 种子管理员 |
 | `E2E_TEST_HOST_ADDRESS` / `_PORT` / `_USERNAME` / `_AUTH` | 空 | 牺牲主机凭据；任一缺失 ⇒ 主机类用例整组 `SKIP (no test host)` |

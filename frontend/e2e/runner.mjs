@@ -5,24 +5,29 @@
 //   E2E_FAST=1 npm run e2e          # 受管模式跳过 mvn 编译（要求之前编译过一次，存在 core/target/cp.txt）
 //   npm run e2e -- --attach         # 附着模式：不对 E2E_BASE_URL（缺省 http://localhost:3000）起栈，只跑用例
 //
-// 重复执行安全：受管模式启动前清掉上次残留的临时库；start-all.sh 自身会先释放 8080/3000 端口。
+// 重复执行安全：受管模式启动前清掉上次残留的临时库；start-all.sh 自动避开被占用的前端端口。
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { login } from "./support/api.js";
+import { createApi, login } from "./support/api.js";
 import { e2eEnv } from "./support/env.js";
 
 const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)));
 const FRONTEND_DIR = resolve(E2E_DIR, "..");
 const PROJECT_DIR = resolve(FRONTEND_DIR, "..");
 const TMP_DIR = join(E2E_DIR, ".tmp");
+const FRONTEND_PORT_FILE = join(PROJECT_DIR, "logs", "frontend.port");
+const VITE_CACHE_DIR = join(FRONTEND_DIR, "node_modules", ".vite");
 
 const ATTACH = process.argv.includes("--attach");
 const ROUND = process.argv.includes("--round");
-const BASE_URL = e2eEnv.baseUrl;
+const passthroughIndex = process.argv.indexOf("--");
+const PLAYWRIGHT_ARGS =
+  passthroughIndex === -1 ? [] : process.argv.slice(passthroughIndex + 1);
+let BASE_URL = e2eEnv.baseUrl;
 const BACKEND_URL = e2eEnv.backendUrl;
-const FRONTEND_PORT = new URL(BASE_URL).port || "80";
+let FRONTEND_PORT = new URL(BASE_URL).port || "80";
 const BACKEND_PORT = new URL(BACKEND_URL).port || "80";
 
 const log = (msg) => console.log(`[e2e-runner] ${msg}`);
@@ -78,19 +83,27 @@ async function waitForBackendLogin(backendUrl, timeoutMs = 240_000) {
   await pollUntil(
     async () => {
       const token = await login(backendUrl, e2eEnv.adminUser, e2eEnv.adminPass);
-      return token ? null : "登录响应无 token";
+      if (!token) return "登录响应无 token";
+
+      // ApplicationReadyEvent 监听器会在端口可访问后扫描并写入游戏元数据。
+      // 此时登录已成功，但 SQLite 仍可能持有写锁；以元数据可读作为业务就绪信号。
+      const api = createApi(backendUrl, token);
+      const games = await api.get("/api/games/list");
+      const list = games.body?.data;
+      if (games.status !== 200 || !Array.isArray(list) || list.length === 0) {
+        return `游戏元数据尚未就绪（HTTP ${games.status}, count=${Array.isArray(list) ? list.length : "n/a"}）`;
+      }
+      return null;
     },
     "后端（登录验证）",
     timeoutMs,
   );
 }
 
-// 端口占用清理（与 start-all.sh 的 kill_port 同思路：netstat 找 LISTENING PID 再 taskkill）
-function killPort(port) {
+function stopManagedProcess(port, expectedCommand) {
   if (process.platform === "win32") {
     const out =
       spawnSync("netstat", ["-ano"], { encoding: "utf8" }).stdout ?? "";
-    const pids = new Set();
     for (const line of out.split("\n")) {
       const cols = line.trim().split(/\s+/);
       // TCP  0.0.0.0:8080  0.0.0.0:0  LISTENING  <pid>
@@ -100,12 +113,22 @@ function killPort(port) {
         cols[1].endsWith(`:${port}`) &&
         cols[3] === "LISTENING"
       ) {
-        pids.add(cols[4]);
+        const pid = cols[4];
+        const cmd = spawnSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+          ],
+          { encoding: "utf8" },
+        ).stdout ?? "";
+        if (!expectedCommand.test(cmd)) return false;
+        log(`释放端口 ${port}（停止本项目 PID ${pid}）`);
+        spawnSync("taskkill", ["/F", "/PID", pid], { stdio: "ignore" });
+        return true;
       }
-    }
-    for (const pid of pids) {
-      log(`释放端口 ${port}（杀 PID ${pid}）`);
-      spawnSync("taskkill", ["/F", "/PID", pid], { stdio: "ignore" });
     }
   } else {
     const out =
@@ -114,6 +137,23 @@ function killPort(port) {
       spawnSync("kill", ["-9", pid.trim()], { stdio: "ignore" });
     }
   }
+  return false;
+}
+
+function stopStack() {
+  log(`清理：停止后端 ${BACKEND_PORT} 和前端 ${FRONTEND_PORT} 端口进程`);
+  if (!stopManagedProcess(BACKEND_PORT, /GamePlatformApplication/)) {
+    log(`后端端口 ${BACKEND_PORT} 没有可清理的本项目进程`);
+  }
+  if (
+    !stopManagedProcess(
+      FRONTEND_PORT,
+      /game_platform_manger[\\/]+frontend.*vite/i,
+    )
+  ) {
+    log(`前端端口 ${FRONTEND_PORT} 没有可清理的本项目进程`);
+  }
+  clearTmp();
 }
 
 function clearTmp() {
@@ -125,17 +165,50 @@ function clearTmp() {
   });
 }
 
+function readManagedFrontendPort() {
+  if (!existsSync(FRONTEND_PORT_FILE)) return null;
+  const port = readFileSync(FRONTEND_PORT_FILE, "utf8").trim();
+  return /^\d+$/.test(port) ? port : null;
+}
+
+function optimizeViteDependencies() {
+  const viteCli = join(FRONTEND_DIR, "node_modules", "vite", "bin", "vite.js");
+  if (!existsSync(viteCli)) {
+    throw new Error(`未找到 Vite CLI: ${viteCli}`);
+  }
+  log("预构建 Vite 依赖...");
+  const r = run(process.execPath, [viteCli, "optimize", "--force"], {
+    cwd: FRONTEND_DIR,
+  });
+  if (r.status !== 0) {
+    throw new Error(`Vite 依赖预构建失败，退出码 ${r.status}`);
+  }
+}
+
 function startStack() {
-  // 先释放端口再删临时库：上次残留的后端可能还锁着 sqlite 文件
-  killPort(BACKEND_PORT);
-  killPort(FRONTEND_PORT);
+  // 受管模式自行选端口；不要杀 3000 上的 WSL 转发或其他应用。
+  stopManagedProcess(BACKEND_PORT, /GamePlatformApplication/);
   clearTmp();
+  // Vite 依赖预构建缓存在依赖或浏览器状态变化后可能留下失效 chunk，
+  // Wujie 跨路由加载时会表现为入口 HTML 已返回但 vendor chunk 永不响应。
+  // 缓存可安全重建，受管 E2E 每次从干净版本开始。
+  rmSync(VITE_CACHE_DIR, { recursive: true, force: true });
+  log("已清理 Vite 依赖缓存");
+  optimizeViteDependencies();
+  mkdirSync(TMP_DIR, { recursive: true });
   const dbPath = join(TMP_DIR, `e2e-${Date.now()}.sqlite`).replaceAll(
     "\\",
     "/",
   );
 
-  const args = ["scripts/start-all.sh", "--db", dbPath, "--skip-plugins"];
+  const args = [
+    "scripts/start-all.sh",
+    "--db",
+    dbPath,
+    "--skip-plugins",
+    "--port",
+    "0",
+  ];
   if (
     process.env.E2E_FAST === "1" &&
     existsSync(join(PROJECT_DIR, "backend/core/target/cp.txt"))
@@ -152,14 +225,17 @@ function startStack() {
       `start-all.sh 退出码 ${r.status}，详见 logs/backend.log / logs/frontend.log`,
     );
   }
-  return dbPath;
-}
 
-function stopStack() {
-  log("清理：停止 8080/3000 端口进程");
-  killPort(BACKEND_PORT);
-  killPort(FRONTEND_PORT);
-  clearTmp();
+  const actualFrontendPort = readManagedFrontendPort();
+  if (!actualFrontendPort) {
+    throw new Error(
+      "start-all.sh 未写入 logs/frontend.port，无法确定 E2E 前端地址",
+    );
+  }
+  FRONTEND_PORT = actualFrontendPort;
+  BASE_URL = `http://localhost:${actualFrontendPort}`;
+  process.env.E2E_BASE_URL = BASE_URL;
+  return dbPath;
 }
 
 // 整轮分组：保序执行（无主机用例先行，部署腿最后——插件"零实例"用例依赖未部署状态）
@@ -190,22 +266,25 @@ const ROUND_GROUPS = [
 ];
 
 function runPlaywright(args, opts = {}) {
-  return run(
-    "node",
-    ["node_modules/@playwright/test/cli.js", "test", ...args],
-    {
-      cwd: FRONTEND_DIR,
-      env: {
-        ...process.env,
-        E2E_BASE_URL: BASE_URL,
-        E2E_BACKEND_URL: BACKEND_URL,
-      },
-      ...opts,
+  return run(process.execPath, [
+    "node_modules/@playwright/test/cli.js",
+    "test",
+    ...args,
+  ], {
+    cwd: FRONTEND_DIR,
+    env: {
+      ...process.env,
+      E2E_BASE_URL: BASE_URL,
+      E2E_BACKEND_URL: BACKEND_URL,
     },
-  );
+    ...opts,
+  });
 }
 
 function parseSummary(output) {
+  if (typeof output !== "string") {
+    return { passed: 0, failed: 0, skipped: 0, didNotRun: 0 };
+  }
   const pick = (re) => {
     const m = output.match(re);
     return m ? Number(m[1]) : 0;
@@ -277,7 +356,7 @@ async function main() {
 
   log("执行 Playwright 用例...");
   // Windows 下 npx 是 .cmd，spawn 不带 shell 会静默失败 —— 直接用 node 调 CLI 入口
-  const r = runPlaywright([]);
+  const r = runPlaywright(PLAYWRIGHT_ARGS);
   log(`用例执行结束，退出码 ${r.status}（报告: npm run e2e:report）`);
   return r.status ?? 1;
 }

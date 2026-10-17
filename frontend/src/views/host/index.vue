@@ -493,7 +493,7 @@ function handleTerminal(row) {
 
 // 主机详情
 function handleDetail(row) {
-  router.push(`/host/detail/${row.id}`);
+  router.push(`/resources/hosts/detail/${row.id}`);
 }
 
 // 测试连接（表格行）
