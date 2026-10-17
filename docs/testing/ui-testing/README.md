@@ -16,6 +16,9 @@
 | 06 | [Wujie 微前端集成测试](./06-wujie-integration-cases.md) | 主应用与插件子应用通信、菜单、路由集成 |
 | 07 | [E2E 验证清单](./07-e2e-checklist.md) | 手动/半自动 E2E 验收清单（按业务场景） |
 | 08 | [CI 集成与自动化](./08-ci-integration.md) | GitHub Actions / Jenkins 配置、覆盖率门槛 |
+| 09 | [Instance File Service SPI 用例](./09-instance-file-service-spi-cases.md) | 实例文件服务 SPI 契约与边界用例 |
+| 10 | [实例部署演练说明](./10-deploy-instance-walkthrough.md) | l4d2 / DST / SDTD 部署与生命周期演练 |
+| 11 | [E2E 覆盖现状与缺口分析](./11-e2e-coverage-gap-analysis.md) | 当前自动化覆盖、Steam302/L4D2/RCON 缺口与补测顺序 |
 
 ## 快速导航
 
