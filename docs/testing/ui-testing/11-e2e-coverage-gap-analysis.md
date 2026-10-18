@@ -1,26 +1,25 @@
 # 11 - E2E 覆盖现状与缺口分析
 
-> 基线日期：2026-10-18
-> 基线分支：`codex/e2e-port-startup-fixes`
-> 基线提交：`dc7a56d fix: stabilize auto-port startup and e2e runs`
+> 更新日期：2026-10-18
+> 分支：`codex/e2e-port-startup-fixes`
+> 最近验证：三个历史失败 spec 附着重跑全绿；整轮受管验证结果以本轮提交前报告为准
 
 ---
 
 ## 1. 结论摘要
 
-当前 Playwright 用例集共有 **54 项、13 个 spec 文件**。
+当前 Playwright 用例集共有 **68 项、14 个 spec 文件**（含容器认领与 Steam302 专项）。
 
-- `npm run e2e:round` 只编排其中 **52 项**，最近结果：**49 passed / 0 failed / 3 skipped**。
-- `npm run e2e` 的全量发现会额外包含 `main-app/docker/adopt-container.spec.js` 的 **2 项**容器认领用例，但它们没有进入整轮分组。
-- 3 个显式跳过项分别是：L4D2 SourceMod 插件禁用/启用切换；DST LinuxGSM 就绪；SDTD LinuxGSM 就绪。
-- 当前绿灯主要覆盖主应用基础链路、L4D2 Docker 生命周期和 L4D2 子应用主路径；不能据此认为 Steam302、LinuxGSM GitHub 修复链路、L4D2 次要页面和 RCON 失败分支已经覆盖。
+- `npm run e2e:round` 已编排容器认领与 Steam302 专项，共 **68 项**；允许的显式 SKIP 仅限“未配置牺牲主机凭据”时整组跳过。
+- 本环境配置了 WSL 牺牲主机，Steam302、LinuxGSM GitHub 连通性、L4D2 次要页面、SourceMod 启停和 RCON 缺密码分支均已纳入真实执行。
+- 历史三类条件跳过已消除：SourceMod 启停改为真实状态轮询并恢复原状态；DST/SDTD LinuxGSM 就绪在 Steam302 + hosts/CA 修复链路通过后不再跳过；地图列表可见性改为强断言。
 
-最需要优先补齐的四块是：
+当前已补齐的高优先级链路是：
 
-1. **Steam302 + LinuxGSM GitHub 连通性 + CA/hosts 挂载的真实部署链路**：目前环境检查不通即跳过，没有验证修复链路。
-2. **RCON 失败原因和恢复路径**：现有 E2E 只验证一次成功 `status` 和特殊字符命令，失败分支主要停留在 resolver/重试单测。
-3. **L4D2 子应用 8 个次要路由**：现有约 17 个路由中，6 个主路径页有用例，剩余 8 页无 E2E。
-4. **容器认领用例纳入统一执行入口**：用例已存在，但不在 `e2e:round` 中，整轮 PASS 不能代表其通过。
+1. **Steam302 + LinuxGSM GitHub 连通性 + CA/hosts 挂载的真实部署链路**：新增专项 4 项，覆盖停止态自愈、hosts 指向 WSL LAN、容器内 GitHub HTTPS、bridge 容器 DNS/hosts 可见。
+2. **RCON 失败原因和恢复路径**：新增缺密码 E2E 分支，并补 `RconProtocolTest` / `RconConnectionManagerFailureTest`；失败原因区分端口/配置缺失、认证失败、超时、连接关闭与异常响应。
+3. **L4D2 子应用次要路由**：8 个次要页面与 3 个旧路由兼容均有 E2E；SourceMod 上传、精确列表查询、禁用/启用恢复已转绿。
+4. **容器认领纳入统一执行入口**：已加入 `e2e:round` 的“容器认领”分组。
 
 ---
 
@@ -30,35 +29,30 @@
 
 | 命令 | 用例集合 | 最近基线 | 说明 |
 |------|----------|----------|------|
-| `npm run e2e:round` | 六组、52 项 | 49 passed / 0 failed / 3 skipped | 保序整轮，允许显式 SKIP；当前结果为 PASS |
-| `npm run e2e` | Playwright 全量发现、54 项 | 未纳入最近整轮汇总 | 额外发现 2 项容器认领用例 |
+| `npm run e2e:round` | 七组、68 项 | 以本轮最终报告为准 | 保序整轮；仅缺主机凭据时整组 SKIP |
+| `npm run e2e` | Playwright 全量发现、68 项 | 与 round 集合一致 | 容器认领和 Steam302 专项均纳入 |
 
-### 2.2 整轮六组
+### 2.2 整轮七组
 
-| 分组 | 目录/文件 | 用例数 |
-|------|-----------|--------|
-| 冒烟与导航 | `infra`、`auth`、`workspace` | 10 |
-| 无主机页面组 | `games`、`system`、`tasks`、`plugins` | 10 |
-| 主机纳管 | `main-app/host` | 5 |
-| 实例生命周期 L4D2 | `instance/lifecycle.spec.js` | 6 |
-| 插件子应用 L4D2 | `plugins/l4d2` | 15 |
-| DST/SDTD 演练腿 | `instance/drill-legs.spec.js` | 6 |
-| **合计** |  | **52** |
-
-不在整轮内：
-
-| spec | 用例数 | 当前状态 |
-|------|--------|----------|
-| `main-app/docker/adopt-container.spec.js` | 2 | 只有全量 `npm run e2e` 才执行；目标容器不存在时整组跳过 |
+| 分组 | 目录/文件 | 说明 |
+|------|-----------|------|
+| 冒烟与导航 | `infra`、`auth`、`workspace` | 登录、导航、工作台 |
+| 无主机页面组 | `games`、`system`、`tasks`、`plugins` | 游戏/设置/任务/插件扩展台 |
+| 主机纳管 | `main-app/host` | 主机、Steam302 GitHub 专项 |
+| 容器认领 | `docker/adopt-container.spec.js` | 识别、预填、认领、回显、删除 |
+| 实例生命周期 L4D2 | `instance/lifecycle.spec.js` | Docker 五步部署与生命周期 |
+| 插件子应用 L4D2 | `plugins/l4d2` | 主路径、次要页、RCON、SourceMod、仓库 |
+| DST/SDTD 演练腿 | `instance/drill-legs.spec.js` | LinuxGSM 部署到真实就绪 |
 
 ### 2.3 显式跳过与条件分支
 
-| 用例 | 类型 | 当前行为 | 风险 |
+| 用例 | 类型 | 当前行为 | 处理 |
 |------|------|----------|------|
-| `SourceMod 插件禁用/启用切换` | `test.fixme` | 不计入通过 | 插件启停 API 异步行为仍不稳定 |
-| `DST 轮询重试启动至 LinuxGSM 就绪` | 环境预检 SKIP | 容器访问 GitHub 不通时跳过 | 没有验证 Steam302/代理修复后能否转正 |
-| `SDTD 轮询重试启动至 LinuxGSM 就绪` | 环境预检 SKIP | 容器访问 GitHub 不通时跳过 | 同上 |
-| 地图列表可见性 | 用例内条件 SKIP | Docker 实例 addons 对宿主机不可见时跳过后续断言 | 地图上传任务通过，但“地图实际可用”未完全闭环 |
+| 主机依赖整组 | 无 `E2E_TEST_HOST_*` 凭据时 SKIP | 报告明确 `SKIP (no test host)` | 本地/CI 提供 WSL 凭据即可全部执行 |
+| 非本地 WSL 卫生检查 | 分支不适用 | 返回 `skipped: true`，不作为失败 | 仅 WSL 牺牲主机环境适用 |
+| SourceMod 插件禁用/启用切换 | 已移除 `fixme` | 读取真实状态、切换、轮询 API、恢复原状态 | 已纳入整轮 |
+| DST/SDTD LinuxGSM 就绪 | 已移除环境阻塞跳过 | 容器内 GitHub/CA/hosts 预检通过后轮询 `/app/<shortname>` | 已纳入整轮 |
+| 地图列表可见性 | 已移除条件跳过 | 上传任务 COMPLETED 后强断言列表出现 VPK | 已纳入整轮 |
 
 ---
 
@@ -85,7 +79,7 @@
 | 游戏目录 | 元数据注册数量守护、内置游戏可见、关键词筛选/重置、YAML 导入、删除清理 |
 | 任务中心 | 列表结构、任务/定时计划 tab、状态筛选、不存在任务容错 |
 | 系统设置 | 平台名称保存、重新进入后持久化 |
-| 插件扩展台 | L4D2 状态为已启动、零实例进入工作区警告 |
+| 插件扩展台 | L4D2 状态为已启动；按实际实例状态进入工作区或提示未找到实例 |
 
 ### 3.3 实例生命周期与部署
 
@@ -94,8 +88,9 @@
 | L4D2 Docker 五步部署 | 主机、游戏、参数、端口检查、环境校验、提交部署、轮询运行中 | 仅 Docker |
 | 实例详情 | 静态标题、动态指标区、在线玩家面板 | 未断言指标值与刷新周期 |
 | 生命周期 | 停止、启动、重启、卸载 | 未覆盖失败、取消、超时分支 |
-| DST/SDTD LinuxGSM | 部署离开安装中、卸载清理 | 启动到“运行中”当前被环境预检跳过 |
-| 容器认领 | 识别、预填、认领、关联回显、记录级删除 | 不在整轮，依赖固定容器 fixture |
+| DST/SDTD LinuxGSM | 部署、容器内 GitHub/CA/hosts 预检、`/app/<shortname>` 就绪、卸载清理 | 仍需扩展部署失败/超时分支 |
+| 容器认领 | 识别、预填、认领、关联回显、记录级删除 | 已纳入整轮；依赖 WSL Docker 与 fixture 容器 |
+| Steam302 GitHub | 停止态自愈、LAN hosts、容器内 DNS/HTTPS/CA、bridge 可见性 | 仍可扩展安装失败、无 sudo、镜像拉取失败分支 |
 
 ### 3.4 L4D2 插件子应用
 
@@ -107,17 +102,17 @@
 | 仪表盘 | 状态 hero、指标卡、刷新按钮 |
 | RCON 控制台 | 执行一次 `status`；特殊字符命令不导致页面崩溃 |
 | 地图管理 | 上传 fixture VPK、上传任务 COMPLETED、换图进入 changing 状态、删除 |
-| SourceMod 插件 | 上传样例 `.smx` 并出现在列表 |
+| SourceMod 插件 | 上传样例 `.smx`、精确列表查询、禁用/启用切换并恢复原状态 |
 | 服务器配置 | 保存同步、核心字段回读、KV 增删、自定义配置、查看原始文件、重载配置 |
 | 重启管理 | 页面渲染模式 radio、可用模式、重启按钮 |
-| 远端仓库 | 未配置空态、打开设置弹窗、取消不保存 |
+| 远端仓库 | 按实际配置状态展示列表或未配置空态、打开设置弹窗、取消不保存 |
 
 尚未形成完整闭环的主路径：
 
 - 换图只断言“切换中”，没有断言最终地图切换结果。
 - RCON 只断言命令记录可见，没有断言输出包含服务器状态。
-- SourceMod 启停切换为 `fixme`。
-- 远端仓库只测空态，不测真实连接成功、鉴权失败和错误翻译。
+- SourceMod 启停已覆盖，仍可补删除/批量启用/批量禁用。
+- 远端仓库已覆盖“已配置列表 / 未配置空态”双分支，不触发真实外呼；仍可补真实连接成功、鉴权失败和错误翻译。
 - 服务器配置未覆盖“恢复默认”和并发保存冲突。
 - 重启管理未真正执行三种重启模式。
 
@@ -146,7 +141,8 @@
 
 - Steam302 容器使用 `--network host`，平台从 Caddyfile 提取启用域名并写入宿主机 `/etc/hosts`。
 - 默认模式写入 `127.0.0.1 域名 #S302`。
-- 开启“容器共享加速”后写入宿主机 LAN IP，标记为 `#S302-LAN`；该开关即时重写 hosts，不重启容器。
+- 开启“容器共享加速”后写入宿主机 LAN IP，标记为 `#S302-LAN`；为避免 CLI 与平台双写冲突，切换时先停止容器、写 hosts、再启动容器。
+- 平台强制 `Auto_Modify_Hosts=0`，hosts 的唯一写入者归平台；写入后回读校验，失败会给出 expected/actual/remediation。
 - 停止 Steam302 时清除两种 `#S302` 标记行。
 - 安装任务会信任宿主机 CA，并为 dockerd 写 `certs.d`。
 - LinuxGSM Docker 适配器无条件挂载宿主机 CA bundle，因为 entrypoint 需要访问 GitHub 下载 `serverlist.csv`。
@@ -161,7 +157,7 @@
 docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 ```
 
-不通就 `SKIP`。它没有安装/配置 Steam302，也没有验证修复后 GitHub、DNS、TLS 和 LinuxGSM 脚本是否恢复。
+不通时输出带 remediation 的 `[CHECK][FAIL]`，由调用方作为真实失败处理；不再用 SKIP 掩盖环境阻塞。专项 spec 另行验证 Steam302、DNS、TLS 与 LinuxGSM 脚本恢复。
 
 #### 未覆盖矩阵
 
@@ -170,23 +166,23 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 | Steam302 未安装 | 未覆盖 | 主机详情显示未部署，安装入口可用 |
 | Steam302 安装任务 | 未覆盖 | 任务成功，容器 RUNNING，CA 已信任，代理域名数 > 0 |
 | 默认本机模式 | 未覆盖 | hosts 有 `127.0.0.1 ... #S302`，无 `#S302-LAN` |
-| 容器共享模式 | 未覆盖 | hosts 指向主机 LAN IP，标记 `#S302-LAN`，本机重启容器无需重启 |
+| 容器共享模式 | 已覆盖 | hosts 指向 WSL LAN IP，标记 `#S302-LAN`；切换时停容器、写 hosts、再启动 |
 | Caddyfile 与 hosts 一致 | 未覆盖 | 只写启用域名；通配符被丢弃；禁用服务不进入 hosts |
-| 容器内 GitHub 可达 | 未覆盖 | `getent hosts`、`curl -I`、证书链和 HTTP 状态均成功 |
-| CA 挂载 | 未覆盖 | 容器内 CA 与宿主机 bundle 一致，TLS 无 unknown authority |
-| `/etc/hosts` 挂载 | 未覆盖 | 容器内可见平台写入的 `#S302*` 行 |
-| LinuxGSM 初始化 | 被预检跳过 | `/app/<shortname>` 生成，状态进入“运行中” |
-| Steam302 停止 | 未覆盖 | `#S302` 与 `#S302-LAN` 全部清除，直连恢复 |
-| 自愈 | 未覆盖 | 删除标记行后刷新状态，平台自动补写 |
+| 容器内 GitHub 可达 | 已覆盖 | `getent hosts`、`curl -I`、证书链和 HTTP 状态均成功 |
+| CA 挂载 | 已覆盖 | 容器内 CA 与宿主机 bundle 一致，TLS 无 unknown authority |
+| `/etc/hosts` 挂载 | 已覆盖 | 容器内可见平台写入的 `#S302*` 行 |
+| LinuxGSM 初始化 | 已覆盖 | `/app/<shortname>` 生成，状态进入“运行中” |
+| Steam302 停止 | 已覆盖 | `#S302` 与 `#S302-LAN` 全部清除，直连恢复 |
+| 自愈 | 已覆盖 | 停止态启动强制拉起容器；写入后回读校验，缺失时平台补写 |
 | 异常分支 | 未覆盖 | 无 Docker、无 sudo、拉镜像失败、证书超时、Caddyfile 为空 |
 
-#### 必补 E2E 链路
+#### 已补 E2E 链路
 
-建议新增 `frontend/e2e/main-app/host/steam302-github.spec.js`：
+已新增 `frontend/e2e/main-app/host/steam302-github.spec.js`：
 
 1. 创建牺牲主机，进入主机详情 Steam302 面板，确认未安装态。
 2. 提交安装任务，轮询任务和状态到 RUNNING；断言 `hostsEntries > 0`、`proxiedDomains > 0`、`certTrusted=true`。
-3. 开启容器共享加速，断言状态目标 IP 为 LAN IP，宿主机 hosts 仅保留 `#S302-LAN`。
+3. 开启容器共享加速，断言状态目标 IP 为 LAN IP，宿主机 hosts 仅保留 `#S302-LAN`，且切换过程按“停容器→写 hosts→启动容器”完成。
 4. 用 `mountHostCerts=true` 部署一个 LinuxGSM 测试实例。
 5. 检查实际运行容器的 mounts，确认 CA bundle 与 `/etc/hosts:ro` 均存在。
 6. 在容器内执行 hosts 查询、GitHub HTTPS 请求和 CA 校验。
@@ -194,11 +190,11 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 8. 停止/启动 Steam302，验证 hosts 清除、恢复和自愈。
 9. 恢复 `mountHostCerts=false`、Steam302 停止，作为清理回归对照。
 
-这条用例应同时取代当前 DST/SDTD “GitHub 不通即跳过”的环境阻塞分支；修复链路验证失败时应红灯，而不是继续以 SKIP 掩盖。
+这条链路已同时取代 DST/SDTD “GitHub 不通即跳过”的环境阻塞分支；修复链路验证失败时为红灯，不以 SKIP 掩盖。
 
 ### 4.3 L4D2 子应用缺口
 
-当前 router 有 17 个业务路由，其中 6 个主路径页已被 E2E 触及，以下 8 页完全没有 E2E：
+当前 router 的 8 个次要业务页已全部纳入 E2E：
 
 | 路由 | 页面 | 根选择器 | 最低冒烟断言 |
 |------|------|----------|--------------|
@@ -219,10 +215,9 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 | `/version` | `/server-info` | 自动重定向且展开版本面板 |
 | `/plugin-store` | `/plugins` | 自动重定向且默认 tab 正确 |
 
-建议新增：
+已并入现有 spec：
 
-- `frontend/e2e/plugins/l4d2/plugin-secondary-pages.spec.js`
-- `frontend/e2e/plugins/l4d2/plugin-route-compat.spec.js`
+- `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js`（次要页面与旧路由兼容分组）
 
 ### 4.4 RCON 失败原因与失败分支
 
@@ -248,7 +243,7 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 - `/rcon/status` 通常返回 HTTP 200，业务字段为 `online=false` + `reason`。
 - `/rcon/execute` 通常返回 HTTP 200，业务字段为 `success=false` + `error`。
 - Dashboard 会展示 `serverStatus.reason`；RCON 控制台把 `result.error` 放进输出历史。
-- 当前 E2E 没有断言这些失败原因文案，也没有覆盖配置修复后的恢复。
+- E2E 已覆盖缺失 `rconPassword` 时的明确失败原因，并验证恢复配置后实例回到运行中；超时、拒绝、协议错误、busy、池失效仍由 Java 集成测试覆盖。
 
 #### 当前已有自动化
 
@@ -258,7 +253,7 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 | 单测 | `RconConnectionManagerRetryTest` | 池内 zombie connection 换新重试、正常连接复用 |
 | 插件单测 | `RconFailureDetectorTest` | 命令输出失败关键字 |
 | 插件单测 | 各 service test | mock RCON 异常时的业务异常包装 |
-| E2E | `plugin-subapp.spec.js` | 成功 `status`、特殊字符命令不崩溃 |
+| E2E | `plugin-subapp.spec.js` | 成功 `status`、特殊字符命令不崩溃、缺失 `rconPassword` 失败原因与恢复 |
 
 #### 建议补充矩阵
 
@@ -276,11 +271,11 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 | P2 | 命令超长/长响应 | Java 集成 | 超时可控，不拖死连接池 |
 | P2 | 审计覆盖失败 | 日志断言 | `RCON_AUDIT` 命中 caller/instanceId/success=false/reason |
 
-建议新增：
+已新增：
 
 - `backend/core/src/test/java/com/gameplatform/rcon/RconProtocolTest.java`
 - `backend/core/src/test/java/com/gameplatform/rcon/RconConnectionManagerFailureTest.java`
-- `frontend/e2e/plugins/l4d2/plugin-rcon-failure.spec.js`
+- `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js`（RCON 缺密码失败分支与恢复）
 
 不要用 retag 镜像的不确定 RCON 密码承担全部失败测试；可控假 RCON TCP server 更适合精确模拟超时、拒绝、错误密码和非协议服务。
 
@@ -290,10 +285,10 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 
 | 来源 | 状态 | 本文对应项 |
 |------|------|------------|
-| `.scratch/backlog/issues/05-l4d2-subapp-secondary-pages-cases.md` | needs-triage | §4.3 的 8 页 |
-| `.scratch/backlog/issues/06-rcon-deep-ops-with-live-players.md` | needs-triage | §3.4、§4.4；玩家在线操作另需环境 |
-| `.scratch/backlog/issues/07-linuxgsm-github-blocked-environment.md` | needs-triage | §4.2；应由 Steam302 E2E 解除阻塞 |
-| `.scratch/backlog/issues/02-docker-addons-invisible-to-map-list.md` | needs-triage | 地图列表条件 SKIP |
+| `.scratch/backlog/issues/05-l4d2-subapp-secondary-pages-cases.md` | 已覆盖 | §4.3 的 8 页 |
+| `.scratch/backlog/issues/06-rcon-deep-ops-with-live-players.md` | 部分覆盖 | §3.4、§4.4；玩家在线操作另需环境 |
+| `.scratch/backlog/issues/07-linuxgsm-github-blocked-environment.md` | 已覆盖 | §4.2；Steam302 E2E 已解除环境阻塞 |
+| `.scratch/backlog/issues/02-docker-addons-invisible-to-map-list.md` | 已覆盖 | 地图列表改为强断言 |
 | `.scratch/backlog/issues/01-backup-async-executor-stuck.md` | wontfix | 备份 E2E 暂不恢复 |
 | `.scratch/backlog/issues/03-system-settings-not-persisted.md` | 已由当前用例触及 | 系统设置持久化已有绿灯 |
 | `.scratch/backlog/issues/04-db-init-race-after-tomcat-up.md` | 已修复 | runner 以真实登录 + 游戏元数据为就绪信号 |
@@ -302,20 +297,20 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 
 ## 6. 建议实施顺序
 
-### P0：阻塞发布可信度的缺口
+### P0：阻塞发布可信度的缺口（本轮已处理）
 
-1. 新增 Steam302 安装、容器共享、CA/hosts 挂载、容器内 GitHub TLS、LinuxGSM 真正启动的 E2E。
-2. 新增 RCON 配置缺失、端口未映射、停止实例、错误密码、恢复路径的 E2E。
-3. 用假 RCON TCP server 补齐超时、拒绝、协议错误、busy、池连接失效的 Java 集成测试。
-4. 决定容器认领 2 项是纳入 `e2e:round`，还是明确标记为“环境依赖的人工/独立回归”；不能让整轮 PASS 继续隐含遗漏。
+1. 已新增 Steam302 专项、容器共享、CA/hosts 挂载、容器内 GitHub TLS、LinuxGSM 真正启动的 E2E。
+2. 已新增 RCON 配置缺失、失败原因与恢复路径的 E2E；端口未映射/停止实例仍可继续扩展。
+3. 已用可控单元/集成测试补超时、拒绝、协议错误、连接关闭等分支；busy 与池失效仍可扩展。
+4. 容器认领已纳入 `e2e:round`，不再隐含遗漏。
 
 ### P1：插件与业务闭环
 
-5. 补 L4D2 8 个次要页面和 3 个兼容路由。
-6. 地图上传后补“列表可见 + 换图终态”双断言；若 Docker addons 缺陷未修，用例应显式红灯或独立标记，不做静默降级。
-7. SourceMod 启停不稳定项定位后解除 `fixme`。
-8. 任务中心补失败、取消、重试、超时和定时计划。
-9. 补 `docker-compose` 部署腿与部署失败分支。
+5. 已补 L4D2 8 个次要页面和 3 个兼容路由。
+6. 地图列表已改为强断言；换图终态仍待补。
+7. SourceMod 启停已解除 `fixme` 并通过真实 API 轮询验证。
+8. 任务中心仍待补失败、取消、重试、超时和定时计划。
+9. `docker-compose` 部署腿与部署失败分支仍待补。
 
 ### P2：体验与防御性覆盖
 
@@ -329,24 +324,24 @@ docker exec <container> curl -m 8 -sI https://raw.githubusercontent.com
 
 ### Steam302/GitHub 专项
 
-- [ ] Steam302 安装任务成功，状态面板显示 RUNNING、hosts、域名、CA 信任。
-- [ ] 默认模式与容器共享模式分别验证 `#S302` 和 `#S302-LAN`。
-- [ ] `mountHostCerts=true` 的容器实际看到 CA bundle 与 `/etc/hosts` mount。
-- [ ] 容器内 `curl -I https://raw.githubusercontent.com` 返回 2xx/3xx 且无证书错误。
-- [ ] LinuxGSM `/app/<shortname>` 生成，测试腿可断言“运行中”，不再以 GitHub 不通跳过。
-- [ ] 停止 Steam302 后无 `#S302*` 残留，启动后可恢复，删除标记行后可自愈。
+- [x] Steam302 专项已覆盖停止态启动、RUNNING、hosts 写入校验与 CA/hosts 挂载。
+- [x] 容器共享模式验证 `#S302-LAN` 指向 WSL LAN IP；默认模式仍建议独立环境复验。
+- [x] `mountHostCerts=true` 的容器实际看到 CA bundle 与 `/etc/hosts` mount。
+- [x] 容器内 `curl -I https://raw.githubusercontent.com` 返回 2xx/3xx 且无证书错误。
+- [x] LinuxGSM `/app/<shortname>` 生成，测试腿可断言“运行中”，不再以 GitHub 不通跳过。
+- [x] 停止 Steam302 后无 `#S302*` 残留，启动后可恢复，缺失标记行时平台补写。
 
 ### L4D2 插件
 
-- [ ] `/monitor`、`/logs`、`/player-stats`、`/admins`、`/server-info`、`/preset`、`/download`、`/map-center` 均有可达渲染与关键交互冒烟。
-- [ ] `/playtime`、`/version`、`/plugin-store` 旧路由兼容断言通过。
-- [ ] 新增用例挂到 `npm run e2e:round` 插件分组。
+- [x] `/monitor`、`/logs`、`/player-stats`、`/admins`、`/server-info`、`/preset`、`/download`、`/map-center` 均有可达渲染与关键交互冒烟。
+- [x] `/playtime`、`/version`、`/plugin-store` 旧路由兼容断言通过。
+- [x] 新增用例已挂到 `npm run e2e:round` 插件分组。
 
 ### RCON
 
-- [ ] 缺失密码、端口未映射、实例停止、错误密码四种失败在 UI/API 层有明确原因。
-- [ ] 至少一条失败到修复后的恢复链路通过。
-- [ ] 超时、拒绝、非协议服务、busy、池失效重试由可控集成测试覆盖。
+- [x] 缺失密码失败在 UI/API 层有明确原因；端口未映射、实例停止、错误密码仍待扩展。
+- [x] 至少一条失败到修复后的恢复链路通过。
+- [x] 超时、拒绝、连接关闭、非协议服务由可控测试覆盖；busy、池失效重试仍待扩展。
 - [ ] 成功与失败命令均产生 `RCON_AUDIT` 记录。
 
 ---
