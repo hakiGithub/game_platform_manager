@@ -24,7 +24,7 @@ public interface HostToolingService {
      * 主机侧解压压缩包到指定目录（目录须已存在或其父目录可创建；相对主机根路径）。
      * <p>
      * 优先主机原生工具（tar/unzip/unrar/7z），缺失时回退 platform-tools 工具容器
-     * （unrar/p7zip/bsdtar 预装）；两路都不可用抛异常。主机无 Docker 且无原生工具时
+     * （bsdtar/7zip 预装，RAR 由 7zz 读取）；两路都不可用抛异常。主机无 Docker 且无原生工具时
      * 调用方应回退平台中转。
      *
      * @param hostId         主机 ID

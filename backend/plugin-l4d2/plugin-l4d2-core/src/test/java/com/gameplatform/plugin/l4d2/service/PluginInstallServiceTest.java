@@ -7,6 +7,7 @@ import com.gameplatform.plugin.l4d2.vo.EnabledPlugin;
 import com.gameplatform.plugin.l4d2.vo.PluginListVO;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +63,8 @@ class PluginInstallServiceTest {
         pluginInstallService = new PluginInstallService(
                 instanceQueryService, instanceFileService,
                 fileRefsService, pathResolver,
-                pluginMetaService, enabledPluginsService);
+                pluginMetaService, enabledPluginsService,
+                mock(InstanceArchiveImportService.class));
         instance = new InstanceVO();
         instance.setId(1L);
         instance.setHostId(10L);

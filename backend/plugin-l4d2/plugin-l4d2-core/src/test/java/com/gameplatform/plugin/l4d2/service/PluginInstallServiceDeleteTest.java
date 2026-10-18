@@ -5,6 +5,7 @@ import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.GbkCodecUtil;
 import com.gameplatform.plugin.l4d2.vo.EnabledPlugin;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +42,8 @@ class PluginInstallServiceDeleteTest {
                 mock(FileRefsService.class),
                 new L4D2PathResolver(),
                 pluginMetaService,
-                enabledPluginsService);
+                enabledPluginsService,
+                mock(InstanceArchiveImportService.class));
     }
 
     @Test

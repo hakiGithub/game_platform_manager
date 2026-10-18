@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -384,12 +385,24 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         if (route.isNative()) {
             return fileAccessService.listFiles(route.hostId, route.resolvedPath);
         }
-        // Docker: docker exec ls -la，解析输出为 FileInfo 列表
-        SshUtil.CommandResult r = execDocker(route, "ls -la " + shellQuote(route.resolvedPath));
-        if (r.getExitCode() != 0) {
+        // Docker: 优先用 GNU find 输出明确字段（尤其权限），BusyBox find 不支持
+        // -printf 时回退 ls -la；解析失败不能伪装成空目录。
+        String path = shellQuote(route.resolvedPath);
+        SshUtil.CommandResult r = execDocker(route,
+                "find " + path + " -mindepth 1 -maxdepth 1 "
+                        + "-printf '%y\\t%m\\t%s\\t%T@\\t%f\\n'");
+        if (r.getExitCode() == 0) {
+            List<FileInfo> parsed = parseFindOutput(r.getOutput(), route.resolvedPath);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+        SshUtil.CommandResult fallback = execDocker(route,
+                "ls -la " + path);
+        if (fallback.getExitCode() != 0) {
             return List.of();
         }
-        return parseLsOutput(r.getOutput(), route.resolvedPath);
+        return parseLsOutput(fallback.getOutput(), route.resolvedPath);
     }
 
     @Override
@@ -607,6 +620,59 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             })
             .filter(Objects::nonNull)
             .toList();
+    }
+
+    /**
+     * 解析 GNU find -printf 输出：type、八进制权限、字节数、epoch 秒、名称。
+     * 返回 null 表示至少一行格式不符，由调用方回退 ls。
+     */
+    private List<FileInfo> parseFindOutput(String findOutput, String basePath) {
+        if (findOutput == null || findOutput.isBlank()) {
+            return List.of();
+        }
+        List<FileInfo> result = new ArrayList<>();
+        for (String line : findOutput.lines().toList()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] parts = line.split("\\t", 5);
+            if (parts.length != 5) {
+                return null;
+            }
+            FileInfo info = new FileInfo();
+            info.setName(parts[4]);
+            info.setPath(basePath + "/" + parts[4]);
+            info.setDirectory("d".equals(parts[0]));
+            info.setPermissions(formatOctalPermissions(parts[1]));
+            info.setSize(parseLongSafe(parts[2]));
+            try {
+                info.setLastModified((long) (Double.parseDouble(parts[3]) * 1000));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            result.add(info);
+        }
+        return result;
+    }
+
+    private String formatOctalPermissions(String octal) {
+        int perms;
+        try {
+            perms = Integer.parseInt(octal, 8);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(10);
+        sb.append((perms & 0400) != 0 ? 'r' : '-');
+        sb.append((perms & 0200) != 0 ? 'w' : '-');
+        sb.append((perms & 0100) != 0 ? 'x' : '-');
+        sb.append((perms & 0040) != 0 ? 'r' : '-');
+        sb.append((perms & 0020) != 0 ? 'w' : '-');
+        sb.append((perms & 0010) != 0 ? 'x' : '-');
+        sb.append((perms & 0004) != 0 ? 'r' : '-');
+        sb.append((perms & 0002) != 0 ? 'w' : '-');
+        sb.append((perms & 0001) != 0 ? 'x' : '-');
+        return sb.toString();
     }
 
     // ===== SSH 连接辅助 =====

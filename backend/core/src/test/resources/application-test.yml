@@ -21,8 +21,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 100MB
-      max-request-size: 100MB
+      max-file-size: 512MB
+      max-request-size: 512MB
   
   # H2内存数据库配置(用于测试)
   datasource:

@@ -268,4 +268,35 @@ class InstanceFileServiceImplTest {
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
                 isNull(), isNull(), contains("docker cp "));
     }
+
+    @Test
+    @DisplayName("Docker listFiles 使用 find 输出权限与大小")
+    void listFiles_docker_usesFindPermissionsAndSize() {
+        InstanceVO dockerInstance = new InstanceVO();
+        dockerInstance.setId(3L);
+        dockerInstance.setHostId(10L);
+        dockerInstance.setDeployType("docker");
+        dockerInstance.setConfigInfo(Map.of("containerId", "abc123", "containerWorkDir", "/l4d2"));
+        when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+
+        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        when(result.getExitCode()).thenReturn(0);
+        when(result.getOutput()).thenReturn(
+                "f\t755\t4096\t1700000000.125\te2e-large-plugin.smx\n"
+                        + "d\t750\t4096\t1700000001.000\tplugins\n");
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("-printf")))
+                .thenReturn(result);
+
+        List<FileInfo> files = service.listFiles(3L, "plugins");
+
+        assertEquals(2, files.size());
+        assertEquals("e2e-large-plugin.smx", files.get(0).getName());
+        assertEquals(4096L, files.get(0).getSize());
+        assertEquals("rwxr-xr-x", files.get(0).getPermissions());
+        assertFalse(files.get(0).isDirectory());
+        assertTrue(files.get(1).isDirectory());
+        assertEquals("rwxr-x---", files.get(1).getPermissions());
+    }
 }

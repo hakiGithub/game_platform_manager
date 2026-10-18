@@ -5,7 +5,7 @@
 //   E2E_FAST=1 npm run e2e          # 受管模式跳过 mvn 编译（要求之前编译过一次，存在 core/target/cp.txt）
 //   npm run e2e -- --attach         # 附着模式：不对 E2E_BASE_URL（缺省 http://localhost:3000）起栈，只跑用例
 //
-// 重复执行安全：受管模式启动前清掉上次残留的临时库；start-all.sh 自动避开被占用的前端端口。
+// 重复执行安全：受管模式启动前清掉上次残留的临时库；端口脚本自动避开被占用的前端端口。
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -18,6 +18,14 @@ const FRONTEND_DIR = resolve(E2E_DIR, "..");
 const PROJECT_DIR = resolve(FRONTEND_DIR, "..");
 const TMP_DIR = join(E2E_DIR, ".tmp");
 const FRONTEND_PORT_FILE = join(PROJECT_DIR, "logs", "frontend.port");
+const BACKEND_PID_FILE = join(PROJECT_DIR, "backend", "logs", "game-platform-manager.pid");
+const BACKEND_ARG_FILE_POINTER = join(
+  PROJECT_DIR,
+  "backend",
+  "logs",
+  "game-platform-jvm-args.path",
+);
+const FRONTEND_PID_FILE = join(PROJECT_DIR, "frontend", "logs", "frontend.pid");
 const VITE_CACHE_DIR = join(FRONTEND_DIR, "node_modules", ".vite");
 
 const ATTACH = process.argv.includes("--attach");
@@ -137,56 +145,107 @@ async function waitForBackendLogin(backendUrl, timeoutMs = 240_000) {
   }
 }
 
-function stopManagedProcess(port, expectedCommand) {
+function readPidFile(file) {
+  if (!existsSync(file)) return null;
+  const value = readFileSync(file, "utf8").trim();
+  return /^\d+$/.test(value) ? value : null;
+}
+
+function processCommandLine(pid) {
+  if (process.platform === "win32") {
+    return (
+      spawnSync(
+        "pwsh",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+        ],
+        { encoding: "utf8" },
+      ).stdout ?? ""
+    );
+  }
+  return spawnSync("ps", ["-p", pid, "-o", "command="], { encoding: "utf8" }).stdout ?? "";
+}
+
+function backendArgFile() {
+  if (!existsSync(BACKEND_ARG_FILE_POINTER)) return null;
+  const value = readFileSync(BACKEND_ARG_FILE_POINTER, "utf8").trim();
+  return value || null;
+}
+
+function commandUsesArgFile(commandLine, argFile) {
+  if (!argFile) return false;
+  const normalized = commandLine.replaceAll("/", "\\").toLowerCase();
+  return normalized.includes(argFile.replaceAll("/", "\\").toLowerCase());
+}
+
+function listenerPids(port) {
   if (process.platform === "win32") {
     const out =
       spawnSync("netstat", ["-ano"], { encoding: "utf8" }).stdout ?? "";
-    for (const line of out.split("\n")) {
-      const cols = line.trim().split(/\s+/);
-      // TCP  0.0.0.0:8080  0.0.0.0:0  LISTENING  <pid>
-      if (
-        cols.length >= 5 &&
-        cols[0] === "TCP" &&
-        cols[1].endsWith(`:${port}`) &&
-        cols[3] === "LISTENING"
-      ) {
-        const pid = cols[4];
-        const cmd =
-          spawnSync(
-            "powershell",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
-            ],
-            { encoding: "utf8" },
-          ).stdout ?? "";
-        if (!expectedCommand.test(cmd)) return false;
-        log(`释放端口 ${port}（停止本项目 PID ${pid}）`);
-        spawnSync("taskkill", ["/F", "/PID", pid], { stdio: "ignore" });
-        return true;
-      }
-    }
-  } else {
-    const out =
-      spawnSync("lsof", ["-ti", `:${port}`], { encoding: "utf8" }).stdout ?? "";
-    for (const pid of out.split("\n").filter(Boolean)) {
-      spawnSync("kill", ["-9", pid.trim()], { stdio: "ignore" });
-    }
+    return out
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/))
+      .filter(
+        (cols) =>
+          cols.length >= 5 &&
+          cols[0] === "TCP" &&
+          cols[1].endsWith(`:${port}`) &&
+          cols[3] === "LISTENING",
+      )
+      .map((cols) => cols[4]);
   }
-  return false;
+  return (spawnSync("lsof", ["-ti", `:${port}`], { encoding: "utf8" }).stdout ?? "")
+    .split("\n")
+    .filter(Boolean);
+}
+
+function stopManagedProcess(port, expectedCommand, pidFile) {
+  if (process.platform === "win32") {
+    const candidatePids = new Set(listenerPids(port));
+    const savedPid = readPidFile(pidFile);
+    if (savedPid) candidatePids.add(savedPid);
+
+    let stopped = false;
+    for (const pid of candidatePids) {
+      const cmd = processCommandLine(pid);
+      // 后端用 java @argfile 启动时，进程命令行只有 java.exe 与 argfile 路径；
+      // worktree 归属要从 argfile 内容判断，不能因为命令行不含项目路径就跳过。
+      const backendArgFileOwned =
+        port === BACKEND_PORT &&
+        commandUsesArgFile(cmd, backendArgFile());
+      const worktreeMatch =
+        cmd.includes(PROJECT_DIR) || backendArgFileOwned;
+      if (!worktreeMatch || !expectedCommand.test(cmd)) continue;
+      log(`释放端口 ${port}（停止本项目 PID ${pid}）`);
+      spawnSync("taskkill", ["/F", "/PID", pid], { stdio: "ignore" });
+      stopped = true;
+    }
+    return stopped;
+  } else {
+    let stopped = false;
+    for (const pid of listenerPids(port)) {
+      const cmd = processCommandLine(pid);
+      if (!cmd.includes(PROJECT_DIR) || !expectedCommand.test(cmd)) continue;
+      spawnSync("kill", ["-9", pid], { stdio: "ignore" });
+      stopped = true;
+    }
+    return stopped;
+  }
 }
 
 function stopStack() {
   log(`清理：停止后端 ${BACKEND_PORT} 和前端 ${FRONTEND_PORT} 端口进程`);
-  if (!stopManagedProcess(BACKEND_PORT, /GamePlatformApplication/)) {
+  if (!stopManagedProcess(BACKEND_PORT, /java(?:\.exe)?/i, BACKEND_PID_FILE)) {
     log(`后端端口 ${BACKEND_PORT} 没有可清理的本项目进程`);
   }
   if (
     !stopManagedProcess(
       FRONTEND_PORT,
-      /game_platform_manger[\\/]+frontend.*vite/i,
+      /[\\/]frontend[\\/]+node_modules[\\/]+vite[\\/]+bin[\\/]+vite\.js/i,
+      FRONTEND_PID_FILE,
     )
   ) {
     log(`前端端口 ${FRONTEND_PORT} 没有可清理的本项目进程`);
@@ -225,7 +284,7 @@ function optimizeViteDependencies() {
 
 function startStack() {
   // 受管模式自行选端口；不要杀 3000 上的 WSL 转发或其他应用。
-  stopManagedProcess(BACKEND_PORT, /GamePlatformApplication/);
+  stopManagedProcess(BACKEND_PORT, /java(?:\.exe)?/i, BACKEND_PID_FILE);
   clearTmp();
   // Vite 依赖预构建缓存在依赖或浏览器状态变化后可能留下失效 chunk，
   // Wujie 跨路由加载时会表现为入口 HTML 已返回但 vendor chunk 永不响应。
@@ -239,35 +298,74 @@ function startStack() {
     "/",
   );
 
-  const args = [
-    "scripts/start-all.sh",
-    "--db",
-    dbPath,
-    "--skip-plugins",
-    "--port",
-    "0",
-  ];
-  if (
+  const skipCompile =
     process.env.E2E_FAST === "1" &&
-    existsSync(join(PROJECT_DIR, "backend/core/target/cp.txt"))
-  ) {
+    existsSync(join(PROJECT_DIR, "backend/core/target/cp.txt"));
+  if (skipCompile) {
     log("E2E_FAST=1：跳过 mvn 编译");
-    args.push("--skip-compile");
   } else {
     log("编译后端（增量）...");
   }
-  log(`起栈: bash ${args.join(" ")}`);
-  const r = run("bash", args);
-  if (r.status !== 0) {
-    throw new Error(
-      `start-all.sh 退出码 ${r.status}，详见 logs/backend.log / logs/frontend.log`,
-    );
+
+  if (process.platform === "win32") {
+    const backendArgs = [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      join(PROJECT_DIR, "backend/scripts/rebuild-restart.ps1"),
+      "-DbPath",
+      dbPath,
+    ];
+    if (skipCompile) backendArgs.push("-SkipCompile");
+    log(`起后端: pwsh ${backendArgs.join(" ")}`);
+    const backend = run("pwsh", backendArgs);
+    if (backend.status !== 0) {
+      throw new Error(
+        `后端启动脚本退出码 ${backend.status}，详见 backend/logs/application.log`,
+      );
+    }
+
+    const frontendArgs = [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      join(PROJECT_DIR, "frontend/scripts/rebuild-restart.ps1"),
+      "-Port",
+      "0",
+    ];
+    log(`起前端: pwsh ${frontendArgs.join(" ")}`);
+    const frontend = run("pwsh", frontendArgs);
+    if (frontend.status !== 0) {
+      throw new Error(
+        `前端启动脚本退出码 ${frontend.status}，详见 frontend/logs/frontend.log`,
+      );
+    }
+  } else {
+    const args = [
+      "scripts/start-all.sh",
+      "--db",
+      dbPath,
+      "--port",
+      "0",
+    ];
+    if (skipCompile) args.push("--skip-compile");
+    log(`起栈: bash ${args.join(" ")}`);
+    const r = run("bash", args);
+    if (r.status !== 0) {
+      throw new Error(
+        `start-all.sh 退出码 ${r.status}，详见 logs/backend.log / logs/frontend.log`,
+      );
+    }
   }
 
   const actualFrontendPort = readManagedFrontendPort();
   if (!actualFrontendPort) {
     throw new Error(
-      "start-all.sh 未写入 logs/frontend.port，无法确定 E2E 前端地址",
+      "启动脚本未写入 logs/frontend.port，无法确定 E2E 前端地址",
     );
   }
   FRONTEND_PORT = actualFrontendPort;

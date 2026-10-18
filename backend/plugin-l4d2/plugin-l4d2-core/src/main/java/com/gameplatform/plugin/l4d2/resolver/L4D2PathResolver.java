@@ -95,6 +95,29 @@ public class L4D2PathResolver {
     }
 
     /**
+     * 单插件归档导入的临时 staging 目录前缀：plugins_store/.install-
+     * 应用启动时由 PluginStoreMigration 清理遗留目录。
+     */
+    public String getArchiveInstallPrefix() {
+        return getPluginsStorePath() + "/.install-";
+    }
+
+    /**
+     * 单插件归档原子落位失败或进程中断时保留的旧目录备份后缀。
+     * 启动时由 PluginStoreMigration 恢复或回收。
+     */
+    public String getArchiveRollbackMarker() {
+        return ".rollback-";
+    }
+
+    /**
+     * 单插件归档安装提交完成标记文件名。
+     */
+    public String getArchiveCommitMarker() {
+        return ".archive-committed";
+    }
+
+    /**
      * 单个插件的库目录：addons/sourcemod/plugins_store/{pluginName}
      */
     public String getPluginStorePath(String pluginName) {

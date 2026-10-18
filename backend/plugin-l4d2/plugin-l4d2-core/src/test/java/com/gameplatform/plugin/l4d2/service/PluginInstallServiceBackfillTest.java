@@ -3,6 +3,7 @@ package com.gameplatform.plugin.l4d2.service;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,7 +66,8 @@ class PluginInstallServiceBackfillTest {
     @BeforeEach
     void setUp() {
         service = new PluginInstallService(instanceQueryService, instanceFileService,
-                fileRefsService, pathResolver, pluginMetaService, enabledPluginsService);
+                fileRefsService, pathResolver, pluginMetaService, enabledPluginsService,
+                mock(InstanceArchiveImportService.class));
         when(pathResolver.getPluginLeft4Dead2Path(PLUGIN)).thenReturn(STORE_L4D2);
     }
 

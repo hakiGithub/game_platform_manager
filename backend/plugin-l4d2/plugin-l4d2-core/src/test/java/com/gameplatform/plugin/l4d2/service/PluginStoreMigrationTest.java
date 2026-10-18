@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
+import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
@@ -46,6 +47,12 @@ class PluginStoreMigrationTest {
         instance2.setId(2L);
         instance2.setGameCode("l4d2");
         when(pathResolver.getDownloadTempPath()).thenReturn("addons/sourcemod/.download_temp");
+        when(pathResolver.getPluginsStorePath())
+                .thenReturn("addons/sourcemod/plugins_store");
+        when(pathResolver.getArchiveInstallPrefix())
+                .thenReturn("addons/sourcemod/plugins_store/.install-");
+        when(pathResolver.getArchiveRollbackMarker()).thenReturn(".rollback-");
+        when(pathResolver.getArchiveCommitMarker()).thenReturn(".archive-committed");
     }
 
     @Test
@@ -86,4 +93,100 @@ class PluginStoreMigrationTest {
         // 不应抛异常，避免阻塞应用启动
         migration.cleanDownloadTemp();
     }
+
+    @Test
+    void cleanArchiveInstallTemp_shouldDeleteOnlyInstallPrefixes() {
+        when(instanceQueryService.listByGameCode("l4d2")).thenReturn(List.of(instance1));
+        FileInfo staging = new FileInfo();
+        staging.setName(".install-myplugin-123");
+        staging.setDirectory(true);
+        FileInfo normal = new FileInfo();
+        normal.setName("myplugin");
+        normal.setDirectory(true);
+        when(instanceFileService.listFiles(1L, "addons/sourcemod/plugins_store"))
+                .thenReturn(List.of(staging, normal));
+
+        migration.cleanArchiveInstallTemp();
+
+        verify(instanceFileService).deleteDirectory(eq(1L),
+                eq("addons/sourcemod/plugins_store/.install-myplugin-123"), eq(true));
+        verify(instanceFileService, never()).deleteDirectory(eq(1L),
+                eq("addons/sourcemod/plugins_store/myplugin"), anyBoolean());
+    }
+
+    @Test
+    void cleanArchiveInstallTemp_shouldNotThrowWhenSingleInstanceFails() {
+        when(instanceQueryService.listByGameCode("l4d2")).thenReturn(List.of(instance1, instance2));
+        when(instanceFileService.listFiles(eq(1L), anyString()))
+                .thenThrow(new RuntimeException("list failed"));
+
+        migration.cleanArchiveInstallTemp();
+
+        verify(instanceFileService).listFiles(eq(2L), anyString());
+    }
+
+    @Test
+    void cleanArchiveInstallTemp_shouldRestoreRollbackWhenTargetMissing() {
+        when(instanceQueryService.listByGameCode("l4d2")).thenReturn(List.of(instance1));
+        FileInfo rollback = new FileInfo();
+        rollback.setName("myplugin.rollback-123");
+        rollback.setDirectory(true);
+        when(instanceFileService.listFiles(1L, "addons/sourcemod/plugins_store"))
+                .thenReturn(List.of(rollback));
+        when(instanceFileService.exists(1L,
+                "addons/sourcemod/plugins_store/myplugin")).thenReturn(false);
+
+        migration.cleanArchiveInstallTemp();
+
+        verify(instanceFileService).moveFile(1L,
+                "addons/sourcemod/plugins_store/myplugin.rollback-123",
+                "addons/sourcemod/plugins_store/myplugin");
+        verify(instanceFileService, never()).deleteDirectory(eq(1L),
+                eq("addons/sourcemod/plugins_store/myplugin.rollback-123"), anyBoolean());
+    }
+
+    @Test
+    void cleanArchiveInstallTemp_shouldDeleteRollbackWhenCommitMarkerExists() {
+        when(instanceQueryService.listByGameCode("l4d2")).thenReturn(List.of(instance1));
+        FileInfo rollback = new FileInfo();
+        rollback.setName("myplugin.rollback-123");
+        rollback.setDirectory(true);
+        when(instanceFileService.listFiles(1L, "addons/sourcemod/plugins_store"))
+                .thenReturn(List.of(rollback));
+        when(instanceFileService.exists(1L,
+                "addons/sourcemod/plugins_store/myplugin/.archive-committed"))
+                .thenReturn(true);
+
+        migration.cleanArchiveInstallTemp();
+
+        verify(instanceFileService).deleteDirectory(1L,
+                "addons/sourcemod/plugins_store/myplugin.rollback-123", true);
+        verify(instanceFileService, never()).moveFile(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void cleanArchiveInstallTemp_shouldRestoreRollbackWhenTargetExistsWithoutCommitMarker() {
+        when(instanceQueryService.listByGameCode("l4d2")).thenReturn(List.of(instance1));
+        FileInfo rollback = new FileInfo();
+        rollback.setName("myplugin.rollback-123");
+        rollback.setDirectory(true);
+        when(instanceFileService.listFiles(1L, "addons/sourcemod/plugins_store"))
+                .thenReturn(List.of(rollback));
+        when(instanceFileService.exists(1L,
+                "addons/sourcemod/plugins_store/myplugin/.archive-committed"))
+                .thenReturn(false);
+        when(instanceFileService.exists(1L,
+                "addons/sourcemod/plugins_store/myplugin")).thenReturn(true);
+
+        migration.cleanArchiveInstallTemp();
+
+        verify(instanceFileService).deleteDirectory(1L,
+                "addons/sourcemod/plugins_store/myplugin", true);
+        verify(instanceFileService).moveFile(1L,
+                "addons/sourcemod/plugins_store/myplugin.rollback-123",
+                "addons/sourcemod/plugins_store/myplugin");
+        verify(instanceFileService, never()).deleteDirectory(eq(1L),
+                eq("addons/sourcemod/plugins_store/myplugin.rollback-123"), anyBoolean());
+    }
+
 }

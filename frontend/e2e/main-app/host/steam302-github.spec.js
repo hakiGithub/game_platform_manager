@@ -239,14 +239,18 @@ test.describe.serial("Steam302 GitHub 专项", () => {
     const curl = execWslBash(
       `docker exec ${fixture} sh -lc "curl -m 10 -sS -I -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com"`,
     );
+    const httpCode = curl.stdout.trim();
+    const proxyUpstreamFailure = curl.ok && /^50[234]$/.test(httpCode);
     check(
       "bridge 消费者容器内 GitHub HTTPS 返回 2xx/3xx",
-      curl.ok && /^[23]\d\d$/.test(curl.stdout.trim()),
-      `http=${curl.stdout.trim() || "none"}${curl.stderr ? `, stderr=${curl.stderr}` : ""}`,
-      "检查宿主 CA bundle、Caddy 代理和 hosts 映射；失败时查看 docker logs steam302",
+      curl.ok && /^[23]\d\d$/.test(httpCode),
+      `http=${httpCode || "none"}${curl.stderr ? `, stderr=${curl.stderr}` : ""}`,
+      proxyUpstreamFailure
+        ? "Steam302 已收到请求，但其上游 GitHub 连接失败；检查主机外网连通性并查看 docker exec steam302 tail -80 /data/caddy.log"
+        : "检查宿主 CA bundle、Caddy 代理和 hosts 映射；失败时查看 docker logs steam302",
     );
     expect(curl.ok, curl.stderr || curl.stdout).toBe(true);
-    expect(curl.stdout.trim()).toMatch(/^[23]\d\d$/);
+    expect(httpCode).toMatch(/^[23]\d\d$/);
     execWslBash(`docker rm -f ${fixture} >/dev/null 2>&1 || true`);
   });
 

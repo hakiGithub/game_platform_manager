@@ -3,7 +3,10 @@ package com.gameplatform.plugin.l4d2.service;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.util.GbkCodecUtil;
 import com.gameplatform.plugin.l4d2.vo.PluginMeta;
+import com.gameplatform.plugin.service.InstanceArchiveImportRequest;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.service.InstanceArchiveImportResult;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +31,7 @@ class PluginInstallServiceStoreTest {
     private InstanceFileService instanceFileService;
     private PluginMetaService pluginMetaService;
     private InstanceQueryService instanceQueryService;
+    private InstanceArchiveImportService archiveImportService;
 
     @TempDir
     Path tempDir;
@@ -37,6 +41,7 @@ class PluginInstallServiceStoreTest {
         instanceFileService = mock(InstanceFileService.class);
         pluginMetaService = mock(PluginMetaService.class);
         instanceQueryService = mock(InstanceQueryService.class);
+        archiveImportService = mock(InstanceArchiveImportService.class);
         InstanceVO instance = new InstanceVO();
         instance.setId(100L);
         instance.setHostId(1L);
@@ -49,23 +54,28 @@ class PluginInstallServiceStoreTest {
                 mock(FileRefsService.class),
                 new L4D2PathResolver(),
                 pluginMetaService,
-                mock(EnabledPluginsService.class));
+                mock(EnabledPluginsService.class),
+                archiveImportService);
     }
 
     @Test
     void installFromLocalFile_zip_shouldExtractToPluginsStore() throws Exception {
         File zip = createTestZip("myplugin", "addons/sourcemod/plugins/myplugin.smx",
                 "cfg/sourcemod/myplugin.cfg");
+        stubArchiveImport(InstanceArchiveImportResult.builder()
+                .pluginName("myplugin")
+                .fileCount(2)
+                .totalBytes(10)
+                .relativePaths(List.of(
+                        "left4dead2/addons/sourcemod/plugins/myplugin.smx",
+                        "left4dead2/cfg/sourcemod/myplugin.cfg"))
+                .build());
 
         service.installFromLocalFile(100L, zip);
 
-        // 同步路径（无监听）：走四参重载但回调为 null，行为与旧版一致
-        verify(instanceFileService).uploadLocalFile(eq(100L),
-                eq("left4dead2/addons/sourcemod/plugins_store/myplugin/left4dead2/addons/sourcemod/plugins/myplugin.smx"),
-                anyString(), isNull());
-        verify(instanceFileService).uploadLocalFile(eq(100L),
-                eq("left4dead2/addons/sourcemod/plugins_store/myplugin/left4dead2/cfg/sourcemod/myplugin.cfg"),
-                anyString(), isNull());
+        // 快路径：原始 ZIP 只交给归档导入一次，不再逐文件上传
+        verify(archiveImportService).importArchive(any(), any());
+        verify(instanceFileService, never()).uploadLocalFile(anyLong(), anyString(), anyString(), any());
         ArgumentCaptor<PluginMeta> metaCaptor = ArgumentCaptor.forClass(PluginMeta.class);
         verify(pluginMetaService).save(eq(100L), metaCaptor.capture());
         PluginMeta saved = metaCaptor.getValue();
@@ -74,6 +84,35 @@ class PluginInstallServiceStoreTest {
         assertThat(saved.getFileList()).contains(
                 "addons/sourcemod/plugins/myplugin.smx",
                 "cfg/sourcemod/myplugin.cfg");
+    }
+
+    @Test
+    void installBuiltinZip_shouldUseManifestPluginIdAsTargetName() throws Exception {
+        File zip = createTestZip("random-temp-name", "addons/sourcemod/plugins/a.smx");
+        String pluginId = "必选-修复类(v1.1)(修复部分梯子导致的崩溃)(SilverShot and Peace-Maker)";
+        stubArchiveImport(InstanceArchiveImportResult.builder()
+                .pluginName(pluginId)
+                .fileCount(1)
+                .totalBytes(5)
+                .relativePaths(List.of(
+                        "left4dead2/addons/sourcemod/plugins/a.smx"))
+                .build());
+
+        service.installFromLocalFileWithPluginName(100L, zip, pluginId, null);
+
+        ArgumentCaptor<InstanceArchiveImportRequest> requestCaptor =
+                ArgumentCaptor.forClass(InstanceArchiveImportRequest.class);
+        var listenerCaptor = ArgumentCaptor.forClass(
+                com.gameplatform.plugin.service.InstanceArchiveImportListener.class);
+        verify(archiveImportService).importArchive(requestCaptor.capture(), listenerCaptor.capture());
+        InstanceArchiveImportRequest request = requestCaptor.getValue();
+        assertThat(request.getTargetRelativePath())
+                .isEqualTo("left4dead2/addons/sourcemod/plugins_store/" + pluginId);
+        assertThat(request.getExpectedPluginName()).isEqualTo(pluginId);
+        assertThat(request.getStructureRoot()).isEqualTo("left4dead2");
+        ArgumentCaptor<PluginMeta> metaCaptor = ArgumentCaptor.forClass(PluginMeta.class);
+        verify(pluginMetaService).save(eq(100L), metaCaptor.capture());
+        assertThat(metaCaptor.getValue().getName()).isEqualTo(pluginId);
     }
 
     @Test
@@ -90,8 +129,27 @@ class PluginInstallServiceStoreTest {
         assertThat(metaCaptor.getValue().getName()).isEqualTo("e2e-sample-plugin");
     }
 
+    @Test
+    void uploadZip_responseNameMatchesInstalledDirectory() throws Exception {
+        File zip = createTestZip("e2e-zip-plugin", "addons/sourcemod/plugins/a.smx");
+        stubArchiveImport(InstanceArchiveImportResult.builder()
+                .pluginName("e2e-zip-plugin")
+                .fileCount(1)
+                .totalBytes(5)
+                .relativePaths(List.of(
+                        "left4dead2/addons/sourcemod/plugins/a.smx"))
+                .build());
+
+        var result = service.installFromUpload(100L,
+                new org.springframework.mock.web.MockMultipartFile(
+                        "file", "e2e-zip-plugin.zip", "application/zip",
+                        java.nio.file.Files.readAllBytes(zip.toPath())));
+
+        assertThat(result.getName()).isEqualTo("e2e-zip-plugin");
+    }
+
     private File createTestZip(String topLevelDir, String... entries) throws Exception {
-        File zip = tempDir.resolve("test.zip").toFile();
+        File zip = tempDir.resolve(topLevelDir + ".zip").toFile();
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zip))) {
             zos.putNextEntry(new ZipEntry(topLevelDir + "/left4dead2/"));
             zos.closeEntry();
@@ -102,5 +160,14 @@ class PluginInstallServiceStoreTest {
             }
         }
         return zip;
+    }
+
+    private void stubArchiveImport(InstanceArchiveImportResult result) {
+        when(archiveImportService.importArchive(any(), any())).thenAnswer(invocation -> {
+            com.gameplatform.plugin.service.InstanceArchiveImportRequest request =
+                    invocation.getArgument(0);
+            request.getCommitAction().afterAtomicMove(result);
+            return result;
+        });
     }
 }

@@ -342,6 +342,8 @@ bash scripts/deploy-plugin.sh --skip-build
   - [ADR-0016 RCON 能力上提](docs/design/adr/0016-rcon-host-capability.md)
   - [ADR-0017 实例信息 Provider 扩展点](docs/design/adr/0017-instance-info-provider.md)
   - [ADR-0021 主机环境工具安装](docs/design/adr/0021-host-environment-tool-install.md)
+  - [ADR-0031 实例归档导入](docs/design/adr/0031-instance-archive-import.md)
+  - [ADR-0032 platform-tools Alpine 镜像与 7zz 解压实现](docs/design/adr/0032-platform-tools-alpine-7zz.md)
 - [插件开发指南](.trae/skills/gameplatform-plugin-dev/SKILL.md)
 
 ---

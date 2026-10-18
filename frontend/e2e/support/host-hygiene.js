@@ -338,11 +338,17 @@ function inspectGithubHttps(containerName, checks, attempts = 3) {
       record(checks, "容器内 GitHub HTTPS", true, `attempt=${attempt}, http=${code}`);
       return { ok: true, httpCode: code };
     }
+    if (attempt < attempts) wslBash("sleep 2", 10_000);
   }
+  const isProxyUpstreamFailure = /http=50[234]$/.test(last);
   record(checks, "容器内 GitHub HTTPS", false, last, {
-    hint: "Steam302 DNS 映射、hosts 挂载或 CA bundle 任一未生效",
+    hint: isProxyUpstreamFailure
+      ? "Steam302 已收到请求，但其上游 GitHub 连接失败（看 caddy.log 的 dial tcp timeout）"
+      : "Steam302 DNS 映射、hosts 挂载或 CA bundle 任一未生效",
     remediation:
-      "检查 Steam302 是否 RUNNING、#S302-LAN 是否指向 WSL IP、mountHostCerts 是否开启，并查看 curl stderr",
+      isProxyUpstreamFailure
+        ? "检查主机到 GitHub/CDN 的外网连通性，并查看 docker exec steam302 tail -80 /data/caddy.log；DNS 与证书挂载已由前面的检查点验证"
+        : "检查 Steam302 是否 RUNNING、#S302-LAN 是否指向 WSL IP、mountHostCerts 是否开启，并查看 curl stderr",
   });
   return { ok: false, httpCode: null, output: last };
 }

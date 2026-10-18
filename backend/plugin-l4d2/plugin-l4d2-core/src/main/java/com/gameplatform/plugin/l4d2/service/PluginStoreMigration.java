@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
+import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
@@ -57,6 +58,7 @@ public class PluginStoreMigration implements SmartInitializingSingleton {
     @Override
     public void afterSingletonsInstantiated() {
         cleanDownloadTemp();
+        cleanArchiveInstallTemp();
     }
 
     /**
@@ -104,6 +106,85 @@ public class PluginStoreMigration implements SmartInitializingSingleton {
             }
         }
         log.info("下载临时目录清理完成: total={}, success={}, failed={}",
+                instances.size(), success, failed);
+    }
+
+    /**
+     * 清理所有 L4D2 实例 plugins_store 下遗留的单插件归档临时目录。
+     *
+     * <p>归档导入正常路径会在 finally 清理；进程崩溃或主机失联时可能留下
+     * {@code .install-*} 与 {@code <plugin>.rollback-*}。启动阶段尚无安装任务，
+     * 可安全清理 staging；回滚目录必须优先恢复：只有目标提交标记存在时才删除
+     * 备份，否则恢复旧目录，避免在落位中断时丢失旧插件。
+     */
+    public void cleanArchiveInstallTemp() {
+        String pluginsStorePath;
+        String installPrefix;
+        String rollbackMarker;
+        String commitMarker;
+        try {
+            pluginsStorePath = pathResolver.getPluginsStorePath();
+            installPrefix = pathResolver.getArchiveInstallPrefix();
+            rollbackMarker = pathResolver.getArchiveRollbackMarker();
+            commitMarker = pathResolver.getArchiveCommitMarker();
+        } catch (Exception e) {
+            log.warn("解析插件库路径失败（已忽略归档 staging 清理）: {}", e.getMessage());
+            return;
+        }
+
+        List<InstanceVO> instances;
+        try {
+            instances = instanceQueryService.listByGameCode(GAME_CODE);
+        } catch (Exception e) {
+            log.warn("查询 L4D2 实例列表失败（跳过归档 staging 清理）: {}", e.getMessage());
+            return;
+        }
+        if (instances == null || instances.isEmpty()) {
+            log.info("无 L4D2 实例，跳过归档 staging 清理");
+            return;
+        }
+
+        int success = 0;
+        int failed = 0;
+        for (InstanceVO instance : instances) {
+            Long instanceId = instance.getId();
+            try {
+                List<FileInfo> entries = instanceFileService.listFiles(instanceId, pluginsStorePath);
+                for (FileInfo entry : entries) {
+                    String name = entry.getName();
+                    if (name == null) {
+                        continue;
+                    }
+                    String entryPath = pluginsStorePath + "/" + name;
+                    if (entryPath.startsWith(installPrefix)) {
+                        instanceFileService.deleteDirectory(instanceId, entryPath, true);
+                        success++;
+                        continue;
+                    }
+                    int markerIndex = name.indexOf(rollbackMarker);
+                    if (markerIndex <= 0) {
+                        continue;
+                    }
+                    String targetName = name.substring(0, markerIndex);
+                    String targetPath = pluginsStorePath + "/" + targetName;
+                    String commitMarkerPath = targetPath + "/" + commitMarker;
+                    if (instanceFileService.exists(instanceId, commitMarkerPath)) {
+                        instanceFileService.deleteDirectory(instanceId, entryPath, true);
+                    } else {
+                        if (instanceFileService.exists(instanceId, targetPath)) {
+                            instanceFileService.deleteDirectory(instanceId, targetPath, true);
+                        }
+                        instanceFileService.moveFile(instanceId, entryPath, targetPath);
+                    }
+                    success++;
+                }
+            } catch (Exception e) {
+                failed++;
+                log.warn("清理或恢复实例 {} 的归档临时目录失败（已忽略）: {}",
+                        instanceId, e.getMessage());
+            }
+        }
+        log.info("归档临时目录清理完成: total={}, success={}, failed={}",
                 instances.size(), success, failed);
     }
 }

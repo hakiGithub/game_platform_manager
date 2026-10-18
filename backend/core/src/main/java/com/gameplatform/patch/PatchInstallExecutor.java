@@ -232,10 +232,12 @@ public class PatchInstallExecutor {
 
     /**
      * 借工具镜像在目标主机上执行命令（原生工具缺失时的下载/解压/校验代劳）。
+     * 以 SSH 用户的 UID/GID 运行容器，避免 root 解压产物无法被普通用户移动或清理；
      * volumes 形如 "-v /tmp/x:/w -v /tmp/y:/d"，innerCmd 在容器内执行。
      */
     private SshUtil.CommandResult dockerRunTool(Host host, String volumes, String innerCmd) {
-        return execOnHostQuietly(host, "docker run --rm " + volumes + " " + toolingImage + " " + innerCmd);
+        return execOnHostQuietly(host, "docker run --rm --user \"$(id -u):$(id -g)\" "
+                + volumes + " " + toolingImage + " " + innerCmd);
     }
 
     /** 描述缺失能力（WAN 报错文案用，ADR-0021 决策 7） */
@@ -465,8 +467,10 @@ public class PatchInstallExecutor {
                 case SEVEN_Z -> "7z x -y";
                 default -> throw new BusinessException("不支持的目标侧解压格式: " + format);
             };
-            // unrar/7z 的输出目录是位置参数（无 -C），先 cd 再执行
-            if (format == PatchFormat.RAR || format == PatchFormat.SEVEN_Z) {
+            // unzip 用 -d；unrar/7z 的输出目录是位置参数，先 cd 再执行
+            if (format == PatchFormat.ZIP) {
+                r = execOnHost(host, cmd + " " + shellQuote(archive) + " -d " + shellQuote(destDir));
+            } else if (format == PatchFormat.RAR || format == PatchFormat.SEVEN_Z) {
                 r = execOnHost(host, "cd " + shellQuote(destDir) + " && "
                         + cmd + " " + shellQuote(archive));
             } else {
@@ -475,7 +479,8 @@ public class PatchInstallExecutor {
         } else if (caps.hasDocker()) {
             // Docker 代劳（ADR-0026）：镜像预装 bsdtar/unrar/7z，按格式分派；--rm 用完即销毁
             String inner = switch (format) {
-                case RAR -> "unrar x -y " + containerPath(archive, "a") + " /d/";
+                // Alpine 的 7zip 包不提供 unrar；7zz 可直接读取 RAR。
+                case RAR -> "7zz x -y " + containerPath(archive, "a") + " -o/d";
                 case SEVEN_Z -> "7z x -y " + containerPath(archive, "a") + " -o/d";
                 default -> "bsdtar -xf " + containerPath(archive, "a") + " -C /d";
             };

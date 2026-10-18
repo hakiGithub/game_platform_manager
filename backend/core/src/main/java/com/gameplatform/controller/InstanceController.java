@@ -612,6 +612,7 @@ public class InstanceController {
                 vo.setIsDirectory(info.isDirectory());
                 vo.setSize(info.getSize());
                 vo.setLastModified(info.getLastModified());
+                vo.setPermissions(info.getPermissions());
                 return vo;
             }).toList();
 
@@ -940,6 +941,11 @@ public class InstanceController {
          * 最后修改时间
          */
         private Long lastModified;
+
+        /**
+         * 文件权限（如 rwxr-xr-x）；目录条目可能为空。
+         */
+        private String permissions;
     }
 
     /**

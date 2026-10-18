@@ -6,9 +6,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -34,6 +38,9 @@ class BuiltinPluginInstallerTest {
     private InstanceFileService instanceFileService;
 
     private BuiltinPluginInstaller installer;
+
+    @TempDir
+    Path tempDir;
 
     @BeforeEach
     void setUp() {
@@ -74,5 +81,20 @@ class BuiltinPluginInstallerTest {
         verify(pluginInstallService, never()).pluginExists(anyLong(), anyString());
         verify(pluginInstallService, never()).listInstalledPluginNames(anyLong());
         assertTrue(result.stream().allMatch(vo -> vo.getInstalled() == null));
+    }
+
+    @Test
+    @DisplayName("内置插件 ZIP 使用清单 pluginId 作为目标目录")
+    void installUsesManifestPluginIdInsteadOfTempFileName() throws Exception {
+        String pluginId = "1.11插件平台linux版";
+        when(pluginInstallService.pluginExists(55L, pluginId)).thenReturn(false);
+        Path tempZip = Files.createTempFile(tempDir, "builtin-plugin-", ".zip");
+        BuiltinPluginInstaller installerSpy = spy(installer);
+        doReturn(tempZip).when(installerSpy).extractClasspathZipToTemp(anyString());
+
+        installerSpy.install(55L, pluginId);
+
+        verify(pluginInstallService).installFromLocalFileWithPluginName(
+                eq(55L), any(File.class), eq(pluginId), isNull());
     }
 }

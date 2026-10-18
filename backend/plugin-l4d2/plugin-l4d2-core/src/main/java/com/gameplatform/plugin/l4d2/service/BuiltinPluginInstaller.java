@@ -187,7 +187,8 @@ public class BuiltinPluginInstaller {
             if (listener != null) {
                 listener.onProgress(15, "插件包就绪（" + sizeMb + " MB），解压并上传到主机");
             }
-            pluginInstallService.installFromLocalFile(instanceId, tempZip.toFile(), listener);
+            pluginInstallService.installFromLocalFileWithPluginName(
+                    instanceId, tempZip.toFile(), pluginId, listener);
             log.info("内置插件安装完成: instanceId={}, plugin={}", instanceId, pluginId);
             return "插件安装成功: " + plugin.getName();
         } catch (L4D2PluginException e) {
@@ -242,7 +243,7 @@ public class BuiltinPluginInstaller {
      *
      * <p>PF4J 插件使用独立 ClassLoader，必须用本类的 ClassLoader 才能从插件 JAR 内读取资源。
      */
-    private Path extractClasspathZipToTemp(String fileName) {
+    Path extractClasspathZipToTemp(String fileName) {
         String resourcePath = BUILTIN_PLUGINS_DIR + fileName;
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
             if (is == null) {

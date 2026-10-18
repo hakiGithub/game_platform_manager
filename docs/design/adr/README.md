@@ -39,6 +39,8 @@
 | [0028](0028-map-center-incremental-crawl.md) | 地图中心增量爬取水位线早停（库内派生水位线 + 乱序保护） | Accepted | 2026-09-17 |
 | [0029](0029-long-lived-api-token.md) | 长期可吊销 API Token（凭证方案 A，与登录 JWT 并存） | Accepted | 2026-10-02 |
 | [0030](0030-frontend-usepolling-dual-copy.md) | 前端 usePolling 双副本（行为类工具同样走复制） | Accepted | 2026-10-15 |
+| [0031](0031-instance-archive-import.md) | 实例归档导入（单压缩包上传 + 主机解压 + 目录级落位） | Accepted | 2026-10-18 |
+| [0032](0032-platform-tools-alpine-7zz.md) | platform-tools Alpine 镜像与 7zz 解压实现修订 | Accepted | 2026-10-19 |
 
 ## 术语表
 

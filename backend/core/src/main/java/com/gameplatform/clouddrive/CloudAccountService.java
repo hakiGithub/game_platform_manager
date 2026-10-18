@@ -14,6 +14,7 @@ import com.haki.clouddrive.sdk.CloudDriveClient;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
+@DependsOn("extensionStoreInitializer")
 @RequiredArgsConstructor
 public class CloudAccountService {
 

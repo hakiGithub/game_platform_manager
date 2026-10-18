@@ -6,9 +6,10 @@
 #   docker push registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest
 FROM alpine:3.20
 
-# bsdtar(libarchive-tools) 覆盖 tar.gz/tar.bz2/tar.xz/zip 单命令解压；p7zip/unrar 补 7z/rar；
-# curl/wget 下载；sha256sum 校验（alpine 自带 busybox 提供）
-RUN apk add --no-cache libarchive-tools p7zip unrar curl wget rsync
+# bsdtar(libarchive-tools) 覆盖 tar.gz/tar.bz2/tar.xz/zip 单命令解压；7zip 补 7z/rar；
+# curl/wget 下载；sha256sum 校验（alpine 自带 busybox 提供）。
+# Alpine 3.20 无 unrar 包，7zip 已提供 RAR 读取能力。
+RUN apk add --no-cache libarchive-tools 7zip curl wget rsync
 
 # 默认入口打印工具清单，便于验证镜像
-CMD ["sh", "-c", "command -v bsdtar 7z unrar curl wget rsync sha256sum"]
+CMD ["sh", "-c", "command -v bsdtar 7zz 7z curl wget rsync sha256sum"]

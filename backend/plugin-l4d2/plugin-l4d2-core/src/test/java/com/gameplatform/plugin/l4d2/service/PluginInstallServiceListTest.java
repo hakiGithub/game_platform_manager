@@ -7,6 +7,7 @@ import com.gameplatform.plugin.l4d2.vo.PluginListVO;
 import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceFileService;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,8 @@ class PluginInstallServiceListTest {
                 mock(FileRefsService.class),
                 new L4D2PathResolver(),
                 pluginMetaService,
-                enabledPluginsService);
+                enabledPluginsService,
+                mock(InstanceArchiveImportService.class));
     }
 
     @Test

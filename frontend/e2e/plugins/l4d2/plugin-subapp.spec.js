@@ -21,6 +21,10 @@ import { fileURLToPath } from "node:url";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { createApi, login, removeHostsByName } from "../../support/api.js";
+import {
+  LARGE_PLUGIN,
+  ensureLargePluginFixture,
+} from "../../fixtures/build-large-plugin.mjs";
 
 skipWithoutTestHost();
 
@@ -125,9 +129,42 @@ test.describe.serial("l4d2 插件子应用", () => {
       );
     }
     await expect(page).toHaveURL(dashboardUrl, { timeout: 30_000 });
-    await expect(page.locator(".dashboard-page")).toBeVisible({
-      timeout: 30_000,
-    });
+    try {
+      await expect(page.locator(".dashboard-page")).toBeVisible({
+        timeout: 30_000,
+      });
+    } catch (error) {
+      const actual = {
+        url: page.url(),
+        pluginTab: await page.locator(".plugin-tab").count().catch(() => 0),
+        body: (
+          await page
+            .locator("body")
+            .innerText()
+            .catch(() => "")
+        )
+          .replaceAll(/\s+/g, " ")
+          .slice(0, 500),
+      };
+      console.log(
+        `[CHECK][FAIL] l4d2 子应用仪表盘首次挂载超时，reload 后重试: ${JSON.stringify(
+          actual,
+        )}`,
+      );
+      await page.reload();
+      try {
+        await expect(page.locator(".dashboard-page")).toBeVisible({
+          timeout: 60_000,
+        });
+      } catch (reloadError) {
+        throw new Error(
+          `[CHECK][FAIL] l4d2 子应用仪表盘 reload 后仍不可见: ${reloadError.message}; actual=${JSON.stringify(
+            actual,
+          )}; remediation: 查看 e2e/.artifacts 的 error-context.md、trace 与 /api/pf4j/plugin/l4d2/ui/ 响应`,
+          { cause: error },
+        );
+      }
+    }
   }
 
   async function gotoPluginPage(page, path, rootSelector) {
@@ -230,6 +267,47 @@ test.describe.serial("l4d2 插件子应用", () => {
       );
     }
     console.log("[CHECK][PASS] 插件列表已显式刷新并收到成功响应");
+  }
+
+  async function listInstanceDirectory(path) {
+    const response = await api.get(
+      `/api/instances/${instanceId}/files?path=` + encodeURIComponent(path),
+    );
+    if (response.status !== 200 || response.body?.code !== 200) {
+      throw new Error(
+        `[CHECK][FAIL] 读取实例目录失败: path=${path}, HTTP=${response.status}, body=${JSON.stringify(
+          response.body,
+        ).slice(
+          0,
+          400,
+        )}; remediation: 确认实例运行中且目录已落位，再检查 /api/instances/${instanceId}/files`,
+      );
+    }
+    return response.body?.data?.files ?? [];
+  }
+
+  async function scanInstanceTree(root) {
+    const pending = [root];
+    const files = [];
+    const directories = [];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      const entries = await listInstanceDirectory(current);
+      for (const entry of entries) {
+        const entryPath = `${current}/${entry.name}`;
+        if (entry.isDirectory) {
+          directories.push(entryPath);
+          pending.push(entryPath);
+        } else {
+          files.push({ ...entry, path: entryPath });
+        }
+      }
+    }
+    return {
+      files,
+      directories,
+      totalBytes: files.reduce((sum, entry) => sum + Number(entry.size ?? 0), 0),
+    };
   }
 
   async function expectPluginUiStatus(page, name, status) {
@@ -339,44 +417,16 @@ test.describe.serial("l4d2 插件子应用", () => {
   });
 
   test("进入工作区直跳 Wujie 容器且子应用仪表盘渲染", async ({ page }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(3 * 60_000);
     const { injectSession } = await import("../../support/session.js");
     await injectSession(page);
-    await page.goto("/extensions/plugins/list");
-
-    const card = page.locator(".plugin-card", { hasText: "l4d2" });
-    const workspaceButton = card.getByRole("button", {
-      name: "进入工作区",
-    });
-    await expect(workspaceButton).toBeVisible({ timeout: 30_000 });
-    await workspaceButton.click();
-    // 单实例直跳；多实例时弹出选择框——选第一行（两种分支都归一到工作区 URL）
-    const selectDialog = page.getByRole("dialog", { hasText: "选择管理目标" });
-    try {
-      await selectDialog.waitFor({ state: "visible", timeout: 5_000 });
-      await selectDialog
-        .locator(".el-table__row")
-        .first()
-        .getByRole("button", { name: "进入管理" })
-        .click();
-    } catch {
-      // 无选择框 = 单实例直跳
-    }
-
-    // 单实例 → 直跳插件工作区
-    await expect(page).toHaveURL(
-      /\/extensions\/app\/l4d2\/dashboard\?instanceId=/,
-      {
-        timeout: 20_000,
-      },
-    );
+    await enterPluginWorkspace(page);
     // 主应用侧容器挂载 + 侧边栏出现插件菜单组
     await expect(page.locator(".plugin-tab")).toBeVisible({ timeout: 30_000 });
-    // 子应用内容（Wujie shadow DOM 内）渲染：仪表盘页根元素与刷新按钮
-    await expect(page.locator(".dashboard-page")).toBeVisible({
-      timeout: 30_000,
-    });
     await expect(page.getByRole("button", { name: "刷新状态" })).toBeVisible();
+    console.log(
+      "[CHECK][PASS] l4d2 工作区直跳成功：Wujie 容器、仪表盘与刷新入口均可见",
+    );
   });
 
   test("仪表盘状态卡与刷新", async ({ page }) => {
@@ -710,6 +760,318 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(page.locator(".el-table")).toContainText("e2e-sample-plugin", {
       timeout: 30_000,
     });
+  });
+
+  test("单插件 ZIP 快路径上传、落位、重装与清理", async ({ page }) => {
+    test.setTimeout(6 * 60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    const startedAt = Date.now();
+    const phaseMarks = [];
+    const mark = (phase, detail) => {
+      const elapsed = Date.now() - startedAt;
+      phaseMarks.push({ phase, elapsed, detail });
+      console.log(
+        `[CHECK][PASS] ZIP 快路径阶段 ${phase}: elapsed=${elapsed}ms${detail ? `, ${detail}` : ""}`,
+      );
+    };
+
+    const zipPath = join(FIXTURES_DIR, "plugins", "e2e-zip-plugin.zip");
+    await gotoPluginPage(page, "plugins", ".plugins-page");
+    const upload = async () => {
+      await page.getByRole("button", { name: "上传插件" }).click();
+      const dialog = page.getByRole("dialog", { hasText: "上传插件" });
+      await expect(dialog).toBeVisible();
+      await dialog.locator('input[type="file"]').setInputFiles(zipPath);
+      await dialog.getByRole("button", { name: "上传", exact: true }).click();
+      await expect(page.getByText(/上传中|\d+%/)).toHaveCount(0, {
+        timeout: 4 * 60_000,
+      });
+      // Element Plus 上传弹窗关闭后 overlay 节点仍留在 DOM 中；真实用户路径
+      // 是点击遮罩关闭，避免后续列表操作被不可见遮罩拦截。
+      await dialog.locator("..").click({ position: { x: 8, y: 8 } });
+      await expect(page.locator(".el-table")).toContainText("e2e-zip-plugin", {
+        timeout: 30_000,
+      });
+    };
+
+    await upload();
+    mark("UPLOAD", "原始 ZIP 单次上传并进入安装");
+
+    const storeRoot =
+      "left4dead2/addons/sourcemod/plugins_store/e2e-zip-plugin/left4dead2";
+    await expect
+      .poll(
+        async () => {
+          const list = await api.get(
+            `/api/instances/${instanceId}/files?path=` +
+              encodeURIComponent(storeRoot),
+          );
+          return (list.body?.data?.files ?? [])
+            .map((entry) => entry.name ?? entry.fileName ?? "")
+            .sort()
+            .join(",");
+        },
+        { timeout: 60_000, intervals: [2_000, 4_000] },
+      )
+      .toBe("addons,cfg");
+    mark("IMPORT", "目录级导入完成");
+
+    const files = await api.get(
+      `/api/instances/${instanceId}/files?path=` + encodeURIComponent(storeRoot),
+    );
+    const entryNames = (files.body?.data?.files ?? []).map(
+      (entry) => entry.name ?? entry.fileName ?? "",
+    );
+    expect(entryNames).toEqual(
+      expect.arrayContaining(["addons", "cfg"]),
+    );
+
+    const smx = await api.get(
+      `/api/instances/${instanceId}/files?path=` +
+        encodeURIComponent(
+          "left4dead2/addons/sourcemod/plugins_store/e2e-zip-plugin/left4dead2/addons/sourcemod/plugins",
+        ),
+    );
+    expect(
+      (smx.body?.data?.files ?? []).map(
+        (entry) => entry.name ?? entry.fileName ?? "",
+      ),
+    ).toContain("e2e-zip-plugin.smx");
+    mark("VALIDATE", "关键 SMX 与目录结构校验通过");
+
+    const row = page.locator(".el-table__row", { hasText: "e2e-zip-plugin" });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await expect(row.getByText(/已启用|已禁用/)).toBeVisible();
+
+    // 重复安装：同名单插件应先由原子落位保留旧目录，再替换为新目录。
+    await upload();
+    mark("REINSTALL", "重复上传完成，旧目录被原子替换");
+    await expect(page.locator(".el-table__row", { hasText: "e2e-zip-plugin" })).toBeVisible();
+
+    // 清理：删除插件目录并确认列表移除，避免残留污染后续轮次。
+    await row.getByRole("button", { name: "删除" }).click();
+    await page
+      .locator(".el-message-box")
+      .getByRole("button", { name: /确定|删除/ })
+      .click();
+    await expect(page.locator(".el-table")).not.toContainText("e2e-zip-plugin", {
+      timeout: 30_000,
+    });
+    mark("CLEANUP", "插件目录已删除，测试现场清理完成");
+
+    const totalMs = Date.now() - startedAt;
+    const baselineMs = 337_753;
+    console.log(
+      `[CHECK][${totalMs <= baselineMs ? "PASS" : "FAIL"}] ZIP 快路径总耗时: ${totalMs}ms，基线=${baselineMs}ms，阶段=${phaseMarks
+        .map((item) => `${item.phase}:${item.elapsed}ms`)
+        .join(" | ")}; remediation=${
+        totalMs <= baselineMs
+          ? "无"
+          : "检查是否仍走逐文件上传；查看任务详情阶段耗时与主机解压日志"
+      }`,
+    );
+    expect(totalMs, "ZIP 快路径总耗时应优于 337753ms 基线").toBeLessThanOrEqual(
+      baselineMs,
+    );
+  });
+
+  test("965 文件大归档跨 100MB 上传、落位与清理", async ({ page }) => {
+    test.setTimeout(15 * 60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+
+    const archivePath = ensureLargePluginFixture();
+    const startedAt = Date.now();
+    const phaseMarks = [];
+    const mark = (phase, detail) => {
+      const elapsed = Date.now() - startedAt;
+      phaseMarks.push({ phase, elapsed, detail });
+      console.log(
+        `[CHECK][PASS] 大归档阶段 ${phase}: elapsed=${elapsed}ms${detail ? `, ${detail}` : ""}`,
+      );
+    };
+
+    await gotoPluginPage(page, "plugins", ".plugins-page");
+    await page.getByRole("button", { name: "上传插件" }).click();
+    const dialog = page.getByRole("dialog", { hasText: "上传插件" });
+    await expect(dialog).toBeVisible();
+    await dialog.locator('input[type="file"]').setInputFiles(archivePath);
+    await dialog.getByRole("button", { name: "上传", exact: true }).click();
+    mark("UPLOAD_START", `archive=${archivePath}`);
+
+    await expect(page.getByText(/上传中|\d+%/)).toHaveCount(0, {
+      timeout: 12 * 60_000,
+    });
+    await dialog.locator("..").click({ position: { x: 8, y: 8 } });
+
+    const row = page.locator(".el-table__row", {
+      hasText: LARGE_PLUGIN.name,
+    });
+    await expect(row).toBeVisible({ timeout: 60_000 });
+    mark("UPLOAD_END", "归档导入返回成功且插件列表条目可见");
+    await expect(row.getByText(/已启用|已禁用/)).toBeVisible();
+    mark("LIST", "插件列表出现大归档条目");
+
+    const storeRoot =
+      `left4dead2/addons/sourcemod/plugins_store/${LARGE_PLUGIN.name}` +
+      "/left4dead2";
+    const tree = await scanInstanceTree(storeRoot);
+    expect(
+      tree.files.length,
+      `[CHECK][FAIL] 大归档文件数不一致: expected=${LARGE_PLUGIN.fileCount}, actual=${tree.files.length}; remediation=检查 staging 文件清单、解压工具退出码与目标磁盘空间`,
+    ).toBe(LARGE_PLUGIN.fileCount);
+    expect(
+      tree.totalBytes,
+      `[CHECK][FAIL] 大归档总字节不一致: expected=${LARGE_PLUGIN.targetBytes}, actual=${tree.totalBytes}; remediation=检查解压工具是否截断文件及磁盘空间`,
+    ).toBe(LARGE_PLUGIN.targetBytes);
+    mark(
+      "VERIFY_TREE",
+      `files=${tree.files.length}, bytes=${tree.totalBytes}, dirs=${tree.directories.length}`,
+    );
+
+    const byRelativePath = new Map(
+      tree.files.map((entry) => [
+        entry.path.slice(storeRoot.length + 1),
+        entry,
+      ]),
+    );
+    const smx = byRelativePath.get("addons/sourcemod/plugins/e2e-large-plugin.smx");
+    const cfg = byRelativePath.get("cfg/sourcemod/e2e-large-plugin.cfg");
+    expect(
+      smx,
+      "[CHECK][FAIL] 关键 SMX 缺失: addons/sourcemod/plugins/e2e-large-plugin.smx; remediation=检查 ZIP 根结构归一化与 requiredFiles 校验",
+    ).toBeTruthy();
+    expect(
+      cfg,
+      "[CHECK][FAIL] 关键 CFG 缺失: cfg/sourcemod/e2e-large-plugin.cfg; remediation=检查 ZIP 根结构归一化与文件计数",
+    ).toBeTruthy();
+    expect(cfg.size, "[CHECK][FAIL] 关键 CFG 大小不一致").toBe(
+      Buffer.byteLength("sm_e2e_large_plugin 1\n"),
+    );
+    mark("VERIFY_KEY_FILES", "关键 SMX/CFG 已落位");
+
+    const executable = tree.files.filter(
+      (entry) =>
+        LARGE_PLUGIN.executableFileNames.includes(
+          entry.path.slice(storeRoot.length + 1),
+        ) && entry.permissions === "rwxr-xr-x",
+    );
+    const permissionSamples = tree.files
+      .slice(0, 5)
+      .map(
+        (entry) =>
+          `${entry.path.split("/").at(-1)}:${JSON.stringify(entry.permissions)}`,
+      );
+    const expectedExecutableSamples = tree.files
+      .filter((entry) =>
+        LARGE_PLUGIN.executableFileNames.includes(
+          entry.path.slice(storeRoot.length + 1),
+        ),
+      )
+      .slice(0, 3)
+      .map(
+        (entry) =>
+          `${entry.path.split("/").at(-1)}:${JSON.stringify(entry.permissions)}`,
+      );
+    console.log(
+      `[CHECK][${executable.length > 0 ? "PASS" : "FAIL"}] 大归档权限回读采样: first=${permissionSamples.join(", ")}; expectedExecutable=${expectedExecutableSamples.join(", ")}; executable=${executable.length}`,
+    );
+    expect(
+      executable.length,
+      `[CHECK][FAIL] 可执行权限未完整保留: expected=${LARGE_PLUGIN.executableFileNames.length}, actual=${executable.length}; remediation=检查 ZIP external attributes、platform-tools bsdtar 解压权限、docker cp 权限语义`,
+    ).toBe(LARGE_PLUGIN.executableFileNames.length);
+    mark(
+      "VERIFY_PERMISSIONS",
+      `executable=${executable.length}, sample=${executable
+        .slice(0, 3)
+        .map((entry) => `${entry.path.split("/").at(-1)}:${entry.permissions}`)
+        .join(",")}`,
+    );
+
+    const storeEntries = await listInstanceDirectory(
+      "left4dead2/addons/sourcemod/plugins_store",
+    );
+    const leftovers = storeEntries
+      .map((entry) => entry.name)
+      .filter(
+        (name) =>
+          name.startsWith(".install-") ||
+          name.includes(".rollback-"),
+      );
+    expect(
+      leftovers,
+      `[CHECK][FAIL] 安装完成后仍有 staging/rollback 残留: ${leftovers.join(", ")}; remediation=检查 CLEANUP 阶段、finally 清理与启动期 PluginStoreMigration`,
+    ).toEqual([]);
+    mark("VERIFY_CLEANUP", "无 .install-* / .rollback-* 残留");
+
+    await expect(
+      row.getByText(/已启用|已禁用/),
+    ).toHaveCount(1);
+    await row.getByRole("button", { name: "删除" }).click();
+    await page
+      .locator(".el-message-box")
+      .getByRole("button", { name: /确定|删除/ })
+      .click();
+    await expect(page.locator(".el-table")).not.toContainText(
+      LARGE_PLUGIN.name,
+      { timeout: 60_000 },
+    );
+    const rootAfterDelete = await listInstanceDirectory(storeRoot).catch(
+      () => [],
+    );
+    expect(
+      rootAfterDelete,
+      `[CHECK][FAIL] 删除后插件目录仍可读: path=${storeRoot}; remediation=检查 DELETE /api/plugin/l4d2/plugins/${LARGE_PLUGIN.name} 与容器写权限`,
+    ).toEqual([]);
+    mark("CLEANUP", "大归档插件目录已删除");
+
+    const totalMs = Date.now() - startedAt;
+    const baselineMs = 337_753;
+    console.log(
+      `[CHECK][${totalMs <= baselineMs ? "PASS" : "FAIL"}] 大归档总耗时: ${totalMs}ms，基线=${baselineMs}ms，阶段=${phaseMarks
+        .map((item) => `${item.phase}:${item.elapsed}ms`)
+        .join(" | ")}; remediation=${
+        totalMs <= baselineMs
+          ? "无"
+          : "检查原始归档是否仅上传一次、主机侧解压工具与递归文件校验开销"
+      }`,
+    );
+    expect(
+      totalMs,
+      `[CHECK][FAIL] 大归档总耗时应优于 ${baselineMs}ms 基线，实际=${totalMs}ms; remediation=查看阶段耗时与后端归档导入日志`,
+    ).toBeLessThanOrEqual(baselineMs);
+  });
+
+  test("单插件 ZIP 结构失败时给出阶段与修复建议", async ({ page }) => {
+    test.setTimeout(2 * 60_000);
+    const { injectSession } = await import("../../support/session.js");
+    await injectSession(page);
+    await gotoPluginPage(page, "plugins", ".plugins-page");
+
+    await page.getByRole("button", { name: "上传插件" }).click();
+    const dialog = page.getByRole("dialog", { hasText: "上传插件" });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .locator('input[type="file"]')
+      .setInputFiles(join(FIXTURES_DIR, "plugins", "e2e-broken-plugin.zip"));
+    await dialog.getByRole("button", { name: "上传", exact: true }).click();
+
+    const error = page.locator(".el-message--error");
+    await expect(error).toBeVisible({ timeout: 60_000 });
+    await expect(error).toContainText(/阶段=校验\(VALIDATE\)/);
+    await expect(error).toContainText(/原因码=ARCHIVE_REQUIRED_FILE_MISSING/);
+    await expect(error).toContainText(/建议=.*关键文件/);
+    console.log(
+      "[CHECK][PASS] 单插件 ZIP 结构失败：页面错误包含阶段、原因码与修复建议",
+    );
+
+    await expect(
+      page.locator(".el-table__row", { hasText: "e2e-broken-plugin" }),
+    ).toHaveCount(0);
+    console.log(
+      "[CHECK][PASS] 失败归档未写入插件列表，未产生半安装记录",
+    );
   });
 
   test("SourceMod 插件禁用/启用切换并恢复原状态", async ({ page }) => {

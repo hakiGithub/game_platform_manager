@@ -5,6 +5,7 @@ import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.dto.BatchPluginOperationDTO;
 import com.gameplatform.plugin.l4d2.dto.BuiltinPluginInstallDTO;
+import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.service.BuiltinPluginInstaller;
 import com.gameplatform.plugin.l4d2.service.PlatformPluginInstaller;
 import com.gameplatform.plugin.l4d2.service.PluginExportService;
@@ -269,7 +270,13 @@ public class PluginManageController {
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
             @Parameter(description = "插件文件") @RequestParam("file") MultipartFile file) {
         log.info("上传插件, instanceId: {}, fileName: {}", instanceId, file.getOriginalFilename());
-        return Result.success("插件上传成功", pluginInstallService.installFromUpload(instanceId, file));
+        try {
+            return Result.success("插件上传成功", pluginInstallService.installFromUpload(instanceId, file));
+        } catch (L4D2PluginException e) {
+            log.warn("上传插件失败: instanceId={}, fileName={}, code={}, message={}",
+                    instanceId, file.getOriginalFilename(), e.getCode(), e.getMessage());
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**

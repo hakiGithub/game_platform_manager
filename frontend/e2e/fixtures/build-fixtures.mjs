@@ -2,6 +2,7 @@
 // 用法: node build-fixtures.mjs  （提交生成的二进制；本脚本保证可复现）
 // 红线: 用例运行时禁止临时外网下载资产——一切资产来自本目录。
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { deflateRawSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -135,9 +136,116 @@ function selfCheckSmx(buf) {
   if (buf.length < 32) throw new Error("smx 样例过小");
 }
 
+// ---------- 单插件 ZIP 样例（快路径：一次归档上传 + 主机解压 + 目录落位） ----------
+// 结构：e2e-zip-plugin/left4dead2/addons/sourcemod/plugins/e2e-zip-plugin.smx
+//      e2e-zip-plugin/left4dead2/cfg/sourcemod/e2e-zip-plugin.cfg
+// 使用 Node 内置 zlib 手工写最小 ZIP（无外部依赖），仅用于 E2E 资产合成。
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (const byte of buf) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildZip(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, "utf8");
+    const data = Buffer.from(entry.data, "utf8");
+    const compressed = deflateRawSync(data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, name, compressed);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressed.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += local.length + name.length + compressed.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function buildPluginZip() {
+  return buildZip([
+    {
+      name: "e2e-zip-plugin/left4dead2/addons/sourcemod/plugins/e2e-zip-plugin.smx",
+      data: buildSmx().toString("latin1"),
+    },
+    {
+      name: "e2e-zip-plugin/left4dead2/cfg/sourcemod/e2e-zip-plugin.cfg",
+      data: "sm_e2e_zip_plugin 1\n",
+    },
+  ]);
+}
+
+function buildBrokenPluginZip() {
+  return buildZip([
+    {
+      name: "e2e-broken-plugin/left4dead2/readme.txt",
+      data: "missing SourceMod plugins directory\n",
+    },
+  ]);
+}
+
+function selfCheckPluginZip(buf) {
+  if (buf.readUInt32LE(0) !== 0x04034b50) throw new Error("插件 ZIP magic 不符");
+  const endOffset = buf.length - 22;
+  if (buf.readUInt32LE(endOffset) !== 0x06054b50) {
+    throw new Error("插件 ZIP 中央目录结束记录缺失");
+  }
+  const entryCount = buf.readUInt16LE(endOffset + 10);
+  if (entryCount < 1 || entryCount > 2) {
+    throw new Error(`插件 ZIP 条目数异常: ${entryCount}`);
+  }
+}
+
 // ---------- 生成 ----------
 mkdirSync(join(FIXTURES_DIR, "vpk"), { recursive: true });
 mkdirSync(join(FIXTURES_DIR, "sourcemod"), { recursive: true });
+mkdirSync(join(FIXTURES_DIR, "plugins"), { recursive: true });
 
 const vpk = buildVpk();
 writeFileSync(join(FIXTURES_DIR, "vpk", "e2e-test-map.vpk"), vpk);
@@ -149,6 +257,19 @@ const smx = buildSmx();
 writeFileSync(join(FIXTURES_DIR, "sourcemod", "e2e-sample-plugin.smx"), smx);
 selfCheckSmx(smx);
 console.log(`sourcemod/e2e-sample-plugin.smx  ${smx.length}B  ✓`);
+
+const pluginZip = buildPluginZip();
+writeFileSync(join(FIXTURES_DIR, "plugins", "e2e-zip-plugin.zip"), pluginZip);
+selfCheckPluginZip(pluginZip);
+console.log(`plugins/e2e-zip-plugin.zip  ${pluginZip.length}B  ✓`);
+
+const brokenPluginZip = buildBrokenPluginZip();
+writeFileSync(
+  join(FIXTURES_DIR, "plugins", "e2e-broken-plugin.zip"),
+  brokenPluginZip,
+);
+selfCheckPluginZip(brokenPluginZip);
+console.log(`plugins/e2e-broken-plugin.zip  ${brokenPluginZip.length}B  ✓`);
 
 // YAML 资产自检：解析断言关键字段（与 GameYamlConfig.isValid 的强校验项一致）
 const yml = readFileSync(

@@ -11,11 +11,17 @@ import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.l4d2.vo.PluginReadmeVO;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.FileTransferProgressCallback;
+import com.gameplatform.plugin.service.InstanceArchiveImportException;
+import com.gameplatform.plugin.service.InstanceArchiveImportListener;
+import com.gameplatform.plugin.service.InstanceArchiveImportRequest;
+import com.gameplatform.plugin.service.InstanceArchiveImportResult;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,6 +40,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -59,9 +66,12 @@ public class PluginInstallService {
     private final Charset gbk = GbkCodecUtil.gbk();
     private final PluginMetaService pluginMetaService;
     private final EnabledPluginsService enabledPluginsService;
+    private final InstanceArchiveImportService archiveImportService;
 
     // 用于复制并发的信号量（对齐 l4d2-server-next ants 协程池，容量 3）
     private final Semaphore copySemaphore = new Semaphore(3);
+    private final ConcurrentHashMap<String, Object> activeArchiveInstalls =
+            new ConcurrentHashMap<>();
     private final ExecutorService copyExecutor = Executors.newFixedThreadPool(
             Math.max(1, Runtime.getRuntime().availableProcessors()));
 
@@ -70,13 +80,16 @@ public class PluginInstallService {
                                 FileRefsService fileRefsService,
                                 L4D2PathResolver pathResolver,
                                 PluginMetaService pluginMetaService,
-                                EnabledPluginsService enabledPluginsService) {
+                                EnabledPluginsService enabledPluginsService,
+                                @Qualifier("instanceArchiveImportService")
+                                InstanceArchiveImportService archiveImportService) {
         this.instanceQueryService = instanceQueryService;
         this.instanceFileService = instanceFileService;
         this.fileRefsService = fileRefsService;
         this.pathResolver = pathResolver;
         this.pluginMetaService = pluginMetaService;
         this.enabledPluginsService = enabledPluginsService;
+        this.archiveImportService = archiveImportService;
     }
 
     @PreDestroy
@@ -96,14 +109,15 @@ public class PluginInstallService {
             File tempFile = File.createTempFile("l4d2-upload-", "-" + sanitizeFilename(originalName));
             file.transferTo(tempFile);
             try {
-                installFromLocalFile(instanceId, tempFile, sanitizeFilename(originalName), null);
+                installFromLocalFile(instanceId, tempFile,
+                        sanitizeFilename(originalName), null, null);
             } finally {
                 if (!tempFile.delete()) {
                     tempFile.deleteOnExit();
                 }
             }
             PluginListVO vo = new PluginListVO();
-            String baseName = stripExtension(originalName);
+            String baseName = sanitizeFilename(stripExtension(effectiveNameForResponse(originalName)));
             vo.setName(baseName);
             vo.setStatus("enabled");
             vo.setSource("upload");
@@ -145,7 +159,25 @@ public class PluginInstallService {
      * </ul>
      */
     public void installFromLocalFile(Long instanceId, File localFile, InstallProgressListener listener) {
-        installFromLocalFile(instanceId, localFile, localFile != null ? localFile.getName() : null, listener);
+        installFromLocalFile(instanceId, localFile,
+                localFile != null ? localFile.getName() : null, null, listener);
+    }
+
+    /**
+     * 从本地文件安装，并使用调用方提供的可信插件名作为目标目录名。
+     *
+     * <p>内置插件来自平台清单，{@code pluginId} 本身就是
+     * {@code plugins_store/<pluginId>} 的目录契约；临时 ZIP 文件名不能参与命名。
+     * 用户上传入口仍应先安全化原始文件名，再调用此方法。</p>
+     */
+    public void installFromLocalFileWithPluginName(Long instanceId, File localFile,
+                                                   String pluginName,
+                                                   InstallProgressListener listener) {
+        if (pluginName == null || pluginName.isBlank()) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS, "插件名称不能为空");
+        }
+        validatePluginName(pluginName);
+        installFromLocalFile(instanceId, localFile, pluginName, pluginName, listener);
     }
 
     /**
@@ -156,6 +188,7 @@ public class PluginInstallService {
      * 用户上传的插件名精确查询。安装逻辑需要显式接收原始文件名。</p>
      */
     private void installFromLocalFile(Long instanceId, File localFile, String sourceName,
+                                      String targetPluginName,
                                       InstallProgressListener listener) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
@@ -184,6 +217,15 @@ public class PluginInstallService {
             return;
         }
 
+        // 归档格式取决于实际本地文件；显式目标名（内置 pluginId）不携带扩展名。
+        if (localFile.getName().toLowerCase().endsWith(".zip")) {
+            String zipPluginName = targetPluginName != null && !targetPluginName.isBlank()
+                    ? targetPluginName : sanitizeFilename(stripExtension(effectiveName));
+            if (tryInstallSinglePluginZip(instanceId, localFile, zipPluginName, listener)) {
+                return;
+            }
+        }
+
         // ZIP/7z：解压到 plugins_store/<pluginName>/left4dead2/...
         File tempDir = createTempDir("l4d2-extract-");
         try {
@@ -198,6 +240,148 @@ public class PluginInstallService {
         } finally {
             deleteRecursive(tempDir);
         }
+    }
+
+    /**
+     * 单插件 ZIP 快路径：平台只校验清单与上传一次原始 ZIP，主机/容器侧解压、
+     * 目录级导入、校验、原子落位和清理由 {@link InstanceArchiveImportService} 完成。
+     *
+     * @return true 表示快路径已处理；false 表示归档不是可安全识别的单插件结构，
+     *         调用方继续走原逐文件兼容路径
+     */
+    private boolean tryInstallSinglePluginZip(Long instanceId, File localFile, String pluginName,
+                                              InstallProgressListener listener) {
+        if (pluginName.isBlank()) {
+            return false;
+        }
+        String lockKey = instanceId + ":" + pluginName;
+        Object lock = new Object();
+        Object existing = activeArchiveInstalls.putIfAbsent(lockKey, lock);
+        if (existing != null) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "插件正在安装中，请等待当前任务完成后重试: " + pluginName);
+        }
+        try {
+            String targetPath = pathResolver.getPluginStorePath(pluginName);
+            String stagingPath = parentPath(targetPath) + "/.install-" + pluginName
+                    + "-" + System.currentTimeMillis();
+            InstanceArchiveImportRequest request = InstanceArchiveImportRequest.builder()
+                    .instanceId(instanceId)
+                    .localArchivePath(localFile.getAbsolutePath())
+                    .targetRelativePath(targetPath)
+                    .stagingRelativePath(stagingPath)
+                    .expectedPluginName(pluginName)
+                    .structureRoot(LEFT_4_DEAD_2)
+                    .requiredFiles(new String[]{"left4dead2/addons/sourcemod/plugins"})
+                    .criticalFileExtensions(new String[]{"smx", "so", "cfg"})
+                    .commitMarkerFileName(pathResolver.getArchiveCommitMarker())
+                    .commitAction(imported -> saveImportedMeta(instanceId,
+                            pluginName, imported))
+                    .build();
+            InstanceArchiveImportResult result = archiveImportService.importArchive(
+                    request, archiveListener(listener));
+            if (result == null) {
+                throw new L4D2PluginException(L4D2PluginException.FILE,
+                        "归档导入服务未返回结果");
+            }
+            if (listener != null) {
+                listener.onProgress(100, "插件安装完成: " + pluginName);
+                listener.onLog("INFO", "单插件 ZIP 快路径完成: " + pluginName
+                        + "，文件=" + result.getFileCount()
+                        + "，字节=" + result.getTotalBytes()
+                        + "，阶段耗时(ms)=" + result.getPhaseDurationsMs());
+            }
+            return true;
+        } catch (InstanceArchiveImportException e) {
+            if (isFallbackReason(e.getFailureCode())) {
+                if (listener != null) {
+                    listener.onLog("INFO", "归档不满足单插件快路径，回退逐文件安装: "
+                            + e.getMessage());
+                }
+                return false;
+            }
+            throw new L4D2PluginException(L4D2PluginException.FILE, e.getMessage(), e);
+        } finally {
+            activeArchiveInstalls.remove(lockKey, lock);
+        }
+    }
+
+    private void saveImportedMeta(Long instanceId, String expectedPluginName,
+                                  InstanceArchiveImportResult imported) {
+        List<String> fileList = normalizeImportedFiles(imported.getRelativePaths());
+        List<String> configFiles = fileList.stream()
+                .filter(path -> path.toLowerCase().startsWith("cfg/sourcemod/")
+                        && path.toLowerCase().endsWith(".cfg"))
+                .toList();
+        String importedPluginName = imported.getPluginName() == null
+                || imported.getPluginName().isBlank()
+                ? expectedPluginName : imported.getPluginName();
+        PluginMeta meta = new PluginMeta();
+        meta.setName(importedPluginName);
+        meta.setSource("upload");
+        meta.setFileList(fileList);
+        meta.setConfigFiles(configFiles);
+        pluginMetaService.save(instanceId, meta);
+    }
+
+    private InstanceArchiveImportListener archiveListener(InstallProgressListener listener) {
+        return new InstanceArchiveImportListener() {
+            @Override
+            public void onPhaseStart(InstanceArchiveImportService.Phase phase,
+                                     int percent, String message) {
+                if (listener != null) {
+                    listener.onProgress(percent, phase.getLabel() + "：" + message);
+                }
+            }
+
+            @Override
+            public void onProgress(InstanceArchiveImportService.Phase phase,
+                                   int percent, String message) {
+                if (listener != null) {
+                    listener.onProgress(percent, phase.getLabel() + "：" + message);
+                }
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return listener != null && listener.isCancelled();
+            }
+
+            @Override
+            public void onLog(String level, String message) {
+                if (listener != null) {
+                    listener.onLog(level, message);
+                }
+            }
+        };
+    }
+
+    private static boolean isFallbackReason(String failureCode) {
+        return "ARCHIVE_MULTIPLE_PLUGIN_ROOTS".equals(failureCode)
+                || "ARCHIVE_MISSING_GAME_ROOT".equals(failureCode);
+    }
+
+    private static List<String> normalizeImportedFiles(List<String> relativePaths) {
+        if (relativePaths == null) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String path : relativePaths) {
+            if (path == null || path.isBlank()) {
+                continue;
+            }
+            String normalized = path.replace('\\', '/');
+            if (normalized.toLowerCase().startsWith(LEFT_4_DEAD_2 + "/")) {
+                normalized = normalized.substring(LEFT_4_DEAD_2.length() + 1);
+            }
+            result.add(normalized);
+        }
+        return result;
+    }
+
+    private static String parentPath(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash > 0 ? path.substring(0, slash) : "/";
     }
 
     /**
@@ -1154,6 +1338,12 @@ public class PluginInstallService {
 
     private String sanitizeFilename(String name) {
         return name == null ? "unknown" : name.replaceAll("[^\\p{L}\\p{N}._-]", "_");
+    }
+
+    private static String effectiveNameForResponse(String originalName) {
+        String normalized = originalName.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
     }
 
     private String stripExtension(String name) {

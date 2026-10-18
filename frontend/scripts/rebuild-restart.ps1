@@ -146,6 +146,13 @@ function Start-Frontend {
 
     Set-Location $script:FRONTEND_DIR
 
+    # E2E runner 会从项目根 logs/frontend.port 读取实际端口；worktree 或首次启动
+    # 时该目录可能尚不存在，必须在写 PID/端口前创建，避免 Vite 已启动却上报失败。
+    $rootLogDir = Split-Path -Parent $script:PORT_FILE
+    if (-not (Test-Path $rootLogDir)) {
+        New-Item -ItemType Directory -Path $rootLogDir -Force | Out-Null
+    }
+
     # 检查 node_modules
     $nodeModules = Join-Path $script:FRONTEND_DIR "node_modules"
     if (-not (Test-Path $nodeModules)) {

@@ -11,6 +11,7 @@ import com.gameplatform.plugin.schedule.ScheduledTaskDeclarationExtension;
 import com.gameplatform.plugin.schedule.ScheduledTaskHandler;
 import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.HostQueryService;
+import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.plugin.service.RconService;
@@ -130,10 +131,13 @@ public class PluginSpringContextFactory {
         HostQueryService hostQueryService = mainContext.getBean(HostQueryService.class);
         FileAccessService fileAccessService = mainContext.getBean(FileAccessService.class);
         InstanceFileService instanceFileService = mainContext.getBean(InstanceFileService.class);
+        InstanceArchiveImportService archiveImportService =
+                mainContext.getBean(InstanceArchiveImportService.class);
         childContext.getBeanFactory().registerSingleton("instanceQueryService", instanceQueryService);
         childContext.getBeanFactory().registerSingleton("hostQueryService", hostQueryService);
         childContext.getBeanFactory().registerSingleton("fileAccessService", fileAccessService);
         childContext.getBeanFactory().registerSingleton("instanceFileService", instanceFileService);
+        childContext.getBeanFactory().registerSingleton("instanceArchiveImportService", archiveImportService);
         // 注入 TaskService（ADR-025）：插件通过此接口提交/查询/取消任务
         TaskService taskService = mainContext.getBean(TaskService.class);
         childContext.getBeanFactory().registerSingleton("taskService", taskService);
@@ -156,7 +160,7 @@ public class PluginSpringContextFactory {
         com.gameplatform.plugin.service.HostToolingService hostToolingService =
                 mainContext.getBean(com.gameplatform.clouddrive.HostToolingServiceFactory.class).forPlugin(pluginId);
         childContext.getBeanFactory().registerSingleton("hostToolingService", hostToolingService);
-        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, TaskService, SshTunnelService, ScheduleService, RconService, CloudDriveService, HostToolingService");
+        log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, InstanceArchiveImportService, TaskService, SshTunnelService, ScheduleService, RconService, CloudDriveService, HostToolingService");
 
         // 5. 扫描插件包路径
         childContext.scan(basePackage);

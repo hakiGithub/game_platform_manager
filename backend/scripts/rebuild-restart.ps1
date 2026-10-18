@@ -230,9 +230,10 @@ function Build-Plugins {
         return
     }
 
-    # 打包 plugin-l4d2-core（跳过测试以加速）
-    Write-LogInfo "执行 mvn clean package -pl plugin-l4d2/plugin-l4d2-core -DskipTests -q ..."
-    $mvnResult = & mvn clean package -pl plugin-l4d2/plugin-l4d2-core -DskipTests -q 2>&1
+    # 打包 plugin-l4d2-core（跳过测试以加速）。必须带 -am，确保 plugin SDK 与本模块
+    # 一起编译；-SkipCompile 时本地仓库可能还是旧 SDK，否则新增 builder 字段会编译失败。
+    Write-LogInfo "执行 mvn clean package -pl plugin-l4d2/plugin-l4d2-core -am -DskipTests -q ..."
+    $mvnResult = & mvn clean package -pl plugin-l4d2/plugin-l4d2-core -am -DskipTests -q 2>&1
     $mvnExitCode = $LASTEXITCODE
 
     if ($mvnExitCode -ne 0) {
@@ -244,7 +245,7 @@ function Build-Plugins {
 
     # 检查 JAR 是否生成（动态匹配版本文件名）
     $builtJar = Get-ChildItem $PLUGIN_L4D2_JAR_GLOB -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notlike "*-sources.jar" -and $_.Name -notlike "*-exec.jar" -and -not $_.Name.EndsWith("-original.jar") } |
+        Where-Object { $_.Name -notlike "*-sources.jar" -and $_.Name -notlike "*-javadoc.jar" -and $_.Name -notlike "*-exec.jar" -and -not $_.Name.EndsWith("-original.jar") } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $builtJar) {
         Write-LogError "插件 JAR 未生成: $PLUGIN_L4D2_JAR_GLOB"
@@ -254,6 +255,32 @@ function Build-Plugins {
 
     $jarInfo = Get-Item $PLUGIN_L4D2_JAR
     Write-LogInfo "插件 JAR 已生成: $($jarInfo.Name), 大小: $([math]::Round($jarInfo.Length / 1MB, 2)) MB"
+
+    # 仅复制主 JAR 还不够：必须确认 PF4J 描述符存在，避免把空清单或文档包
+    # 部署到 plugins/ 后，后端直到运行时才以 "Field 'id' cannot be empty" 失败。
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $jarArchive = [System.IO.Compression.ZipFile]::OpenRead($PLUGIN_L4D2_JAR)
+    try {
+        $manifestEntry = $jarArchive.GetEntry("META-INF/MANIFEST.MF")
+        if (-not $manifestEntry) {
+            Write-LogError "插件 JAR 缺少 META-INF/MANIFEST.MF: $PLUGIN_L4D2_JAR"
+            exit 1
+        }
+        $manifestReader = New-Object System.IO.StreamReader($manifestEntry.Open())
+        try {
+            $manifestText = $manifestReader.ReadToEnd()
+        } finally {
+            $manifestReader.Dispose()
+        }
+        if ($manifestText -notmatch "(?m)^Plugin-Id:\s*\S+") {
+            Write-LogError "插件 JAR 清单缺少 Plugin-Id，不能部署: $PLUGIN_L4D2_JAR"
+            Write-LogError "请检查 maven-jar-plugin 的 manifestEntries 配置与构建输出"
+            exit 1
+        }
+    } finally {
+        $jarArchive.Dispose()
+    }
+    Write-LogInfo "插件 JAR 清单校验通过: Plugin-Id 已声明"
 
     # 确保 plugins 目录存在
     if (-not (Test-Path $PLUGINS_DIR)) {
@@ -319,7 +346,7 @@ function Start-Backend {
 
     # 将 JVM 参数写入 @argfile（Java 9+ 支持），规避 cmd.exe 的 8191 字符命令行长度限制
     # （classpath 较长）。每行一个参数；路径均为 ASCII，使用 ASCII 编码避免 BOM 干扰。
-    $argFile = Join-Path $env:TEMP "game-platform-jvm-args.txt"
+    $argFile = Join-Path $env:TEMP "game-platform-jvm-args-$PID.txt"
     $argLines = @()
     foreach ($opt in $JVM_OPTS) { $argLines += $opt }
     $argLines += "-Dspring.datasource.url=$dbUrl"
@@ -337,6 +364,10 @@ function Start-Backend {
     $batFile = Join-Path $env:TEMP "start-backend.bat"
     $batContent = "@echo off`r`n"
     $batContent += "`"$javaExe`" @`"$argFile`" > `"$APP_LOG_FILE`" 2> `"$APP_ERR_LOG_FILE`"`r`n"
+    # Start-Process 返回的是 cmd.exe 的 PID，不是 java 的 PID；把同一个 argfile
+    # 路径写入启动脚本目录，E2E runner 可据此校验 java 进程真实归属。
+    $argFilePointer = Join-Path $LOG_DIR "game-platform-jvm-args.path"
+    Set-Content -Path $argFilePointer -Value $argFile -Encoding UTF8
     Set-Content -Path $batFile -Value $batContent -Encoding ASCII
 
     Write-LogInfo "正在启动 Java 进程 (start-backend.bat)..."
