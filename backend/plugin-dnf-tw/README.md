@@ -44,10 +44,19 @@ S1 的界面/行为侧后果（AC-24 的判据）：向导**不出现**「目标
 只改 `plugin-dnf-tw-core/src/main/resources/version-catalog.yml` 一个文件：
 
 1. 复制模板里的条目块，把需要表达的字段值从 `UNFILLED` 换成人类 Owner 提供的真实资料；
-2. 不需要表达的**可选**字段整行删掉——留着 `UNFILLED` 等于没填完，该条整条不生效；
-3. 不改 `DnfTwExtension` / `VersionCatalogTemplate`、不改主应用 `backend/core`、不动 SDK 声明接口、
+2. **字符串字段一律加引号**（`versionId` / `displayName` / `imageTag` 与步骤里的 `label` / `url` /
+   `targetPath` / `sha256` / `includePattern` / `format` / `content`）。不加引号时 YAML 1.1 按标量类型解析：
+   点分数字读成小数（尾零丢失）、前导零按八进制解读、`yes`/`no`/`on`/`off` 读成布尔、冒号分隔的数字读成六十进制；
+   `VersionCatalogTemplate.text()` 对这些取值**抛异常，不做 `String.valueOf` 隐式转写**——
+   `versionId` 既是部署载荷的键，也是镜像 tag 的组成部分，差一个字符就是另一个版本；
+3. 不需要表达的**可选**字段整行删掉——留着 `UNFILLED` 等于没填完，该条整条不生效
+   （标记比对忽略大小写，`unfilled` 的小写手误同样不生效）；
+4. 不改 `DnfTwExtension` / `VersionCatalogTemplate`、不改主应用 `backend/core`、不动 SDK 声明接口、
    不动 `games/dnf_tw.yml`、不加 `configInfo` 列（BR-01 / G-01 / N-01 / §3.4）；
-4. 重新构建 + 热部署即生效（命令见下节）。
+5. 重新构建 + 热部署即生效（命令见下节）。
+
+空目录有三种同形写法——空文件、`versions:` 整段留空、`versions: []`——都是 0 条目，
+主应用据此判 `EMPTY`（不是 `INVALID`）。
 
 **为什么「不改代码」这件事是可信的**：读取路径只有一条——解析整份模板 → 对**每个**条目扫描是否仍带
 未填充标记 → 未带标记的条目逐字段搬运成 `DeployVersionDeclaration`。三个环节都不看「模板填了没填」，
@@ -59,8 +68,9 @@ S1 的界面/行为侧后果（AC-24 的判据）：向导**不出现**「目标
 （design.md §16.3），任一不合规 ⇒ **整目录**判声明不合法（禁止部分采纳）。本模块只做形状搬运，
 不替主应用过滤（`position: container` 原样搬运、不按 deployType 过滤），否则会把 N4 / N5 的判定对象抹掉。
 
-未定义字段名、非布尔的开关位、`position` 落在 host/container 之外一律抛异常（不猜），
-主应用侧归 `ABSENT` 并记 warn。
+以下一律抛异常（不猜、也不静默采纳），主应用侧归 `ABSENT` 并记 warn：
+未定义字段名、非布尔的开关位、`position` 落在 host/container 之外、字符串字段被解析成数字或布尔、
+同一个键写两遍（SnakeYAML 后写覆盖已用 `LoaderOptions.setAllowDuplicateKeys(false)` 关闭）。
 
 ---
 

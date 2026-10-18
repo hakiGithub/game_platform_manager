@@ -228,6 +228,90 @@ class VersionCatalogTemplateTest {
                 "步骤内未知字段同样指名到步骤：" + unknownStepKey.getMessage());
     }
 
+    @Test
+    @DisplayName("字符串字段被 YAML 解析成数字 / 布尔时不隐式转写：抛异常并指名字段")
+    void nonStringScalarsAreRejectedNotCoerced() {
+        // 真实世界版号形状：不加引号会被 YAML 1.1 解析成别的类型，转写即改值
+        assertRejectedNonString("1.20", "versionId", "1.2", "Double");     // 尾零被吃掉
+        assertRejectedNonString("0012", "versionId", "10", "Integer");     // 前导零 ⇒ 八进制
+        assertRejectedNonString("1:20", "versionId", "80", "Integer");     // sexagesimal ⇒ 1*60+20
+        assertRejectedNonString("yes", "displayName", "true", "Boolean");  // yes/no/on/off 都是布尔
+    }
+
+    @Test
+    @DisplayName("同样这些版号加上引号就是普通字符串，按原样对外声明")
+    void quotedRealWorldVersionsAreCarriedVerbatim() {
+        List<DeployVersionDeclaration> catalog = VersionCatalogTemplate.parse("""
+                versions:
+                  - versionId: "1.20"
+                  - versionId: "0012"
+                  - versionId: "1:20"
+                  - versionId: "yes"
+                """);
+
+        assertEquals(List.of("1.20", "0012", "1:20", "yes"),
+                catalog.stream().map(DeployVersionDeclaration::versionId).toList(),
+                "引号内就是字符串，一个字符都不许变");
+    }
+
+    @Test
+    @DisplayName("重复键不后写覆盖：抛异常，避免 Owner 声明甲条、平台读到乙条")
+    void duplicateKeysAreRejectedNotOverwritten() {
+        RuntimeException duplicate = assertThrows(RuntimeException.class,
+                () -> VersionCatalogTemplate.parse("""
+                        versions:
+                          - versionId: ut-filled-a
+                            versionId: ut-filled-b
+                        """));
+        assertTrue(duplicate.getMessage().contains("versionId"),
+                "归因要指到重复的那个键：" + duplicate.getMessage());
+    }
+
+    @Test
+    @DisplayName("未填充标记比对忽略大小写：小写 unfilled 同样整条不生效")
+    void unfilledMarkerIsMatchedCaseInsensitively() {
+        List<DeployVersionDeclaration> catalog = VersionCatalogTemplate.parse("""
+                versions:
+                  - versionId: ut-filled-a
+                  - versionId: UnFilled
+                    patches:
+                      - url: http://127.0.0.1/ut/patch.zip
+                        targetPath: ut-patch
+                  - versionId: unfilled
+                """);
+
+        assertEquals(List.of("ut-filled-a"),
+                catalog.stream().map(DeployVersionDeclaration::versionId).toList(),
+                "大小写写法不同的未填充标记不能绕过过滤，把半截条目暴露成可部署版本");
+    }
+
+    @Test
+    @DisplayName("versions 整段留空 / 空列表 / 空文件三者同形：都是 0 条目的空目录")
+    void emptyVersionsSectionAlignsWithAnEmptyFile() {
+        assertEquals(0, VersionCatalogTemplate.parse("versions:\n").size(),
+                "`versions:` 只留键不给内容 ⇒ 0 条目，不得因 null 抛异常判成 INVALID");
+        assertEquals(0, VersionCatalogTemplate.parse("versions: []\n").size());
+        assertEquals(0, VersionCatalogTemplate.parse("").size(), "空文件同样 0 条目");
+        assertEquals(0, VersionCatalogTemplate.parse("# 只有注释\n").size());
+    }
+
+    /**
+     * 断言「不加引号的 {@code rawValue} 被 YAML 解析成 {@code resolvedType}」且本类拒绝转写。
+     *
+     * <p>这里连解析结果一起钉住，是因为规约的价值全在解析结果上：{@code 0012} 读成 10、
+     * {@code 1.20} 读成 1.2 —— 只断言「抛了异常」并不能说明这些值真的会被改写。</p>
+     */
+    private static void assertRejectedNonString(String rawValue, String key, String resolvedValue,
+                                                String resolvedType) {
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> VersionCatalogTemplate.parse("versions:\n  - " + key + ": " + rawValue + "\n"),
+                rawValue + " 不加引号会被解析成 " + resolvedType + "，必须抛而不是转写成 " + resolvedValue);
+        assertTrue(failure.getMessage().contains("versions[0]." + key),
+                "归因要指名到条目字段：" + failure.getMessage());
+        assertTrue(failure.getMessage().contains(resolvedValue) && failure.getMessage().contains(resolvedType),
+                "报错要带上解析后的值与类型，Owner 才知道改哪一行：" + failure.getMessage());
+    }
+
     private static String shippedTemplateText() {
         try (InputStream in = VersionCatalogTemplateTest.class.getResourceAsStream(VersionCatalogTemplate.RESOURCE)) {
             if (in == null) {
