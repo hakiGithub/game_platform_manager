@@ -5,6 +5,7 @@ import com.gameplatform.clouddrive.extension.CloudAccountResource;
 import com.gameplatform.clouddrive.extension.CloudAccountSpec;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.extension.ExtensionClient;
+import com.gameplatform.plugin.extension.ExtensionStoreInitializer;
 import com.gameplatform.util.AesUtil;
 import com.haki.clouddrive.core.domain.CloudAccount;
 import com.haki.clouddrive.core.domain.Mount;
@@ -34,6 +35,7 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
+@DependsOn("extensionStoreInitializer")
 @RequiredArgsConstructor
 @DependsOn({"databaseInitializer", "extensionStoreInitializer"})
 public class CloudAccountService {

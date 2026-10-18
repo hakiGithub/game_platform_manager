@@ -7,9 +7,11 @@
 ## 1. 使用说明
 
 - **执行频率**：每次发版前必跑，重大修改后建议跑
-- **执行方式**：通过 TRAE `browser_use` 子代理执行，或人工浏览器验证
-- **通过标准**：所有 ✅ 项必须通过；⚠️ 项尽量通过；📋 项可选
+- **首选执行方式**：`cd frontend; E2E_FAST=1 npm run e2e:round`（受管临时库 + 保序整轮 + `[CHECK]` 汇总）
+- **附着执行方式**：`cd frontend; npm run e2e -- --attach`（对已运行栈执行；需 `E2E_BASE_URL` / `E2E_BACKEND_URL`）
+- **通过标准**：所有非显式 SKIP 项必须通过；缺牺牲主机凭据时主机组明确 SKIP，不得把 SKIP 当作通过
 - **失败处理**：记录失败步骤、截图、错误信息，提 issue 修复后重跑
+- **失败定位**：runner 输出 `[CHECK][FAIL]` 的实际值、remediation；用例详情看 `frontend/e2e/.artifacts/<用例>/error-context.md`、截图与 trace
 
 ---
 
@@ -55,6 +57,8 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 脚本依次执行：停止旧后端 → 编译后端 → 打包插件 JAR → 部署到 `backend/plugins/` → 启动后端（等待 8080 端口 + 登录接口就绪）→ 停止旧前端 → 启动前端（3000 端口）。
 
+端口脚本支持自动避让：`--port 0` / `-FrontendPort 0` 会从 3000 起选择空闲端口，并把实际端口写入 `logs/frontend.port`；E2E runner 读取该文件，不硬编码前端端口。后端固定 8080；若端口被非本项目进程占用，脚本会明确失败并提示占用进程，不会误杀。
+
 **常用参数：**
 - `-SkipBackendCompile`：跳过后端编译（仅改前端时使用）
 - `-SkipPlugins`：跳过插件 JAR 打包（仅改后端代码时使用）
@@ -91,6 +95,8 @@ curl -X POST http://localhost:8080/api/auth/login \
 | 5 | 插件 UI 资源 | HTTP 200 | `curl http://localhost:8080/api/pf4j/plugin/l4d2/ui/index.html` |
 | 6 | 数据库初始化 | admin 账号存在 | 登录接口返回 token |
 | 7 | 前端登录页 | 正常渲染 | 浏览器打开 http://localhost:3000/ |
+| 8 | 系统设置表 | `sys_setting` 存在且可保存 | `PUT /api/system/settings` 返回 `code=200`，重进页面值保持 |
+| 9 | 前端实际端口 | `logs/frontend.port` 与监听端口一致 | E2E runner 启动检查输出 `[CHECK][PASS] 前端 HTTP 就绪` |
 
 ### 2.6 测试数据准备
 
@@ -211,14 +217,33 @@ curl -X POST http://localhost:8080/api/auth/login \
 | E2E-091 | 选择"立即重启"并执行 | 服务器重启 |
 | E2E-092 | 输入恶意命令 | 防注入拦截 |
 
-### 3.11 备份还原 ✅
+### 3.11 备份还原（暂不纳入 E2E）
 
 | ID | 步骤 | 期望结果 |
 |----|------|----------|
-| E2E-100 | 进入备份还原 | 显示备份列表 |
-| E2E-101 | 创建备份 | 进度条显示 |
-| E2E-102 | 还原备份 | 确认对话框 |
-| E2E-103 | 删除备份 | 确认后删除 |
+| E2E-100 | 进入备份还原 | 功能已临时下线，不作为当前 E2E 通过项 |
+| E2E-101 | 创建备份 | 见 backlog #01（wontfix） |
+| E2E-102 | 还原备份 | 恢复前不纳入自动判定 |
+| E2E-103 | 删除备份 | 恢复前不纳入自动判定 |
+
+### 3.12 Steam302 / GitHub / CA / hosts 专项 ✅
+
+| ID | 步骤 | 期望结果 |
+|----|------|----------|
+| E2E-120 | 停止态启动 Steam302 | 容器被强制拉起，状态 RUNNING |
+| E2E-121 | 开启容器共享加速 | 平台停止容器、写 hosts、再启动；hosts 仅保留 `#S302-LAN` 且指向 WSL LAN IP |
+| E2E-122 | 校验 `S302.ini` | `Auto_Modify_Hosts=0`，hosts 唯一写入者为平台 |
+| E2E-123 | 部署 bridge 消费者容器 | 容器内可见 `#S302` 映射，CA bundle 已挂载 |
+| E2E-124 | 容器内 GitHub HTTPS | `getent hosts` 非 loopback，`curl -I https://raw.githubusercontent.com` 返回 2xx/3xx |
+| E2E-125 | 停止 Steam302 | `#S302` 与 `#S302-LAN` 全部清除，直连恢复 |
+
+### 3.13 系统设置持久化 ✅
+
+| ID | 步骤 | 期望结果 |
+|----|------|----------|
+| E2E-130 | 修改平台名称为唯一值并保存 | PUT 返回 `code=200`，页面提示“保存成功” |
+| E2E-131 | 刷新页面 | 平台名称保持写入值 |
+| E2E-132 | 恢复原平台名称 | 用例结束恢复原值，重复执行不污染开发库 |
 
 ### 3.12 实例状态双向同步 ✅
 
@@ -262,6 +287,14 @@ curl -X POST http://localhost:8080/api/auth/login \
 | E2E-221 | SSH 连接失败 | 显示错误，不崩溃 |
 | E2E-222 | Docker 命令超时 | 显示超时提示 |
 | E2E-223 | 子应用加载失败 | 显示错误页 + 重试按钮 |
+
+### 4.4 RCON 失败分支 ✅
+
+| ID | 步骤 | 期望结果 |
+|----|------|----------|
+| E2E-230 | 删除实例 `rconPassword` 后查询状态 | `online=false`，原因包含“RCON 端点不可达：端口未映射或配置缺失” |
+| E2E-231 | 同一实例执行 RCON 命令 | `success=false`，错误原因与状态接口一致 |
+| E2E-232 | 恢复密码并启动实例 | 轮询回到“运行中”，失败状态可恢复 |
 
 ---
 

@@ -69,7 +69,35 @@ public class Steam302HostsSync {
         }
         boolean shareMode = isContainerShareEnabled(hostId);
         String targetIp = shareMode ? hostLanIp(hostId) : "127.0.0.1";
-        return writeHosts(hostId, domains, targetIp, shareMode ? MARKER_LAN : MARKER_LOCAL);
+        int written = writeHosts(hostId, domains, targetIp, shareMode ? MARKER_LAN : MARKER_LOCAL);
+        verifyCurrentMode(hostId);
+        log.info("Steam302 hosts 同步完成: hostId={}, written={}, marker={}, targetIp={}",
+                hostId, written, shareMode ? MARKER_LAN : MARKER_LOCAL, targetIp);
+        return written;
+    }
+
+    /**
+     * 校验当前 flag 模式与实际 hosts 内容一致。
+     *
+     * <p>调用方应保证 Steam302 容器处于停止态；运行中的 CLI 可能把宿主 hosts
+     * 覆盖回本机模板，此时写入后立即校验会失败，需要按启动时序重试。</p>
+     */
+    public void verifyCurrentMode(Long hostId) {
+        boolean shareMode = isContainerShareEnabled(hostId);
+        String targetIp = shareMode ? hostLanIp(hostId) : "127.0.0.1";
+        String expectedMarker = shareMode ? MARKER_LAN : MARKER_LOCAL;
+        String after = readHosts(hostId);
+        boolean markerOk = after.contains(targetIp + "\t") && after.contains(expectedMarker);
+        if (!markerOk) {
+            throw new BusinessException("Steam302 hosts 写入后校验失败："
+                    + "expectedMarker=" + expectedMarker
+                    + "，expectedTargetIp=" + targetIp
+                    + "，actualLan=" + after.contains(MARKER_LAN)
+                    + "，actualLocal=" + after.contains(MARKER_LOCAL)
+                    + "，actualLength=" + after.length()
+                    + "；remediation: 确认 Steam302 工具未在写入后重写宿主 /etc/hosts，"
+                    + "并检查 SSH 账号对 /etc/hosts 的写权限");
+        }
     }
 
     /** 容器共享加速是否开启（flag 文件存在） */
@@ -151,6 +179,18 @@ public class Steam302HostsSync {
 
     private void writeHostsFile(Long hostId, String content) {
         runner.writeFilePrivileged(hostId, ETC_HOSTS, content, 30_000);
+        String actual = readHosts(hostId);
+        if (!normalize(content).equals(actual)) {
+            String expectedHead = content.lines().findFirst().orElse("(empty)");
+            String actualHead = actual.lines().findFirst().orElse("(empty)");
+            throw new BusinessException("写入 /etc/hosts 后回读校验失败：目标内容与实际内容不一致"
+                    + "，expectedLength=" + content.length()
+                    + "，actualLength=" + actual.length()
+                    + "，expectedLan=" + content.contains(MARKER_LAN)
+                    + "，actualLan=" + actual.contains(MARKER_LAN)
+                    + "，expectedHead=" + expectedHead
+                    + "，actualHead=" + actualHead);
+        }
     }
 
     private String readHosts(Long hostId) {

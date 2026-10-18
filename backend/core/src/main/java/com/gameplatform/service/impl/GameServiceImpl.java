@@ -122,10 +122,11 @@ public class GameServiceImpl implements GameService {
         LambdaQueryWrapper<GameMetadata> wrapper = new LambdaQueryWrapper<>();
 
         // 关键词搜索
-        if (queryDTO.getKeyword() != null && !queryDTO.getKeyword().isEmpty()) {
-            wrapper.like(GameMetadata::getGameName, queryDTO.getKeyword())
+        if (queryDTO.getKeyword() != null && !queryDTO.getKeyword().trim().isEmpty()) {
+            String keyword = queryDTO.getKeyword().trim();
+            wrapper.and(w -> w.like(GameMetadata::getGameName, keyword)
                     .or()
-                    .like(GameMetadata::getGameCode, queryDTO.getKeyword());
+                    .like(GameMetadata::getGameCode, keyword));
         }
 
         // 游戏元数据量小，全量查询后在内存中排序：

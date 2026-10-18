@@ -11,9 +11,16 @@
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login } from "../../support/api.js";
+import {
+  createApi,
+  ensureHostByIp,
+  login,
+  removeHostsByName,
+} from "../../support/api.js";
 import {
   cleanupStaleE2EContainers,
+  getWslLanIp,
+  inspectSteam302HostState,
   waitForLinuxGsmReady,
 } from "../../support/host-hygiene.js";
 
@@ -43,32 +50,77 @@ const LEGS = [
 test.describe.serial("dst / sdtd 演练腿", () => {
   let api = null;
   let hostId = null;
+  let originalContainerShare = null;
+  let createdHost = false;
 
   test.beforeAll(async () => {
     cleanupStaleE2EContainers();
+    const lanIp = getWslLanIp();
+    if (!lanIp) {
+      throw new Error(
+        "[CHECK][FAIL] 无法获取 WSL eth0 IP；remediation: 确认 wsl.exe 可执行并能访问默认 WSL 发行版",
+      );
+    }
+    console.log(
+      `[CHECK][INFO] LinuxGSM 演练腿前置：WSL_LAN=${lanIp}`,
+    );
     const token = await login(
       e2eEnv.backendUrl,
       e2eEnv.adminUser,
       e2eEnv.adminPass,
     );
     api = createApi(e2eEnv.backendUrl, token);
-    const created = await api.post("/api/hosts", {
+    await removeHostsByName(api, HOST_NAME);
+    const ensured = await ensureHostByIp(api, {
       name: HOST_NAME,
-      ip: e2eEnv.testHost.address,
+      ip: lanIp,
       sshPort: Number(e2eEnv.testHost.port),
       sshUsername: e2eEnv.testHost.username,
-      authType: "password",
       sshPassword: e2eEnv.testHost.auth,
     });
-    hostId = created.body?.data?.id ?? null;
-    if (!hostId) {
+    hostId = ensured.hostId;
+    createdHost = ensured.created;
+    console.log(
+      `[CHECK][${createdHost ? "PASS" : "INFO"}] 演练腿主机${createdHost ? "已创建" : "复用既有记录"}: id=${hostId}, ip=${lanIp}`,
+    );
+    const tested = await api.post(`/api/hosts/${hostId}/test`);
+    if (tested.body?.data?.connected === false) {
       throw new Error(
-        `前置主机创建失败: HTTP ${created.status} ${JSON.stringify(
-          created.body,
-        )}`,
+        `[CHECK][FAIL] WSL LAN SSH 连接失败: ${tested.body?.data?.message ?? "unknown"}; remediation: 确认 sshd 监听 WSL LAN IP ${lanIp}:${e2eEnv.testHost.port}，且凭据 E2E_TEST_HOST_* 有效`,
       );
     }
-    await api.post(`/api/hosts/${hostId}/test`);
+
+    const status = await api.get(`/api/hosts/${hostId}/steam302/status`);
+    const steam302 = status.body?.data;
+    if (status.status >= 400 || !steam302 || steam302.phase === "NOT_INSTALLED") {
+      throw new Error(
+        `[CHECK][FAIL] Steam302 状态不可用: HTTP ${status.status}, body=${JSON.stringify(
+          status.body,
+        ).slice(0, 300)}; remediation: 先在 WSL 主机安装并启动 Steam302，再重跑 LinuxGSM 演练腿`,
+      );
+    }
+    originalContainerShare = Boolean(steam302.containerShare);
+    const share = await api.put(
+      `/api/hosts/${hostId}/steam302/container-share`,
+      { enabled: true },
+    );
+    if (share.status >= 400) {
+      throw new Error(
+        `[CHECK][FAIL] 开启容器共享加速失败: HTTP ${share.status}, body=${JSON.stringify(
+          share.body,
+        ).slice(0, 300)}; remediation: 检查 Steam302 flag 写入权限与 Caddyfile 是否含启用域名`,
+      );
+    }
+    const verified = inspectSteam302HostState({
+      address: lanIp,
+      expectLan: true,
+      expectedLanIp: lanIp,
+    });
+    if (!verified.ok) {
+      throw new Error(
+        `[CHECK][FAIL] 容器共享加速状态与 hosts 不一致: ${verified.reason}; remediation: 检查 Steam302 是否被 Auto_Modify_Hosts 重新覆盖为 127.0.0.1，确认 #S302-LAN 指向 ${lanIp}`,
+      );
+    }
   });
 
   test.afterAll(async () => {
@@ -81,7 +133,16 @@ test.describe.serial("dst / sdtd 演练腿", () => {
     )) {
       await api.delete(`/api/instances/${inst.id}`).catch(() => {});
     }
-    if (hostId) await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+    if (hostId && originalContainerShare !== null) {
+      await api
+        .put(`/api/hosts/${hostId}/steam302/container-share`, {
+          enabled: originalContainerShare,
+        })
+        .catch(() => {});
+    }
+    if (hostId && createdHost) {
+      await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+    }
   });
 
   for (const leg of LEGS) {
@@ -136,6 +197,7 @@ test.describe.serial("dst / sdtd 演练腿", () => {
           configInfo: {
             autoRestart: false,
             CONTAINER_NAME: leg.containerName,
+            mountHostCerts: true,
           },
         });
         instanceId = deployed.body?.data?.id ?? null;
@@ -162,17 +224,18 @@ test.describe.serial("dst / sdtd 演练腿", () => {
         expect(instanceId).toBeTruthy();
 
         // 容器首启的自动安装（GitHub serverlist + SteamCMD 游戏下载）耗时分钟级，
-        // start 的初始化检查在就绪前会失败——等待就绪后再启动（仅本地托管环境可探测；
-        // 远程主机退回 60 秒间隔重试）。容器内 GitHub 不可达时初始化永不完成 → 环境阻塞跳过
+        // start 的初始化检查在就绪前会失败——等待就绪后再启动。
+        // 预检会逐项打印 Steam302、hosts、CA、DNS、GitHub 的实际值；
+        // 失败时不能静默当作“环境阻塞”，必须把 remediation 带到用例结果里。
         const ready = waitForLinuxGsmReady(
           leg.containerName,
           `${leg.code}server`,
           30 * 60_000,
+          { address: getWslLanIp(), allowLoopback: false },
         );
-        if (!ready) {
-          test.skip(
-            true,
-            "SKIP (容器内访问 GitHub 不通，LinuxGSM 初始化无法完成——环境阻塞，见票 08 备注)",
+        if (!ready.ok) {
+          throw new Error(
+            `[CHECK][FAIL] LinuxGSM 联网/挂载预检未通过: ${ready.reason}; remediation: 逐项查看上方 [CHECK][FAIL] 的 hint/remediation，修复 Steam302 hosts、mountHostCerts、CA 或容器网络后重跑`,
           );
         }
         const r = await api.post(`/api/instances/${instanceId}/start`);

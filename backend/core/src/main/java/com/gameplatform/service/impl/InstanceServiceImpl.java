@@ -63,6 +63,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final InstanceInfoService instanceInfoService;
     private final DeploymentAccess deployAccess;
     private final DeployVersionCatalogService deployVersionCatalogService;
+    private final InstanceTransactionService instanceTxService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -236,26 +237,23 @@ public class InstanceServiceImpl implements InstanceService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteInstance(Long id) {
         deleteInstance(id, true);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteInstance(Long id, boolean deleteContainer) {
         GameInstance instance = instanceMapper.selectById(id);
         if (instance == null) {
             throw new BusinessException("实例不存在");
         }
 
-        // 认领实例默认记录级删除（ADR-0023）：不动容器，仅显式 deleteContainer=true 才卸载
+        // 远程卸载可能持续分钟级，必须在数据库事务外执行。否则部署线程
+        // 对实例状态的更新会让 SQLite 事务读到的快照失效并报 BUSY_SNAPSHOT。
         boolean adopted = ContainerAdoptionService.isAdopted(instance);
         if (adopted && !deleteContainer) {
             log.info("认领实例记录级删除，保留容器: instanceId={}, name={}", id, instance.getInstanceName());
         } else {
-            // 调用适配器 uninstall 完全清理远程资源（停止 + 删除容器 + 删除工作目录）
-            // 忽略卸载失败，继续删除数据库记录，避免残留数据导致无法重新部署
             try {
                 DeployAdapter adapter = adapterFactory.getAdapter(
                         deployAccess.classify(instance.getDeployType()));
@@ -269,15 +267,10 @@ public class InstanceServiceImpl implements InstanceService {
             }
         }
 
-        // 通知 gameCode 匹配的插件扩展点（在删除前，让插件能感知到被删实例）
+        // 插件钩子同样可能访问外部资源，放在事务外。
         pluginLifecycleHook.executeInstanceDeleteHooks(id, instance.getGameCode());
 
-        // 使用物理删除，避免逻辑删除后 instance_name UNIQUE 约束仍冲突
-        int rows = instanceMapper.physicalDeleteById(id);
-        if (rows == 0) {
-            throw new BusinessException("删除实例失败，记录不存在或已被删除");
-        }
-        log.info("物理删除实例成功: id={}, name={}", id, instance.getInstanceName());
+        instanceTxService.deleteRecord(id);
 
         // RCON 连接池联动失效（ADR-0016 决策 5）
         rconConnectionManager.invalidate(id);

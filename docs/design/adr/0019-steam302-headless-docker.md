@@ -72,10 +72,11 @@ taskType=`STEAM302_INSTALL`（source=MAIN，scopeType=HOST、scopeKey=hostId 互
 
 平台原有人工「hosts 刷新」功能（HostsFileRefresher）把 127.0.0.1 条目搬到宿主机 LAN IP 行，供 bridge 容器绕行访问代理。平台托管 Steam302 后两者会互相覆盖（sync 重写回 127.0.0.1；refresh 的 LAN 行无标记、stop 清理不摘除形成永久残留）。收敛为：
 
-- **hosts 唯一写入者 = Steam302HostsSync**。目标 IP 二态：默认 `127.0.0.1`（#S302，服务本机进程）；开启「容器共享加速」（数据卷 flag 文件 `.platform-container-share`）后写宿主机 LAN IP（`#S302-LAN`）——caddy 监听 0.0.0.0，本机与 bridge 容器走同一条目，无解析歧义。开关切换即时重写 hosts，无需重启容器；两种标记行在重写与 stop 清理时统一摘除。
+- **hosts 唯一写入者 = Steam302HostsSync**。平台强制 `Auto_Modify_Hosts=0`，CLI 不再自行改写 hosts。目标 IP 二态：默认 `127.0.0.1`（#S302，服务本机进程）；开启「容器共享加速」（数据卷 flag 文件 `.platform-container-share`）后写宿主机 LAN IP（`#S302-LAN`）——caddy 监听 0.0.0.0，本机与 bridge 容器走同一条目，无解析歧义。
+- **hosts 切换顺序 = 停止容器 → 写 hosts → 启动容器**（2026-10-18 修订）。CLI 在运行期可能重读 hosts/生成 Caddyfile，平台与工具同时写会形成覆盖竞态；停止态切换可保证平台写入后的 hosts 与 Caddyfile 一致。写入后必须回读校验，失败输出 expected/actual/remediation；两种标记行在重写与 stop 清理时统一摘除。
 - **人工刷新降级**：Steam302 处于 RUNNING 时，hosts-preview/hosts-refresh 直接拒绝（提示走面板），杜绝双写者打架；停止后可手动管理。
 - **自愈**：status 检测到「容器 RUNNING 但劫持条目为 0」（宿主机重启后 docker 策略自起容器、WSL 重新生成 /etc/hosts 等场景）自动补写。
-- **容器侧边界**：bridge 容器的 DNS 链路决定其能否受益（容器不读宿主机 /etc/hosts）——host-network 容器必生效；bridge 容器依赖部署流程的 extra_hosts 注入与 DNS 环境。WSL 测试环境另有 Windows 宿主 hosts 残留遮蔽问题，非平台缺陷。
+- **容器侧边界**：bridge 容器的 DNS 链路决定其能否受益（容器不读宿主机 /etc/hosts）——host-network 容器必生效；bridge 容器依赖部署流程的 extra_hosts 注入与 DNS 环境。LinuxGSM Docker 部署无条件挂载宿主机 CA bundle；`mountHostCerts=true` 时额外挂载 `/etc/hosts:ro`，E2E 专项验证容器内 `#S302-LAN` 可见且 GitHub HTTPS 可达。
 
 ## 实现落点
 

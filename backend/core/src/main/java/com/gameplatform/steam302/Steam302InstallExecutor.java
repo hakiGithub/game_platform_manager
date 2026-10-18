@@ -122,14 +122,52 @@ public class Steam302InstallExecutor {
         }
         progress.onLog(trustDockerDaemon(hostId, dataDir));
 
-        progress.onProgress(92, "写入 hosts 劫持条目");
-        awaitProxyReady(hostId);
+        progress.onProgress(90, "关闭工具自动改写 hosts");
+        ensurePlatformManagedHosts(hostId, dataDir, progress);
+
+        progress.onProgress(92, "停止容器并写入 hosts 劫持条目");
+        SshUtil.CommandResult stop = runDocker(hostId,
+                "docker stop " + container, DOCKER_TIMEOUT_MS);
+        if (!stop.isSuccess()) {
+            throw new BusinessException("写入 hosts 前停止容器失败: " + firstLine(stop.getError()));
+        }
         int synced = hostsSync.syncFromCaddyfile(hostId);
         progress.onLog(synced >= 0 ? "已写入 " + synced + " 条 hosts 劫持条目"
                 : "hosts 劫持条目已就绪（无变化）");
 
+        progress.onProgress(96, "重新启动容器并校验 hosts 状态");
+        SshUtil.CommandResult start = runDocker(hostId,
+                "docker start " + container, DOCKER_TIMEOUT_MS);
+        if (!start.isSuccess()) {
+            throw new BusinessException("hosts 写入后启动容器失败: " + firstLine(start.getError()));
+        }
+        awaitProxyReady(hostId);
+        hostsSync.verifyCurrentMode(hostId);
+
         progress.onProgress(100, "安装完成");
         progress.onLog("Steam302 部署完成，容器: " + container + "，数据目录: " + dataDir);
+    }
+
+    /**
+     * 平台在宿主机侧管理 hosts，工具自身的 Auto_Modify_Hosts 必须关闭。
+     *
+     * <p>否则 CLI 会周期性尝试改写 /etc/hosts；在 WSL 的 hosts 挂载/rename 场景下
+     * 会反复失败，并把平台写入的 LAN 条目覆盖回 127.0.0.1，造成状态与实际不一致。</p>
+     */
+    private void ensurePlatformManagedHosts(Long hostId, String dataDir, ProgressListener progress) {
+        String iniPath = dataDir + "/S302.ini";
+        SshUtil.CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
+        if (!current.isSuccess()) {
+            throw new BusinessException("读取 S302.ini 失败，无法关闭自动改写 hosts: " + firstLine(current.getError()));
+        }
+        String updated = current.getOutput().replaceAll(
+                "(?m)^Auto_Modify_Hosts\\s*=.*$",
+                "Auto_Modify_Hosts            = 0");
+        if (updated.equals(current.getOutput())) {
+            throw new BusinessException("S302.ini 缺少 Auto_Modify_Hosts 配置项，无法保证平台独占 hosts 管理");
+        }
+        runner.writeFilePrivileged(hostId, iniPath, updated, DOCKER_TIMEOUT_MS);
+        progress.onLog("已关闭 Auto_Modify_Hosts，hosts 由平台统一管理");
     }
 
     /**

@@ -17,7 +17,12 @@
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login } from "../../support/api.js";
+import {
+  createApi,
+  ensureHostByIp,
+  login,
+  removeHostsByName,
+} from "../../support/api.js";
 import { injectSession } from "../../support/session.js";
 import { cleanupStaleE2EContainers } from "../../support/host-hygiene.js";
 
@@ -30,6 +35,7 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
   let api = null;
   let hostId = null;
   let instanceId = null;
+  let createdHost = false;
 
   test.beforeAll(async () => {
     // 宿主卫生：清掉上一轮失败链遗留的 game-instance-* 容器，避免名字/端口占用
@@ -40,19 +46,20 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
       e2eEnv.adminPass,
     );
     api = createApi(e2eEnv.backendUrl, token);
-    // 直连后端路径必须带 /api 前缀
-    const created = await api.post("/api/hosts", {
+    await removeHostsByName(api, HOST_NAME);
+    // 直连后端路径必须带 /api 前缀；同 IP 已有主机时复用，避免唯一约束冲突。
+    const ensured = await ensureHostByIp(api, {
       name: HOST_NAME,
       ip: e2eEnv.testHost.address,
       sshPort: Number(e2eEnv.testHost.port),
       sshUsername: e2eEnv.testHost.username,
-      authType: "password",
       sshPassword: e2eEnv.testHost.auth,
     });
-    hostId = created.body?.data?.id ?? null;
-    if (!hostId) {
-      throw new Error(`前置主机创建失败: ${JSON.stringify(created.body)}`);
-    }
+    hostId = ensured.hostId;
+    createdHost = ensured.created;
+    console.log(
+      `[CHECK][${createdHost ? "PASS" : "INFO"}] 生命周期主机${createdHost ? "已创建" : "复用既有记录"}: id=${hostId}, ip=${e2eEnv.testHost.address}`,
+    );
     // 触发一次真实连接测试：部署向导只列在线主机（status=1），API 直造的主机默认离线
     const tested = await api.post(`/api/hosts/${hostId}/test`);
     if (tested.body?.data?.connected === false) {
@@ -63,10 +70,14 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
   });
 
   test.afterAll(async () => {
-    // 现场自清：残留实例与前置主机一并删除
-    if (api && instanceId)
+    // 现场自清：本轮用例失败时也删除残留实例，避免堵塞后续串行演练
+    if (api && instanceId) {
       await api.post(`/api/instances/${instanceId}/stop`).catch(() => {});
-    if (api && hostId) await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+      await api.delete(`/api/instances/${instanceId}`).catch(() => {});
+    }
+    if (api && hostId && createdHost) {
+      await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+    }
   });
 
   async function pollInstanceStatus(desc, timeoutMs) {
@@ -168,12 +179,19 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
     expect(instanceId).toBeTruthy();
     await injectAndGoto(page, `/services/instances/detail/${instanceId}`);
 
+    // 首次访问详情路由时懒加载 chunk 可能仍需数秒，不能沿用 expect 的默认 5s。
     await expect(
       page.getByRole("heading", { name: INSTANCE_NAME }),
-    ).toBeVisible();
-    await expect(page.getByLabel("实例运行指标")).toBeVisible();
-    await expect(page.getByText("ONLINE PLAYERS")).toBeVisible();
-    await expect(page.getByLabel("实例运行上下文")).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel("实例运行指标")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText("ONLINE PLAYERS")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel("实例运行上下文")).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test("停止实例至已停止", async ({ page }) => {
@@ -214,18 +232,32 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
 
     await injectAndGoto(page, "/services/instances/list");
     const row = page.locator(".el-table__row", { hasText: INSTANCE_NAME });
-    await row.getByRole("button", { name: "卸载" }).click();
+    await row.getByRole("button", { name: "更多" }).click();
+    await page.getByRole("menuitem", { name: "卸载实例" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("卸载实例");
     await dialog.getByPlaceholder("请输入实例名称").fill(INSTANCE_NAME);
     await dialog.getByRole("button", { name: "确定卸载" }).click();
-    await expect(page.locator(".el-message--success")).toContainText(
-      "删除成功",
-    );
+
+    // 容器卸载可能超过 10 秒；以平台持久化终态为准，不依赖短暂 toast。
+    await expect
+      .poll(
+        async () => {
+          const res = await api.get(
+            `/api/instances?keyword=${encodeURIComponent(INSTANCE_NAME)}&size=10`,
+          );
+          const records = res.body?.data?.records ?? [];
+          return records.some(
+            (record) => record.instanceName === INSTANCE_NAME,
+          );
+        },
+        { timeout: 60_000, intervals: [1_000, 2_000] },
+      )
+      .toBe(false);
 
     await expect(
       page.locator(".el-table__row", { hasText: INSTANCE_NAME }),
-    ).toHaveCount(0, { timeout: 15_000 });
+    ).toHaveCount(0, { timeout: 30_000 });
     instanceId = null;
   });
 });
