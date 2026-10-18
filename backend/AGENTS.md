@@ -72,6 +72,8 @@ backend/
 ├── plugin-l4d2/                      # L4D2 游戏增强插件
 │   ├── frontend/                     # 插件前端 (Vue 3 + Vite)
 │   └── plugin-l4d2-core/             # 插件核心 JAR
+├── plugin-dnf-tw/                    # DNF台服 交付载体（不建 frontend，ADR-0003）
+│   └── plugin-dnf-tw-core/           # 插件核心 JAR + version-catalog.yml 占位模板
 └── scripts/                          # 重启脚本
 ```
 

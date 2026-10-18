@@ -65,6 +65,8 @@ game_platform_manger/
 │   ├── plugin-l4d2/                  # L4D2 游戏增强插件
 │   │   ├── frontend/                 # 插件前端 (Vue 3 + Vite)
 │   │   └── plugin-l4d2-core/         # 插件核心 JAR
+│   ├── plugin-dnf-tw/                # DNF台服 交付载体（无 frontend）
+│   │   └── plugin-dnf-tw-core/       # 插件核心 JAR + version-catalog.yml 占位模板
 │   ├── scripts/                      # 后端重启脚本
 │   └── AGENTS.md                     # 后端开发指南
 │
@@ -108,6 +110,7 @@ game_platform_manger/
 | core | 主应用：控制器、服务实现、数据库访问、WebSocket、Docker/SSH 交互 |
 | plugin | 插件 SDK：扩展点接口、插件框架服务、宿主能力服务接口 |
 | plugin-l4d2 | L4D2 游戏增强插件：RCON、地图、SourceMod 插件管理、配置预设 |
+| plugin-dnf-tw | DNF台服 交付载体：仅 `plugin-dnf-tw-core` JAR（无插件前端），版本目录为占位模板（不可上线），见 `backend/plugin-dnf-tw/README.md` |
 
 ### 前端模块
 

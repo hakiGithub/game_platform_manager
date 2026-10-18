@@ -10,6 +10,8 @@ COPY plugin/pom.xml plugin/
 COPY core/pom.xml core/
 COPY plugin-l4d2/pom.xml plugin-l4d2/
 COPY plugin-l4d2/plugin-l4d2-core/pom.xml plugin-l4d2/plugin-l4d2-core/
+COPY plugin-dnf-tw/pom.xml plugin-dnf-tw/
+COPY plugin-dnf-tw/plugin-dnf-tw-core/pom.xml plugin-dnf-tw/plugin-dnf-tw-core/
 RUN mvn -B -q dependency:go-offline || true
 
 COPY api/ api/
