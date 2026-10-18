@@ -76,6 +76,9 @@ class InstanceServiceImplTest {
     @Mock
     private com.gameplatform.deploy.DeployVersionCatalogService deployVersionCatalogService;
 
+    @Mock
+    private com.gameplatform.service.impl.InstanceTransactionService instanceTxService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
@@ -279,11 +282,10 @@ class InstanceServiceImplTest {
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         instanceService.deleteInstance(1L);
 
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTxService).deleteRecord(1L);
     }
 
     @Test
@@ -295,12 +297,11 @@ class InstanceServiceImplTest {
         when(instanceMapper.selectById(1L)).thenReturn(instance);
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
         when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         instanceService.deleteInstance(1L);
 
         verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTxService).deleteRecord(1L);
     }
 
     @Test

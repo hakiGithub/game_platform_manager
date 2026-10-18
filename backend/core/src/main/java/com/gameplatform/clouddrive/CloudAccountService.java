@@ -35,9 +35,8 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
-@DependsOn("extensionStoreInitializer")
-@RequiredArgsConstructor
 @DependsOn({"databaseInitializer", "extensionStoreInitializer"})
+@RequiredArgsConstructor
 public class CloudAccountService {
 
     public static final String STATUS_HEALTHY = "HEALTHY";
