@@ -19,6 +19,11 @@ export const DNF_TW_GAME_CODE = "dnf_tw";
 export const COMPOSE_DEPLOY_TYPE = "docker-compose";
 
 // StubExtension 声明序（三项；defaultEntry = 1.0.0-default 是第一项且 isDefault=true）。
+//
+// 双写说明：这三项在 backend/plugin-stub 的 StubExtension#getDeployVersions 里也有一份。
+// 后端是目录的真源，本常量只钉「夹具期望的声明序」——它不参与构造真实数据，只用于比对
+// 接口返回值与向导选项。两边一旦漂移，V-21 的接口侧断言（deployVersions[].versionId 精确
+// 相等且同序）会立刻红，漂移不会被静默吸收；因此这里不做运行期合并或回读。
 export const STUB_VERSION_IDS = [
   "1.0.0-default",
   "2.0.0-patched",
@@ -82,14 +87,35 @@ export function versionSelect(page) {
     .first();
 }
 
+// 该锚点所属的 popper（ui-spec §6.1 前提②：作用域 = 目标控件对应的弹层，不是全页同名类）。
+// Element Plus 把弹层传送到 body 下，归属关系由触发元素上的 aria-controls / aria-describedby
+// 指向弹层节点表达；只有实现没有给出这层关联时才回退到可见的 version-select-popper，
+// 并且把回退本身记进日志，避免「今天全页唯一所以安全」掩盖脱钩。
+export async function versionPopper(page) {
+  const trigger = versionSelect(page);
+  const input = trigger.locator("input").first();
+  const popperId =
+    (await trigger.getAttribute("aria-controls")) ??
+    (await trigger.getAttribute("aria-describedby")) ??
+    (await input.getAttribute("aria-controls").catch(() => null)) ??
+    (await input.getAttribute("aria-describedby").catch(() => null));
+  if (popperId) {
+    return page.locator(`#${popperId}`);
+  }
+  console.log(
+    "[deploy-versions] 锚点没有 aria-controls/aria-describedby ⇒ 回退到可见的 .version-select-popper",
+  );
+  return page.locator(".version-select-popper:visible").first();
+}
+
 // 展开控件后，按锚点所属 popper 取选项集合（ui-spec §6.1 前提①+②）。
 // 返回 [{ main, sub }]，main = 选项主文本（.version-option-text）、sub = versionId 副标（.version-id-sub）。
-// 只读该锚点（popper-class="version-select-popper"）内的 item，不做全局 class="vid" 全扫。
+// 只读该锚点 popper 内的 item，不做全局 class="vid" 全扫。
 export async function openAndReadOptions(page) {
   await versionSelect(page).click();
-  const items = page.locator(
-    ".version-select-popper .el-select-dropdown__item",
-  );
+  const popper = await versionPopper(page);
+  await expect(popper).toBeVisible({ timeout: 10_000 });
+  const items = popper.locator(".el-select-dropdown__item");
   await expect(items.first()).toBeVisible({ timeout: 10_000 });
   const count = await items.count();
   const options = [];

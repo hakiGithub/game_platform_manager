@@ -28,6 +28,22 @@ export async function login(backendUrl, username, password, attempt = 1) {
   }
 }
 
+// 业务成功的判据是信封 code，不是 HTTP 状态码。
+// GlobalExceptionHandler 对 BusinessException 返回 HTTP 200 + Result.fail(...)，
+// 只看 res.ok / status < 400 会把「拒绝」当成「成功」——MERC-24 的 AC-20 就栽在这上面：
+// retry-deploy 的「只有异常状态的实例可以重试部署」照样过断言，用例随后读到的是上一次
+// create 的日志。凡是「这次写操作必须成功」的地方都用本函数判，不看 status。
+export function assertOk(res, label) {
+  const code = res?.body?.code;
+  if (res?.status >= 400 || (code !== 200 && code !== 0)) {
+    const body = JSON.stringify(res?.body ?? null).slice(0, 300);
+    throw new Error(
+      `${label ?? "接口"}未返回业务成功: HTTP ${res?.status} / body=${body}`,
+    );
+  }
+  return res;
+}
+
 export function createApi(backendUrl, token) {
   async function request(method, path, jsonBody, attempt = 1) {
     try {
