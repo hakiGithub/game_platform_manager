@@ -7,7 +7,7 @@
     前端无需编译步骤（Vite 热重载），本脚本主要用于快速重启
 
 .PARAMETER Port
-    指定端口（默认 3000，若被占用 Vite 会自动切换）
+    指定端口（默认 3000）；指定端口被其他进程占用时直接失败，传 0 可自动选择空闲端口
 
 .EXAMPLE
     .\rebuild-restart.ps1
@@ -39,8 +39,16 @@ $script:LOG_DIR = Join-Path $script:FRONTEND_DIR "logs"
 $script:APP_LOG_FILE = Join-Path $script:LOG_DIR "frontend.log"
 $script:STARTUP_LOG_FILE = Join-Path $script:LOG_DIR "startup.log"
 $script:PID_FILE = Join-Path $script:LOG_DIR "frontend.pid"
+$script:LAUNCHER_PID_FILE = Join-Path $script:LOG_DIR "frontend.launcher.pid"
 
-$script:POSSIBLE_PORTS = @($Port, 3001, 3002)
+$script:AUTO_PORT = $Port -eq 0
+if ($script:AUTO_PORT) {
+    $script:Port = 3000
+} else {
+    $script:Port = $Port
+}
+$script:PORT_FILE = Join-Path (Join-Path $script:PROJECT_DIR "logs") "frontend.port"
+$script:ROOT_PID_FILE = Join-Path (Join-Path $script:PROJECT_DIR "logs") "frontend.pid"
 
 # ============================================
 # 工具函数
@@ -50,8 +58,8 @@ function Write-Log {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Level,
-        [Parameter(Mandatory = $true)]
-        [string]$Message
+        [AllowEmptyString()]
+        [string]$Message = ""
     )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
@@ -65,40 +73,54 @@ function Write-LogInfo { param([string]$Message) Write-Log -Level "INFO" -Messag
 function Write-LogWarn { param([string]$Message) Write-Log -Level "WARN" -Message $Message }
 function Write-LogError { param([string]$Message) Write-Log -Level "ERROR" -Message $Message }
 
+function Get-ViteProcessInfo {
+    param([long]$ProcessId)
+    if ($ProcessId -le 0) { return $null }
+    return Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.CommandLine -like "*$script:FRONTEND_DIR*" -and
+            $_.CommandLine -like "*vite*"
+        }
+}
+
 # 停止旧的前端进程
 function Stop-FrontendProcess {
     Write-LogInfo "正在停止旧的前端进程..."
 
     $stopped = $false
 
-    # 方式 1：通过 PID 文件停止
-    if (Test-Path $script:PID_FILE) {
-        $savedPid = Get-Content $script:PID_FILE -ErrorAction SilentlyContinue
-        if ($savedPid) {
-            $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
-            if ($proc) {
-                Write-LogInfo "通过 PID 文件停止进程: $savedPid"
-                Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 2
-                $stopped = $true
+    # 方式 1：通过启动进程 PID 停止，并校验命令行，避免误杀 PID 复用后的其他进程。
+    foreach ($pidFile in @($script:LAUNCHER_PID_FILE, $script:PID_FILE)) {
+        if (Test-Path $pidFile) {
+            $savedPid = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($savedPid -match '^\d+$') {
+                $processInfo = Get-ViteProcessInfo -ProcessId ([long]$savedPid)
+                if ($processInfo) {
+                    Write-LogInfo "通过 PID 文件停止本项目进程: $savedPid"
+                    Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 2
+                    $stopped = $true
+                }
+            }
+            Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # 方式 2：读取上次实际端口，确认监听者仍是本项目 Vite。
+    if (Test-Path $script:PORT_FILE) {
+        $savedPort = Get-Content $script:PORT_FILE -ErrorAction SilentlyContinue
+        if ($savedPort -match '^\d+$') {
+            $conn = Get-NetTCPConnection -LocalPort ([int]$savedPort) -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($conn) {
+                $processInfo = Get-ViteProcessInfo -ProcessId ([long]$conn.OwningProcess)
+                if ($processInfo) {
+                    Write-LogInfo "通过上次端口 $savedPort 查找到本项目进程: $($conn.OwningProcess)"
+                    Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+                    $stopped = $true
+                }
             }
         }
-        Remove-Item $script:PID_FILE -Force -ErrorAction SilentlyContinue
-    }
-
-    # 方式 2：通过端口查找（3000/3001/3002）
-    foreach ($p in $script:POSSIBLE_PORTS) {
-        $conn = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
-        if ($conn) {
-            $portPid = $conn.OwningProcess
-            Write-LogInfo "通过端口 $p 查找到进程: $portPid"
-            Stop-Process -Id $portPid -Force -ErrorAction SilentlyContinue
-            $stopped = $true
-        }
-    }
-
-    if ($stopped) {
-        Start-Sleep -Seconds 2
     }
 
     # 方式 3：查找 vite/node 进程（命令行包含 vite）
@@ -137,7 +159,31 @@ function Start-Frontend {
 
     Write-LogInfo "前端目录: $script:FRONTEND_DIR"
     Write-LogInfo "应用日志: $script:APP_LOG_FILE"
-    Write-LogInfo "指定端口: $Port"
+    if ($script:AUTO_PORT) {
+        $freePort = $null
+        for ($candidate = 3000; $candidate -le 3099; $candidate++) {
+            $listener = Get-NetTCPConnection -LocalPort $candidate -State Listen -ErrorAction SilentlyContinue
+            if (-not $listener) {
+                $freePort = $candidate
+                break
+            }
+        }
+        if (-not $freePort) {
+            Write-LogError "3000-3099 没有可用的前端端口"
+            exit 1
+        }
+        if ($freePort -ne $script:Port) {
+            Write-LogInfo "端口 $script:Port 被占用，自动改用 $freePort"
+        }
+        $script:Port = $freePort
+    } else {
+        $listener = Get-NetTCPConnection -LocalPort $script:Port -State Listen -ErrorAction SilentlyContinue
+        if ($listener) {
+            Write-LogError "前端端口 $script:Port 已被其他进程占用 (PID $($listener.OwningProcess))"
+            exit 1
+        }
+    }
+    Write-LogInfo "指定端口: $script:Port"
 
     # 启动 Vite（直接调用 node 运行 vite.js，避免 cmd.exe/npm 中间层导致进程链被销毁）
     Write-LogInfo "正在启动 Vite 开发服务器..."
@@ -163,7 +209,7 @@ function Start-Frontend {
     $errLog = Join-Path $script:LOG_DIR "frontend.err.log"
     $batFile = Join-Path $env:TEMP "start-frontend.bat"
     $batContent = "@echo off`r`n"
-    $batContent += "`"$nodeExe`" `"$viteJs`" --port $Port --strictPort > `"$script:APP_LOG_FILE`" 2> `"$errLog`"`r`n"
+    $batContent += "`"$nodeExe`" `"$viteJs`" --port $script:Port --strictPort > `"$script:APP_LOG_FILE`" 2> `"$errLog`"`r`n"
     Set-Content -Path $batFile -Value $batContent -Encoding ASCII
 
     Write-LogInfo "正在启动 Vite (start-frontend.bat)..."
@@ -173,11 +219,11 @@ function Start-Frontend {
         -WindowStyle Hidden `
         -PassThru
 
-    $processId = $process.Id
+    $launcherPid = $process.Id
 
-    # 保存 PID
-    $processId | Out-File -FilePath $script:PID_FILE -Encoding utf8
-    Write-LogInfo "Vite 进程已启动，PID: $processId"
+    # 这里保存的是 cmd 启动器 PID；等端口监听后再用 Vite 的真实 PID 覆盖主 PID 文件。
+    $launcherPid | Out-File -FilePath $script:LAUNCHER_PID_FILE -Encoding utf8
+    Write-LogInfo "Vite 启动器已启动，PID: $launcherPid"
 
     # 等待启动完成
     Write-LogInfo "等待前端启动 (最多 30 秒)..."
@@ -188,25 +234,27 @@ function Start-Frontend {
 
     while (((Get-Date) - $startTime).TotalSeconds -lt $timeout) {
         # 检查进程是否还在
-        $procExists = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        $procExists = Get-Process -Id $launcherPid -ErrorAction SilentlyContinue
         if (-not $procExists) {
             Write-LogError "Vite 进程已退出，启动失败"
             Write-LogError "最近日志（最后 20 行）:"
             if (Test-Path $script:APP_LOG_FILE) {
                 Get-Content $script:APP_LOG_FILE -Tail 20 | ForEach-Object { Write-Host $_ }
             }
-            Remove-Item $script:PID_FILE -Force -ErrorAction SilentlyContinue
+            Remove-Item $script:LAUNCHER_PID_FILE -Force -ErrorAction SilentlyContinue
             exit 1
         }
 
-        # 检查端口监听
-        foreach ($p in $script:POSSIBLE_PORTS) {
-            $listening = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
-            if ($listening) {
-                $actualPort = $p
-                $started = $true
-                break
-            }
+        # 只确认本脚本指定端口，避免把 WSL 转发端口误判为 Vite。
+        $listening = Get-NetTCPConnection -LocalPort $script:Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($listening) {
+            $actualPort = $script:Port
+            $started = $true
+            $listening.OwningProcess | Out-File -FilePath $script:PID_FILE -Encoding utf8
+            $listening.OwningProcess | Out-File -FilePath $script:ROOT_PID_FILE -Encoding ascii -Force
+            $actualPort | Out-File -FilePath $script:PORT_FILE -Encoding utf8
+            break
         }
 
         if ($started) { break }
@@ -242,7 +290,7 @@ Write-LogInfo "############################################"
 Write-LogInfo "#   Game Platform Manager - 前端重启       #"
 Write-LogInfo "############################################"
 Write-LogInfo "前端目录: $script:FRONTEND_DIR"
-Write-LogInfo "指定端口: $Port"
+Write-LogInfo "指定端口: $script:Port"
 
 # 1. 停止旧进程
 Stop-FrontendProcess

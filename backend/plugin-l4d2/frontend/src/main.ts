@@ -112,7 +112,14 @@ function render(props: Record<string, any> = {}): void {
     attachRouteSync(router, pluginStore)
   }
 
-  app.mount(container)
+  // 连续挂载/切换子应用时，等待当前 hash 路由解析完成再挂载根组件。
+  // 否则 Wujie 会在目标路由组件解析前就复现上一次的空 layout。
+  const mountApp = () => app?.mount(container)
+  if (mode === 'wujie') {
+    router.isReady().then(mountApp, mountApp)
+  } else {
+    mountApp()
+  }
 }
 
 /**

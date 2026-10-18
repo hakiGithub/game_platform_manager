@@ -78,11 +78,24 @@ public class Steam302ServiceImpl implements Steam302Service {
         // 自愈：容器被 docker 策略自起（如宿主机重启、WSL 重生成 /etc/hosts）后条目丢失，自动补写
         if (running && Integer.valueOf(0).equals(vo.getHostsEntries())) {
             try {
-                int synced = hostsSync.syncFromCaddyfile(hostId);
+                int synced = reconcileHostsAndStart(hostId, false);
                 vo.setHostsEntries(synced >= 0 ? synced : 0);
-                log.info("检测到运行中但劫持条目缺失（宿主机重启/容器自起），已自动补写: hostId={}", hostId);
+                log.info("检测到运行中但劫持条目缺失（宿主机重启/容器自起），"
+                        + "已停容器写入并重启: hostId={}", hostId);
             } catch (Exception e) {
                 log.warn("自动补写 hosts 劫持条目失败: hostId={}, {}", hostId, e.getMessage());
+            }
+        }
+        // 状态一致性：API 声称容器共享模式时必须能从实际 hosts 看到 LAN 标记。
+        // 这里不做静默修正，保留真实状态供面板和 E2E 判定；修复动作由安装/启停流程负责。
+        if (running && shareMode && vo.getHostsEntries() != null && vo.getHostsEntries() > 0) {
+            SshUtil.CommandResult lan = runner.run(hostId, "grep -c '#S302-LAN' /etc/hosts || true", FAST_TIMEOUT_MS);
+            int lanEntries = lan.isSuccess() ? parseIntOr(lan.getOutput(), 0) : -1;
+            if (lanEntries <= 0) {
+                vo.setMessage("运行中（容器共享加速未生效：/etc/hosts 仍为本机模式）");
+                log.warn("Steam302 容器共享状态与 hosts 不一致: hostId={}, shareMode=true, targetIp={}, lanEntries={}; "
+                                + "remediation: 重新切换容器共享加速或检查工具是否覆盖 hosts",
+                        hostId, vo.getTargetIp(), lanEntries);
             }
         }
 
@@ -121,17 +134,10 @@ public class Steam302ServiceImpl implements Steam302Service {
 
     @Override
     public void start(Long hostId) {
-        SshUtil.CommandResult r = runDocker(hostId, "docker start " + props.getContainerName(), DOCKER_TIMEOUT_MS);
-        if (!r.isSuccess()) {
-            throw new BusinessException("启动失败: " + firstLine(r.getError()));
-        }
-        // 等端口转发就绪后，按最新 Caddyfile 同步 hosts 劫持条目（配置可能已变更）
-        awaitProxyReady(hostId);
-        try {
-            hostsSync.syncFromCaddyfile(hostId);
-        } catch (BusinessException e) {
-            throw new BusinessException("容器已启动，但 hosts 劫持同步失败: " + e.getMessage());
-        }
+        ensurePlatformManagedHosts(hostId);
+        // 运行中的 CLI 会在启动/刷新阶段重写 /etc/hosts；必须先停容器，
+        // 写完平台条目后再启动，否则 #S302-LAN 会被覆盖回 127.0.0.1。
+        reconcileHostsAndStart(hostId, true);
     }
 
     @Override
@@ -202,6 +208,10 @@ public class Steam302ServiceImpl implements Steam302Service {
         if (PHASE_NOT_INSTALLED.equals(current.getPhase())) {
             throw new BusinessException("Steam302 未安装，请先安装后再配置容器共享加速");
         }
+        boolean restarted = ensurePlatformManagedHosts(hostId);
+        if (restarted) {
+            awaitProxyReady(hostId);
+        }
         String flagPath = props.getDataDir() + "/" + Steam302HostsSync.CONTAINER_SHARE_FLAG;
         if (enabled) {
             runner.writeFilePrivileged(hostId, flagPath, "1", DOCKER_TIMEOUT_MS);
@@ -211,13 +221,119 @@ public class Steam302ServiceImpl implements Steam302Service {
                 throw new BusinessException("关闭容器共享加速失败: " + firstLine(rm.getError()));
             }
         }
-        // 立即按新目标重写 hosts（caddy 路由不变，无需重启容器）
-        int synced = hostsSync.syncFromCaddyfile(hostId);
+        // 立即按新目标重写 hosts。运行中的 CLI 会重写宿主 hosts，
+        // 因此先停容器、写入，再启动，不能因 flag 未变化而跳过同步。
+        int synced = reconcileHostsAndStart(hostId, false);
+        Steam302StatusVO after = status(hostId);
+        if (enabled && after.getTargetIp() != null
+                && !"127.0.0.1".equals(after.getTargetIp())
+                && after.getMessage() != null
+                && after.getMessage().contains("容器共享加速未生效")) {
+            throw new BusinessException("容器共享加速已写入 flag，但宿主机 hosts 仍是本机模式；"
+                    + "remediation: 检查 Steam302 容器是否在启动时覆盖 /etc/hosts，"
+                    + "或改用平台写入后再启动的顺序");
+        }
         log.info("容器共享加速已{}: hostId={}, hosts 重写 {}",
                 enabled ? "开启" : "关闭", hostId, synced >= 0 ? synced + " 条" : "无变化");
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 平台独占 hosts 管理：老版本安装或手工修改可能仍保留 Auto_Modify_Hosts=1。
+     * CLI 运行中会周期性重写 /etc/hosts，必须写回 0 并重启容器使其重新读取配置。
+     *
+     * @return 是否因配置变更重启了运行中的容器
+     */
+    private boolean ensurePlatformManagedHosts(Long hostId) {
+        String iniPath = props.getDataDir() + "/S302.ini";
+        SshUtil.CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
+        if (!current.isSuccess()) {
+            throw new BusinessException("读取 S302.ini 失败，无法关闭自动改写 hosts: "
+                    + firstLine(current.getError()));
+        }
+        if (!current.getOutput().matches("(?s).*Auto_Modify_Hosts\\s*=\\s*0\\s*(?:\\r?\\n|$).*")) {
+            String updated = current.getOutput().replaceAll(
+                    "(?m)^Auto_Modify_Hosts\\s*=.*$",
+                    "Auto_Modify_Hosts            = 0");
+            if (updated.equals(current.getOutput())) {
+                throw new BusinessException("S302.ini 缺少 Auto_Modify_Hosts 配置项，无法保证平台独占 hosts 管理");
+            }
+            runner.writeFilePrivileged(hostId, iniPath, updated, DOCKER_TIMEOUT_MS);
+            SshUtil.CommandResult state = runDocker(hostId,
+                    "docker inspect --format '{{.State.Running}}' " + props.getContainerName(),
+                    FAST_TIMEOUT_MS);
+            boolean running = state.isSuccess() && "true".equals(state.getOutput().trim());
+            if (running) {
+                SshUtil.CommandResult restart = runDocker(hostId,
+                        "docker restart " + props.getContainerName(), DOCKER_TIMEOUT_MS);
+                if (!restart.isSuccess()) {
+                    throw new BusinessException("关闭 Auto_Modify_Hosts 后重启 Steam302 失败: "
+                            + firstLine(restart.getError()));
+                }
+                log.info("已将 Auto_Modify_Hosts 关闭并重启 Steam302: hostId={}", hostId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 在容器停止态写入 hosts，再恢复容器运行。
+     *
+     * <p>Steam302 CLI 在运行期间仍可能把宿主 /etc/hosts 恢复为自身模板；
+     * 实测只有在停止态写入后再启动，平台生成的 LAN 条目才能稳定保留。</p>
+     *
+     * @return hostsSync 的写入结果；无变化时为 -1
+     */
+    private int reconcileHostsAndStart(Long hostId, boolean forceStart) {
+        boolean wasRunning = isContainerRunning(hostId);
+        if (wasRunning) {
+            SshUtil.CommandResult stop = runDocker(hostId,
+                    "docker stop " + props.getContainerName(), DOCKER_TIMEOUT_MS);
+            if (!stop.isSuccess()) {
+                throw new BusinessException("写入 hosts 前停止 Steam302 失败: "
+                        + firstLine(stop.getError()));
+            }
+        }
+
+        RuntimeException syncError = null;
+        int synced = -1;
+        try {
+            synced = hostsSync.syncFromCaddyfile(hostId);
+        } catch (RuntimeException e) {
+            syncError = e;
+        }
+
+        try {
+            if (wasRunning || forceStart) {
+                SshUtil.CommandResult start = runDocker(hostId,
+                        "docker start " + props.getContainerName(), DOCKER_TIMEOUT_MS);
+                if (!start.isSuccess()) {
+                    throw new BusinessException("hosts 写入后启动 Steam302 失败: "
+                            + firstLine(start.getError()));
+                }
+                awaitProxyReady(hostId);
+            }
+        } catch (RuntimeException startError) {
+            if (syncError != null) {
+                startError.addSuppressed(syncError);
+            }
+            throw startError;
+        }
+
+        if (syncError != null) {
+            throw syncError;
+        }
+        return synced;
+    }
+
+    private boolean isContainerRunning(Long hostId) {
+        SshUtil.CommandResult state = runDocker(hostId,
+                "docker inspect --format '{{.State.Running}}' " + props.getContainerName(),
+                FAST_TIMEOUT_MS);
+        return state.isSuccess() && "true".equals(state.getOutput().trim());
+    }
 
     /** 等待工具的 80/443 端口转发就绪（host 网络，容器启动后约数秒） */
     private void awaitProxyReady(Long hostId) {

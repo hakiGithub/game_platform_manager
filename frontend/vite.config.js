@@ -16,7 +16,8 @@ export default defineConfig({
     }),
     // 自动导入组件
     Components({
-      resolvers: [ElementPlusResolver()],
+      // 主入口已全量加载 Element Plus 样式，避免组件级样式被懒发现后触发开发服务器整页重载。
+      resolvers: [ElementPlusResolver({ importStyle: false })],
       dts: 'src/components.d.ts'
     })
   ],
@@ -29,6 +30,15 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     open: true,
+    // Playwright 会把截图/trace 写到 e2e/.artifacts；这些 HTML 资源在 Vite root 下，
+    // 若不忽略会触发整页 reload，打断 Wujie 子应用的长序列导航。
+    watch: {
+      ignored: [
+        '**/e2e/.artifacts/**',
+        '**/e2e/.report/**',
+        '**/e2e/.tmp/**'
+      ]
+    },
     proxy: {
       // 本地开发默认代理本机后端；可用环境变量指向已部署环境（如 Docker 镜像的 nginx）：
       //   VITE_PROXY_TARGET=http://127.0.0.1:8081 npm run dev

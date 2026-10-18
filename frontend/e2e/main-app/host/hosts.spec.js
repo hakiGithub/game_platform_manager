@@ -13,7 +13,12 @@
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login } from "../../support/api.js";
+import {
+  createApi,
+  login,
+  removeHostsByName,
+  removeHostsByPrefix,
+} from "../../support/api.js";
 import { injectSession } from "../../support/session.js";
 
 skipWithoutTestHost();
@@ -22,6 +27,23 @@ const HOST_NAME = "e2e-wsl-host";
 
 test.describe.serial("主机纳管", () => {
   let hostId = null;
+  let api = null;
+
+  test.beforeAll(async () => {
+    const token = await login(
+      e2eEnv.backendUrl,
+      e2eEnv.adminUser,
+      e2eEnv.adminPass,
+    );
+    api = createApi(e2eEnv.backendUrl, token);
+    await removeHostsByPrefix(api, "e2e-");
+  });
+
+  test.afterAll(async () => {
+    if (api) {
+      await removeHostsByPrefix(api, "e2e-");
+    }
+  });
 
   async function openAddDialog(page) {
     await injectSession(page);
@@ -42,12 +64,6 @@ test.describe.serial("主机纳管", () => {
   }
 
   async function getHostIdByName() {
-    const token = await login(
-      e2eEnv.backendUrl,
-      e2eEnv.adminUser,
-      e2eEnv.adminPass,
-    );
-    const api = createApi(e2eEnv.backendUrl, token);
     // 直连后端必须带 /api 前缀（前端靠 axios baseURL /api 补上，这里没有）
     const res = await api.get("/api/hosts");
     const data = res.body?.data;
@@ -76,7 +92,9 @@ test.describe.serial("主机纳管", () => {
     await expect(okBtn).toBeEnabled();
     await okBtn.click();
 
-    await expect(page.locator(".el-table")).toContainText(HOST_NAME);
+    await expect(
+      page.locator(".el-table__row", { hasText: HOST_NAME }),
+    ).toBeVisible();
     hostId = await getHostIdByName();
     expect(hostId).toBeTruthy();
   });
@@ -102,9 +120,12 @@ test.describe.serial("主机纳管", () => {
     await injectSession(page);
     await page.goto("/resources/hosts/list");
     const row = page.locator(".el-table__row", { hasText: HOST_NAME });
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: "详情" }).click();
 
-    await expect(page).toHaveURL(/\/resources\/hosts\/detail\/\d+/);
+    await expect(page).toHaveURL(/\/resources\/hosts\/detail\/\d+/, {
+      timeout: 15_000,
+    });
     const rail = page.getByLabel("主机资源概况");
     await expect(rail).toBeVisible({ timeout: 15_000 });
     await expect(rail).toContainText("CPU");

@@ -59,7 +59,8 @@ public interface Steam302Service {
 
     /**
      * 切换「容器共享加速」：开启后 hosts 劫持条目指向宿主机 LAN IP
-     * （bridge 容器与宿主机均可走代理），立即重写 hosts 生效，无需重启容器。
+     * （bridge 容器与宿主机均可走代理）。为保证工具不会覆盖平台条目，
+     * 切换时会短暂停止容器、写入 hosts，再恢复启动。
      *
      * @param enabled true=指向宿主机 LAN IP（#S302-LAN），false=指向 127.0.0.1（#S302）
      */

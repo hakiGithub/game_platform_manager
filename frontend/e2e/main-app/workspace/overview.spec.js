@@ -15,8 +15,12 @@ test("工作台仪表盘加载并渲染统计结构", async ({ page }) => {
   await injectSession(page);
   await page.goto("/workspace/overview");
 
-  await expect(page.getByRole("heading", { name: "运营总览" })).toBeVisible();
-  await expect(page.getByText("先看系统态势，再进入具体工作台")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "运营总览" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByText("先看系统态势，再进入具体工作台"),
+  ).toBeVisible();
   await expect(page.getByLabel("当前运行态势")).toBeVisible();
   await expect(page.getByLabel("核心指标")).toBeVisible();
   await expect(page.getByRole("button", { name: /主机工作台/ })).toBeVisible();

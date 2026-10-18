@@ -96,7 +96,7 @@ public class PluginInstallService {
             File tempFile = File.createTempFile("l4d2-upload-", "-" + sanitizeFilename(originalName));
             file.transferTo(tempFile);
             try {
-                installFromLocalFile(instanceId, tempFile);
+                installFromLocalFile(instanceId, tempFile, sanitizeFilename(originalName), null);
             } finally {
                 if (!tempFile.delete()) {
                     tempFile.deleteOnExit();
@@ -145,26 +145,41 @@ public class PluginInstallService {
      * </ul>
      */
     public void installFromLocalFile(Long instanceId, File localFile, InstallProgressListener listener) {
+        installFromLocalFile(instanceId, localFile, localFile != null ? localFile.getName() : null, listener);
+    }
+
+    /**
+     * 从本地文件安装，并允许调用方指定用于推导插件名的原始文件名。
+     *
+     * <p>上传接口会把 MultipartFile 落到带随机前缀的临时文件；若直接使用
+     * {@code localFile.getName()}，插件目录会变成随机临时名，列表 API 也无法按
+     * 用户上传的插件名精确查询。安装逻辑需要显式接收原始文件名。</p>
+     */
+    private void installFromLocalFile(Long instanceId, File localFile, String sourceName,
+                                      InstallProgressListener listener) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
         }
 
+        String effectiveName = sourceName != null && !sourceName.isBlank()
+                ? sourceName
+                : localFile.getName();
         byte[] header = readFileHeader(localFile, 4);
         if (ArchiveExtractUtil.isVpkFile(header)) {
             // VPK 地图：仍然复制到 addons/（与插件分离）
             String addonsPath = pathResolver.getAddonsPath();
-            String targetPath = addonsPath + "/" + localFile.getName();
+            String targetPath = addonsPath + "/" + effectiveName;
             instanceFileService.uploadLocalFile(instanceId, targetPath,
                     localFile.getAbsolutePath(), byteCallback(listener, 20, 70));
             log.info("VPK 地图已上传: instanceId={}, path={}", instanceId, targetPath);
             return;
         }
 
-        String lowerName = localFile.getName().toLowerCase();
+        String lowerName = effectiveName.toLowerCase();
         if (lowerName.endsWith(SMX_SUFFIX)) {
             // 单 .smx 文件：包装为插件目录 plugins_store/<name>/left4dead2/addons/sourcemod/plugins/<name>.smx
-            String pluginName = stripExtension(localFile.getName());
+            String pluginName = stripExtension(effectiveName);
             installSingleSmxToStore(instanceId, pluginName, localFile, listener);
             return;
         }

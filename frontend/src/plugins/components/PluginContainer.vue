@@ -269,9 +269,10 @@ defineExpose({
       </el-result>
     </div>
 
-    <!-- Wujie 子应用 -->
+    <!-- Wujie 子应用（清单加载完成前不创建实例，避免空 url 初始化失败） -->
     <WujieVue
-      v-show="!loading && !error"
+      v-if="src && !error"
+      v-show="!loading"
       :name="wujieName"
       :url="src"
       width="100%"
