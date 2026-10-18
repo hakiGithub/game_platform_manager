@@ -31,12 +31,19 @@ let FRONTEND_PORT = new URL(BASE_URL).port || "80";
 const BACKEND_PORT = new URL(BACKEND_URL).port || "80";
 
 const log = (msg) => console.log(`[e2e-runner] ${msg}`);
+const check = (name, ok, actual, remediation) => {
+  console.log(`[CHECK][${ok ? "PASS" : "FAIL"}] ${name}: ${actual}`);
+  if (!ok && remediation) {
+    console.log(`  remediation: ${remediation}`);
+  }
+};
 
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, {
     cwd: PROJECT_DIR,
     stdio: "inherit",
     shell: false,
+    maxBuffer: 64 * 1024 * 1024,
     ...opts,
   });
   if (r.error) {
@@ -67,37 +74,67 @@ async function pollUntil(check, label, timeoutMs = 240_000) {
 }
 
 async function waitForHttp(url, label, timeoutMs = 240_000) {
-  await pollUntil(
-    async () => {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      return res.status > 0 ? null : "no response";
-    },
-    label,
-    timeoutMs,
-  );
+  try {
+    let lastStatus = "no response";
+    await pollUntil(
+      async () => {
+        const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        lastStatus = `HTTP ${res.status}`;
+        return res.status > 0 ? null : "no response";
+      },
+      label,
+      timeoutMs,
+    );
+    check(`${label} HTTP 就绪`, true, `url=${url}, status=${lastStatus}`);
+  } catch (error) {
+    check(
+      `${label} HTTP 就绪`,
+      false,
+      `${url} -> ${error.message}`,
+      `确认端口 ${FRONTEND_PORT} 有进程监听，并查看 logs/frontend.log`,
+    );
+    throw error;
+  }
 }
 
 // 后端就绪标准 = 种子管理员真实登录成功。DatabaseInitializer 是 CommandLineRunner，
 // 在 Tomcat 可服务之后才建核心表（sys_user 等）——端口能通 ≠ 可以开测。
 async function waitForBackendLogin(backendUrl, timeoutMs = 240_000) {
-  await pollUntil(
-    async () => {
-      const token = await login(backendUrl, e2eEnv.adminUser, e2eEnv.adminPass);
-      if (!token) return "登录响应无 token";
+  let actual = "尚未尝试";
+  try {
+    await pollUntil(
+      async () => {
+        const token = await login(
+          backendUrl,
+          e2eEnv.adminUser,
+          e2eEnv.adminPass,
+        );
+        if (!token) return "登录响应无 token";
 
-      // ApplicationReadyEvent 监听器会在端口可访问后扫描并写入游戏元数据。
-      // 此时登录已成功，但 SQLite 仍可能持有写锁；以元数据可读作为业务就绪信号。
-      const api = createApi(backendUrl, token);
-      const games = await api.get("/api/games/list");
-      const list = games.body?.data;
-      if (games.status !== 200 || !Array.isArray(list) || list.length === 0) {
-        return `游戏元数据尚未就绪（HTTP ${games.status}, count=${Array.isArray(list) ? list.length : "n/a"}）`;
-      }
-      return null;
-    },
-    "后端（登录验证）",
-    timeoutMs,
-  );
+        // ApplicationReadyEvent 监听器会在端口可访问后扫描并写入游戏元数据。
+        // 此时登录已成功，但 SQLite 仍可能持有写锁；以元数据可读作为业务就绪信号。
+        const api = createApi(backendUrl, token);
+        const games = await api.get("/api/games/list");
+        const list = games.body?.data;
+        actual = `login=ok, gamesHttp=${games.status}, games=${Array.isArray(list) ? list.length : "n/a"}`;
+        if (games.status !== 200 || !Array.isArray(list) || list.length === 0) {
+          return `游戏元数据尚未就绪（HTTP ${games.status}, count=${Array.isArray(list) ? list.length : "n/a"}）`;
+        }
+        return null;
+      },
+      "后端（登录验证）",
+      timeoutMs,
+    );
+    check("后端登录与游戏元数据就绪", true, actual);
+  } catch (error) {
+    check(
+      "后端登录与游戏元数据就绪",
+      false,
+      `${backendUrl} -> ${error.message} (${actual})`,
+      `确认端口 ${BACKEND_PORT} 有后端进程、种子管理员凭据有效，并查看 logs/backend.log`,
+    );
+    throw error;
+  }
 }
 
 function stopManagedProcess(port, expectedCommand) {
@@ -114,16 +151,17 @@ function stopManagedProcess(port, expectedCommand) {
         cols[3] === "LISTENING"
       ) {
         const pid = cols[4];
-        const cmd = spawnSync(
-          "powershell",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
-          ],
-          { encoding: "utf8" },
-        ).stdout ?? "";
+        const cmd =
+          spawnSync(
+            "powershell",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+            ],
+            { encoding: "utf8" },
+          ).stdout ?? "";
         if (!expectedCommand.test(cmd)) return false;
         log(`释放端口 ${port}（停止本项目 PID ${pid}）`);
         spawnSync("taskkill", ["/F", "/PID", pid], { stdio: "ignore" });
@@ -254,6 +292,7 @@ const ROUND_GROUPS = [
     ],
   },
   { name: "主机纳管", paths: ["e2e/main-app/host"] },
+  { name: "容器认领", paths: ["e2e/main-app/docker/adopt-container.spec.js"] },
   {
     name: "实例生命周期 l4d2",
     paths: ["e2e/main-app/instance/lifecycle.spec.js"],
@@ -266,19 +305,19 @@ const ROUND_GROUPS = [
 ];
 
 function runPlaywright(args, opts = {}) {
-  return run(process.execPath, [
-    "node_modules/@playwright/test/cli.js",
-    "test",
-    ...args,
-  ], {
-    cwd: FRONTEND_DIR,
-    env: {
-      ...process.env,
-      E2E_BASE_URL: BASE_URL,
-      E2E_BACKEND_URL: BACKEND_URL,
+  return run(
+    process.execPath,
+    ["node_modules/@playwright/test/cli.js", "test", ...args],
+    {
+      cwd: FRONTEND_DIR,
+      env: {
+        ...process.env,
+        E2E_BASE_URL: BASE_URL,
+        E2E_BACKEND_URL: BACKEND_URL,
+      },
+      ...opts,
     },
-    ...opts,
-  });
+  );
 }
 
 function parseSummary(output) {
@@ -326,6 +365,16 @@ async function runRound() {
     log(
       `分组[${group.name}]结束：退出码 ${status}，+${summary.passed} 通过 / +${summary.failed} 失败 / +${summary.skipped} 跳过`,
     );
+    const groupOk =
+      status === 0 && summary.failed === 0 && summary.didNotRun === 0;
+    check(
+      `分组[${group.name}]`,
+      groupOk,
+      `exit=${status}, passed=${summary.passed}, failed=${summary.failed}, skipped=${summary.skipped}, didNotRun=${summary.didNotRun}`,
+      groupOk
+        ? undefined
+        : `查看 e2e/.artifacts 对应用例的 error-context.md、截图与 trace，并重跑该分组`,
+    );
   }
 
   log("========== 整轮结果 ==========");
@@ -334,7 +383,14 @@ async function runRound() {
       (tally.didNotRun ? `（另有 ${tally.didNotRun} 项未执行）` : ""),
   );
   const verdict = tally.failed === 0 && tally.didNotRun === 0 ? "PASS" : "FAIL";
-  log(`整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）: ${verdict}`);
+  check(
+    "整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）",
+    verdict === "PASS",
+    `passed=${tally.passed}, failed=${tally.failed}, skipped=${tally.skipped}, didNotRun=${tally.didNotRun}`,
+    verdict === "PASS"
+      ? undefined
+      : "先按失败分组重跑定位；环境类问题查看上方 [CHECK][FAIL] 的实际值与 remediation",
+  );
   log(`HTML 报告: npm run e2e:report`);
   return verdict === "PASS" ? 0 : 1;
 }
@@ -356,16 +412,39 @@ async function main() {
 
   log("执行 Playwright 用例...");
   // Windows 下 npx 是 .cmd，spawn 不带 shell 会静默失败 —— 直接用 node 调 CLI 入口
-  const r = runPlaywright(PLAYWRIGHT_ARGS);
-  log(`用例执行结束，退出码 ${r.status}（报告: npm run e2e:report）`);
-  return r.status ?? 1;
+  const r = runPlaywright(PLAYWRIGHT_ARGS, {
+    stdio: ["ignore", "pipe", "inherit"],
+    encoding: "utf8",
+  });
+  if (r.stdout) process.stdout.write(r.stdout);
+  const status = r.status ?? 1;
+  const summary = parseSummary(r.stdout ?? "");
+  const verdict =
+    status === 0 && summary.failed === 0 && summary.didNotRun === 0
+      ? "PASS"
+      : "FAIL";
+  check(
+    "Playwright 用例通过判定（除显式 SKIP 外全部通过 = PASS）",
+    verdict === "PASS",
+    `exit=${status}, passed=${summary.passed}, failed=${summary.failed}, skipped=${summary.skipped}, didNotRun=${summary.didNotRun}`,
+    verdict === "PASS"
+      ? undefined
+      : "查看 e2e/.artifacts 对应用例的 error-context.md、截图与 trace；环境类问题查看上方 [CHECK][FAIL] 的 remediation",
+  );
+  log(`HTML 报告: npm run e2e:report`);
+  return verdict === "PASS" ? 0 : 1;
 }
 
 let exitCode = 1;
 try {
   exitCode = await main();
 } catch (err) {
-  log(`失败: ${err.message}`);
+  check(
+    "E2E runner 执行",
+    false,
+    err.message,
+    "查看 logs/backend.log、logs/frontend.log 与上方失败检查点；确认端口脚本已启动对应进程",
+  );
 } finally {
   if (!ATTACH) stopStack();
 }

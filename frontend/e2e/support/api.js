@@ -79,6 +79,47 @@ export async function removeHostsByName(api, name) {
   }
 }
 
+/**
+ * 按 IP 复用牺牲主机记录；不存在时创建并返回 created 标记。
+ *
+ * 平台对 host_info.ip_address 有全局唯一约束。持久开发库或整轮编排中，
+ * 同一个 WSL IP 可能已经由其他分组纳管；用例不应因为“该 IP 已存在”失败，
+ * 也不应删除别的分组正在使用的主机记录。
+ */
+export async function ensureHostByIp(api, {
+  name,
+  ip,
+  sshPort,
+  sshUsername,
+  sshPassword,
+}) {
+  const res = await api.get("/api/hosts");
+  const data = res.body?.data;
+  const list = Array.isArray(data) ? data : (data?.records ?? data?.list ?? []);
+  const existing = list.find((host) => host.ip === ip);
+  if (existing) {
+    return { hostId: existing.id, host: existing, created: false };
+  }
+
+  const created = await api.post("/api/hosts", {
+    name,
+    ip,
+    sshPort,
+    sshUsername,
+    authType: "password",
+    sshPassword,
+  });
+  const hostId = created.body?.data?.id ?? null;
+  if (!hostId) {
+    throw new Error(
+      `[CHECK][FAIL] 主机创建失败: HTTP ${created.status} ${JSON.stringify(
+        created.body,
+      ).slice(0, 300)}; remediation: 确认平台后端可用，且 ${ip} 未被其他记录占用`,
+    );
+  }
+  return { hostId, host: created.body?.data, created: true };
+}
+
 export async function removeHostsByPrefix(api, prefix) {
   const res = await api.get("/api/hosts");
   const data = res.body?.data;

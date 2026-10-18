@@ -1,17 +1,17 @@
 /**
  * 页面: 插件扩展台
  * 用例: 插件列表 —— 内置 l4d2 插件状态与进入工作区行为
- * 前置: 平台前后端已运行且内置 plugin-l4d2 处于 STARTED；已注入登录态；
- *       受管模式新库无 l4d2 实例（0 实例 → 点击进入工作区出现未找到实例警告）
+ * 前置: 平台前后端已运行且内置 plugin-l4d2 处于 STARTED；已注入登录态
  * 通过标准（逐用例声明）:
  *  - 插件卡片: 「插件扩展台」标题渲染，l4d2 卡片存在且状态标签为 STARTED，
  *    「进入工作区」按钮可用
- *  - 0 实例行为: 点击进入工作区出现「未找到游戏编码 l4d2 的实例」警告
+ *  - 进入工作区: 无实例时出现「未找到游戏编码 l4d2 的实例」警告；已有实例时进入
+ *    dashboard 工作区并渲染仪表盘（多实例则选择第一行）
  */
 import { test, expect } from "@playwright/test";
 import { injectSession } from "../../support/session.js";
 import { e2eEnv } from "../../support/env.js";
-import { login } from "../../support/api.js";
+import { createApi, login } from "../../support/api.js";
 
 test("l4d2 插件卡片状态为 STARTED", async ({ page }) => {
   await injectSession(page);
@@ -26,24 +26,55 @@ test("l4d2 插件卡片状态为 STARTED", async ({ page }) => {
   await expect(enterBtn).toBeEnabled();
 });
 
-test("零实例时进入工作区提示未找到实例", async ({ page }) => {
-  // 环境自适应：已存在 l4d2 实例的环境（如部署库认领过容器）工作区会正常进入而非警告
-  const token = await login(e2eEnv.backendUrl, e2eEnv.adminUser, e2eEnv.adminPass);
-  const instances = await fetch(`${e2eEnv.backendUrl}/api/instances?page=1&size=50`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then((r) => r.json());
-  const hasL4d2 = (instances?.data?.records || []).some(
-    (r) => r.gameCode === "l4d2",
+test("进入工作区按 l4d2 实例状态进入工作区或提示未找到实例", async ({
+  page,
+}) => {
+  const token = await login(
+    e2eEnv.backendUrl,
+    e2eEnv.adminUser,
+    e2eEnv.adminPass,
   );
-  test.skip(hasL4d2, "环境已存在 l4d2 实例，零实例警告分支不适用");
+  const api = createApi(e2eEnv.backendUrl, token);
+  const instances = await api.get("/api/instances?page=1&size=50");
+  if (instances.status !== 200) {
+    throw new Error(
+      `[CHECK][FAIL] 读取 l4d2 实例列表失败: HTTP ${instances.status}; remediation: 确认后端已就绪且管理员登录态有效`,
+    );
+  }
+  const l4d2Instances = (instances.body?.data?.records ?? []).filter(
+    (row) => row.gameCode === "l4d2",
+  );
 
   await injectSession(page);
   await page.goto("/extensions/plugins/list");
 
   const card = page.locator(".plugin-card", { hasText: "l4d2" });
   await card.getByRole("button", { name: "进入工作区" }).click();
-  await expect(page.locator(".el-message--warning")).toContainText(
-    "未找到游戏编码",
-    { timeout: 10_000 },
+
+  if (l4d2Instances.length === 0) {
+    await expect(page.locator(".el-message--warning")).toContainText(
+      "未找到游戏编码",
+      { timeout: 10_000 },
+    );
+    return;
+  }
+
+  const selectDialog = page.getByRole("dialog", { hasText: "选择管理目标" });
+  try {
+    await selectDialog.waitFor({ state: "visible", timeout: 3_000 });
+    await selectDialog
+      .locator(".el-table__row")
+      .first()
+      .getByRole("button", { name: "进入管理" })
+      .click();
+  } catch {
+    // 单实例直接进入工作区，不出现选择框。
+  }
+  await expect(page).toHaveURL(
+    /\/extensions\/app\/l4d2\/dashboard\?instanceId=/,
+    { timeout: 15_000 },
   );
+  await expect(page.locator(".dashboard-page")).toBeVisible({
+    timeout: 30_000,
+  });
 });

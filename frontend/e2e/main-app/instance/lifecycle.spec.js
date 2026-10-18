@@ -17,7 +17,12 @@
 import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
-import { createApi, login, removeHostsByName } from "../../support/api.js";
+import {
+  createApi,
+  ensureHostByIp,
+  login,
+  removeHostsByName,
+} from "../../support/api.js";
 import { injectSession } from "../../support/session.js";
 import { cleanupStaleE2EContainers } from "../../support/host-hygiene.js";
 
@@ -30,6 +35,7 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
   let api = null;
   let hostId = null;
   let instanceId = null;
+  let createdHost = false;
 
   test.beforeAll(async () => {
     // 宿主卫生：清掉上一轮失败链遗留的 game-instance-* 容器，避免名字/端口占用
@@ -41,19 +47,19 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
     );
     api = createApi(e2eEnv.backendUrl, token);
     await removeHostsByName(api, HOST_NAME);
-    // 直连后端路径必须带 /api 前缀
-    const created = await api.post("/api/hosts", {
+    // 直连后端路径必须带 /api 前缀；同 IP 已有主机时复用，避免唯一约束冲突。
+    const ensured = await ensureHostByIp(api, {
       name: HOST_NAME,
       ip: e2eEnv.testHost.address,
       sshPort: Number(e2eEnv.testHost.port),
       sshUsername: e2eEnv.testHost.username,
-      authType: "password",
       sshPassword: e2eEnv.testHost.auth,
     });
-    hostId = created.body?.data?.id ?? null;
-    if (!hostId) {
-      throw new Error(`前置主机创建失败: ${JSON.stringify(created.body)}`);
-    }
+    hostId = ensured.hostId;
+    createdHost = ensured.created;
+    console.log(
+      `[CHECK][${createdHost ? "PASS" : "INFO"}] 生命周期主机${createdHost ? "已创建" : "复用既有记录"}: id=${hostId}, ip=${e2eEnv.testHost.address}`,
+    );
     // 触发一次真实连接测试：部署向导只列在线主机（status=1），API 直造的主机默认离线
     const tested = await api.post(`/api/hosts/${hostId}/test`);
     if (tested.body?.data?.connected === false) {
@@ -69,7 +75,9 @@ test.describe.serial("实例生命周期（l4d2 Docker 演练腿）", () => {
       await api.post(`/api/instances/${instanceId}/stop`).catch(() => {});
       await api.delete(`/api/instances/${instanceId}`).catch(() => {});
     }
-    if (api && hostId) await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+    if (api && hostId && createdHost) {
+      await api.delete(`/api/hosts/${hostId}`).catch(() => {});
+    }
   });
 
   async function pollInstanceStatus(desc, timeoutMs) {
