@@ -18,6 +18,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -55,6 +56,8 @@ public class DeployService {
     @Autowired
     private DeploymentAccess deployAccess;
 
+    /** 勿删：@Lazy 断开 instanceServiceImpl → deployService → deployExtensionExecutor → patchInstallServiceImpl → instanceQueryServiceImpl 的构造器注入环——本边是环上唯一的非构造器边，去掉则环无早引用可暴露，allow-circular-references=true 也解不开。 */
+    @Lazy
     @Autowired
     private DeployExtensionExecutor deployExtensionExecutor;
 
