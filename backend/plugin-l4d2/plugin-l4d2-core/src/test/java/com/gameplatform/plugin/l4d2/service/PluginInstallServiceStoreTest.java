@@ -76,6 +76,20 @@ class PluginInstallServiceStoreTest {
                 "cfg/sourcemod/myplugin.cfg");
     }
 
+    @Test
+    void uploadSmx_shouldUseOriginalFilenameAsPluginName() throws Exception {
+        service.installFromUpload(100L, new org.springframework.mock.web.MockMultipartFile(
+                "file", "e2e-sample-plugin.smx", "application/octet-stream",
+                new byte[]{0x01, 0x02, 0x03, 0x04}));
+
+        verify(instanceFileService).uploadLocalFile(eq(100L),
+                eq("left4dead2/addons/sourcemod/plugins_store/e2e-sample-plugin/left4dead2/addons/sourcemod/plugins/e2e-sample-plugin.smx"),
+                anyString(), isNull());
+        ArgumentCaptor<PluginMeta> metaCaptor = ArgumentCaptor.forClass(PluginMeta.class);
+        verify(pluginMetaService).save(eq(100L), metaCaptor.capture());
+        assertThat(metaCaptor.getValue().getName()).isEqualTo("e2e-sample-plugin");
+    }
+
     private File createTestZip(String topLevelDir, String... entries) throws Exception {
         File zip = tempDir.resolve("test.zip").toFile();
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zip))) {

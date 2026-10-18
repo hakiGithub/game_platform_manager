@@ -56,6 +56,12 @@ class MapServiceTest {
     @Mock
     private L4D2RconService rconService;
 
+    @Mock
+    private MapRecognitionService mapRecognitionService;
+
+    @Mock
+    private com.gameplatform.plugin.task.TaskService taskService;
+
     private final L4D2Config config = new L4D2Config();
 
     private final L4D2PathResolver pathResolver = new L4D2PathResolver();
@@ -68,7 +74,8 @@ class MapServiceTest {
     void setUp() {
         mapService = new MapService(
                 vpkParserService, vpkTrimService, instanceQueryService,
-                instanceFileService, rconService, config, pathResolver);
+                instanceFileService, rconService, config, pathResolver,
+                mapRecognitionService, taskService);
 
         instance = new InstanceVO();
         instance.setId(1L);

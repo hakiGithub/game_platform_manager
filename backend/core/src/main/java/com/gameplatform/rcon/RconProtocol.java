@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.net.SocketTimeoutException;
 
 /**
  * Source RCON 协议工具类。
@@ -55,7 +56,7 @@ public final class RconProtocol {
      * @throws IOException 认证失败（密码错误、服务器关闭连接或协议异常）
      */
     public static void readAuthResponse(InputStream in, int requestId) throws IOException {
-        int authResultId = -1;
+        Integer authResultId = null;
         IOException readError = null;
         for (int i = 0; i < 2; i++) {
             try {
@@ -73,9 +74,22 @@ public final class RconProtocol {
             }
         }
 
-        if (authResultId == -1) {
+        if (authResultId == null) {
             if (readError != null) {
-                throw new IOException("RCON 认证失败：服务器关闭连接（可能未启用 RCON、密码错误或被 RCON 封禁）", readError);
+                String detail = readError.getMessage() == null
+                        ? readError.getClass().getSimpleName()
+                        : readError.getMessage();
+                if (readError instanceof SocketTimeoutException) {
+                    throw new IOException(
+                            "RCON 认证失败：读取响应超时（可能未启用 RCON、端口非 RCON 服务或服务器无响应）",
+                            readError);
+                }
+                if (detail.contains("连接已关闭")) {
+                    throw new IOException(
+                            "RCON 认证失败：服务器关闭连接（可能未启用 RCON、密码错误或被 RCON 封禁）",
+                            readError);
+                }
+                throw new IOException("RCON 认证失败：服务器响应异常（" + detail + "）", readError);
             }
             throw new IOException("RCON 认证失败（密码错误或服务器未启用 RCON）");
         }
