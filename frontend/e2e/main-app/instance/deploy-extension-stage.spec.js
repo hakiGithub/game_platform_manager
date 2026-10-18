@@ -21,9 +21,16 @@ import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { assertOk, createApi, login } from "../../support/api.js";
-import { acquireTestHost, deleteInstancesByName, releaseTestHost } from "../../support/test-host.js";
+import {
+  acquireTestHost,
+  deleteInstancesByName,
+  releaseTestHost,
+} from "../../support/test-host.js";
 import { injectSession } from "../../support/session.js";
-import { COMPOSE_DEPLOY_TYPE, probeStubCatalog } from "../../support/deploy-versions.js";
+import {
+  COMPOSE_DEPLOY_TYPE,
+  probeStubCatalog,
+} from "../../support/deploy-versions.js";
 
 skipWithoutTestHost();
 
@@ -117,7 +124,9 @@ test.describe.serial("部署扩展阶段呈现（V-23 AC-16 · 用户可辨识�
     // 等部署结束再开，行内按钮会变成「日志」（error/running）或消失（stopped），弹窗就抓不到了。
     await injectSession(page);
     await page.goto("/services/instances/list");
-    const row = page.locator(".el-table__row", { hasText: INSTANCE_NAME }).first();
+    const row = page
+      .locator(".el-table__row", { hasText: INSTANCE_NAME })
+      .first();
     await expect(row).toBeVisible({ timeout: 30_000 });
     // 行内直连按钮：「进度」= 部署中，「日志」= 终态（error/running）。
     // 不走「更多 → 查看日志」——那个入口是跳详情页的日志 tab，不是部署进度弹窗。
@@ -190,7 +199,9 @@ test.describe.serial("部署扩展阶段呈现（V-23 AC-16 · 用户可辨识�
         { timeout: 6 * 60_000, intervals: [3_000, 5_000] },
       )
       .not.toBe("running");
-    healthCheckSeen = (await readLogs()).some((l) => l.stage === "HEALTH_CHECK");
+    healthCheckSeen = (await readLogs()).some(
+      (l) => l.stage === "HEALTH_CHECK",
+    );
     if (healthCheckSeen) {
       // 弹窗按轮询刷新；等 HEALTH_CHECK 之后的那一帧落到 DOM 上再取。
       await expect(band).toBeVisible();

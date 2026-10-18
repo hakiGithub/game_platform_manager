@@ -25,7 +25,11 @@ import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { assertOk, createApi, login } from "../../support/api.js";
-import { acquireTestHost, deleteInstancesByName, releaseTestHost } from "../../support/test-host.js";
+import {
+  acquireTestHost,
+  deleteInstancesByName,
+  releaseTestHost,
+} from "../../support/test-host.js";
 import { injectSession } from "../../support/session.js";
 import {
   COMPOSE_DEPLOY_TYPE,
@@ -119,14 +123,16 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
     // 控件出现（P1 谓词真）——锚点：data-ext-version-select / aria-label="目标版本"
     const select = versionSelect(page);
     await expect(select).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("目标版本", { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByText("目标版本", { exact: false }).first(),
+    ).toBeVisible();
 
     // 收起态值区：默认选中项 = defaultEntry 条目的 versionId（主文本「默认版本」+ 该条目 versionId 副标）
     const valueMain = page.locator(".version-value-main").first();
     await expect(valueMain).toHaveText("默认版本");
-    await expect(page.locator(".version-value .version-id-sub").first()).toHaveText(
-      STUB_DEFAULT_VERSION_ID,
-    );
+    await expect(
+      page.locator(".version-value .version-id-sub").first(),
+    ).toHaveText(STUB_DEFAULT_VERSION_ID);
 
     // —— §6.1 前提①②③：先展开再取集合、按锚点 popper 作用域、集合等式（非序列） ——
     const options = await openAndReadOptions(page);
@@ -148,9 +154,9 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
       .filter({ hasText: "2.0.0-patched" })
       .first()
       .click();
-    await expect(page.locator(".version-value .version-id-sub").first()).toHaveText(
-      "2.0.0-patched",
-    );
+    await expect(
+      page.locator(".version-value .version-id-sub").first(),
+    ).toHaveText("2.0.0-patched");
 
     // —— 步骤 2 → 步骤 3 ——
     await page.getByRole("button", { name: "下一步" }).click();
@@ -168,8 +174,12 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
 
     const summary = page.locator(".version-summary").first();
     await expect(summary).toBeVisible({ timeout: 60_000 });
-    await expect(summary.locator(".version-summary-main")).toHaveText("桩改造版");
-    await expect(summary.locator(".version-id-sub")).toHaveText("2.0.0-patched");
+    await expect(summary.locator(".version-summary-main")).toHaveText(
+      "桩改造版",
+    );
+    await expect(summary.locator(".version-id-sub")).toHaveText(
+      "2.0.0-patched",
+    );
 
     // —— F-05：版本串在整个提交载荷里只出现一处，值 = 所选项 versionId ——
     // 「只含一个 deployVersion 键」不能用 Object.keys().filter(k==="deployVersion").length 判：
@@ -190,7 +200,9 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
     ).toBe(1);
   });
 
-  test("AC-24 ①③⑤⑥ / AC-02：dnf-tw S1 向导不渲染版本项（界面侧）", async ({ page }) => {
+  test("AC-24 ①③⑤⑥ / AC-02：dnf-tw S1 向导不渲染版本项（界面侧）", async ({
+    page,
+  }) => {
     test.setTimeout(5 * 60_000);
     const games = await api.get("/api/games/list");
     const dnf = findGameByCode(games.body?.data, DNF_TW_GAME_CODE);
@@ -202,8 +214,8 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
       state !== "ABSENT" && state !== "EMPTY",
       `SKIP (dnf-tw 目录状态非 S1：${state ?? "null"})`,
     );
-    // ③ EMPTY ≠ INVALID：读到 0 条不得判成「声明不合法」（EMPTY 态需 MERC-23 合入才出现）
-    if (state === "EMPTY") expect(state).not.toBe("INVALID");
+    // ③ EMPTY ≠ INVALID：读到 0 条不得判成「声明不合法」（EMPTY 态需 MERC-23 合入才出现）；
+    // 该判据的实判点在下面「界面无『不合法』提示行」那条。
 
     await injectSession(page);
     await gotoWizardAndSelectCompose(page, {
@@ -271,7 +283,9 @@ test.describe.serial("部署目标版本（V-21 AC-01 正向 / AC-24 负向）",
       // 安装路径取不可写目录：本用例只判 S1 的界面呈现与载荷，部署在 DEPLOY 阶段失败
       // 才能让实例停在 error（列表的「日志」走 deploy 模式，进度条面板可见）。
       // 失败点与扩展阶段无关 —— 扩展阶段本来就不该出现。
-      await page.getByPlaceholder(/请输入部署路径/).fill("/proc/e2e-s1-payload");
+      await page
+        .getByPlaceholder(/请输入部署路径/)
+        .fill("/proc/e2e-s1-payload");
       await fillEmptyRequiredInputs(page);
       await page.getByRole("button", { name: "检查端口" }).click();
       await expect(page.getByText("端口可用")).toBeVisible({ timeout: 20_000 });

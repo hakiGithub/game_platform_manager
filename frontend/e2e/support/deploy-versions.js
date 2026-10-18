@@ -41,9 +41,7 @@ export function findGameByCode(games, code) {
 // GET /api/games/{gameId}/deploy-config/{deployType}
 // 注意：deployType 是路径段，不是 query 参数（design §10 V-21 v0.3.1 订正）。
 export async function readDeployConfig(api, gameId, deployType) {
-  const res = await api.get(
-    `/api/games/${gameId}/deploy-config/${deployType}`,
-  );
+  const res = await api.get(`/api/games/${gameId}/deploy-config/${deployType}`);
   return res.body?.data ?? null;
 }
 
@@ -133,9 +131,7 @@ export async function openAndReadOptions(page) {
 
 // ui-spec §6.1 句一：非默认选项内可见的 versionId 副标集合（内容式锚点：主文本不为「默认版本」的选项行）。
 export function nonDefaultSubs(options) {
-  return options
-    .filter((o) => o.main !== "默认版本")
-    .map((o) => o.sub);
+  return options.filter((o) => o.main !== "默认版本").map((o) => o.sub);
 }
 
 // §6.1 句二对象：主文本恰为「默认版本」的那一行。
@@ -147,9 +143,10 @@ export function defaultOption(options) {
 export function expectSetEqualityExactlyOnce(actual, expected) {
   const actualSorted = [...new Set(actual)].sort();
   const expectedSorted = [...new Set(expected)].sort();
-  expect(actualSorted, `集合去重后应相等：实际 ${JSON.stringify(actual)}`).toEqual(
-    expectedSorted,
-  );
+  expect(
+    actualSorted,
+    `集合去重后应相等：实际 ${JSON.stringify(actual)}`,
+  ).toEqual(expectedSorted);
   // 每元素恰出现 1 次（去重会吃掉重复 ⇒ 单独核对原始长度）
   expect(
     actual.length,

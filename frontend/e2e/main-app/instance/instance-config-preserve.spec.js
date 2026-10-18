@@ -14,9 +14,16 @@ import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { assertOk, createApi, login } from "../../support/api.js";
-import { acquireTestHost, deleteInstancesByName, releaseTestHost } from "../../support/test-host.js";
+import {
+  acquireTestHost,
+  deleteInstancesByName,
+  releaseTestHost,
+} from "../../support/test-host.js";
 import { injectSession } from "../../support/session.js";
-import { COMPOSE_DEPLOY_TYPE, probeStubCatalog } from "../../support/deploy-versions.js";
+import {
+  COMPOSE_DEPLOY_TYPE,
+  probeStubCatalog,
+} from "../../support/deploy-versions.js";
 
 skipWithoutTestHost();
 
@@ -91,7 +98,10 @@ test.describe.serial("配置管理保键（V-16 AC-27 (b)(c) 界面半）", () =
     });
     assertOk(deployed, "创建实例（配置保键载体）");
     instanceId = deployed.body?.data?.id ?? null;
-    expect(instanceId, `实例创建失败: ${JSON.stringify(deployed.body)}`).toBeTruthy();
+    expect(
+      instanceId,
+      `实例创建失败: ${JSON.stringify(deployed.body)}`,
+    ).toBeTruthy();
 
     // 落定既存键（部署可能失败，不影响配置管理入口判据）
     const before = await readConfigInfo();
@@ -130,9 +140,10 @@ test.describe.serial("配置管理保键（V-16 AC-27 (b)(c) 界面半）", () =
       // (b) deployVersion 与其它既有业务键逐键不变
       const after = await readConfigInfo();
       expect(after, `第 ${round} 次保存后 configInfo 应仍可读`).toBeTruthy();
-      expect(after.deployVersion, `第 ${round} 次保存后 deployVersion 应不变`).toBe(
-        SELECTED_VERSION,
-      );
+      expect(
+        after.deployVersion,
+        `第 ${round} 次保存后 deployVersion 应不变`,
+      ).toBe(SELECTED_VERSION);
       for (const [k, v] of Object.entries(PRESERVED_KEYS)) {
         expect(after[k], `第 ${round} 次保存后既有键 ${k} 应不变`).toEqual(v);
       }

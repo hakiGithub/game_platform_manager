@@ -23,7 +23,11 @@ import { test, expect } from "@playwright/test";
 import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { assertOk, createApi, login } from "../../support/api.js";
-import { acquireTestHost, deleteInstancesByName, releaseTestHost } from "../../support/test-host.js";
+import {
+  acquireTestHost,
+  deleteInstancesByName,
+  releaseTestHost,
+} from "../../support/test-host.js";
 import {
   COMPOSE_DEPLOY_TYPE,
   probeStubCatalog,
@@ -45,12 +49,12 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
 
   async function setStubLoaded(loaded) {
     if (loaded) {
-      const res = await api.post(
-        `/api/pf4j/plugins/load?jarName=${STUB_JAR}`,
-      );
+      const res = await api.post(`/api/pf4j/plugins/load?jarName=${STUB_JAR}`);
       // 插件已装载时 load 会失败（插件 ID 已存在）；这不是本用例的判据，只要目录最终可用即可。
       if (!(res.body?.code === 200 || res.body?.code === 0)) {
-        console.log(`[br12] 桩插件 load 未成功（可能已装载）: ${JSON.stringify(res.body).slice(0, 200)}`);
+        console.log(
+          `[br12] 桩插件 load 未成功（可能已装载）: ${JSON.stringify(res.body).slice(0, 200)}`,
+        );
       }
     } else {
       assertOk(
@@ -62,7 +66,11 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
     await expect
       .poll(
         async () => {
-          const cfg = await readDeployConfig(api, stubGameId, COMPOSE_DEPLOY_TYPE);
+          const cfg = await readDeployConfig(
+            api,
+            stubGameId,
+            COMPOSE_DEPLOY_TYPE,
+          );
           const state = cfg?.versionCatalogState;
           return loaded ? state === "AVAILABLE" : state !== "AVAILABLE";
         },
@@ -125,10 +133,10 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
   /** retry 屏障之二：等 retry 那一轮的 ② 锚点行出现，再读整份日志。 */
   async function waitForLogLine(instanceId, needle, timeoutMs) {
     await expect
-      .poll(
-        async () => logText((await readProgress(instanceId)).logs ?? []),
-        { timeout: timeoutMs, intervals: [2_000, 3_000] },
-      )
+      .poll(async () => logText((await readProgress(instanceId)).logs ?? []), {
+        timeout: timeoutMs,
+        intervals: [2_000, 3_000],
+      })
       .toContain(needle);
   }
 
@@ -150,7 +158,9 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
   test.afterAll(async () => {
     if (!api) return;
     // 还原插件装载状态，避免影响后续用例
-    await api.post(`/api/pf4j/plugins/load?jarName=${STUB_JAR}`).catch(() => {});
+    await api
+      .post(`/api/pf4j/plugins/load?jarName=${STUB_JAR}`)
+      .catch(() => {});
     for (const id of created) {
       await api.delete(`/api/instances/${id}`).catch(() => {});
     }
@@ -175,7 +185,10 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
       });
       assertOk(res, "创建实例（① 支）");
       const instanceId = res.body?.data?.id ?? null;
-      expect(instanceId, `实例创建失败: ${JSON.stringify(res.body)}`).toBeTruthy();
+      expect(
+        instanceId,
+        `实例创建失败: ${JSON.stringify(res.body)}`,
+      ).toBeTruthy();
       created.push(instanceId);
 
       await waitInstanceError("e2e-br12-a-01", 8 * 60_000);
@@ -219,7 +232,10 @@ test.describe.serial("BR-12 拦截两分支（AC-20 端到端）", () => {
       });
       assertOk(res, "创建实例（② 支前置）");
       const instanceId = res.body?.data?.id ?? null;
-      expect(instanceId, `实例创建失败: ${JSON.stringify(res.body)}`).toBeTruthy();
+      expect(
+        instanceId,
+        `实例创建失败: ${JSON.stringify(res.body)}`,
+      ).toBeTruthy();
       created.push(instanceId);
       await waitInstanceError("e2e-br12-b-01", 8 * 60_000);
 
