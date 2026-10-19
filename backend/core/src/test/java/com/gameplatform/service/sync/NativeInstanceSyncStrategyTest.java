@@ -110,6 +110,18 @@ class NativeInstanceSyncStrategyTest {
     }
 
     @Test
+    void pgrepUnexpectedExitCode_keepsDatabaseStatus() {
+        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), anyString(), anyLong()))
+                .thenReturn(mockResult(2, "pgrep: permission denied"));
+
+        instance.setRunStatus(1);
+        strategy.syncHost(host, List.of(instance));
+
+        assertThat(instance.getRunStatus()).isEqualTo(1);
+        verify(instanceMapper, never()).updateById(any());
+    }
+
+    @Test
     void startCommandEmpty_skipsInstance() {
         instance.setStartCommand("");
 

@@ -239,6 +239,24 @@ class InstanceServiceImplTest {
     }
 
     @Test
+    void getInstanceStatus_adapterFailure_keepsLastKnownStatus() {
+        GameInstance instance = createInstance(1L, "test-instance", 1);
+        instance.setConfigInfo(new HashMap<>());
+
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.getStatus(eq(1L), anyMap()))
+                .thenThrow(new RuntimeException("SSH connection refused"));
+        when(hostMapper.selectById(1L)).thenReturn(createHost());
+        when(gameMetadataMapper.selectById(1L)).thenReturn(createGame());
+
+        InstanceVO result = instanceService.getInstanceStatus(1L);
+
+        assertEquals(1, result.getRunStatus());
+        verify(instanceMapper, never()).updateRunStatus(anyLong(), anyInt());
+    }
+
+    @Test
     void testGetInstanceLogs() {
         GameInstance instance = createInstance(1L, "test-instance", 1);
         Map<String, Object> config = new HashMap<>();

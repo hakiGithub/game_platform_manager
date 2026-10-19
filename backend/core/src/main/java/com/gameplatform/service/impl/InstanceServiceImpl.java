@@ -24,6 +24,7 @@ import com.gameplatform.rcon.RconConnectionManager;
 import com.gameplatform.service.DeployService;
 import com.gameplatform.service.InstanceService;
 import com.gameplatform.service.docker.ContainerAdoptionService;
+import com.gameplatform.service.sync.InstanceStateReconciler;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import com.gameplatform.vo.InstanceDeleteResultVO;
@@ -613,15 +614,12 @@ public class InstanceServiceImpl implements InstanceService {
             // 调用适配器健康检查
             DeployAdapter.InstanceStatus status = adapter.getStatus(id, config);
             
-            // 更新数据库状态（如果与实际情况不符）
-            int dbStatus = instance.getRunStatus();
-            int actualStatus = status.getCode();
-            
-            if (dbStatus != actualStatus
-                    && (actualStatus == DeployAdapter.InstanceStatus.STOPPED.getCode()
-                    || actualStatus == DeployAdapter.InstanceStatus.RUNNING.getCode())) {
-                instanceMapper.updateRunStatus(id, actualStatus);
-                instance.setRunStatus(actualStatus);
+            // 只有适配器明确返回状态时才写入；转换/连接故障不能伪装成实例异常。
+            InstanceStateReconciler.Decision decision =
+                    InstanceStateReconciler.reconcile(instance.getRunStatus(), status);
+            if (decision.shouldUpdate()) {
+                instanceMapper.updateRunStatus(id, decision.targetStatus());
+                instance.setRunStatus(decision.targetStatus());
             }
             
             // 如果运行中，尝试获取在线玩家数
@@ -631,8 +629,7 @@ public class InstanceServiceImpl implements InstanceService {
             
         } catch (Exception e) {
             log.error("获取实例状态异常: {}", instance.getInstanceName(), e);
-            // 标记为异常状态
-            instance.setRunStatus(DeployAdapter.InstanceStatus.ERROR.getCode());
+            // 观测失败不是实例异常，保留最后一次已知状态。
         }
         
         return convertToVO(instance);
