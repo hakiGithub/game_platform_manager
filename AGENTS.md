@@ -362,6 +362,10 @@ Issue 以本地 Markdown 文件形式存放在 `.scratch/<feature-slug>/`（一�
 
 单上下文布局：根目录 `CONTEXT.md` + `docs/design/adr/`。See `docs/agents/domain.md`.
 
+### Skill workflow
+
+需要选择 skill、从想法走到 spec/tickets，或并行执行已拆分的票时，读取 `docs/agents/skill-workflow-runbook.md`。
+
 ---
 
 *最后更新: 2026-09-10*
