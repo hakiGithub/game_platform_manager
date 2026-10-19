@@ -87,9 +87,11 @@ public class NativeInstanceSyncStrategy {
             return;
         }
 
-        if (shouldUpdate(instance.getRunStatus(), targetStatus)) {
-            String remark = targetStatus == InstanceStatus.RUNNING ? null : "进程未运行";
-            updateInstanceStatus(instance, targetStatus, remark);
+        String remark = targetStatus == InstanceStatus.RUNNING ? null : "进程未运行";
+        InstanceStateReconciler.Decision decision = InstanceStateReconciler.reconcile(
+                instance.getRunStatus(), targetStatus, remark);
+        if (decision.shouldUpdate()) {
+            updateInstanceStatus(instance, decision);
         } else {
             log.debug("{} 实例 #{} ({}): Native 状态未变化 ({}→{})",
                     LOG_PREFIX, instance.getId(), instance.getInstanceName(),
@@ -170,13 +172,10 @@ public class NativeInstanceSyncStrategy {
         );
     }
 
-    private boolean shouldUpdate(int currentStatus, InstanceStatus target) {
-        return currentStatus != target.getCode();
-    }
-
-    private void updateInstanceStatus(GameInstance instance, InstanceStatus target, String remark) {
+    private void updateInstanceStatus(GameInstance instance, InstanceStateReconciler.Decision decision) {
         int oldStatus = instance.getRunStatus();
-        int newStatus = target.getCode();
+        int newStatus = decision.targetStatus();
+        String remark = decision.remark();
         instance.setRunStatus(newStatus);
         instance.setRemark(remark);
         instanceMapper.updateById(instance);

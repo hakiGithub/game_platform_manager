@@ -78,8 +78,10 @@ public class DockerInstanceSyncStrategy {
 
         if (!matchResult.matched()) {
             // 未匹配到容器，认为已被外部删除
-            if (shouldUpdate(instance.getRunStatus(), InstanceStatus.STOPPED)) {
-                updateInstanceStatus(instance, InstanceStatus.STOPPED, matchResult.remark());
+            InstanceStateReconciler.Decision decision = InstanceStateReconciler.reconcile(
+                    instance.getRunStatus(), InstanceStatus.STOPPED, matchResult.remark());
+            if (decision.shouldUpdate()) {
+                updateInstanceStatus(instance, decision);
             }
             return;
         }
@@ -89,10 +91,12 @@ public class DockerInstanceSyncStrategy {
         writeBackContainerId(host, instance, matchResult);
         InstanceStatus targetStatus = mapContainerStatus(containerStatus);
 
-        if (shouldUpdate(instance.getRunStatus(), targetStatus)) {
-            String remark = targetStatus == InstanceStatus.RUNNING ? null :
-                    (targetStatus == InstanceStatus.STOPPED ? "容器已退出" : null);
-            updateInstanceStatus(instance, targetStatus, remark);
+        String remark = targetStatus == InstanceStatus.RUNNING ? null :
+                (targetStatus == InstanceStatus.STOPPED ? "容器已退出" : null);
+        InstanceStateReconciler.Decision decision = InstanceStateReconciler.reconcile(
+                instance.getRunStatus(), targetStatus, remark);
+        if (decision.shouldUpdate()) {
+            updateInstanceStatus(instance, decision);
         } else {
             log.debug("{} 实例 #{} ({}): 状态未变化 ({}→{})，跳过更新",
                     LOG_PREFIX, instance.getId(), instance.getInstanceName(),
@@ -425,13 +429,10 @@ public class DockerInstanceSyncStrategy {
         };
     }
 
-    private boolean shouldUpdate(int currentStatus, InstanceStatus target) {
-        return currentStatus != target.getCode();
-    }
-
-    private void updateInstanceStatus(GameInstance instance, InstanceStatus target, String remark) {
+    private void updateInstanceStatus(GameInstance instance, InstanceStateReconciler.Decision decision) {
         int oldStatus = instance.getRunStatus();
-        int newStatus = target.getCode();
+        int newStatus = decision.targetStatus();
+        String remark = decision.remark();
         instance.setRunStatus(newStatus);
         instance.setRemark(remark);
         instanceMapper.updateById(instance);

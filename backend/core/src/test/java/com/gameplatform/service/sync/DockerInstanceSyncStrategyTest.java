@@ -259,6 +259,20 @@ class DockerInstanceSyncStrategyTest {
     }
 
     @Test
+    void containerStatusLookupFailure_keepsDatabaseStatus() {
+        ContainerInfo container = new ContainerInfo("abc123def456", "l4d2-server-container", "any", "latest");
+        when(dockerContainerLinkService.getContainers(any())).thenReturn(List.of(container));
+        when(dockerContainerLinkService.getContainerStatus(any(), eq("abc123def456")))
+                .thenThrow(new RuntimeException("docker inspect timeout"));
+
+        instance.setRunStatus(1);
+        strategy.syncHost(host, List.of(instance));
+
+        assertThat(instance.getRunStatus()).isEqualTo(1);
+        verify(instanceMapper, never()).updateById(any());
+    }
+
+    @Test
     void singleInstanceException_doesNotAffectOthers() {
         // badInstance 的 runtimeMetadata 为 null，会触发 NPE，但不应影响 goodInstance
         GameInstance badInstance = new GameInstance();

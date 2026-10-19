@@ -1,6 +1,6 @@
 # 02 — 实例状态对账有三条独立路径，判定规则各说各话
 
-**Status:** needs-triage
+**Status:** claimed
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 3）
 
