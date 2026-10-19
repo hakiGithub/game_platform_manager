@@ -43,12 +43,14 @@ export default defineConfig({
       // 本地开发默认代理本机后端；可用环境变量指向已部署环境（如 Docker 镜像的 nginx）：
       //   VITE_PROXY_TARGET=http://127.0.0.1:8081 npm run dev
       '/api': {
-        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080',
+        // 后端默认只监听 IPv4。固定 127.0.0.1，避免 Node 双栈解析先连 ::1
+        // 后回退时，在长序列/高负载下偶发 AggregateError [ECONNREFUSED]。
+        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api')
       },
       '/ws': {
-        target: (process.env.VITE_PROXY_TARGET || 'ws://localhost:8080').replace(/^http/, 'ws'),
+        target: (process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8080').replace(/^http/, 'ws'),
         ws: true,
         rewrite: (path) => path.replace(/^\/ws/, '/api/ws')
       }

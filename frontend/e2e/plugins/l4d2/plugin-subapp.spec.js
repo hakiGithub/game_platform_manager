@@ -178,7 +178,46 @@ test.describe.serial("l4d2 插件子应用", () => {
 
   async function gotoPluginPage(page, path, rootSelector) {
     const url = `/extensions/app/l4d2/${path}?instanceId=${instanceId}`;
-    await page.goto(url);
+    const manifestFailures = [];
+    const manifestFailureReads = [];
+    const onResponse = (response) => {
+      if (
+        !response.url().includes("/api/pf4j/plugin/l4d2/manifest") ||
+        response.status() < 400
+      ) {
+        return;
+      }
+      manifestFailureReads.push(
+        response
+          .text()
+          .then((body) => {
+            manifestFailures.push({
+              url: response.url(),
+              status: response.status(),
+              body: body.replaceAll(/\s+/g, " ").slice(0, 300),
+            });
+          })
+          .catch((error) => {
+            manifestFailures.push({
+              url: response.url(),
+              status: response.status(),
+              body: `(读取响应失败: ${error.message})`,
+            });
+          }),
+      );
+    };
+    const collectManifestFailures = async () => {
+      await Promise.allSettled(manifestFailureReads);
+      return manifestFailures;
+    };
+
+    page.on("response", onResponse);
+    try {
+      await page.goto(url);
+    } catch (error) {
+      page.off("response", onResponse);
+      throw error;
+    }
     try {
       await expect(page.locator(rootSelector)).toBeVisible({
         timeout: 60_000,
@@ -195,6 +234,7 @@ test.describe.serial("l4d2 插件子应用", () => {
         )
           .replaceAll(/\s+/g, " ")
           .slice(0, 500),
+        manifestFailures: await collectManifestFailures(),
       };
       console.log(
         `[CHECK][FAIL] 插件页 ${path} 根节点 ${rootSelector} 未渲染: ${JSON.stringify(
@@ -209,11 +249,16 @@ test.describe.serial("l4d2 插件子应用", () => {
       } catch (reloadError) {
         throw new Error(
           `[CHECK][FAIL] 插件页 ${path} reload 后仍不可见: ${reloadError.message}; actual=${JSON.stringify(
-            actual,
+            {
+              ...actual,
+              manifestFailures: await collectManifestFailures(),
+            },
           )}; remediation: 查看 e2e/.artifacts 的 error-context.md 与 trace`,
           { cause: error },
         );
       }
+    } finally {
+      page.off("response", onResponse);
     }
   }
 

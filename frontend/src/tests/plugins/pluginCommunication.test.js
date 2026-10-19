@@ -578,5 +578,62 @@ describe('pluginCommunication', () => {
 
       expect(result).toEqual(expectedManifest)
     })
+
+    it('网络错误时应该重试插件清单请求', async () => {
+      vi.useFakeTimers()
+      const mockBackendResponse = {
+        pluginId: 'plugin-1',
+        gameName: 'Test Plugin',
+        version: '1.0.0',
+        gameCode: 'minecraft',
+        frontend: { entry: '/plugins/test/', menus: [] }
+      }
+      request
+        .mockRejectedValueOnce(new Error('Network Error'))
+        .mockResolvedValueOnce(mockBackendResponse)
+
+      const resultPromise = fetchPluginManifest('minecraft')
+      await vi.runAllTimersAsync()
+      const result = await resultPromise
+
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(result.pluginId).toBe('plugin-1')
+      vi.useRealTimers()
+    })
+
+    it('代理返回 500 时应该重试插件清单请求', async () => {
+      vi.useFakeTimers()
+      const proxyError = Object.assign(new Error('Request failed with status code 500'), {
+        response: { status: 500 }
+      })
+      const mockBackendResponse = {
+        pluginId: 'plugin-1',
+        gameName: 'Test Plugin',
+        version: '1.0.0',
+        gameCode: 'minecraft',
+        frontend: { entry: '/plugins/test/', menus: [] }
+      }
+      request
+        .mockRejectedValueOnce(proxyError)
+        .mockResolvedValueOnce(mockBackendResponse)
+
+      const resultPromise = fetchPluginManifest('minecraft')
+      await vi.runAllTimersAsync()
+      const result = await resultPromise
+
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(result.pluginId).toBe('plugin-1')
+      vi.useRealTimers()
+    })
+
+    it('业务 4xx 不应该重试插件清单请求', async () => {
+      const notFoundError = Object.assign(new Error('插件不存在'), {
+        response: { status: 404 }
+      })
+      request.mockRejectedValueOnce(notFoundError)
+
+      await expect(fetchPluginManifest('minecraft')).rejects.toThrow('插件不存在')
+      expect(request).toHaveBeenCalledTimes(1)
+    })
   })
 })

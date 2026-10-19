@@ -378,12 +378,7 @@ export function usePluginCommunication(options: PluginCommunicationOptions) {
  * 插件清单 API
  */
 export async function fetchPluginManifest(gameCode: string): Promise<PluginManifest> {
-  const response = await request({
-    url: `/pf4j/plugin/${gameCode}/manifest`,
-    method: 'get',
-    // 插件未安装/未注册属于预期分支，交由调用方降级处理，不弹全局错误通知
-    silent: true
-  })
+  const response = await requestPluginManifestWithRetry(gameCode)
 
   // 将后端响应格式映射为前端 PluginManifest 接口
   const data = response as any
@@ -404,6 +399,37 @@ export async function fetchPluginManifest(gameCode: string): Promise<PluginManif
               || data.frontend?.menus?.map((m: any) => m.path)
               || [],
     permissions: []
+  }
+}
+
+const MANIFEST_RETRY_DELAYS_MS = [150, 350]
+
+function isRetryableManifestError(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status
+  // 网络错误或代理/服务端 5xx 没有业务响应；4xx 属于明确业务结果，不重试。
+  return status === undefined || status >= 500
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function requestPluginManifestWithRetry(gameCode: string): Promise<unknown> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request({
+        url: `/pf4j/plugin/${gameCode}/manifest`,
+        method: 'get',
+        // 插件未安装/未注册属于预期分支，交由调用方降级处理，不弹全局错误通知
+        silent: true
+      })
+    } catch (error) {
+      const retryDelay = MANIFEST_RETRY_DELAYS_MS[attempt]
+      if (retryDelay === undefined || !isRetryableManifestError(error)) {
+        throw error
+      }
+      await delay(retryDelay)
+    }
   }
 }
 
