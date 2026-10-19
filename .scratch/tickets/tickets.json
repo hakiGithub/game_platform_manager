@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-10-19T21:34:57.696Z",
+  "generatedAt": "2026-10-19T21:58:02.450Z",
   "sourceRoot": ".scratch",
   "policy": "Excluded statuses: done, resolved, closed, wontfix, cancelled. Directory semantics keep backlog and architecture review open.",
   "summary": {
     "total": 62,
-    "unclosed": 9,
+    "unclosed": 7,
     "byStatus": {
       "resolved": 28,
-      "done": 21,
-      "needs-info": 4,
+      "done": 23,
+      "needs-info": 2,
       "ready-for-human": 5,
       "wontfix（裁决：备份功能临时下线，不修复——2026-09-10）": 1,
       "done（2026-09-10 修复，E2E 断言已转正/验证）": 3
     },
     "byTone": {
-      "success": 52,
-      "open": 4,
+      "success": 54,
+      "open": 2,
       "human": 5,
       "muted": 1
     }
@@ -49,7 +49,7 @@
       "id": "l4d2-cloud-map-install",
       "label": "L4D2 cloud maps",
       "count": 5,
-      "unclosed": 1
+      "unclosed": 0
     },
     {
       "id": "backlog",
@@ -73,7 +73,7 @@
       "id": "cloud-drive-host-capability",
       "label": "Cloud drive",
       "count": 6,
-      "unclosed": 3
+      "unclosed": 2
     },
     {
       "id": "dnf-tw-compose-variable-handoff",
@@ -757,9 +757,9 @@
       "number": "04",
       "feature": "l4d2-cloud-map-install",
       "area": "L4D2 cloud maps",
-      "status": "needs-info",
-      "statusLabel": "待补充信息",
-      "statusTone": "open",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "unspecified",
       "priority": "",
@@ -767,7 +767,7 @@
       "blockedBy": [
         "03"
       ],
-      "closed": false,
+      "closed": true,
       "summary": "",
       "acceptance": [
         "两入口均可提交并在下载页看到任务进度与结果。",
@@ -785,7 +785,7 @@
       "href": "../l4d2-cloud-map-install/issues/04-frontend-entries.md",
       "specHref": "../l4d2-cloud-map-install/spec.md",
       "specPath": ".scratch/l4d2-cloud-map-install/spec.md",
-      "excerpt": "# 04: 前端入口（MapCenter 转存并安装 + Download 云盘链接页）\n\nStatus: needs-info\n\n## 任务\n\n- MapCenter.vue 详情展开区 downloadLinks 旁加「转存并安装」按钮 → Dialog：云盘账号下拉（直调主应用 `GET /api/cloud/accounts`，只列 HEALTHY）、目标实例下拉（复用现有实例选择）、可选提取码；提交 `POST /api/plugin/l4d2/download/cloud`（自动带 source/sourceId/title）。\n- Download.vue 加「云盘分享链接」表单：账号 + 分享链接 + 提取码 + 实例 + 可选 targetPath；裸链接无 sourceId 时后端用 `share-{hash8}`。\n- 任务列表展示 taskType=CLOUD（tag 云盘），详情含 transferMode/accountName/cloudPath。\n\n## 验收\n\n- 两入口均可提交并在下载页看到任务进度与结果。\n\nBlocked by: 03\n\n## Comments\n\n2026-09-15 网页真实测试（IAB + 全栈 8080/3000）：\n- Download「云盘分享」tab：账号下拉跨应用拉到主应用 /cloud/accounts（天翼直播盘），提交后任务列表出现\"云盘\"类型行，失败原因透传展示 ✅\n- MapCenter 行展开：三条链接各带「转存并安装」；弹窗自动带地图名/分享链接/转存目录 /maps/orange-810/自带提取码 ✅\n- 真实提交走通到天翼转存引擎；爬虫库全部分享链接已过期（天翼个人分享 30 天），clp-web 对照同一链接同样 resource-gone，非集成问题。有效分享的成功路径待真实链接联调。\n- 修复部署问题：plugins/ 目录同时存在旧 SNAPSHOT 与新 1.0.0 jar，PF4J 加载旧的同 id jar 导致 UI 未更新（已删除旧 jar）。\n\n2026-10-20 跟进验证：\n\n- 插件前端生产构建通过；`Download.vue` 云盘 tab、`MapCenter.vue` 转存弹窗、CLOUD tag 与详情字段均已存在。\n- 由于 `03` 的真实账号/分享链接联调仍被凭证失效阻塞，本票的两个入口“提交并在下载页看到任务进度与结果”尚未重新做成功路径验收；当前保持 `needs-info`。\n\n2026-10-20 真实成功路径补充：\n\n- 使用 Download 云盘分享入口（API 等价路径）提交真实天翼链接成功：转存、平台中转下载、解压、安装、地图识别全部完成。\n- 下载任务列表可见 `taskType=CLOUD`，进度从 40% 到"
+      "excerpt": "# 04: 前端入口（MapCenter 转存并安装 + Download 云盘链接页）\n\nStatus: done\n\n## 任务\n\n- MapCenter.vue 详情展开区 downloadLinks 旁加「转存并安装」按钮 → Dialog：云盘账号下拉（直调主应用 `GET /api/cloud/accounts`，只列 HEALTHY）、目标实例下拉（复用现有实例选择）、可选提取码；提交 `POST /api/plugin/l4d2/download/cloud`（自动带 source/sourceId/title）。\n- Download.vue 加「云盘分享链接」表单：账号 + 分享链接 + 提取码 + 实例 + 可选 targetPath；裸链接无 sourceId 时后端用 `share-{hash8}`。\n- 任务列表展示 taskType=CLOUD（tag 云盘），详情含 transferMode/accountName/cloudPath。\n\n## 验收\n\n- 两入口均可提交并在下载页看到任务进度与结果。\n\nBlocked by: 03\n\n## Comments\n\n2026-09-15 网页真实测试（IAB + 全栈 8080/3000）：\n- Download「云盘分享」tab：账号下拉跨应用拉到主应用 /cloud/accounts（天翼直播盘），提交后任务列表出现\"云盘\"类型行，失败原因透传展示 ✅\n- MapCenter 行展开：三条链接各带「转存并安装」；弹窗自动带地图名/分享链接/转存目录 /maps/orange-810/自带提取码 ✅\n- 真实提交走通到天翼转存引擎；爬虫库全部分享链接已过期（天翼个人分享 30 天），clp-web 对照同一链接同样 resource-gone，非集成问题。有效分享的成功路径待真实链接联调。\n- 修复部署问题：plugins/ 目录同时存在旧 SNAPSHOT 与新 1.0.0 jar，PF4J 加载旧的同 id jar 导致 UI 未更新（已删除旧 jar）。\n\n2026-10-20 跟进验证：\n\n- 插件前端生产构建通过；`Download.vue` 云盘 tab、`MapCenter.vue` 转存弹窗、CLOUD tag 与详情字段均已存在。\n- 由于 `03` 的真实账号/分享链接联调仍被凭证失效阻塞，本票的两个入口“提交并在下载页看到任务进度与结果”尚未重新做成功路径验收；当前保持 `needs-info`。\n\n2026-10-20 真实成功路径补充：\n\n- 使用 Download 云盘分享入口（API 等价路径）提交真实天翼链接成功：转存、平台中转下载、解压、安装、地图识别全部完成。\n- 下载任务列表可见 `taskType=CLOUD`，进度从 40% 到 100%，"
     },
     {
       "id": ".scratch/l4d2-cloud-map-install/issues/05-relay-download-cancel-wrapped-as-failure.md",
@@ -1720,9 +1720,9 @@
       "number": "04",
       "feature": "cloud-drive-host-capability",
       "area": "Cloud drive",
-      "status": "needs-info",
-      "statusLabel": "待补充信息",
-      "statusTone": "open",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "unspecified",
       "priority": "",
@@ -1730,7 +1730,7 @@
       "blockedBy": [
         "03"
       ],
-      "closed": false,
+      "closed": true,
       "summary": "",
       "acceptance": [
         "admin 登录可见页面，CRUD/verify/quota 全部可用，表单不回显明文凭证。",
@@ -1740,11 +1740,17 @@
       ],
       "acceptanceChecks": [],
       "questions": [],
-      "comments": [],
+      "comments": [
+        "This was generated by AI during triage.",
+        "2026-10-20 修复完成",
+        "UserVO 新增 roles，登录用户信息接口返回 ROLEUSER / ROLEADMIN，前端 store 据此计算 isAdmin。",
+        "/system/accounts 增加 requiresAdmin 路由守卫，Sidebar 与 Header 仅对管理员展示云盘账号入口；刷新页面时会先恢复用户状态再判断权限。",
+        "CloudAccountController 的展示信息更新改为调用 CloudAccountService.updateDisplay 持久化，不再只改内存对象。"
+      ],
       "href": "../cloud-drive-host-capability/issues/04-frontend-cloud-accounts-page.md",
       "specHref": "../cloud-drive-host-capability/spec.md",
       "specPath": ".scratch/cloud-drive-host-capability/spec.md",
-      "excerpt": "# 04: 主前端\"云盘账号\"页面\n\nStatus: needs-info\n\n## 任务\n\n- 新页面 `frontend/src/views/system/accounts.vue`（参照 `views/system/settings.vue` 风格），路由 `/system/accounts`，挂系统设置组，菜单名\"云盘账号\"。\n- 功能：账号列表（providerType 标签、displayName、status、quota）、新增/编辑（providerType 下拉 + 凭证粘贴框，明文只写不读）、删除确认、verify 按钮、quota 展示。\n- Header\"账号与安全\"占位跳转**不改**。\n- UI 遵循 docs/design/ui-design-spec.md。\n\n## 验收\n\n- admin 登录可见页面，CRUD/verify/quota 全部可用，表单不回显明文凭证。\n- 非该权限用户不见菜单/路由拒绝。\n\nBlocked by: 03\n\n2026-10-20 跟进备注：当前 `accounts.vue` 的「重贴凭证」只提交 `secret` 字段；如果起始目录不是默认根目录，`mergeMissingRootFields` 会保留旧值，所以重贴凭证路径可保留起始目录。但新增账号时没有单独的起始目录入口（可保存后通过「起始目录」调整），ticket 的“编辑”仍指通用编辑能力，当前未实现，待确认是否接受现有替代路径。\n\n## Triage Notes\n\n2026-10-20 跟进验证发现页面与 ticket 验收存在功能缺口：\n\n- `frontend/src/views/system/accounts.vue` 当前没有调用 `getCloudQuota` 的入口，也没有配额展示；`frontend/src/api/cloud.js` 虽定义了 quota API，但页面未使用。故“列表展示 quota、quota 展示/可用”不能确认通过。\n- 页面没有“编辑”入口，只有“重贴凭证”“起始目录”等定向操作；ticket 要求的“新增/编辑”中的通用编辑能力未落地。\n- 权限仍有前后端落差：`/cloud/**` 已在后端收紧为 `hasRole(\"ADMIN\")`，但前端 `/system/accounts` 路由只要求登录，`Sidebar.vue` 也无条件展示“云盘账号”。非 admin 用户当前仍可看到菜单并进入页面，随后 API 才返回 403，不满足“路由拒绝/菜单隐藏”。\n- 仍需构造真实非 admin 用户及有效网盘账号，完成 CRUD/verify/quota 实机验证。\n- 已确认：主前端 `npm run build` 通过；账号列表接口不回显明文凭证；管理员可访问 `/cloud/accounts"
+      "excerpt": "# 04: 主前端\"云盘账号\"页面\n\nStatus: done\n\n## 任务\n\n- 新页面 `frontend/src/views/system/accounts.vue`（参照 `views/system/settings.vue` 风格），路由 `/system/accounts`，挂系统设置组，菜单名\"云盘账号\"。\n- 功能：账号列表（providerType 标签、displayName、status、quota）、新增/编辑（providerType 下拉 + 凭证粘贴框，明文只写不读）、删除确认、verify 按钮、quota 展示。\n- Header\"账号与安全\"占位跳转**不改**。\n- UI 遵循 docs/design/ui-design-spec.md。\n\n## 验收\n\n- admin 登录可见页面，CRUD/verify/quota 全部可用，表单不回显明文凭证。\n- 非该权限用户不见菜单/路由拒绝。\n\nBlocked by: 03\n\n2026-10-20 跟进备注：当前 `accounts.vue` 的「重贴凭证」只提交 `secret` 字段；如果起始目录不是默认根目录，`mergeMissingRootFields` 会保留旧值，所以重贴凭证路径可保留起始目录。但新增账号时没有单独的起始目录入口（可保存后通过「起始目录」调整），ticket 的“编辑”仍指通用编辑能力，当前未实现，待确认是否接受现有替代路径。\n\n## Triage Notes\n\n2026-10-20 跟进验证发现页面与 ticket 验收存在功能缺口：\n\n- `frontend/src/views/system/accounts.vue` 当前没有调用 `getCloudQuota` 的入口，也没有配额展示；`frontend/src/api/cloud.js` 虽定义了 quota API，但页面未使用。故“列表展示 quota、quota 展示/可用”不能确认通过。\n- 页面没有“编辑”入口，只有“重贴凭证”“起始目录”等定向操作；ticket 要求的“新增/编辑”中的通用编辑能力未落地。\n- 权限仍有前后端落差：`/cloud/**` 已在后端收紧为 `hasRole(\"ADMIN\")`，但前端 `/system/accounts` 路由只要求登录，`Sidebar.vue` 也无条件展示“云盘账号”。非 admin 用户当前仍可看到菜单并进入页面，随后 API 才返回 403，不满足“路由拒绝/菜单隐藏”。\n- 仍需构造真实非 admin 用户及有效网盘账号，完成 CRUD/verify/quota 实机验证。\n- 已确认：主前端 `npm run build` 通过；账号列表接口不回显明文凭证；管理员可访问 `/cloud/accounts`。\n- 有"
     },
     {
       "id": ".scratch/cloud-drive-host-capability/issues/05-cloud189-folder-id-path-addressing.md",
