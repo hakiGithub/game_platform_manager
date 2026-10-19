@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 public final class ChildTaskFollower {
 
     static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(2);
+    static final int DEFAULT_MAX_CONSECUTIVE_UNKNOWN = 3;
 
     private ChildTaskFollower() {
     }
@@ -50,6 +51,7 @@ public final class ChildTaskFollower {
             throw new IllegalArgumentException("pollInterval 不能为负数");
         }
 
+        int consecutiveUnknown = 0;
         while (true) {
             if (cancellation.isCancelled() || cancellation.isTimedOut()) {
                 cancelQuietly(taskService, childTaskId);
@@ -60,8 +62,15 @@ public final class ChildTaskFollower {
             }
 
             TaskVO child = taskService.getTask(childTaskId);
-            if (child != null) {
-                switch (statusOf(child)) {
+            ChildTaskStatus status = statusOf(child);
+            if (status == ChildTaskStatus.UNKNOWN) {
+                consecutiveUnknown++;
+                if (consecutiveUnknown >= DEFAULT_MAX_CONSECUTIVE_UNKNOWN) {
+                    return ChildTaskOutcome.failed("子任务状态未知");
+                }
+            } else {
+                consecutiveUnknown = 0;
+                switch (status) {
                     case PENDING, RUNNING -> reportProgress(child, window, progressListener);
                     case COMPLETED -> {
                         progressListener.accept(new ChildTaskProgress(100, window.endPercent(), child));
@@ -73,9 +82,7 @@ public final class ChildTaskFollower {
                                 message == null || message.isBlank() ? "子任务失败" : message);
                     }
                     case CANCELLED -> throw new ChildTaskCancelledException("任务已取消");
-                    case UNKNOWN -> {
-                        // A transient or forward-compatible status is retried.
-                    }
+                    case UNKNOWN -> throw new IllegalStateException("unreachable");
                 }
             }
             sleeper.sleep(pollInterval.toMillis());

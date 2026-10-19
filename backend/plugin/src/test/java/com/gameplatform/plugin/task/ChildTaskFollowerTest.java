@@ -110,6 +110,58 @@ class ChildTaskFollowerTest {
         assertEquals(1, taskService.cancelCalls);
     }
 
+    @Test
+    void repeatedUnknownStatusFailsAfterBoundedRetries() throws Exception {
+        FakeTaskService taskService = new FakeTaskService(
+                task("UNKNOWN", 0),
+                task("UNKNOWN", 0),
+                task("UNKNOWN", 0));
+
+        ChildTaskOutcome outcome = ChildTaskFollower.follow(
+                taskService, "child-1", ProgressWindow.full(),
+                ChildTaskCancellation.none(), ignored -> {
+                }, Duration.ZERO, ignored -> {
+                });
+
+        assertTrue(!outcome.completedSuccessfully());
+        assertEquals("子任务状态未知", outcome.message());
+        assertEquals(3, taskService.getTaskCalls);
+    }
+
+    @Test
+    void knownStatusResetsUnknownRetryCount() throws Exception {
+        FakeTaskService taskService = new FakeTaskService(
+                task("UNKNOWN", 0),
+                task("RUNNING", 20),
+                task("UNKNOWN", 20),
+                task("UNKNOWN", 20),
+                task("COMPLETED", 100));
+
+        ChildTaskOutcome outcome = ChildTaskFollower.follow(
+                taskService, "child-1", ProgressWindow.full(),
+                ChildTaskCancellation.none(), ignored -> {
+                }, Duration.ZERO, ignored -> {
+                });
+
+        assertTrue(outcome.completedSuccessfully());
+        assertEquals(5, taskService.getTaskCalls);
+    }
+
+    @Test
+    void missingTaskIsBoundedLikeUnknownStatus() throws Exception {
+        FakeTaskService taskService = new FakeTaskService();
+
+        ChildTaskOutcome outcome = ChildTaskFollower.follow(
+                taskService, "child-1", ProgressWindow.full(),
+                ChildTaskCancellation.none(), ignored -> {
+                }, Duration.ZERO, ignored -> {
+                });
+
+        assertTrue(!outcome.completedSuccessfully());
+        assertEquals("子任务状态未知", outcome.message());
+        assertEquals(3, taskService.getTaskCalls);
+    }
+
     private static TaskVO task(String status, int progress) {
         TaskVO task = new TaskVO();
         task.setStatus(status);
@@ -122,6 +174,7 @@ class ChildTaskFollowerTest {
         private final List<TaskVO> responses = new ArrayList<>();
         private int responseIndex;
         private int cancelCalls;
+        private int getTaskCalls;
 
         private FakeTaskService(TaskVO... responses) {
             for (TaskVO response : responses) {
@@ -136,6 +189,7 @@ class ChildTaskFollowerTest {
 
         @Override
         public TaskVO getTask(String taskId) {
+            getTaskCalls++;
             return responseIndex < responses.size() ? responses.get(responseIndex++) : null;
         }
 
