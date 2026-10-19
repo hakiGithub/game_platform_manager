@@ -4,7 +4,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,8 +35,9 @@ public class StatusParser {
     /** map 行：{@code map     : xxx} */
     private static final Pattern MAP_PATTERN = Pattern.compile("map\\s*:\\s*(.+)");
 
-    /** players 行：{@code players : 4 humans, 0 bots (30 max)} */
-    private static final Pattern PLAYERS_PATTERN = Pattern.compile("(\\d+)\\s+humans,\\s+\\d+\\s+bots\\s+\\((\\d+)\\s+max\\)");
+    /** 玩家数行的唯一正则定义：{@code players : 4 humans, 0 bots (30 max)}；RCON 语义层直接复用。 */
+    public static final Pattern PLAYERS_PATTERN =
+            Pattern.compile("(\\d+)\\s+humans,\\s+\\d+\\s+bots\\s+\\((\\d+)\\s+max\\)");
 
     /** 玩家行 10 字段正则（对齐 rcon_status.go:187） */
     private static final Pattern USER_PATTERN = Pattern.compile(
@@ -42,14 +45,51 @@ public class StatusParser {
     );
 
     /** z_difficulty cvar 输出：{@code "z_difficulty" = "hard"} */
-    private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*=\\s*\"([^\"]+)\"");
+    private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*[=:]\\s*\"([^\"]+)\"");
 
-    /** [SM] 格式 mp_gamemode：{@code [SM] Value of cvar "mp_gamemode": "coop"} */
-    private static final Pattern GAME_MODE_SM_PATTERN = Pattern.compile(
-            "\\[SM\\]\\s*Value of cvar \"mp_gamemode\":\\s*\"([^\"]+)\"");
+    /** [SM] 查询与标准 cvar 查询共用：{@code [SM] ... "mp_gamemode": "coop"} 或 {@code "mp_gamemode" = "coop"} */
+    private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*[=:]\\s*\"([^\"]+)\"");
 
-    /** 标准 cvar mp_gamemode：{@code "mp_gamemode" = "coop"} */
-    private static final Pattern GAME_MODE_CVAR_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*=\\s*\"([^\"]+)\"");
+    private static final Map<String, String> DIFFICULTY_LABELS = orderedMap(
+            "easy", "简单",
+            "normal", "普通",
+            "hard", "高级",
+            "impossible", "专家"
+    );
+
+    private static final Map<String, String> GAME_MODE_LABELS = orderedMap(
+            "coop", "合作",
+            "realism", "写实",
+            "survival", "生存",
+            "versus", "对抗",
+            "scavenge", "拾荒",
+            "holdout", "坚守",
+            "mutation1", "地球上最后一人",
+            "mutation2", "爆头！",
+            "mutation3", "血流不止",
+            "mutation4", "绝境求生",
+            "mutation5", "四剑客",
+            "mutation7", "链锯屠杀",
+            "mutation8", "铁人",
+            "mutation9", "地球上最后侏儒",
+            "mutation10", "仅容一人",
+            "mutation11", "医疗末日",
+            "mutation12", "写实对抗",
+            "mutation13", "跟随公升",
+            "mutation14", "碎尸盛宴",
+            "mutation15", "对抗生存",
+            "mutation16", "猎杀派对",
+            "mutation17", "孤胆枪手",
+            "mutation18", "失血对抗",
+            "mutation19", "无尽坦克！",
+            "mutation20", "治疗侏儒",
+            "community1", "特感速递",
+            "community2", "流感季节",
+            "community3", "骑乘派对",
+            "community4", "梦魇",
+            "community5", "死亡之门",
+            "community6", "Confogl"
+    );
 
     /**
      * 解析 RCON {@code status} 命令输出。
@@ -141,18 +181,11 @@ public class StatusParser {
         if (difficultyText == null || difficultyText.isEmpty()) {
             return "未知";
         }
-        Matcher m = DIFFICULTY_PATTERN.matcher(difficultyText);
-        if (!m.find()) {
+        Matcher matcher = DIFFICULTY_PATTERN.matcher(difficultyText);
+        if (!matcher.find()) {
             return "未知";
         }
-        String difficulty = m.group(1);
-        return switch (difficulty.toLowerCase()) {
-            case "easy" -> "简单";
-            case "normal" -> "普通";
-            case "hard" -> "高级";
-            case "impossible" -> "专家";
-            default -> difficulty;
-        };
+        return difficultyLabel(matcher.group(1));
     }
 
     /**
@@ -167,15 +200,9 @@ public class StatusParser {
         if (gameModeText == null || gameModeText.isEmpty()) {
             return "未知";
         }
-        // 先尝试 [SM] 格式
-        Matcher sm = GAME_MODE_SM_PATTERN.matcher(gameModeText);
-        if (sm.find()) {
-            return translateGameMode(sm.group(1));
-        }
-        // 再尝试标准 cvar 格式
-        Matcher cvar = GAME_MODE_CVAR_PATTERN.matcher(gameModeText);
-        if (cvar.find()) {
-            return translateGameMode(cvar.group(1));
+        Matcher matcher = GAME_MODE_PATTERN.matcher(gameModeText);
+        if (matcher.find()) {
+            return gameModeLabel(matcher.group(1));
         }
         return "未知";
     }
@@ -184,43 +211,81 @@ public class StatusParser {
      * 翻译游戏模式英文→中文（19 突变 + 6 社区模式）。
      */
     public String translateGameMode(String gameMode) {
-        if (gameMode == null) {
+        return gameModeLabel(gameMode);
+    }
+
+    /** 原始难度值或中文标签 → 规范中文标签；未知值原样返回。 */
+    public String difficultyLabel(String difficulty) {
+        if (difficulty == null || difficulty.isBlank()) {
             return "未知";
         }
-        return switch (gameMode.toLowerCase()) {
-            case "coop" -> "合作";
-            case "realism" -> "写实";
-            case "survival" -> "生存";
-            case "versus" -> "对抗";
-            case "scavenge" -> "拾荒";
-            case "holdout" -> "坚守";
-            case "mutation1" -> "地球上最后一人";
-            case "mutation2" -> "爆头！";
-            case "mutation3" -> "血流不止";
-            case "mutation4" -> "绝境求生";
-            case "mutation5" -> "四剑客";
-            case "mutation7" -> "链锯屠杀";
-            case "mutation8" -> "铁人";
-            case "mutation9" -> "地球上最后侏儒";
-            case "mutation10" -> "仅容一人";
-            case "mutation11" -> "医疗末日";
-            case "mutation12" -> "写实对抗";
-            case "mutation13" -> "跟随公升";
-            case "mutation14" -> "碎尸盛宴";
-            case "mutation15" -> "对抗生存";
-            case "mutation16" -> "猎杀派对";
-            case "mutation17" -> "孤胆枪手";
-            case "mutation18" -> "失血对抗";
-            case "mutation19" -> "无尽坦克！";
-            case "mutation20" -> "治疗侏儒";
-            case "community1" -> "特感速递";
-            case "community2" -> "流感季节";
-            case "community3" -> "骑乘派对";
-            case "community4" -> "梦魇";
-            case "community5" -> "死亡之门";
-            case "community6" -> "Confogl";
-            default -> gameMode;
-        };
+        String normalized = difficulty.trim();
+        if ("困难".equals(normalized)) {
+            return "高级";
+        }
+        return DIFFICULTY_LABELS.getOrDefault(normalized.toLowerCase(), normalized);
+    }
+
+    /** 原始模式值或中文标签 → 规范中文标签；未知值原样返回。 */
+    public String gameModeLabel(String gameMode) {
+        if (gameMode == null || gameMode.isBlank()) {
+            return "未知";
+        }
+        String normalized = gameMode.trim();
+        if (normalized.endsWith("模式")) {
+            normalized = normalized.substring(0, normalized.length() - "模式".length());
+        }
+        if ("清道夫".equals(normalized)) {
+            return "拾荒";
+        }
+        if (GAME_MODE_LABELS.containsKey(normalized.toLowerCase())) {
+            return GAME_MODE_LABELS.get(normalized.toLowerCase());
+        }
+        for (String label : GAME_MODE_LABELS.values()) {
+            if (label.equals(normalized)) {
+                return label;
+            }
+        }
+        return normalized;
+    }
+
+    /** 中文标签或英文 code → RCON 使用的规范英文 code；未知值抛业务参数异常。 */
+    public String difficultyCode(String difficulty) {
+        String code = reverseLookup(DIFFICULTY_LABELS, difficultyLabel(difficulty), "难度");
+        return capitalize(code);
+    }
+
+    /** 中文标签或英文 code → RCON 使用的规范英文 code；未知值抛业务参数异常。 */
+    public String gameModeCode(String gameMode) {
+        return reverseLookup(GAME_MODE_LABELS, gameModeLabel(gameMode), "游戏模式");
+    }
+
+    private String reverseLookup(Map<String, String> labels, String value, String domain) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("无效的" + domain + "值: " + value);
+        }
+        String normalized = value.trim();
+        for (Map.Entry<String, String> entry : labels.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(normalized) || entry.getValue().equals(normalized)) {
+                return entry.getKey();
+            }
+        }
+        throw new IllegalArgumentException("无效的" + domain + "值: " + value);
+    }
+
+    private static String capitalize(String value) {
+        return value.isEmpty() ? value : Character.toUpperCase(value.charAt(0)) + value.substring(1);
+    }
+
+    private static Map<String, String> orderedMap(String... entries) {
+        if (entries.length % 2 != 0) {
+            throw new IllegalArgumentException("词汇表必须成对定义");
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        for (int i = 0; i < entries.length; i += 2) {
+            map.put(entries[i], entries[i + 1]);
+        }
+        return java.util.Collections.unmodifiableMap(map);
     }
 
     private int parseIntSafe(String s, int defaultValue) {

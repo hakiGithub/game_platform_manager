@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.l4d2.util.RconFailureDetector;
+import com.gameplatform.plugin.l4d2.util.StatusParser;
 import com.gameplatform.plugin.service.RconService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,25 +28,24 @@ public class L4D2RconService {
 
     /** 宿主 RCON 能力（按 pluginId 绑定审计调用方） */
     private final RconService rcon;
+    /** L4D2 status/难度/模式词汇表的唯一 owner。 */
+    private final StatusParser statusParser;
 
     // 状态解析正则表达式
     private static final Pattern HOSTNAME_PATTERN = Pattern.compile("hostname:\\s*(.+)");
     private static final Pattern MAP_PATTERN = Pattern.compile("map\\s*:\\s*(.+)");
-    private static final Pattern PLAYERS_PATTERN = Pattern.compile("(\\d+)\\s+humans,\\s+\\d+\\s+bots\\s+\\((\\d+)\\s+max\\)");
     private static final Pattern USER_PATTERN = Pattern.compile(
             "^#\\s*(\\d+)\\s+(\\d+)\\s+\"([^\"]+)\"\\s+([A-Z_:0-9]+)\\s+(\\d+(?::\\d+)+)\\s+(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\d+)\\s+([0-9.]+:\\d+)"
     );
-    // 兼容两种输出：引擎裸查 `"cvar" = "value"`；sm_cvar 查询 `[SM] Value of cvar "cvar": "value"`
-    private static final Pattern DIFFICULTY_PATTERN = Pattern.compile("\"z_difficulty\"\\s*[=:]\\s*\"([^\"]+)\"");
-    private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"mp_gamemode\"\\s*[=:]\\s*\"([^\"]+)\"");
 
     // 版本/系统/类型解析
     private static final Pattern VERSION_PATTERN = Pattern.compile("version\\s*:\\s*(\\S+)");
     private static final Pattern OS_PATTERN = Pattern.compile("os\\s*:\\s*(\\S+)");
     private static final Pattern TYPE_PATTERN = Pattern.compile("type\\s*:\\s*(.+)");
 
-    public L4D2RconService(RconService rcon) {
+    public L4D2RconService(RconService rcon, StatusParser statusParser) {
         this.rcon = rcon;
+        this.statusParser = statusParser;
     }
 
     /**
@@ -72,7 +72,7 @@ public class L4D2RconService {
         // 获取难度
         try {
             String difficultyText = rcon.executeCommand(instanceId, "z_difficulty");
-            status.setDifficulty(parseDifficulty(difficultyText));
+            status.setDifficulty(statusParser.parseDifficulty(difficultyText));
         } catch (Exception e) {
             log.warn("获取游戏难度失败", e);
             status.setDifficulty("未知");
@@ -81,7 +81,7 @@ public class L4D2RconService {
         // 获取游戏模式
         try {
             String gameModeText = rcon.executeCommand(instanceId, "sm_cvar mp_gamemode");
-            status.setGameMode(parseGameMode(gameModeText));
+            status.setGameMode(statusParser.parseGameMode(gameModeText));
         } catch (Exception e) {
             log.warn("获取游戏模式失败", e);
             status.setGameMode("未知");
@@ -172,7 +172,7 @@ public class L4D2RconService {
      * 切换难度
      */
     public void changeDifficulty(long instanceId, String difficulty) {
-        String englishDifficulty = translateDifficultyToEnglish(difficulty);
+        String englishDifficulty = statusParser.difficultyCode(difficulty);
         executeCommand(instanceId, "z_difficulty " + englishDifficulty);
     }
 
@@ -180,7 +180,7 @@ public class L4D2RconService {
      * 切换游戏模式
      */
     public void changeGameMode(long instanceId, String gameMode) {
-        String englishMode = translateGameModeToEnglish(gameMode);
+        String englishMode = statusParser.gameModeCode(gameMode);
         executeCommand(instanceId, "sm_cvar mp_gamemode " + englishMode);
     }
 
@@ -191,7 +191,7 @@ public class L4D2RconService {
         if (statusText == null || statusText.isBlank()) {
             return null;
         }
-        Matcher m = PLAYERS_PATTERN.matcher(statusText);
+        Matcher m = StatusParser.PLAYERS_PATTERN.matcher(statusText);
         return m.find() ? Integer.valueOf(m.group(1)) : null;
     }
 
@@ -202,7 +202,7 @@ public class L4D2RconService {
         if (statusText == null || statusText.isBlank()) {
             return null;
         }
-        Matcher m = PLAYERS_PATTERN.matcher(statusText);
+        Matcher m = StatusParser.PLAYERS_PATTERN.matcher(statusText);
         return m.find() ? Integer.valueOf(m.group(2)) : null;
     }
 
@@ -240,7 +240,7 @@ public class L4D2RconService {
                 status.setMap(mapMatcher.group(1));
             }
 
-            Matcher playersMatcher = PLAYERS_PATTERN.matcher(line);
+            Matcher playersMatcher = StatusParser.PLAYERS_PATTERN.matcher(line);
             if (playersMatcher.find()) {
                 status.setPlayers(playersMatcher.group(1) + "/" + playersMatcher.group(2));
                 status.setCurrentPlayerCount(Integer.parseInt(playersMatcher.group(1)));
@@ -280,30 +280,6 @@ public class L4D2RconService {
         player.setIp(matcher.group(10));
 
         return player;
-    }
-
-    /**
-     * 解析难度
-     */
-    private String parseDifficulty(String difficultyText) {
-        Matcher matcher = DIFFICULTY_PATTERN.matcher(difficultyText);
-        if (matcher.find()) {
-            String difficulty = matcher.group(1);
-            return translateDifficultyToChinese(difficulty);
-        }
-        return "未知";
-    }
-
-    /**
-     * 解析游戏模式
-     */
-    private String parseGameMode(String gameModeText) {
-        Matcher matcher = GAME_MODE_PATTERN.matcher(gameModeText);
-        if (matcher.find()) {
-            String gameMode = matcher.group(1);
-            return translateGameModeToChinese(gameMode);
-        }
-        return "未知";
     }
 
     /**
@@ -359,112 +335,6 @@ public class L4D2RconService {
                 .filter(line -> !line.isEmpty())
                 .findFirst()
                 .orElse("无 RCON 回显");
-    }
-
-    /**
-     * 难度英文转中文
-     */
-    private String translateDifficultyToChinese(String difficulty) {
-        return switch (difficulty.toLowerCase()) {
-            case "easy" -> "简单";
-            case "normal" -> "普通";
-            case "hard" -> "高级";
-            case "impossible" -> "专家";
-            default -> difficulty;
-        };
-    }
-
-    /**
-     * 难度中文转英文
-     */
-    private String translateDifficultyToEnglish(String difficulty) {
-        return switch (difficulty) {
-            case "简单" -> "Easy";
-            case "普通" -> "Normal";
-            case "高级" -> "Hard";
-            case "专家" -> "Impossible";
-            default -> throw new IllegalArgumentException("无效的难度值: " + difficulty);
-        };
-    }
-
-    /**
-     * 游戏模式英文转中文
-     */
-    private String translateGameModeToChinese(String gameMode) {
-        return switch (gameMode.toLowerCase()) {
-            case "coop" -> "合作";
-            case "realism" -> "写实";
-            case "survival" -> "生存";
-            case "versus" -> "对抗";
-            case "scavenge" -> "拾荒";
-            case "holdout" -> "坚守";
-            case "mutation1" -> "地球上最后一人";
-            case "mutation2" -> "爆头！";
-            case "mutation3" -> "血流不止";
-            case "mutation4" -> "绝境求生";
-            case "mutation5" -> "四剑客";
-            case "mutation7" -> "链锯屠杀";
-            case "mutation8" -> "铁人";
-            case "mutation9" -> "地球上最后侏儒";
-            case "mutation10" -> "仅容一人";
-            case "mutation11" -> "医疗末日";
-            case "mutation12" -> "写实对抗";
-            case "mutation13" -> "跟随公升";
-            case "mutation14" -> "碎尸盛宴";
-            case "mutation15" -> "对抗生存";
-            case "mutation16" -> "猎杀派对";
-            case "mutation17" -> "孤胆枪手";
-            case "mutation18" -> "失血对抗";
-            case "mutation19" -> "无尽坦克！";
-            case "mutation20" -> "治疗侏儒";
-            case "community1" -> "特感速递";
-            case "community2" -> "流感季节";
-            case "community3" -> "骑乘派对";
-            case "community4" -> "梦魇";
-            case "community5" -> "死亡之门";
-            case "community6" -> "Confogl";
-            default -> gameMode;
-        };
-    }
-
-    /**
-     * 游戏模式中文转英文
-     */
-    private String translateGameModeToEnglish(String gameMode) {
-        return switch (gameMode) {
-            case "合作" -> "coop";
-            case "写实" -> "realism";
-            case "生存" -> "survival";
-            case "对抗" -> "versus";
-            case "拾荒" -> "scavenge";
-            case "坚守" -> "holdout";
-            case "地球上最后一人" -> "mutation1";
-            case "爆头！" -> "mutation2";
-            case "血流不止" -> "mutation3";
-            case "绝境求生" -> "mutation4";
-            case "四剑客" -> "mutation5";
-            case "链锯屠杀" -> "mutation7";
-            case "铁人" -> "mutation8";
-            case "地球上最后侏儒" -> "mutation9";
-            case "仅容一人" -> "mutation10";
-            case "医疗末日" -> "mutation11";
-            case "写实对抗" -> "mutation12";
-            case "跟随公升" -> "mutation13";
-            case "碎尸盛宴" -> "mutation14";
-            case "对抗生存" -> "mutation15";
-            case "猎杀派对" -> "mutation16";
-            case "孤胆枪手" -> "mutation17";
-            case "失血对抗" -> "mutation18";
-            case "无尽坦克！" -> "mutation19";
-            case "治疗侏儒" -> "mutation20";
-            case "特感速递" -> "community1";
-            case "流感季节" -> "community2";
-            case "骑乘派对" -> "community3";
-            case "梦魇" -> "community4";
-            case "死亡之门" -> "community5";
-            case "Confogl" -> "community6";
-            default -> throw new IllegalArgumentException("无效的游戏模式: " + gameMode);
-        };
     }
 
     // ========== 内部类 ==========

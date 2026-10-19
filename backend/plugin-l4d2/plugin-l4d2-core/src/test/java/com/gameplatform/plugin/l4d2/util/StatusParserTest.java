@@ -184,6 +184,48 @@ class StatusParserTest {
         assertEquals("custom_mode", parser.parseGameMode("\"mp_gamemode\" = \"custom_mode\""));
     }
 
+    @Test
+    void game_mode_label_is_idempotent_for_backend_labels() {
+        assertEquals("合作", parser.gameModeLabel("coop"));
+        assertEquals("合作", parser.gameModeLabel("合作"));
+        assertEquals("合作", parser.gameModeLabel("合作模式"));
+        assertEquals("拾荒", parser.gameModeLabel("清道夫"));
+        assertEquals("写实", parser.gameModeLabel("写实模式"));
+        assertEquals("高级", parser.difficultyLabel("困难"));
+    }
+
+    @Test
+    void label_conversion_keeps_unknown_values_verbatim() {
+        assertEquals("HARDCORE", parser.difficultyLabel("HARDCORE"));
+        assertEquals("custom_mode", parser.gameModeLabel("custom_mode"));
+        assertEquals("未知", parser.difficultyLabel(null));
+        assertEquals("未知", parser.gameModeLabel(""));
+    }
+
+    @Test
+    void wire_codes_accept_english_codes_and_chinese_labels() {
+        assertEquals("Easy", parser.difficultyCode("easy"));
+        assertEquals("Hard", parser.difficultyCode("高级"));
+        assertEquals("Hard", parser.difficultyCode("困难"));
+        assertEquals("Impossible", parser.difficultyCode("专家"));
+        assertEquals("coop", parser.gameModeCode("合作"));
+        assertEquals("coop", parser.gameModeCode("合作模式"));
+        assertEquals("scavenge", parser.gameModeCode("拾荒"));
+        assertEquals("scavenge", parser.gameModeCode("清道夫"));
+        assertEquals("community6", parser.gameModeCode("Confogl"));
+    }
+
+    @Test
+    void wire_codes_reject_unknown_values() {
+        IllegalArgumentException difficulty = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> parser.difficultyCode("hardcore"));
+        IllegalArgumentException mode = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> parser.gameModeCode("custom_mode"));
+
+        assertTrue(difficulty.getMessage().contains("难度"));
+        assertTrue(mode.getMessage().contains("游戏模式"));
+    }
+
     // ============================================================
     // parseUser_returns_null_on_invalid_input
     // ============================================================
