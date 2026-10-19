@@ -70,6 +70,12 @@ public class HostToolingServiceFactory {
                 log.info("[HostTooling][{}] analyzeVpk instance={} path={}", pluginId, instanceId, relativeVpkPath);
                 return vpkToolingAnalyzer.analyzeVpk(instanceId, relativeVpkPath);
             }
+
+            @Override
+            public VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath) {
+                log.info("[HostTooling][{}] inspectVpk instance={} path={}", pluginId, instanceId, relativeVpkPath);
+                return vpkToolingAnalyzer.inspectVpk(instanceId, relativeVpkPath);
+            }
         };
     }
 

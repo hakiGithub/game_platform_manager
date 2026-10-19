@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """VPK 地图分析脚本（ADR-0027，由平台分发到主机临时目录执行）。
 
-只读取 VPK 文件头部（header + 目录树，mission 内容内联在 preload 区），
-不读取文件数据区——400MB 的 VPK 只读前几百 KB。
+读取 VPK 文件头部（header + 目录树）与少量 mission 条目（preload 或数据区），
+不读取 VPK 的数据区——400MB 的 VPK 只读头部与 mission 文本。
 
 用法: python3 vpk_analyze.py <file.vpk>
 输出: 单行 JSON {"title": "...", "chapters": [{"code","title","modes":[...]}]}
@@ -64,13 +64,13 @@ def parse_tree(buf, pos, end):
                     if is_mission:
                         missions.append(preload.decode("utf-8", errors="replace"))
                 elif is_mission and size > 0:
-                    # 0x7FFF = 数据在本文件内（自包含 VPK）
+                    # 0xFFFF = 数据在本文件内；其他 index 指向 archive_NNN.vpk。
                     mission_refs.append((archive_index, offset, size))
                 pos += preload_bytes
     return missions, mission_refs
 
 
-def read_data_section(path, header_size, tree_size, mission_refs):
+def read_data_section(path, tree_start, tree_size, mission_refs):
     """按数据区偏移读取 mission 内容（自包含 VPK：数据区紧随目录树）。"""
     out = []
     if not mission_refs:
@@ -79,9 +79,9 @@ def read_data_section(path, header_size, tree_size, mission_refs):
         f.seek(0, 2)
         file_len = f.tell()
         for archive_index, offset, size in mission_refs:
-            if archive_index != 0x7FFF:
+            if archive_index != 0xFFFF:
                 continue  # 多卷归档的数据在 archive_NNN.vpk，暂不支持
-            start = header_size + tree_size + offset
+            start = tree_start + tree_size + offset
             if start + size > file_len:
                 continue
             f.seek(start)
@@ -94,6 +94,8 @@ def parse_mission(text):
     campaign = {"title": None, "chapters": []}
     chapter_map = {}
     in_game_mode = False
+    awaiting_mode_brace = False
+    pending_mode = None
     brace_level = 0
     temp_map_name = None
     current_mode = None
@@ -109,45 +111,56 @@ def parse_mission(text):
             continue
         lower = line.lower()
 
-        if not in_game_mode and lower.strip('"') in GAME_MODES and lower.startswith('"'):
+        mode_text = lower.replace("{", " ").strip().strip('"').strip("'")
+        if not in_game_mode and mode_text in GAME_MODES and (
+                lower.startswith('"') or lower.startswith("'") or "{" in line):
+            # 模式头可能单独一行，下一行才是 "{"。
             in_game_mode = True
-            brace_level = 0
-            current_mode = lower.strip('"')
+            awaiting_mode_brace = "{" not in line
+            brace_level = line.count("{") - line.count("}")
+            pending_mode = mode_text
+            current_mode = mode_text if brace_level > 0 else None
+            if brace_level > 0:
+                pending_mode = None
             continue
 
-        if in_game_mode:
-            for ch in line:
-                if ch == "{":
-                    brace_level += 1
-                elif ch == "}":
-                    brace_level -= 1
-            if brace_level <= 0:
-                in_game_mode = False
-                current_mode = None
+        if awaiting_mode_brace:
+            if "{" in line:
+                awaiting_mode_brace = False
+                brace_level = line.count("{") - line.count("}")
+                current_mode = pending_mode
+            else:
                 continue
 
-        m = KV_PATTERN.search(line)
-        if not m:
-            continue
-        key = m.group(1).lower()
-        value = m.group(2)
+        for m in KV_PATTERN.finditer(line):
+            key = m.group(1).lower()
+            value = m.group(2)
 
-        if key == "displaytitle" and campaign["title"] is None:
-            campaign["title"] = value
+            if key == "displaytitle" and campaign["title"] is None:
+                campaign["title"] = value
 
-        if in_game_mode and current_mode:
-            if key == "map":
-                temp_map_name = value
-            if key == "displayname" and temp_map_name:
-                chapter = chapter_map.get(temp_map_name)
-                if chapter is None:
-                    chapter = {"code": temp_map_name, "title": value, "modes": [current_mode]}
-                    campaign["chapters"].append(chapter)
-                    chapter_map[temp_map_name] = chapter
-                else:
-                    if current_mode not in chapter["modes"]:
-                        chapter["modes"].append(current_mode)
-                temp_map_name = None
+            if in_game_mode and current_mode:
+                if key == "map":
+                    temp_map_name = value
+                if key == "displayname" and temp_map_name:
+                    chapter = chapter_map.get(temp_map_name)
+                    if chapter is None:
+                        chapter = {"code": temp_map_name, "title": value, "modes": [current_mode]}
+                        campaign["chapters"].append(chapter)
+                        chapter_map[temp_map_name] = chapter
+                    else:
+                        if current_mode not in chapter["modes"]:
+                            chapter["modes"].append(current_mode)
+                    temp_map_name = None
+
+        # 同一行可能同时含 KV 和闭括号；先提取 KV，再结束模式区域。
+        if in_game_mode:
+            brace_level += line.count("{") - line.count("}")
+            if brace_level <= 0:
+                in_game_mode = False
+                awaiting_mode_brace = False
+                pending_mode = None
+                current_mode = None
 
     return campaign
 
@@ -194,8 +207,8 @@ def main():
         sys.exit(3)
 
     missions, mission_refs = parse_tree(tree, 0, len(tree))
-    data_start = tree_start
-    missions.extend(read_data_section(path, data_start, tree_size, mission_refs))
+    # read_data_section 自行按 header_size + tree_size 定位数据区。
+    missions.extend(read_data_section(path, tree_start, tree_size, mission_refs))
     merged = None
     for text in missions:
         try:

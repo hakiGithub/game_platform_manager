@@ -5,8 +5,10 @@ import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
+import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.service.VpkAnalyzeResult;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,9 @@ class MapServiceTest {
     @Mock
     private com.gameplatform.plugin.task.TaskService taskService;
 
+    @Mock
+    private HostToolingService hostToolingService;
+
     private final L4D2Config config = new L4D2Config();
 
     private final L4D2PathResolver pathResolver = new L4D2PathResolver();
@@ -75,7 +80,7 @@ class MapServiceTest {
         mapService = new MapService(
                 vpkParserService, vpkTrimService, instanceQueryService,
                 instanceFileService, rconService, config, pathResolver,
-                mapRecognitionService, taskService);
+                mapRecognitionService, taskService, hostToolingService);
 
         instance = new InstanceVO();
         instance.setId(1L);
@@ -262,20 +267,28 @@ class MapServiceTest {
     void getMission_success() {
         String remoteVpkPath = "left4dead2/addons/test.vpk";
 
-        MissionInfoVO mission = new MissionInfoVO();
-        mission.setVpkName("test.vpk");
-        mission.setTitle("Test Campaign");
-        when(vpkTrimService.parseMission(any())).thenReturn(mission);
+        VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
+        analyzed.setDigest("a".repeat(64));
+        analyzed.setTitle("Test Campaign");
+        VpkAnalyzeResult.Chapter chapter = new VpkAnalyzeResult.Chapter();
+        chapter.setCode("c1m1_hotel");
+        chapter.setTitle("Chapter 1");
+        chapter.setModes(List.of("coop", "versus"));
+        analyzed.setChapters(List.of(chapter));
+        when(hostToolingService.inspectVpk(1L, remoteVpkPath)).thenReturn(analyzed);
 
         MissionInfoVO result = mapService.getMission(1L, "test.vpk");
 
         assertEquals("test.vpk", result.getVpkName());
         assertEquals("Test Campaign", result.getTitle());
+        assertEquals(1, result.getChapters().size());
+        assertEquals("c1m1_hotel", result.getChapters().get(0).getCode());
+        assertEquals(List.of("coop", "versus"), result.getChapters().get(0).getModes());
 
-        // 验证下载文件
-        verify(instanceFileService).downloadFile(eq(1L), eq(remoteVpkPath), anyString());
-        // 验证调用了 parseMission
-        verify(vpkTrimService).parseMission(any());
+        verify(hostToolingService).inspectVpk(1L, remoteVpkPath);
+        // 验收：详情不再全量下载 VPK 到平台
+        org.mockito.Mockito.verifyNoInteractions(instanceFileService);
+        verify(vpkTrimService, times(0)).parseMission(any());
     }
 
     @Test

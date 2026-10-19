@@ -12,7 +12,7 @@
 
 ## Decision
 
-1. **HostToolingService 新增语义方法**：`analyzeVpk(instanceId, relativeVpkPath)` 与 `fileDigest(instanceId, relativePath)`——按**实例相对路径**寻址（与 InstanceFileService 同语义，插件无需感知主机/容器拓扑），返回 `{digest, title, chapters:[{code, title?, modes?}]}`（结构对齐现有 `MissionInfoVO`，复用前端展示组件）。实现路由：Native 实例直取 `installPath/<rel>`；Docker 实例 `docker cp` 物化到主机临时目录（通用适配卷/绑定挂载拓扑），分析后清理。分析通道：主机原生 python3 优先，缺失时 platform-tools 工具容器（镜像需含 python3）；两路皆缺时抛错。分析脚本由平台维护（classpath `tooling/vpk_analyze.py`）并调用时分发。
+1. **HostToolingService 新增语义方法**：`analyzeVpk(instanceId, relativeVpkPath)`、`inspectVpk(instanceId, relativeVpkPath)` 与 `fileDigest(instanceId, relativePath)`——按**实例相对路径**寻址（与 InstanceFileService 同语义，插件无需感知主机/容器拓扑）。`analyzeVpk` 返回 `{digest, title, chapters:[{code, title?, modes?}]}`；`inspectVpk` 只返回元数据、不计算摘要，供地图详情同步读取（结构对齐现有 `MissionInfoVO`，复用前端展示组件）。实现路由：Native 实例直取 `installPath/<rel>`；Docker 实例脚本进入目标容器直接读取 VPK，容器内无 python3 时由 platform-tools 以 `--volumes-from` 复用容器卷命名空间，不复制 VPK 到主机。摘要 Native 走主机原生工具，Docker 优先在目标容器内计算。分析通道：主机/容器原生 python3 优先，缺失时 platform-tools 工具容器（镜像需含 python3）；两路皆缺时抛错。分析脚本由平台维护（classpath `tooling/vpk_analyze.py`）并调用时分发、用完即删。
 
 2. **识别结果摘要键控、插件级共享**：识别记录表（插件 ext 表，如 `ext_plugin_l4d2_map_recognition`）以 **VPK sha-256 摘要**为主键，字段含 title / chapters / status（`OK | FAILED | INVALID`）/ analyzedAt / errorMessage / launchCommands。同一文件全平台只识别一次，跨实例复用；覆盖安装内容变化产生新摘要、自然失效旧记录；不校验重复、不清理孤儿记录（个人规模）。
 
@@ -25,7 +25,7 @@
 ## Consequences
 
 - `platform-tools` 镜像增补 VPK 分析脚本与依赖，随平台发版；存量主机需按 ADR-0021 约定重新 pull 镜像（文档提示）。
-- `HostToolingService` 能力面 +1（ADR-0026 约定的逐方法 ADR 扩展路径）。
+- `HostToolingService` 能力面新增摘要、VPK 分析与无摘要 VPK 元数据读取（ADR-0026 约定的逐方法 ADR 扩展路径）。
 - 插件新增两张 ext 表（共享识别表 + 实例文件索引）与 `map-recognize` 任务类型；前端地图列表增加识别状态与章节展开、三处开图入口、批量识别按钮。
 - 首次 refresh 后、识别任务完成前，新图显示"未识别"（异步可见性权衡，不做同步解析）。
 - 上传路径零容器依赖；Native 实例（无 Docker）识别自动回退平台侧解析。

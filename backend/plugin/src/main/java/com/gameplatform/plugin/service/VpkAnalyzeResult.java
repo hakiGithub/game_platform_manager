@@ -17,7 +17,10 @@ public class VpkAnalyzeResult implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** VPK 文件 sha-256 摘要（小写 hex，64 位） */
+    /**
+     * VPK 文件 sha-256 摘要（小写 hex，64 位）。
+     * <p>{@link HostToolingService#inspectVpk} 只读元数据时为 null。
+     */
     private String digest;
 
     /** 战役标题（mission DisplayTitle） */

@@ -30,6 +30,7 @@ shasum=$(has_cmd shasum)
 rsync=$(has_cmd rsync)
 unrar=$(has_cmd unrar)
 seven_zip=$(has_cmd 7z)
+python3=$(has_cmd python3)
 
 tmp_free_kb=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $4}')
 
@@ -77,7 +78,8 @@ cat <<EOF
     "shasum": ${shasum},
     "rsync": ${rsync},
     "unrar": ${unrar},
-    "7z": ${seven_zip}
+    "7z": ${seven_zip},
+    "python3": ${python3}
   },
   "tmpFreeKb": ${tmp_free_kb},
   "packageManager": "${package_manager}",

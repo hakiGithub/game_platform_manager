@@ -13,7 +13,7 @@ import java.util.List;
  *
  * <p>ADR-0027 增补：文件摘要与 VPK 分析以<b>实例维度相对路径</b>为参数（与
  * {@link InstanceFileService} 同一寻址语义），由主应用负责解析到主机/容器实际
- * 存储位置（Native 直接定位 installPath；Docker 经 docker cp 落到主机临时目录）。
+ * 存储位置（Native 直接定位 installPath；Docker 在容器或复用卷命名空间的工具容器内读取）。
  *
  * @author GamePlatform
  * @version 1.1.0
@@ -41,8 +41,7 @@ public interface HostToolingService {
 
     /**
      * 计算实例侧文件的 sha-256 摘要（ADR-0027）：Native 实例直接对主机文件计算；
-     * Docker 实例先 docker cp 到主机临时目录。计算通道优先主机原生
-     * sha256sum/shasum，缺失时回退 platform-tools 工具容器。
+     * Docker 实例优先在目标容器内计算，工具容器通过 --volumes-from 兜底。
      *
      * @param instanceId  实例 ID
      * @param relativePath 实例根目录下的相对路径（同 InstanceFileService 寻址）
@@ -62,4 +61,16 @@ public interface HostToolingService {
      * @throws VpkInvalidException 文件不是有效的 L4D2 地图 VPK（无 mission 信息）
      */
     VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
+
+    /**
+     * 只读 VPK 元数据（ADR-0027）：返回战役标题与章节，不计算文件摘要。
+     * <p>用于地图详情等无需摘要的同步读取场景；只读取 VPK 头部与 mission 内容，
+     * 不读取大文件数据区，也不将 VPK 传输到平台。返回值 {@code digest} 为 null。
+     *
+     * @param instanceId      实例 ID
+     * @param relativeVpkPath VPK 在实例根目录下的相对路径
+     * @return 战役标题 + 章节（不含摘要）
+     * @throws VpkInvalidException 文件不是有效的 L4D2 地图 VPK（无 mission 信息）
+     */
+    VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
 }

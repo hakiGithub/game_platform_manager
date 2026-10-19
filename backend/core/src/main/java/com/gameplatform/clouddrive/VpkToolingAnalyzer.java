@@ -6,6 +6,8 @@ import com.gameplatform.plugin.service.ContainerIdResolver;
 import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
+import com.gameplatform.entity.GameMetadata;
+import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.plugin.service.InstanceQueryService;
@@ -23,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -32,13 +35,13 @@ import java.util.Map;
  * <p>对外按<b>实例相对路径</b>寻址（与 InstanceFileService 同语义），内部路由：
  * <ul>
  *   <li>Native 实例：直接定位 {@code installPath/<rel>}；</li>
- *   <li>Docker 实例：{@code docker cp} 物化到主机临时目录（通用适配卷/绑定挂载拓扑），
- *       分析完成即清理。</li>
+ *   <li>Docker 实例：脚本送入容器，直接读取容器内原文件；缺 python3 时由
+ *       platform-tools 以 {@code --volumes-from} 复用容器卷命名空间，不复制 VPK。</li>
  * </ul>
- * 摘要走主机原生 sha256sum/shasum（容器兜底）；分析脚本由平台维护
- * （classpath {@code tooling/vpk_analyze.py}），调用时分发、用完即删；
- * 执行通道主机原生 python3 优先，platform-tools 工具容器兜底（镜像需含 python3）。
- * 只读 VPK 头部目录树，不读取文件数据区。
+ * 摘要走主机原生 sha256sum/shasum（Docker 实例在容器内计算，容器兜底）；
+ * 分析脚本由平台维护（classpath {@code tooling/vpk_analyze.py}），调用时分发、用完即删；
+ * 执行通道主机/目标容器原生 python3 优先，platform-tools 工具容器兜底（镜像需含 python3）。
+ * 只读 VPK 头部目录树与 mission 内容，不读取其余数据区。
  */
 @Slf4j
 @Service
@@ -51,8 +54,10 @@ public class VpkToolingAnalyzer {
     private final SshUtil sshUtil;
     private final ObjectMapper objectMapper;
     private final HostMapper hostMapper;
+    private final GameMetadataMapper gameMetadataMapper;
     private final InstanceQueryService instanceQueryService;
     private final ContainerIdResolver containerIdResolver;
+    private final com.gameplatform.patch.HostCapabilityProber prober;
 
     @Value("${game-platform.patch.tooling-image:registry.cn-shenzhen.aliyuncs.com/haki_hub/platform-tools:latest}")
     private String toolingImage;
@@ -63,7 +68,7 @@ public class VpkToolingAnalyzer {
     public String fileDigest(long instanceId, String relativePath) {
         Materialized ctx = prepare(instanceId, relativePath);
         try {
-            return fileDigest(ctx.host(), ctx.caps(), ctx.hostPath());
+            return fileDigest(ctx);
         } finally {
             cleanup(ctx);
         }
@@ -73,8 +78,8 @@ public class VpkToolingAnalyzer {
     public VpkAnalyzeResult analyzeVpk(long instanceId, String relativeVpkPath) {
         Materialized ctx = prepare(instanceId, relativeVpkPath);
         try {
-            String digest = fileDigest(ctx.host(), ctx.caps(), ctx.hostPath());
-            String json = runAnalyzeScript(ctx.host(), ctx.caps(), ctx.hostPath());
+            String digest = fileDigest(ctx);
+            String json = runAnalyzeScript(ctx);
             VpkAnalyzeResult result = parseResult(json);
             result.setDigest(digest);
             return result;
@@ -83,9 +88,23 @@ public class VpkToolingAnalyzer {
         }
     }
 
+    /** 实例侧 VPK 元数据：只读头部目录树与 mission，不计算整文件摘要 */
+    public VpkAnalyzeResult inspectVpk(long instanceId, String relativeVpkPath) {
+        Materialized ctx = prepare(instanceId, relativeVpkPath);
+        try {
+            return parseResult(runAnalyzeScript(ctx));
+        } finally {
+            cleanup(ctx);
+        }
+    }
+
     // ===== 实例路径物化 =====
 
-    private record Materialized(Host host, HostCapabilities caps, String hostPath, String tmpDir) {
+    private record Materialized(Host host, HostCapabilities caps, String hostPath,
+                                String containerId, String containerPath) {
+        boolean isDocker() {
+            return containerId != null && !containerId.isBlank();
+        }
     }
 
     private Materialized prepare(long instanceId, String relativePath) {
@@ -99,56 +118,78 @@ public class VpkToolingAnalyzer {
         }
         HostCapabilities caps = prober.probe(host.getId());
         String hostPath;
-        String tmpDir = null;
+        String containerId = null;
+        String containerPath = null;
         String deployType = deployAccess.classify(instance.getDeployType()).getCode();
         if (deployAccess.isNativeDeploy(deployType)) {
             hostPath = joinPath(instance.getInstallPath(), relativePath);
         } else {
-            // Docker：docker cp 物化到主机临时目录（卷/绑定挂载拓扑无关）
-            String containerId = containerIdResolver.resolve(instance, metadataOf(instance));
+            // Docker：始终在容器内分析/计算摘要，不 docker cp 整个 VPK 到主机。
+            // 工具容器通过 --volumes-from 复用目标容器的卷命名空间，脚本用容器内路径读取。
+            containerId = containerIdResolver.resolve(instance, metadataOf(instance));
             if (containerId == null || containerId.isBlank()) {
-                throw new BusinessException("实例容器 ID 未记录，无法物化文件（可重启实例重建元数据）");
+                throw new BusinessException("实例容器 ID 未记录，无法分析容器内文件（可重启实例重建元数据）");
             }
-            String containerPath = joinPath(containerWorkDir(instance), relativePath);
-            tmpDir = "/tmp/gp_vpk_" + System.currentTimeMillis();
-            String target = tmpDir + "/" + basename(relativePath);
-            HostCredentials conn = deployAccess.credentials(host);
-            SshUtil.CommandResult r = exec(conn, "mkdir -p " + shellQuote(tmpDir)
-                    + " && docker cp " + shellQuote(containerId + ":" + containerPath) + " "
-                    + shellQuote(target));
-            if (r == null || !r.isSuccess()) {
-                exec(conn, "rm -rf " + shellQuote(tmpDir));
-                throw new BusinessException("从容器复制 VPK 失败: " + (r != null ? r.getError() : "无响应"));
-            }
-            hostPath = target;
+            containerPath = joinPath(containerWorkDir(instance, deployType), relativePath);
+            hostPath = null;
         }
-        return new Materialized(host, caps, hostPath, tmpDir);
+        return new Materialized(host, caps, hostPath, containerId, containerPath);
     }
 
     private void cleanup(Materialized ctx) {
-        if (ctx.tmpDir() == null) {
-            return;
-        }
-        try {
-            HostCredentials conn = deployAccess.credentials(ctx.host());
-            exec(conn, "rm -rf " + shellQuote(ctx.tmpDir()));
-        } catch (Exception e) {
-            log.warn("清理临时目录失败（忽略）: {}", ctx.tmpDir(), e);
-        }
+        // 当前路径不产生主机临时 VPK；脚本的 finally 已负责清理。
     }
 
     private Map<String, Object> metadataOf(InstanceVO instance) {
-        Map<String, Object> metadata = instance.getConfigInfo();
-        return metadata != null ? metadata : Map.of();
+        Map<String, Object> metadata = new HashMap<>();
+        if (instance.getRuntimeMetadata() != null) {
+            metadata.putAll(instance.getRuntimeMetadata());
+        }
+        if (instance.getConfigInfo() != null) {
+            metadata.putAll(instance.getConfigInfo());
+        }
+        return metadata;
     }
 
-    private String containerWorkDir(InstanceVO instance) {
+    private String containerWorkDir(InstanceVO instance, String deployType) {
         Map<String, Object> metadata = metadataOf(instance);
         String workDir = stringValue(metadata, "containerWorkDir");
         if (workDir == null || workDir.isBlank() || "/".equals(workDir)) {
             workDir = stringValue(metadata, "workDir");
         }
+        if (workDir == null || workDir.isBlank() || "/".equals(workDir)) {
+            workDir = gameWorkingDir(instance.getGameCode(), deployType);
+        }
+        if (workDir == null || workDir.isBlank() || "/".equals(workDir)) {
+            workDir = switch (deployType) {
+                case "docker" -> "/home/steam";
+                case "linuxgsm-docker" -> "/app";
+                default -> "/";
+            };
+        }
         return workDir != null && !workDir.isBlank() && !"/".equals(workDir) ? workDir : "/";
+    }
+
+    private String gameWorkingDir(String gameCode, String deployType) {
+        if (gameCode == null || gameCode.isBlank()) {
+            return null;
+        }
+        try {
+            GameMetadata metadata = gameMetadataMapper.selectByGameCode(gameCode);
+            if (metadata == null || metadata.getDeployConfig() == null) {
+                return null;
+            }
+            Object config = metadata.getDeployConfig().get(deployType);
+            if (!(config instanceof Map<?, ?> map)) {
+                return null;
+            }
+            Object workingDir = map.get("workingDir");
+            return workingDir != null ? String.valueOf(workingDir) : null;
+        } catch (Exception e) {
+            log.warn("从游戏元数据获取容器工作目录失败 gameCode={}, deployType={}: {}",
+                    gameCode, deployType, e.getMessage());
+            return null;
+        }
     }
 
     private static String stringValue(Map<String, Object> map, String key) {
@@ -156,22 +197,42 @@ public class VpkToolingAnalyzer {
         return v != null ? String.valueOf(v) : null;
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.gameplatform.patch.HostCapabilityProber prober;
-
     // ===== 主机层原语 =====
 
-    /** 计算主机侧文件 sha-256（原生 sha256sum/shasum，容器兜底） */
+    /** 计算实例文件 sha-256（Native 主机原生优先；Docker 容器内优先） */
+    private String fileDigest(Materialized ctx) {
+        return fileDigest(ctx.host(), ctx.caps(), ctx.hostPath(),
+                ctx.containerId(), ctx.containerPath());
+    }
+
+    /** 计算主机侧文件 sha-256（保留给主机工具内部复用） */
     public String fileDigest(Host host, HostCapabilities caps, String remotePath) {
+        return fileDigest(host, caps, remotePath, null, null);
+    }
+
+    private String fileDigest(Host host, HostCapabilities caps, String remotePath,
+                              String containerId, String containerPath) {
         HostCredentials conn = deployAccess.credentials(host);
         SshUtil.CommandResult r;
-        if (caps.hasTool("sha256sum")) {
+        boolean docker = containerId != null && !containerId.isBlank();
+        if (docker) {
+            if (hasContainerCommand(conn, containerId, "sha256sum")) {
+                r = exec(conn, dockerExec(containerId, "sha256sum " + shellQuote(containerPath)
+                        + " | awk '{print $1}'"));
+            } else if (caps.hasDocker()) {
+                r = exec(conn, containerDigestCommand(containerId, containerPath));
+            } else {
+                throw new BusinessException("容器内无 sha256sum 且主机无 Docker，无法计算摘要");
+            }
+        } else if (caps.hasTool("sha256sum")) {
             r = exec(conn, "sha256sum " + shellQuote(remotePath) + " | awk '{print $1}'");
         } else if (caps.hasTool("shasum")) {
             r = exec(conn, "shasum -a 256 " + shellQuote(remotePath) + " | awk '{print $1}'");
         } else if (caps.hasDocker()) {
             r = exec(conn, "docker run --rm -v " + shellQuote(parentOf(remotePath)) + ":/w "
-                    + toolingImage + " sha256sum /w/" + basename(remotePath) + " | awk '{print $1}'");
+                    + "--entrypoint sha256sum " + toolingImage
+                    + " " + shellQuote("/w/" + basename(remotePath))
+                    + " | awk '{print $1}'");
         } else {
             throw new BusinessException("主机无 sha256sum/shasum 且无 Docker，无法计算摘要");
         }
@@ -185,7 +246,7 @@ public class VpkToolingAnalyzer {
         return digest;
     }
 
-    /** 分析主机侧 VPK：脚本原生 python3 优先，工具容器兜底 */
+    /** 分析实例内 VPK：Native 原生 python3 优先，Docker 容器内 python3 优先，工具容器兜底 */
     public String runAnalyzeScript(Host host, HostCapabilities caps, String remoteVpkPath) {
         HostCredentials conn = deployAccess.credentials(host);
         String remoteScript = String.format("/tmp/gp_vpk_analyze_%d.py", System.currentTimeMillis());
@@ -196,14 +257,57 @@ public class VpkToolingAnalyzer {
                 return execJson(conn, inner, remoteVpkPath);
             }
             if (caps.hasDocker()) {
-                String cmd = "docker run --rm -v " + shellQuote(parentOf(remoteScript)) + ":/s -v "
+                String cmd = "docker run --rm --entrypoint python3 -v "
+                        + shellQuote(parentOf(remoteScript)) + ":/s -v "
                         + shellQuote(parentOf(remoteVpkPath)) + ":/w " + toolingImage
-                        + " python3 /s/" + basename(remoteScript) + " /w/" + basename(remoteVpkPath);
+                        + " " + shellQuote("/s/" + basename(remoteScript))
+                        + " " + shellQuote("/w/" + basename(remoteVpkPath));
                 return execJson(conn, cmd, remoteVpkPath);
             }
             throw new BusinessException("主机无 python3 且无 Docker：无法执行 VPK 分析"
                     + "（可为主机安装 python3，或使用含 python3 的 platform-tools 镜像）");
         } finally {
+            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
+                    conn.privateKey(), conn.password(), "rm -f " + shellQuote(remoteScript));
+        }
+    }
+
+    private String runAnalyzeScript(Materialized ctx) {
+        if (!ctx.isDocker()) {
+            return runAnalyzeScript(ctx.host(), ctx.caps(), ctx.hostPath());
+        }
+        HostCredentials conn = deployAccess.credentials(ctx.host());
+        String remoteScript = String.format("/tmp/gp_vpk_analyze_%d.py", System.currentTimeMillis());
+        uploadScript(conn, remoteScript);
+        boolean usesContainerPython = hasContainerCommand(conn, ctx.containerId(), "python3");
+        String containerScript = usesContainerPython ? "/tmp/" + basename(remoteScript) : null;
+        try {
+            if (usesContainerPython) {
+                SshUtil.CommandResult copy = exec(conn,
+                        "docker cp " + shellQuote(remoteScript) + " "
+                                + shellQuote(ctx.containerId() + ":" + containerScript));
+                if (copy == null || !copy.isSuccess()) {
+                    throw new BusinessException("分发 VPK 分析脚本到容器失败: "
+                            + (copy != null ? copy.getError() : "无响应"));
+                }
+                String inner = "python3 " + shellQuote(containerScript) + " "
+                        + shellQuote(ctx.containerPath());
+                return execJson(conn, dockerExec(ctx.containerId(), inner), ctx.containerPath());
+            }
+            if (ctx.caps().hasDocker()) {
+                String cmd = "docker run --rm --entrypoint python3 --volumes-from " + shellQuote(ctx.containerId())
+                        + " -v " + shellQuote(parentOf(remoteScript)) + ":/s "
+                        + toolingImage + " " + shellQuote("/s/" + basename(remoteScript)) + " "
+                        + shellQuote(ctx.containerPath());
+                return execJson(conn, cmd, ctx.containerPath());
+            }
+            throw new BusinessException("容器内无 python3 且主机无 Docker：无法执行 VPK 分析"
+                    + "（可使用含 python3 的 platform-tools 镜像）");
+        } finally {
+            if (containerScript != null) {
+                exec(conn, "docker exec " + shellQuote(ctx.containerId())
+                        + " rm -f " + shellQuote(containerScript));
+            }
             sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
                     conn.privateKey(), conn.password(), "rm -f " + shellQuote(remoteScript));
         }
@@ -289,6 +393,22 @@ public class VpkToolingAnalyzer {
     private boolean hasCommand(HostCredentials conn, String command) {
         SshUtil.CommandResult r = exec(conn, "command -v " + command + " >/dev/null 2>&1 && echo __ok__");
         return r != null && r.isSuccess() && r.getOutput() != null && r.getOutput().contains("__ok__");
+    }
+
+    private boolean hasContainerCommand(HostCredentials conn, String containerId, String command) {
+        SshUtil.CommandResult r = exec(conn, dockerExec(containerId,
+                "command -v " + command + " >/dev/null 2>&1 && echo __ok__"));
+        return r != null && r.isSuccess() && r.getOutput() != null && r.getOutput().contains("__ok__");
+    }
+
+    private static String dockerExec(String containerId, String innerCommand) {
+        return "docker exec " + shellQuote(containerId) + " sh -c " + shellQuote(innerCommand);
+    }
+
+    private String containerDigestCommand(String containerId, String containerPath) {
+        return "docker run --rm --volumes-from " + shellQuote(containerId)
+                + " " + toolingImage
+                + " sha256sum " + shellQuote(containerPath) + " | awk '{print $1}'";
     }
 
     private SshUtil.CommandResult exec(HostCredentials conn, String command) {

@@ -12,8 +12,10 @@ import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
 import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.FileTransferProgressCallback;
+import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.service.VpkAnalyzeResult;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +56,7 @@ public class MapService {
     private final L4D2PathResolver pathResolver;
     private final MapRecognitionService mapRecognitionService;
     private final com.gameplatform.plugin.task.TaskService taskService;
+    private final HostToolingService hostToolingService;
 
     /**
      * 列出实例的所有地图（VPK 战役）。
@@ -419,7 +422,8 @@ public class MapService {
     }
 
     /**
-     * 解析 VPK mission 信息。
+     * 解析 VPK mission 信息（ADR-0027）：由主应用在主机/容器侧只读 VPK 头部，
+     * 不再把整个 VPK 下载到平台。返回结构保持 {@link MissionInfoVO} 不变。
      */
     public MissionInfoVO getMission(Long instanceId, String mapName) {
         log.info("解析 mission, instanceId: {}, mapName: {}", instanceId, mapName);
@@ -429,20 +433,30 @@ public class MapService {
         String addonsPath = pathResolver.getAddonsPath();
         String remoteVpkPath = addonsPath + "/" + mapName;
 
-        Path tempFile = null;
         try {
-            tempFile = Files.createTempFile("l4d2_mission_", ".vpk");
-            instanceFileService.downloadFile(instanceId, remoteVpkPath,
-                    tempFile.toAbsolutePath().toString());
-            return vpkTrimService.parseMission(tempFile.toFile());
+            VpkAnalyzeResult analyzed = hostToolingService.inspectVpk(instanceId, remoteVpkPath);
+            MissionInfoVO mission = new MissionInfoVO();
+            mission.setVpkName(mapName);
+            mission.setTitle(analyzed.getTitle());
+            List<MissionInfoVO.ChapterVO> chapters = new ArrayList<>();
+            if (analyzed.getChapters() != null) {
+                for (VpkAnalyzeResult.Chapter chapter : analyzed.getChapters()) {
+                    MissionInfoVO.ChapterVO chapterVO = new MissionInfoVO.ChapterVO();
+                    chapterVO.setCode(chapter.getCode());
+                    chapterVO.setTitle(chapter.getTitle());
+                    chapterVO.setModes(chapter.getModes() != null
+                            ? new ArrayList<>(chapter.getModes()) : new ArrayList<>());
+                    chapters.add(chapterVO);
+                }
+            }
+            mission.setChapters(chapters);
+            return mission;
         } catch (L4D2PluginException e) {
             throw e;
         } catch (Exception e) {
             log.error("解析 mission 失败, instanceId: {}, mapName: {}", instanceId, mapName, e);
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "解析 mission 失败: " + e.getMessage(), e);
-        } finally {
-            deleteTempFile(tempFile);
         }
     }
 
