@@ -98,7 +98,7 @@ public class PluginManageController {
      *
      * <p>从 classpath 读取内置 ZIP（约 63MB），解压并上传到容器内
      * {@code plugins_store/1.11插件平台linux版/left4dead2/...} 目录。
-     * 安装后用户需在插件列表中点"启用"才会真正生效，或通过应用预设自动启用。
+     * 安装任务落盘后立即复制到游戏目录并登记启用状态，重启游戏服务器后生效。
      */
     @Operation(summary = "安装内置平台插件",
             description = "从内置 ZIP 安装 SourceMod 1.11 平台插件包到实例容器")
@@ -183,7 +183,8 @@ public class PluginManageController {
                     .payload(Map.of(
                             "instanceId", instanceId,
                             "pluginId", pluginId,
-                            "pluginName", plugin.getName()))
+                            "pluginName", plugin.getName(),
+                            "enableAfterInstall", true))
                     .build());
             return Result.success("安装任务已提交",
                     new BuiltinInstallSubmitVO(taskId, pluginId, plugin.getName()));
@@ -251,7 +252,8 @@ public class PluginManageController {
                     .scopeKey(String.valueOf(dto.getInstanceId()))
                     .payload(Map.of(
                             "instanceId", dto.getInstanceId(),
-                            "pluginIds", dto.getPluginIds()))
+                            "pluginIds", dto.getPluginIds(),
+                            "enableAfterInstall", true))
                     .build());
             return Result.success("批量安装任务已提交",
                     new BuiltinBatchInstallSubmitVO(taskId, dto.getPluginIds().size()));

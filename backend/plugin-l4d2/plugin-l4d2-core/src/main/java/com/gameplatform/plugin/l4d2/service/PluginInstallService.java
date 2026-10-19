@@ -35,7 +35,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -632,20 +634,151 @@ public class PluginInstallService {
      * @return 失败项列表（"插件名: 原因"），空表示全部成功
      */
     public List<String> enableAndLoadBatch(Long instanceId, List<String> pluginNames) {
+        return enableBatch(instanceId, pluginNames);
+    }
+
+    /**
+     * 批量启用插件（无 RCON；一次 YAML 写入）。
+     *
+     * <p>插件文件复制逐项执行，调用方可逐项及时调用；成功项最后统一登记一次 YAML。
+     * 插件在游戏服务器重启后生效。
+     *
+     * @return 失败项列表（"插件名: 原因"），空表示全部成功
+     */
+    public List<String> enableBatch(Long instanceId, List<String> pluginNames) {
+        return enableBatchTimed(instanceId, pluginNames).errors();
+    }
+
+    /**
+     * 逐项启用会话：调用方每完成一个插件安装即可调用 {@link #enable(String)}，
+     * 复制与登记结果先暂存，最后 {@link #finish()} 一次写 YAML。
+     *
+     * <p>这样批装无需等待全部插件下载完才开始复制启用，同时仍避免 N 次
+     * 全量 YAML 读写。会话非线程安全，由单个任务线程独占。
+     */
+    public EnableSession newEnableSession(Long instanceId) {
+        return new EnableSession(instanceId);
+    }
+
+    public final class EnableSession {
+        private final Long instanceId;
+        private final List<EnableTiming> timings = new ArrayList<>();
+        private final List<EnabledPlugin> copied = new ArrayList<>();
+        private boolean finished;
+
+        private EnableSession(Long instanceId) {
+            this.instanceId = instanceId;
+        }
+
+        /**
+         * 立即复制一个插件到游戏目录并暂存启用记录。
+         *
+         * @return 本项启用耗时；复制失败作为失败结果返回，不中断会话中其他插件
+         */
+        public EnableTiming enable(String pluginName) {
+            ensureOpen();
+            long startedAt = System.nanoTime();
+            try {
+                EnabledPlugin plugin = copyAndBuildEnabled(instanceId, pluginName);
+                copied.add(plugin);
+                EnableTiming timing = new EnableTiming(
+                        pluginName, elapsedMs(startedAt), true, null);
+                timings.add(timing);
+                return timing;
+            } catch (Exception e) {
+                log.warn("启用插件失败: instanceId={}, plugin={}, err={}",
+                        instanceId, pluginName, e.getMessage());
+                EnableTiming timing = new EnableTiming(
+                        pluginName, elapsedMs(startedAt), false, e.getMessage());
+                timings.add(timing);
+                return timing;
+            }
+        }
+
+        /**
+         * 一次登记所有复制成功的插件并同步扩展资源。
+         *
+         * <p>登记失败会把所有复制成功项改为失败，避免调用方误报“已启用”。
+         */
+        public EnableBatchResult finish() {
+            ensureOpen();
+            finished = true;
+            long startedAt = System.nanoTime();
+            List<String> errors = new ArrayList<>();
+            for (EnableTiming timing : timings) {
+                if (!timing.success()) {
+                    errors.add(timing.pluginName() + ": " + timing.error());
+                }
+            }
+            long registerMs = 0L;
+            int enabledCount = 0;
+            if (!copied.isEmpty()) {
+                Set<String> copiedNames = new HashSet<>();
+                for (EnabledPlugin plugin : copied) {
+                    copiedNames.add(plugin.getName());
+                }
+                long registerStartedAt = System.nanoTime();
+                try {
+                    enabledPluginsService.addAll(instanceId, copied);
+                    for (EnabledPlugin plugin : copied) {
+                        fileRefsService.addRefs(instanceId, plugin.getName(), plugin.getFiles());
+                    }
+                    enabledCount = copied.size();
+                } catch (Exception e) {
+                    log.error("批量登记已启用插件失败: instanceId={}, count={}",
+                            instanceId, copied.size(), e);
+                    for (EnabledPlugin plugin : copied) {
+                        errors.add(plugin.getName() + ": 登记已启用插件失败: " + e.getMessage());
+                    }
+                    timings.replaceAll(timing -> copiedNames.contains(timing.pluginName())
+                            ? new EnableTiming(timing.pluginName(), timing.elapsedMs(), false,
+                                    "登记已启用插件失败: " + e.getMessage())
+                            : timing);
+                } finally {
+                    registerMs = elapsedMs(registerStartedAt);
+                }
+            }
+            return new EnableBatchResult(
+                    errors, List.copyOf(timings), registerMs, elapsedMs(startedAt), enabledCount);
+        }
+
+        private void ensureOpen() {
+            if (finished) {
+                throw new IllegalStateException("插件启用会话已结束");
+            }
+        }
+    }
+
+    /**
+     * 批量启用内置插件并为每项记录耗时。
+     *
+     * <p>目录复制逐项执行，已成功复制的插件在最后统一登记一次 YAML；
+     * 耗时用于任务结果与批量性能观测，不参与业务判断。
+     */
+    public EnableBatchResult enableBatchTimed(Long instanceId, List<String> pluginNames) {
+        long startedAt = System.nanoTime();
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在");
         }
-        List<String> errors = new ArrayList<>();
+        EnableSession session = newEnableSession(instanceId);
         for (String pluginName : pluginNames) {
-            try {
-                enableOne(instanceId, pluginName);
-            } catch (Exception e) {
-                log.warn("批量启用插件失败: plugin={}, err={}", pluginName, e.getMessage());
-                errors.add(pluginName + ": " + e.getMessage());
-            }
+            session.enable(pluginName);
         }
-        return errors;
+        EnableBatchResult result = session.finish();
+        return new EnableBatchResult(result.errors(), result.timings(),
+                result.registerMs(), elapsedMs(startedAt), result.enabledCount());
+    }
+
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    public record EnableTiming(String pluginName, long elapsedMs, boolean success, String error) {
+    }
+
+    public record EnableBatchResult(List<String> errors, List<EnableTiming> timings,
+                                    long registerMs, long elapsedMs, int enabledCount) {
     }
 
     /**
@@ -658,23 +791,22 @@ public class PluginInstallService {
         }
     }
 
-    private void enableOne(Long instanceId, String pluginName) {
+    private EnabledPlugin copyAndBuildEnabled(Long instanceId, String pluginName) {
         validatePluginName(pluginName);
 
         // 1. 复制库文件到游戏目录（一次性 cp -r）
         List<String> copiedFiles = copyPluginFilesConcurrently(instanceId, pluginName);
 
-        // 2. 登记已启用 + 引用计数（重启服务器后生效）
+        // 2. 构造启用记录；批量调用方统一一次写入 YAML
         EnabledPlugin enabled = new EnabledPlugin();
         enabled.setName(pluginName);
         enabled.setSource(resolveSourceForEnable(instanceId, pluginName));
         enabled.setEnabledAt(System.currentTimeMillis());
         enabled.setFiles(copiedFiles);
-        enabledPluginsService.add(instanceId, enabled);
-        fileRefsService.addRefs(instanceId, pluginName, copiedFiles);
 
-        log.info("插件已启用（重启服务器后生效）: instanceId={}, pluginName={}, files={}",
+        log.info("插件文件已复制并准备登记: instanceId={}, pluginName={}, files={}",
                 instanceId, pluginName, copiedFiles.size());
+        return enabled;
     }
 
     /**

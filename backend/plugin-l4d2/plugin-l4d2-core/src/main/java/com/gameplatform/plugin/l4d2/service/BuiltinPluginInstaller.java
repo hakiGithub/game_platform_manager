@@ -32,7 +32,8 @@ import java.util.List;
  * </ul>
  *
  * <p>安装流程：从 classpath 读取 ZIP → 调用 {@link PluginInstallService#installFromLocalFile}
- * → 解压到 plugins_store/&lt;id&gt;/left4dead2/... → 用户在插件列表点"启用"或应用预设使其生效。
+ * → 解压到 plugins_store/&lt;id&gt;/left4dead2/...。安装任务可在落盘后立即启用，
+ * 启用是目录级复制，重启游戏服务器后生效。
  *
  * <p>注意：PF4J 插件使用独立 ClassLoader，必须用本类的 ClassLoader 才能从插件 JAR 内读取资源。
  *
@@ -200,6 +201,35 @@ public class BuiltinPluginInstaller {
         } finally {
             cleanupTempQuietly(tempZip);
         }
+    }
+
+    /**
+     * 安装完成后立即启用插件（复制插件库文件到游戏目录并登记）。
+     *
+     * <p>安装与启用分开统计：安装已成功落盘后，即使用户取消也不会丢失安装结果；
+     * 启用失败由任务结果单独标记，便于用户重试启用。
+     */
+    public String enableAfterInstall(Long instanceId, String pluginId) {
+        BuiltinPluginVO plugin = findById(pluginId);
+        if (plugin == null) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "内置插件不存在: " + pluginId);
+        }
+        List<String> errors = pluginInstallService.enableBatch(
+                instanceId, List.of(pluginId));
+        if (!errors.isEmpty()) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "插件已安装但启用失败: " + String.join("; ", errors));
+        }
+        return "插件已启用（重启服务器后生效）: " + plugin.getName();
+    }
+
+    /**
+     * 创建逐项启用会话：每个插件安装完成后可立即复制启用文件，
+     * 全部处理后由会话统一登记一次 YAML。
+     */
+    public PluginInstallService.EnableSession newEnableSession(Long instanceId) {
+        return pluginInstallService.newEnableSession(instanceId);
     }
 
     /**

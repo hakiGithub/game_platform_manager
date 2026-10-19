@@ -62,7 +62,9 @@ class PluginInstallServiceEnableTest {
 
         assertThat(errors).isEmpty();
         verify(instanceFileService, times(3)).copyDirectory(anyLong(), anyString(), anyString());
-        verify(enabledPluginsService, times(3)).add(anyLong(), any());
+        verify(enabledPluginsService, times(1)).addAll(eq(100L), argThat(plugins ->
+                plugins.size() == 3
+                        && plugins.stream().map(p -> p.getName()).toList().equals(List.of("a", "b", "c"))));
         verify(fileRefsService, times(3)).addRefs(anyLong(), anyString(), anyList());
     }
 
@@ -71,7 +73,8 @@ class PluginInstallServiceEnableTest {
         service.enableAndLoad(100L, "a");
 
         verify(instanceFileService, times(1)).copyDirectory(anyLong(), anyString(), anyString());
-        verify(enabledPluginsService, times(1)).add(anyLong(), any());
+        verify(enabledPluginsService, times(1)).addAll(eq(100L), argThat(plugins ->
+                plugins.size() == 1 && "a".equals(plugins.get(0).getName())));
     }
 
     @Test
@@ -79,12 +82,59 @@ class PluginInstallServiceEnableTest {
         doThrow(new L4D2PluginException(L4D2PluginException.BUSINESS, "复制失败"))
                 .when(instanceFileService).copyDirectory(eq(100L), contains("plugins_store/b/"), anyString());
 
-        List<String> errors = service.enableAndLoadBatch(100L, List.of("a", "b", "c"));
+        PluginInstallService.EnableBatchResult result =
+                service.enableBatchTimed(100L, List.of("a", "b", "c"));
 
-        assertThat(errors).hasSize(1);
-        assertThat(errors.get(0)).contains("b").contains("复制失败");
+        assertThat(result.errors()).hasSize(1);
+        assertThat(result.errors().get(0)).contains("b").contains("复制失败");
+        assertThat(result.enabledCount()).isEqualTo(2);
+        assertThat(result.timings()).hasSize(3);
+        assertThat(result.timings()).anyMatch(t -> "a".equals(t.pluginName()) && t.success());
+        assertThat(result.timings()).anyMatch(t -> "b".equals(t.pluginName()) && !t.success());
+        assertThat(result.timings()).anyMatch(t -> "c".equals(t.pluginName()) && t.success());
+        assertThat(result.registerMs()).isGreaterThanOrEqualTo(0L);
+        assertThat(result.elapsedMs()).isGreaterThanOrEqualTo(0L);
         // 其余插件正常启用
-        verify(enabledPluginsService, times(2)).add(anyLong(), any());
+        verify(enabledPluginsService, times(1)).addAll(eq(100L), argThat(plugins ->
+                plugins.size() == 2
+                        && plugins.stream().map(p -> p.getName()).toList().equals(List.of("a", "c"))));
+    }
+
+    @Test
+    void enableBatchTimed_registrationFailureMarksCopiedItemsFailed() {
+        doThrow(new L4D2PluginException(L4D2PluginException.FILE, "yaml 写入失败"))
+                .when(enabledPluginsService).addAll(eq(100L), anyList());
+
+        PluginInstallService.EnableBatchResult result =
+                service.enableBatchTimed(100L, List.of("a", "b"));
+
+        assertThat(result.enabledCount()).isZero();
+        assertThat(result.errors()).hasSize(2);
+        assertThat(result.timings()).allMatch(t -> !t.success());
+        assertThat(result.timings()).allMatch(t -> t.error().contains("登记已启用插件失败"));
+    }
+
+    @Test
+    void enableSession_copiesImmediatelyAndRegistersOnceAtFinish() {
+        PluginInstallService.EnableSession session = service.newEnableSession(100L);
+
+        PluginInstallService.EnableTiming first = session.enable("a");
+        PluginInstallService.EnableTiming second = session.enable("b");
+        PluginInstallService.EnableBatchResult result = session.finish();
+
+        assertThat(first.success()).isTrue();
+        assertThat(second.success()).isTrue();
+        assertThat(result.enabledCount()).isEqualTo(2);
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.timings()).containsExactly(first, second);
+        verify(instanceFileService).copyDirectory(
+                eq(100L), contains("plugins_store/a/"), anyString());
+        verify(instanceFileService).copyDirectory(
+                eq(100L), contains("plugins_store/b/"), anyString());
+        verify(enabledPluginsService, times(1)).addAll(eq(100L), anyList());
+        assertThatThrownBy(() -> session.enable("c"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("会话已结束");
     }
 
     @Test

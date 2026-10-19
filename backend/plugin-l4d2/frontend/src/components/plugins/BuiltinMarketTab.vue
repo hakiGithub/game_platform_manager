@@ -42,7 +42,7 @@
         :disabled="!selectedIds.length || installing"
         @click="onBatchInstall"
       >
-        安装选中 {{ selectedIds.length }} 个
+        安装并启用 {{ selectedIds.length }} 个
       </el-button>
     </div>
 
@@ -97,7 +97,7 @@
               :loading="installingSingle === row.id"
               @click="onInstallSingle(row)"
             >
-              安装
+              安装并启用
             </el-button>
             <span v-else class="installed-tip">—</span>
           </template>
@@ -109,7 +109,11 @@
     <el-card v-if="results.length" shadow="never" class="page-card results-card">
       <template #header>
         <div class="card-header">
-          <span>安装结果（{{ results.filter(r => r.status === 'SUCCESS').length }}/{{ results.length }} 成功）</span>
+          <span>
+            安装结果（安装 {{ results.filter(r => r.status === 'SUCCESS').length }}/{{ results.length }}，
+            启用 {{ results.filter(r => r.enabled).length }}/{{ results.length }}<template v-if="batchTotalMs !== null">，
+            总耗时 {{ formatDuration(batchTotalMs) }}</template>）
+          </span>
           <el-button size="small" link @click="results = []">清除</el-button>
         </div>
       </template>
@@ -123,7 +127,12 @@
           <el-icon v-if="r.status === 'SUCCESS'" color="var(--platform-green)"><CircleCheckFilled /></el-icon>
           <el-icon v-else color="var(--platform-red)"><CircleCloseFilled /></el-icon>
           <span class="r-name">{{ r.pluginName }}</span>
-          <span class="r-msg">{{ r.message }}</span>
+          <span class="r-msg">
+            {{ r.message }}
+          </span>
+          <span v-if="r.installMs !== undefined || r.enableMs !== undefined" class="r-time">
+            安装 {{ r.installMs ?? 0 }} ms / 启用 {{ r.enableMs ?? 0 }} ms
+          </span>
         </div>
       </el-scrollbar>
     </el-card>
@@ -184,6 +193,7 @@ const installTaskId = ref('')
 const installTaskMode = ref<'single' | 'batch'>('single')
 const installTaskRow = ref<BuiltinPluginVO | null>(null)
 const installTaskTotal = ref(0)
+const batchTotalMs = ref<number | null>(null)
 
 /**
  * 当前实例的平台过滤标签：docker 类部署返回 'linux'，native 部署根据浏览器/后端 OS 推断
@@ -243,6 +253,11 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
   return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+}
+
+function formatDuration(millis: number): string {
+  if (millis < 1000) return `${millis} ms`
+  return `${(millis / 1000).toFixed(1)} s`
 }
 
 function categoryLabel(c: string): string {
@@ -316,10 +331,10 @@ async function onInstallSingle(row: BuiltinPluginVO) {
     }
     installTaskMode.value = 'single'
     installTaskRow.value = row
-    installTaskTitle.value = `安装插件：${row.name}`
+    installTaskTitle.value = `安装并启用插件：${row.name}`
     installTaskId.value = taskId
     installTaskVisible.value = true
-    emitInstallProgress(true, 0, `安装插件：${row.name}`)
+    emitInstallProgress(true, 0, `安装并启用插件：${row.name}`)
   } catch (e: any) {
     ElMessage.error(`${row.name} 提交安装任务失败：` + (e?.message || e))
     installingSingle.value = ''
@@ -380,9 +395,9 @@ async function onBatchInstall() {
   try {
     await ElMessageBox.confirm(
       `确认安装选中的 ${ids.length} 个内置插件？总大小约 ${formatSize(selectedSize.value)}。` +
-      `安装任务将在后台执行，安装后请在"已安装"列表中点"启用"或应用预设使其生效。`,
-      '批量安装确认',
-      { type: 'info', confirmButtonText: '安装', cancelButtonText: '取消' }
+      `安装任务将在后台执行，落盘后会自动启用；游戏服务器重启后生效。`,
+      '批量安装并启用确认',
+      { type: 'info', confirmButtonText: '安装并启用', cancelButtonText: '取消' }
     )
   } catch {
     return
@@ -390,6 +405,7 @@ async function onBatchInstall() {
 
   installing.value = true
   results.value = []
+  batchTotalMs.value = null
   try {
     const submit = await pluginManageApi.batchInstallBuiltin({
       instanceId: instanceId.value,
@@ -406,10 +422,10 @@ async function onBatchInstall() {
     ElMessage.success(`已提交批量安装任务（${ids.length} 个插件），后台执行中`)
     installTaskMode.value = 'batch'
     installTaskTotal.value = ids.length
-    installTaskTitle.value = `批量安装 ${ids.length} 个插件`
+    installTaskTitle.value = `批量安装并启用 ${ids.length} 个插件`
     installTaskId.value = taskId
     installTaskVisible.value = true
-    emitInstallProgress(true, 0, `批量安装 ${ids.length} 个插件`)
+    emitInstallProgress(true, 0, `批量安装并启用 ${ids.length} 个插件`)
   } catch (e: any) {
     ElMessage.error('提交批量安装任务失败：' + (e?.message || e))
     installing.value = false
@@ -417,15 +433,36 @@ async function onBatchInstall() {
   }
 }
 
-async function onBatchInstallDone(st: { resultSummary?: string; result?: { data?: { total?: number; success?: number; failed?: number; results?: BuiltinInstallResultVO[] } } }, total: number) {
+async function onBatchInstallDone(st: {
+  resultSummary?: string
+  result?: {
+    data?: {
+      total?: number
+      success?: number
+      failed?: number
+      enabled?: number
+      enableFailed?: number
+      enableMs?: number
+      totalMs?: number
+      results?: BuiltinInstallResultVO[]
+    }
+  }
+}, total: number) {
   const r = st.result?.data
   results.value = Array.isArray(r?.results) ? r!.results! : []
   const successCount = r?.success ?? total
   const failedCount = r?.failed ?? 0
+  const enabledCount = r?.enabled ?? successCount
+  const enableFailedCount = r?.enableFailed ?? 0
+  batchTotalMs.value = typeof r?.totalMs === 'number' ? r.totalMs : null
   if (failedCount === 0) {
-    ElMessage.success(st.resultSummary || `全部 ${successCount} 个插件安装成功`)
+    ElMessage.success(st.resultSummary
+      || `全部 ${successCount} 个插件安装成功，启用 ${enabledCount} 个`)
   } else {
     ElMessage.warning(`安装完成：${successCount} 成功，${failedCount} 失败，详见结果列表`)
+  }
+  if (enableFailedCount > 0 && failedCount === 0) {
+    ElMessage.warning(`有 ${enableFailedCount} 个插件安装成功但启用失败，详见结果列表`)
   }
   await loadList()
   selectedRows.value = []
@@ -490,18 +527,32 @@ watch(instanceId, () => {
 .result-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 4px 0;
   font-size: 13px;
 
   .r-name {
     font-weight: 500;
-    min-width: 180px;
+    flex: 0 1 180px;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .r-msg {
+    flex: 1 1 220px;
     color: var(--platform-text-secondary);
     font-size: 12px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .r-time {
+    flex: 0 1 auto;
+    margin-left: auto;
+    color: var(--platform-text-secondary);
+    font-size: 12px;
+    text-align: right;
   }
 }
 

@@ -93,6 +93,41 @@ class EnabledPluginsServiceTest {
     }
 
     @Test
+    void addAll_deduplicatesAndWritesOnce() {
+        when(instanceFileService.exists(eq(1L), anyString())).thenReturn(false);
+
+        EnabledPlugin first = new EnabledPlugin();
+        first.setName("same");
+        first.setSource("panel");
+        first.setEnabledAt(1L);
+        first.setFiles(List.of("a.smx"));
+
+        EnabledPlugin replacement = new EnabledPlugin();
+        replacement.setName("same");
+        replacement.setSource("builtin");
+        replacement.setEnabledAt(2L);
+        replacement.setFiles(List.of("b.smx"));
+
+        EnabledPlugin second = new EnabledPlugin();
+        second.setName("other");
+        second.setSource("panel");
+        second.setEnabledAt(3L);
+        second.setFiles(List.of("c.smx"));
+
+        when(extensionClient.get(eq(EnabledPluginResource.class), anyString()))
+                .thenReturn(Optional.empty());
+
+        service.addAll(1L, List.of(first, replacement, second));
+
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(instanceFileService, org.mockito.Mockito.times(1))
+                .writeTextFile(eq(1L), anyString(), contentCaptor.capture());
+        String yaml = contentCaptor.getValue();
+        assertThat(yaml).contains("same", "other", "builtin");
+        assertThat(yaml).doesNotContain("a.smx");
+    }
+
+    @Test
     void remove_removesFromYamlAndResource() {
         EnabledPlugin plugin = new EnabledPlugin();
         plugin.setName("to_remove");

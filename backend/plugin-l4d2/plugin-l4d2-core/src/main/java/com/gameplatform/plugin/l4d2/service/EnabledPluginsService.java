@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -116,9 +117,28 @@ public class EnabledPluginsService {
 
     /** 添加一个已启用插件（追加到 yaml） */
     public void add(Long instanceId, EnabledPlugin plugin) {
+        addAll(instanceId, List.of(plugin));
+    }
+
+    /**
+     * 批量添加已启用插件：一次读取现有清单、一次写回并一次同步扩展资源。
+     *
+     * <p>批量启用 N 个插件若逐个调用 {@link #add}，会产生 N 次全量 YAML 读写；
+     * 这里按插件名去重后合并，保证批量启用的网络往返不随插件数线性增加。
+     */
+    public void addAll(Long instanceId, List<EnabledPlugin> plugins) {
+        if (plugins == null || plugins.isEmpty()) {
+            return;
+        }
         List<EnabledPlugin> current = new ArrayList<>(loadYaml(instanceId));
-        current.removeIf(p -> plugin.getName().equals(p.getName()));
-        current.add(plugin);
+        current.removeIf(Objects::isNull);
+        for (EnabledPlugin plugin : plugins) {
+            if (plugin == null || plugin.getName() == null) {
+                continue;
+            }
+            current.removeIf(p -> plugin.getName().equals(p.getName()));
+            current.add(plugin);
+        }
         saveYaml(instanceId, current);
     }
 

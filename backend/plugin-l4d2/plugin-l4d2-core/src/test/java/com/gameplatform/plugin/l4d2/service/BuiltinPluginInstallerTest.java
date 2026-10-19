@@ -97,4 +97,27 @@ class BuiltinPluginInstallerTest {
         verify(pluginInstallService).installFromLocalFileWithPluginName(
                 eq(55L), any(File.class), eq(pluginId), isNull());
     }
+
+    @Test
+    @DisplayName("批量启用通过会话逐项复制，并由会话统一登记")
+    void batchEnableSessionCopiesEachPluginImmediatelyAndRegistersOnce() {
+        PluginInstallService.EnableSession session =
+                mock(PluginInstallService.EnableSession.class);
+        PluginInstallService.EnableTiming timing =
+                new PluginInstallService.EnableTiming("plugin-a", 5L, true, null);
+        PluginInstallService.EnableBatchResult finished =
+                new PluginInstallService.EnableBatchResult(
+                        List.of(), List.of(timing), 12L, 17L, 1);
+        when(pluginInstallService.newEnableSession(55L)).thenReturn(session);
+        when(session.enable("plugin-a")).thenReturn(timing);
+        when(session.finish()).thenReturn(finished);
+
+        PluginInstallService.EnableSession actual = installer.newEnableSession(55L);
+        assertEquals(timing, actual.enable("plugin-a"));
+        assertEquals(finished, actual.finish());
+
+        verify(pluginInstallService).newEnableSession(55L);
+        verify(session).enable("plugin-a");
+        verify(session).finish();
+    }
 }

@@ -3,6 +3,7 @@ package com.gameplatform.plugin.l4d2.task;
 import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.service.BuiltinPluginInstaller;
 import com.gameplatform.plugin.l4d2.service.InstallProgressListener;
+import com.gameplatform.plugin.l4d2.service.PluginInstallService;
 import com.gameplatform.plugin.l4d2.vo.BuiltinPluginVO;
 import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskHandler;
@@ -29,10 +30,12 @@ import java.util.Map;
  * <ul>
  *   <li>单个：instanceId（Long）、pluginId（String）、pluginName（String，展示用）</li>
  *   <li>批量：instanceId（Long）、pluginIds（List&lt;String&gt;）</li>
+ *   <li>两者共用：enableAfterInstall（Boolean，缺省 true）</li>
  * </ul>
  *
  * <p>批量语义：按提交顺序逐个安装，单个失败不影响其他（部分成功，ADR 与 installBatch 一致）；
- * 全部失败才标记任务 FAILED。每装完一个上报一次进度（10% 起，80% 区间均分）。
+ * 每个插件落盘后立即复制启用，全部结束后统一登记一次；全部安装失败才标记任务 FAILED。
+ * 每装完一个上报一次进度（10% 起，80% 区间均分）。
  *
  * <p>幂等：{@link BuiltinPluginInstaller#install} 内部已处理"已安装直接返回"。
  * 互斥：同实例的单装/批装共用一把互斥键，避免并发写 plugins_store。
@@ -85,11 +88,15 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
     @Override
     public TaskResult execute(TaskContext context, TaskPayload payload) throws Exception {
         long instanceId = Long.parseLong(payload.getString("instanceId"));
+        boolean enableAfterInstall = Boolean.TRUE.equals(
+                payload.getBoolean("enableAfterInstall", true));
         if (payload.get("pluginIds") instanceof List<?> ids && !ids.isEmpty()) {
-            return executeBatch(context, instanceId, ids.stream().map(String::valueOf).toList());
+            return executeBatch(context, instanceId,
+                    ids.stream().map(String::valueOf).toList(), enableAfterInstall);
         }
         return executeSingle(context, instanceId,
-                payload.getString("pluginId"), payload.getString("pluginName"));
+                payload.getString("pluginId"), payload.getString("pluginName"),
+                enableAfterInstall);
     }
 
     /**
@@ -97,7 +104,8 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
      * 取消导致的安装中止按"正常返回"处理，由框架按 ctx.isCancelled 落 CANCELLED。
      */
     private TaskResult executeSingle(TaskContext context, long instanceId,
-                                     String pluginId, String pluginName) throws Exception {
+                                     String pluginId, String pluginName,
+                                     boolean enableAfterInstall) throws Exception {
         if (context.isCancelled()) {
             context.log("WARN", "任务已取消，停止安装");
             return TaskResult.failure("任务已取消，停止安装");
@@ -105,13 +113,37 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
 
         context.reportProgress(10, "准备安装内置插件: " + pluginName);
         context.log("开始安装内置插件: instanceId=" + instanceId + ", plugin=" + pluginId);
+        long taskStartedAt = System.nanoTime();
 
         try {
+            long installStartedAt = System.nanoTime();
             String msg = builtinPluginInstaller.install(instanceId, pluginId, taskListener(context));
-            context.reportProgress(100, msg);
+            long installMs = elapsedMs(installStartedAt);
             context.log("内置插件安装完成: " + pluginId + " - " + msg);
-            return TaskResult.success(
-                    Map.of("pluginId", pluginId, "pluginName", pluginName), msg);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("pluginId", pluginId);
+            data.put("pluginName", pluginName);
+            data.put("installed", true);
+            data.put("installMs", installMs);
+
+            long enableStartedAt = System.nanoTime();
+            EnableOutcome outcome = enableAfterInstall(context, instanceId,
+                    pluginId, enableAfterInstall);
+            long enableMs = elapsedMs(enableStartedAt);
+            data.put("enabled", outcome.enabled());
+            data.put("enableMs", enableMs);
+            data.put("totalMs", elapsedMs(taskStartedAt));
+            if (outcome.error() != null) {
+                data.put("enableError", outcome.error());
+            }
+            String summary = switch (outcome.state()) {
+                case ENABLED -> msg + "；自动启用成功（耗时 " + formatDurationMs(installMs + enableMs) + "）";
+                case SKIPPED -> msg + "；已跳过自动启用（耗时 " + formatDurationMs(installMs) + "）";
+                case FAILED -> msg + "；自动启用失败: " + outcome.error()
+                        + "（耗时 " + formatDurationMs(installMs + enableMs) + "）";
+            };
+            context.reportProgress(100, summary);
+            return TaskResult.success(data, summary);
         } catch (Exception e) {
             if (context.isCancelled()) {
                 context.log("WARN", "任务已取消，停止安装: " + e.getMessage());
@@ -122,19 +154,25 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
     }
 
     /** 批量安装：逐个执行，单个失败不影响其他，全部失败才 FAILED */
-    private TaskResult executeBatch(TaskContext context, long instanceId, List<String> pluginIds) {
+    private TaskResult executeBatch(TaskContext context, long instanceId, List<String> pluginIds,
+                                    boolean enableAfterInstall) {
         if (context.isCancelled()) {
             context.log("WARN", "任务已取消，停止安装");
             return TaskResult.failure("任务已取消，停止安装");
         }
 
+        long taskStartedAt = System.nanoTime();
         int total = pluginIds.size();
         context.reportProgress(10, "准备批量安装 " + total + " 个内置插件");
         context.log("开始批量安装内置插件: instanceId=" + instanceId + ", count=" + total);
 
         int success = 0;
+        int enabled = 0;
+        int enableFailed = 0;
         boolean cancelled = false;
         List<Map<String, Object>> results = new ArrayList<>();
+        PluginInstallService.EnableSession enableSession = enableAfterInstall
+                ? builtinPluginInstaller.newEnableSession(instanceId) : null;
         for (int i = 0; i < total; i++) {
             if (context.isCancelled() || context.isTimeout()) {
                 cancelled = context.isCancelled();
@@ -151,13 +189,32 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("pluginId", pluginId);
             item.put("pluginName", pluginName);
+            long installStartedAt = System.nanoTime();
             try {
                 String msg = builtinPluginInstaller.install(instanceId, pluginId, taskListener(context));
+                item.put("installMs", elapsedMs(installStartedAt));
                 success++;
                 item.put("status", "SUCCESS");
                 item.put("message", msg);
                 context.log("安装成功: " + pluginId + " - " + msg);
+                item.put("enabled", false);
+                if (enableSession != null) {
+                    context.reportProgress(percent, "启用 " + pluginName
+                            + "（" + (i + 1) + "/" + total + "）");
+                    PluginInstallService.EnableTiming timing = enableSession.enable(pluginId);
+                    item.put("enableMs", timing.elapsedMs());
+                    item.put("enabled", timing.success());
+                    if (timing.success()) {
+                        context.log("启用成功: " + pluginId);
+                    } else {
+                        item.put("enableError", timing.error());
+                        item.put("message", msg + "；自动启用失败: " + timing.error());
+                        context.log("WARN", "插件已安装但自动启用失败: " + pluginId
+                                + " - " + timing.error());
+                    }
+                }
             } catch (Exception e) {
+                item.put("installMs", elapsedMs(installStartedAt));
                 // 单插件安装中途取消：记失败项并置取消标志，循环下一轮终止
                 if (context.isCancelled()) {
                     cancelled = true;
@@ -169,8 +226,33 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
             results.add(item);
         }
 
+        boolean enableSkipped = !enableAfterInstall;
+        long registerMs = 0L;
+        long enableTimingMs = 0L;
+        if (!enableSkipped && enableSession != null && success > 0) {
+            try {
+                PluginInstallService.EnableBatchResult enableResult = enableSession.finish();
+                registerMs = enableResult.registerMs();
+                enableTimingMs = enableResult.timings().stream()
+                        .mapToLong(PluginInstallService.EnableTiming::elapsedMs)
+                        .sum();
+                EnableCompletion completion = applyEnableOutcomes(
+                        results, enableResult.timings(), success);
+                enabled = completion.enabled();
+                enableFailed = completion.failed();
+            } catch (Exception e) {
+                enableFailed = success;
+                markAllEnableFailed(results, e.getMessage());
+                context.log("WARN", "批量自动启用失败: " + e.getMessage());
+            }
+        }
+        long enableMs = enableSkipped ? 0L : enableTimingMs + registerMs;
+
         int processed = results.size();
         int failed = processed - success;
+        // 任务墙钟耗时包含安装、复制、YAML 登记及任务调度间隙；
+        // 逐项耗时仍用于定位慢插件。
+        long totalMs = elapsedMs(taskStartedAt);
 
         // 取消且零成功 / 全部失败：按框架语义抛异常标记 FAILED（正常返回一律 COMPLETED）
         if (success == 0 && cancelled) {
@@ -189,22 +271,39 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
                 "processed", processed,
                 "success", success,
                 "failed", failed,
+                "enabled", enabled,
+                "enableFailed", enableFailed,
+                "enableMs", enableMs,
+                "registerMs", registerMs,
+                "totalMs", totalMs,
                 "results", results);
 
         if (processed < total) {
             // 取消/超时中断但已有部分成功，按成功处理（剩余插件可重新提交）
             String summary = (cancelled ? "批量安装已取消" : "批量安装超时中断")
-                    + "：成功 " + success + "/" + total + "，未处理 " + (total - processed) + " 个";
+                    + "：安装成功 " + success + "/" + total
+                    + "，启用成功 " + enabled + "/" + success
+                    + "，未处理 " + (total - processed) + " 个"
+                    + "（耗时 " + formatDurationMs(totalMs) + "）";
             context.reportProgress(100, summary);
             return TaskResult.success(data, summary);
         }
         String summary;
         if (success == total) {
-            summary = "全部 " + total + " 个插件安装成功";
+            summary = "全部 " + total + " 个插件安装成功"
+                    + (enableFailed == 0
+                    ? (enableSkipped ? "，已跳过自动启用" : "，并已自动启用")
+                    : "，其中 " + enabled + " 个自动启用成功，" + enableFailed + " 个启用失败")
+                    + "（耗时 " + formatDurationMs(totalMs) + "）";
         } else if (cancelled) {
-            summary = "批量安装已取消：成功 " + success + "/" + total + "，失败 " + failed;
+            summary = "批量安装已取消：安装成功 " + success + "/" + total
+                    + "，启用成功 " + enabled + "/" + success
+                    + "（耗时 " + formatDurationMs(totalMs) + "）";
         } else {
-            summary = "批量安装完成：成功 " + success + "/" + total + "，失败 " + failed;
+            summary = "批量安装完成：安装成功 " + success + "/" + total
+                    + "，启用成功 " + enabled + "/" + success
+                    + "，安装失败 " + failed
+                    + "（耗时 " + formatDurationMs(totalMs) + "）";
         }
         context.reportProgress(100, summary);
         return TaskResult.success(data, summary);
@@ -231,6 +330,90 @@ public class BuiltinPluginInstallTaskHandler implements TaskHandler {
                 context.log(level, message);
             }
         };
+    }
+
+    private enum EnableState {
+        ENABLED, SKIPPED, FAILED
+    }
+
+    private record EnableOutcome(EnableState state, boolean enabled, String error) {
+    }
+
+    /**
+     * 安装完成后按 payload 开关启用；启用失败不抹掉已成功的安装结果。
+     */
+    private EnableOutcome enableAfterInstall(TaskContext context, long instanceId,
+                                             String pluginId, boolean enable) {
+        if (!enable) {
+            return new EnableOutcome(EnableState.SKIPPED, false, null);
+        }
+        try {
+            builtinPluginInstaller.enableAfterInstall(instanceId, pluginId);
+            return new EnableOutcome(EnableState.ENABLED, true, null);
+        } catch (Exception e) {
+            context.log("WARN", "插件已安装但自动启用失败: " + pluginId + " - " + e.getMessage());
+            return new EnableOutcome(EnableState.FAILED, false, e.getMessage());
+        }
+    }
+
+    private EnableCompletion applyEnableOutcomes(
+            List<Map<String, Object>> results,
+            List<PluginInstallService.EnableTiming> timings,
+            int expectedCount) {
+        Map<String, PluginInstallService.EnableTiming> byPlugin = new LinkedHashMap<>();
+        for (PluginInstallService.EnableTiming timing : timings) {
+            byPlugin.put(timing.pluginName(), timing);
+        }
+        int enabled = 0;
+        int failed = 0;
+        for (Map<String, Object> item : results) {
+            if (!"SUCCESS".equals(item.get("status"))) continue;
+            String pluginId = String.valueOf(item.get("pluginId"));
+            PluginInstallService.EnableTiming timing = byPlugin.get(pluginId);
+            if (timing == null) {
+                item.put("enableMs", 0L);
+                item.put("enabled", false);
+                item.put("enableError", "未返回启用结果");
+                item.put("message", item.get("message") + "；自动启用失败: 未返回启用结果");
+                failed++;
+                continue;
+            }
+            item.put("enableMs", timing.elapsedMs());
+            item.put("enabled", timing.success());
+            if (!timing.success()) {
+                item.put("enableError", timing.error());
+                item.put("message", item.get("message") + "；自动启用失败: " + timing.error());
+                failed++;
+            } else {
+                enabled++;
+            }
+        }
+        failed += Math.max(0, expectedCount - enabled - failed);
+        return new EnableCompletion(enabled, failed);
+    }
+
+    private void markAllEnableFailed(List<Map<String, Object>> results, String error) {
+        for (Map<String, Object> item : results) {
+            if (!"SUCCESS".equals(item.get("status"))) continue;
+            item.put("enabled", false);
+            item.put("enableMs", 0L);
+            item.put("enableError", error);
+            item.put("message", item.get("message") + "；自动启用失败: " + error);
+        }
+    }
+
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    private record EnableCompletion(int enabled, int failed) {
+    }
+
+    private String formatDurationMs(long millis) {
+        if (millis < 1000) {
+            return millis + " ms";
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f s", millis / 1000.0);
     }
 
     @Override

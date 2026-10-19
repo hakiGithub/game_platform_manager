@@ -619,6 +619,10 @@ export interface BuiltinInstallResultVO {
   pluginName: string
   status: 'SUCCESS' | 'FAILED'
   message?: string
+  enabled?: boolean
+  enableError?: string
+  installMs?: number
+  enableMs?: number
   installedFiles?: string[]
 }
 
@@ -656,6 +660,10 @@ export interface BuiltinInstallStatusVO {
       processed?: number
       success?: number
       failed?: number
+      enabled?: number
+      enableFailed?: number
+      enableMs?: number
+      totalMs?: number
       results?: BuiltinInstallResultVO[]
     }
     success?: boolean
