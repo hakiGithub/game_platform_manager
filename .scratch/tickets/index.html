@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Game Platform · Ticket Board</title>
+  <style>
+    :root {
+      --bg: #0d171f;
+      --panel: #121f29;
+      --panel-2: #172832;
+      --panel-3: #1c303b;
+      --line: #2a414c;
+      --line-soft: #223740;
+      --text: #e9f1f5;
+      --muted: #91a5b1;
+      --faint: #6d828e;
+      --cyan: #53c8e8;
+      --cyan-soft: rgba(83, 200, 232, .13);
+      --green: #68d391;
+      --green-soft: rgba(104, 211, 145, .13);
+      --amber: #f4c36e;
+      --amber-soft: rgba(244, 195, 110, .12);
+      --red: #f08080;
+      --red-soft: rgba(240, 128, 128, .12);
+      --violet: #c9a9f5;
+      --violet-soft: rgba(201, 169, 245, .12);
+      --radius: 6px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.55 var(--sans);
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-height: 64px;
+      padding: 13px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(18, 31, 41, .96);
+      backdrop-filter: blur(10px);
+    }
+    .brand { min-width: 210px; }
+    .brand h1 { margin: 0; font-size: 16px; font-weight: 650; }
+    .brand p { margin: 3px 0 0; font-size: 11px; color: var(--faint); }
+    .search {
+      flex: 1 1 400px;
+      max-width: 560px;
+      position: relative;
+    }
+    .search input {
+      width: 100%;
+      padding: 9px 13px 9px 34px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      outline: none;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .search input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-soft); }
+    .search::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 11px;
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid var(--faint);
+      border-radius: 50%;
+    }
+    .search::after {
+      content: "";
+      position: absolute;
+      left: 23px;
+      top: 23px;
+      width: 6px;
+      height: 1.5px;
+      background: var(--faint);
+      transform: rotate(45deg);
+    }
+    .top-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .button:hover { color: var(--text); border-color: var(--faint); }
+    .button.primary { color: #061a22; background: var(--cyan); border-color: var(--cyan); font-weight: 650; }
+    .button.small { min-height: 29px; padding: 4px 9px; font-size: 12px; }
+    .layout {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 242px minmax(0, 1fr);
+    }
+    .rail {
+      position: sticky;
+      top: 64px;
+      height: calc(100vh - 64px);
+      overflow: auto;
+      padding: 20px 14px 32px;
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .rail-label {
+      margin: 0 9px 8px;
+      font: 10px/1 var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .rail-group { margin-bottom: 20px; }
+    .filter {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 9px;
+      margin: 2px 0;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+    }
+    .filter:hover { background: var(--panel-2); color: var(--text); }
+    .filter.active { background: var(--cyan-soft); border-color: rgba(83, 200, 232, .5); color: var(--text); }
+    .count {
+      min-width: 23px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: var(--panel-3);
+      color: var(--faint);
+      font: 10px/18px var(--mono);
+      text-align: center;
+    }
+    .filter.active .count { color: var(--cyan); background: rgba(83, 200, 232, .15); }
+    .content { min-width: 0; padding: 23px 28px 64px; }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(100px, 1fr));
+      gap: 1px;
+      margin-bottom: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--line);
+    }
+    .stat { padding: 15px 16px; background: var(--panel); }
+    .stat span { display: block; font-size: 11px; color: var(--faint); }
+    .stat strong { display: block; margin-top: 5px; font: 650 22px/1 var(--mono); }
+    .stat.open strong { color: var(--amber); }
+    .stat.triage strong { color: var(--amber); }
+    .stat.work strong { color: var(--cyan); }
+    .stat.blocked strong { color: var(--violet); }
+    .stat.total strong { color: var(--text); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 13px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .toolbar h2 { margin: 0 8px 0 0; font-size: 15px; }
+    .selection {
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+    }
+    .selection:focus { border-color: var(--cyan); }
+    .result-note { margin-left: auto; color: var(--faint); font-size: 12px; }
+    .board {
+      display: grid;
+      gap: 12px;
+    }
+    .column {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(18, 31, 41, .55);
+      overflow: hidden;
+    }
+    .column-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px 13px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .column-head:hover { background: var(--panel-3); }
+    .column-head:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+    .column-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
+    .column-head .count { margin-left: auto; }
+    .column-caret {
+      width: 7px;
+      height: 7px;
+      margin: 0 2px 3px 3px;
+      border-right: 1px solid var(--muted);
+      border-bottom: 1px solid var(--muted);
+      transform: rotate(45deg);
+      transition: transform .15s;
+    }
+    .column.collapsed .column-caret { margin-bottom: -2px; transform: rotate(-45deg); }
+    .column.collapsed .column-body { display: none; }
+    .column-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+      gap: 9px;
+      padding: 10px;
+    }
+    .ticket-card {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--faint);
+      border-radius: 5px;
+      background: var(--panel);
+      cursor: pointer;
+      transition: border-color .14s, background .14s, transform .14s;
+    }
+    .ticket-card:hover { background: var(--panel-2); border-color: var(--faint); transform: translateY(-1px); }
+    .ticket-card:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .ticket-card[data-tone="warning"] { border-left-color: var(--amber); }
+    .ticket-card[data-tone="agent"] { border-left-color: var(--cyan); }
+    .ticket-card[data-tone="human"] { border-left-color: var(--violet); }
+    .ticket-card[data-tone="active"] { border-left-color: var(--green); }
+    .card-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .number { font: 10px/1 var(--mono); color: var(--faint); }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 1px 6px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: var(--panel-3);
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .tag.status.warning { border-color: rgba(244, 195, 110, .45); color: var(--amber); background: var(--amber-soft); }
+    .tag.status.agent { border-color: rgba(83, 200, 232, .45); color: var(--cyan); background: var(--cyan-soft); }
+    .tag.status.human { border-color: rgba(201, 169, 245, .45); color: var(--violet); background: var(--violet-soft); }
+    .tag.status.active, .tag.status.success { border-color: rgba(104, 211, 145, .45); color: var(--green); background: var(--green-soft); }
+    .tag.status.muted { color: var(--faint); }
+    .tag.type { color: var(--faint); }
+    .tag.priority { color: var(--red); border-color: rgba(240, 128, 128, .35); background: var(--red-soft); }
+    .tag.blocked { color: var(--violet); border-color: rgba(201, 169, 245, .35); background: var(--violet-soft); }
+    .card-title { margin: 0; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+    .card-summary {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+    .card-meta { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; color: var(--faint); font-size: 10px; }
+    .card-meta span { overflow-wrap: anywhere; }
+    .empty { padding: 28px 14px; color: var(--faint); text-align: center; }
+    .drawer-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+    }
+    .drawer-wrap.open { display: block; }
+    .backdrop { position: absolute; inset: 0; background: rgba(2, 9, 14, .62); }
+    .drawer {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: min(700px, 92vw);
+      height: 100%;
+      overflow: auto;
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: -18px 0 42px rgba(0, 0, 0, .3);
+    }
+    .drawer-head { position: sticky; top: 0; z-index: 1; padding: 17px 22px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .drawer-head .eyebrow { margin-bottom: 7px; color: var(--faint); font: 10px/1 var(--mono); }
+    .drawer-head h2 { margin: 0; padding-right: 38px; font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
+    .close {
+      position: absolute;
+      top: 15px;
+      right: 16px;
+      width: 31px;
+      height: 31px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 17px;
+    }
+    .close:hover { color: var(--text); border-color: var(--faint); }
+    .drawer-body { padding: 18px 22px 40px; }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .detail-grid { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px 12px; margin: 0 0 18px; }
+    .detail-grid dt { color: var(--faint); font: 10px/1.7 var(--mono); text-transform: uppercase; }
+    .detail-grid dd { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .detail-grid code { padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); font: 11px var(--mono); }
+    .section { margin-top: 18px; }
+    .section h3 { margin: 0 0 8px; padding-bottom: 7px; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+    .section p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .section ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+    .section li { margin: 4px 0; }
+    .section li::marker { color: var(--faint); }
+    .section a { font-size: 12px; }
+    .excerpt {
+      max-height: 230px;
+      overflow: auto;
+      margin: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--muted);
+      font: 11px/1.65 var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .notice { margin: 0 0 18px; padding: 10px 12px; border: 1px solid rgba(244, 195, 110, .3); border-radius: 4px; background: var(--amber-soft); color: var(--amber); font-size: 11px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    @media (max-width: 1180px) {
+      .summary-strip { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
+    }
+    @media (max-width: 780px) {
+      .topbar { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+      .brand { min-width: 0; flex: 1; }
+      .brand p { display: none; }
+      .top-actions { margin-left: 0; }
+      .search { order: 3; flex-basis: 100%; max-width: none; }
+      .layout { display: block; }
+      .rail { position: static; height: auto; overflow: visible; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .rail-group { margin-bottom: 10px; }
+      .rail .filter { display: inline-flex; width: auto; max-width: 100%; min-height: 31px; margin: 2px; }
+      .rail .feature-filter { max-width: calc(100% - 4px); }
+      .rail .feature-filter > span:first-child { overflow-wrap: anywhere; }
+      .rail-label { display: none; }
+      .content { padding: 16px 14px 48px; }
+      .summary-strip { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+      .board { grid-template-columns: 1fr; }
+      .column-body { grid-template-columns: 1fr; }
+      .result-note { width: 100%; margin-left: 0; }
+      .drawer { width: 100%; }
+      .detail-grid { grid-template-columns: 84px minmax(0, 1fr); }
+    }
+    @media (hover: none) {
+      .ticket-card:hover { transform: none; }
+    }
+    @media (max-width: 430px) {
+      .summary-strip { grid-template-columns: 1fr 1fr; }
+      .stat { padding: 12px; }
+      .stat strong { font-size: 19px; }
+      .toolbar h2 { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Ticket Board</h1>
+        <p>本地 issue tracker · 未完成票视图</p>
+      </div>
+      <label class="search">
+        <span class="sr-only">搜索 ticket</span>
+        <input id="search" type="search" autocomplete="off" placeholder="搜索标题、编号、状态、来源、标签……">
+      </label>
+      <div class="top-actions">
+        <button class="button small" id="refresh" title="重新读取最新生成的 ticket 数据">刷新数据</button>
+        <button class="button small" id="clear" title="清除搜索与筛选">清除筛选</button>
+      </div>
+    </header>
+    <main class="layout">
+      <aside class="rail" aria-label="Ticket 筛选">
+        <div class="rail-group">
+          <div class="rail-label">视图</div>
+          <button class="filter active" data-filter="open" data-value="all">全部未完成 <span class="count" id="open-count"></span></button>
+          <button class="filter" data-filter="triage" data-value="all">待分诊 <span class="count" id="triage-count"></span></button>
+          <button class="filter" data-filter="work" data-value="all">可执行 / 处理中 <span class="count" id="work-count"></span></button>
+          <button class="filter" data-filter="all" data-value="all">全部 issue <span class="count" id="all-count"></span></button>
+        </div>
+        <div class="rail-group">
+          <div class="rail-label">项目域</div>
+          <button class="filter active" data-filter="feature" data-value="all">全部项目 <span class="count" id="feature-all-count"></span></button>
+          <div id="feature-filters"></div>
+        </div>
+        <div class="rail-group">
+          <div class="rail-label">状态来源</div>
+          <button class="filter" data-filter="source" data-value="registered">显式 Status <span class="count" id="source-registered-count"></span></button>
+          <button class="filter" data-filter="source" data-value="directory">目录语义 <span class="count" id="source-directory-count"></span></button>
+          <button class="filter" data-filter="source" data-value="unregistered">待登记 <span class="count" id="source-unregistered-count"></span></button>
+        </div>
+      </aside>
+      <section class="content">
+        <div class="summary-strip" aria-label="Ticket 概览">
+          <div class="stat open"><span>未完成</span><strong id="stat-open"></strong></div>
+          <div class="stat triage"><span>待分诊</span><strong id="stat-triage"></strong></div>
+          <div class="stat work"><span>可执行 / 处理中</span><strong id="stat-work"></strong></div>
+          <div class="stat blocked"><span>有依赖</span><strong id="stat-blocked"></strong></div>
+          <div class="stat total"><span>全部 issue</span><strong id="stat-total"></strong></div>
+        </div>
+        <div class="toolbar">
+          <h2 id="result-title">未完成的 ticket</h2>
+          <select class="selection" id="sort" aria-label="排序">
+            <option value="area">按项目域</option>
+            <option value="priority">按优先级</option>
+            <option value="number">按票号</option>
+            <option value="recent">按文件深度</option>
+          </select>
+          <span class="result-note" id="result-note"></span>
+        </div>
+        <div class="board" id="board"></div>
+      </section>
+    </main>
+  </div>
+  <div class="drawer-wrap" id="drawer-wrap" aria-hidden="true">
+    <div class="backdrop" id="backdrop"></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <div class="drawer-head">
+        <div class="eyebrow" id="drawer-eyebrow"></div>
+        <h2 id="drawer-title"></h2>
+        <button class="close" id="drawer-close" aria-label="关闭详情">×</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+  </div>
+  <script id="ticket-data" type="application/json">{"generatedAt":"2026-10-19T15:11:29.181Z","sourceRoot":".scratch","policy":"Excluded statuses: done, resolved, closed, wontfix, cancelled. Directory semantics keep backlog and architecture review open.","summary":{"total":42,"unclosed":36,"byStatus":{"needs-triage":4,"ready-for-human":8,"open (directory)":7,"resolved":5,"open (unregistered)":9,"open (review)":8,"done":1},"byTone":{"warning":4,"human":8,"open":24,"success":6}},"features":[{"id":"l4d2-plugin-config-editor","label":"L4D2 UI / plugins","count":1,"unclosed":1},{"id":"l4d2-plugin-list-pagination","label":"L4D2 UI / plugins","count":1,"unclosed":1},{"id":"l4d2-sidebar-selection","label":"L4D2 UI / plugins","count":1,"unclosed":1},{"id":"l4d2-third-party-map-switch","label":"L4D2 UI / plugins","count":1,"unclosed":1},{"id":"l4d2-cloud-map-install","label":"L4D2 cloud maps","count":4,"unclosed":4},{"id":"backlog","label":"Backlog","count":8,"unclosed":7},{"id":"ui-e2e-automation","label":"E2E automation","count":9,"unclosed":9},{"id":"architecture-review-20261015","label":"Architecture review","count":8,"unclosed":8},{"id":"cloud-drive-host-capability","label":"Cloud drive","count":4,"unclosed":4},{"id":"dnf-tw-compose-variable-handoff","label":"Deployment","count":1,"unclosed":0},{"id":"mattpocock-skills-refresh","label":"Agent workflow","count":4,"unclosed":0}],"tickets":[{"id":".scratch/l4d2-sidebar-selection/issues/01-sidebar-multiple-selected-styles.md","title":"01: L4D2 侧边栏多个菜单同时呈现选中样式","number":"01","feature":"l4d2-sidebar-selection","area":"L4D2 UI / plugins","status":"needs-triage","statusLabel":"待分诊","statusTone":"warning","statusSource":"registered","type":"bug","priority":"","source":"用户反馈（2026-10-19）","blockedBy":[],"closed":false,"summary":"求生之路2 插件的侧边栏中，多个菜单项同时呈现类似选中/强调的整行样式。截图中「求生之路2」父级、多个分组标题和「服务器信息」叶子菜单都出现了边框或高亮，用户无法仅凭视觉判断当前真正选中的菜单。","acceptance":["任意时刻只一个叶子菜单处于选中高亮。","父级菜单只显示展开/收起状态，不显示与选中项相同的整行高亮。","点击不同叶子菜单后，旧选中态及时消失，新选中态正确出现。","刷新页面或直接打开子路由时，选中态仍唯一且正确。","悬停态与选中态有明显区别，不会让用户误以为多个菜单已选中。"],"acceptanceChecks":["任意时刻只一个叶子菜单处于选中高亮。","父级菜单只显示展开/收起状态，不显示与选中项相同的整行高亮。","点击不同叶子菜单后，旧选中态及时消失，新选中态正确出现。","刷新页面或直接打开子路由时，选中态仍唯一且正确。","悬停态与选中态有明显区别，不会让用户误以为多个菜单已选中。"],"questions":["异常来自主应用侧边栏菜单组件，还是 Wujie 子应用内部菜单叠加？","父级菜单是否被设计为“展开即高亮”，还是样式选择器误命中了所有分组？","需要统一选中态、展开态、悬停态三套样式，还是只修选中态？","刷新页面、直接打开子路由、切回其它插件后，选中态是否保持一致？"],"comments":[],"href":"../l4d2-sidebar-selection/issues/01-sidebar-multiple-selected-styles.md","specHref":"","specPath":"","excerpt":"# 01: L4D2 侧边栏多个菜单同时呈现选中样式\n\nStatus: needs-triage\nType: bug\n来源: 用户反馈（2026-10-19）\n\n## 现象\n\n求生之路2 插件的侧边栏中，多个菜单项同时呈现类似选中/强调的整行样式。截图中「求生之路2」父级、多个分组标题和「服务器信息」叶子菜单都出现了边框或高亮，用户无法仅凭视觉判断当前真正选中的菜单。\n\n![侧边栏多个菜单同时高亮](../assets/sidebar-multiple-highlight.png)\n\n## 期望\n\n- 同一时刻只高亮当前选中的菜单。\n- 当前选中项只有一级叶子菜单；父级菜单和分组标题只表达展开/收起状态，不与选中态共用同一套整行高亮。\n- 未选中菜单保持普通状态，不出现看起来可点击选中、但实际不会导航的强调样式。\n- 键盘导航、深链接进入、刷新页面后，选中态仍只落在一个正确的叶子菜单上。\n\n## 复现步骤\n\n1. 打开 L4D2 插件管理或相关插件页面。\n2. 查看左侧「求生之路2」菜单树。\n3. 点击「配置管理」下的「服务器信息」。\n4. 观察「求生之路2」父级、「配置管理」分组及其它菜单项是否同时出现高亮/边框。\n\n## 待 triage 确认\n\n- 异常来自主应用侧边栏菜单组件，还是 Wujie 子应用内部菜单叠加？\n- 父级菜单是否被设计为“展开即高亮”，还是样式选择器误命中了所有分组？\n- 需要统一选中态、展开态、悬停态三套样式，还是只修选中态？\n- 刷新页面、直接打开子路由、切回其它插件后，选中态是否保持一致？\n\n## 验收\n\n- [ ] 任意时刻只一个叶子菜单处于选中高亮。\n- [ ] 父级菜单只显示展开/收起状态，不显示与选中项相同的整行高亮。\n- [ ] 点击不同叶子菜单后，旧选中态及时消失，新选中态正确出现。\n- [ ] 刷新页面或直接打开子路由时，选中态仍唯一且正确。\n- [ ] 悬停态与选中态有明显区别，不会让用户误以为多个菜单已选中。\n\n## 关联\n\n- 页面：求生之路2 插件侧边栏。\n- 规范：侧边栏菜单应复用主应用一致的选中/展开状态，不叠加第二套视觉语义。\n- 本 issue 仅记录问题，不包含实现。\n"},{"id":".scratch/l4d2-plugin-list-pagination/issues/01-plugin-list-pagination.md","title":"01: L4D2 插件管理各列表缺少分页","number":"01","feature":"l4d2-plugin-list-pagination","area":"L4D2 UI / plugins","status":"needs-triage","statusLabel":"待分诊","statusTone":"warning","statusSource":"registered","type":"enhancement","priority":"","source":"用户反馈（2026-10-19）","blockedBy":[],"closed":false,"summary":"L4D2 插件管理页下的各个插件列表菜单均未提供分页处理。数据量增加后，用户只能在一个持续增长的列表中查找和操作插件，缺少总数、页码、每页数量以及前后翻页能力。","acceptance":["插件管理页下所有适用的列表均具备一致的分页交互。","用户能明确看到总量、当前页和每页数量。","翻页、切换每页数量后列表内容正确更新。","搜索或筛选不会只作用于当前页而遗漏其他页的数据。","单页数据、零数据和加载失败状态有清晰展示。"],"acceptanceChecks":["插件管理页下所有适用的列表均具备一致的分页交互。","用户能明确看到总量、当前页和每页数量。","翻页、切换每页数量后列表内容正确更新。","搜索或筛选不会只作用于当前页而遗漏其他页的数据。","单页数据、零数据和加载失败状态有清晰展示。"],"questions":["“所有菜单”具体覆盖已启用插件、内置插件、远端仓库等哪些列表？","分页由前端对已加载数据切片，还是后端接口返回分页结果？","搜索、筛选、刷新和安装状态变化后，是否需要保留当前页或回到第一页？","各列表的默认每页数量是否统一？","是否存在必须一次展示全部数据才能完成的批量选择操作？"],"comments":[],"href":"../l4d2-plugin-list-pagination/issues/01-plugin-list-pagination.md","specHref":"","specPath":"","excerpt":"# 01: L4D2 插件管理各列表缺少分页\n\nStatus: needs-triage\nType: enhancement\n来源: 用户反馈（2026-10-19）\n\n## 现象\n\nL4D2 插件管理页下的各个插件列表菜单均未提供分页处理。数据量增加后，用户只能在一个持续增长的列表中查找和操作插件，缺少总数、页码、每页数量以及前后翻页能力。\n\n复现入口：\n\n- 打开 `http://localhost:3002/extensions/app/l4d2/plugins?instanceId=97`\n- 查看插件管理页下的各个列表菜单\n\n## 期望\n\n插件管理页下所有需要展示插件集合的菜单都能分页浏览：\n\n- 展示总条数、当前页和每页数量。\n- 支持上一页、下一页及直接切换页码。\n- 支持切换每页条数。\n- 在数据量不超过一页时仍保持布局稳定，不出现误导性的空分页区域。\n\n## 待 triage 确认\n\n- “所有菜单”具体覆盖已启用插件、内置插件、远端仓库等哪些列表？\n- 分页由前端对已加载数据切片，还是后端接口返回分页结果？\n- 搜索、筛选、刷新和安装状态变化后，是否需要保留当前页或回到第一页？\n- 各列表的默认每页数量是否统一？\n- 是否存在必须一次展示全部数据才能完成的批量选择操作？\n\n## 验收\n\n- [ ] 插件管理页下所有适用的列表均具备一致的分页交互。\n- [ ] 用户能明确看到总量、当前页和每页数量。\n- [ ] 翻页、切换每页数量后列表内容正确更新。\n- [ ] 搜索或筛选不会只作用于当前页而遗漏其他页的数据。\n- [ ] 单页数据、零数据和加载失败状态有清晰展示。\n\n## 关联\n\n- 页面入口：L4D2 插件管理页。\n- 术语遵循 `CONTEXT.md` 的插件市场与插件列表相关领域词汇。\n- 本 issue 仅记录问题，不包含实现。\n"},{"id":".scratch/l4d2-plugin-config-editor/issues/01-config-editor-description-and-multi-file.md","title":"01: L4D2 插件配置缺少含义说明与多文件展示","number":"01","feature":"l4d2-plugin-config-editor","area":"L4D2 UI / plugins","status":"needs-triage","statusLabel":"待分诊","statusTone":"warning","statusSource":"registered","type":"enhancement","priority":"","source":"用户反馈（2026-10-19）","blockedBy":[],"closed":false,"summary":"L4D2 插件管理的配置弹窗目前有两类可用性问题：","acceptance":["含说明的配置项在界面上能看到可读说明。","一个插件包含多个 cfg 文件时，全部文件可展开并分别查看配置。","每个配置项仍能读取当前值，并支持预期的保存/临时设置操作。","文件切换或折叠不会丢失未保存的输入状态。","无说明或无范围的配置项有清晰降级展示，不空白、不错位。"],"acceptanceChecks":["含说明的配置项在界面上能看到可读说明。","一个插件包含多个 cfg 文件时，全部文件可展开并分别查看配置。","每个配置项仍能读取当前值，并支持预期的保存/临时设置操作。","文件切换或折叠不会丢失未保存的输入状态。","无说明或无范围的配置项有清晰降级展示，不空白、不错位。"],"questions":["说明文字来源：配置文件注释、插件元数据、后端解析结果，还是内置词条？","多文件是“全部一个插件”展示，还是按插件安装目录聚合？","当前是后端没有返回说明，还是前端未渲染说明？","「保存」与「临时设置」在多个文件场景下各自的写入/RS 语义是否需要统一？","是否要支持同一配置项在多个文件中重复时的冲突提示？"],"comments":[],"href":"../l4d2-plugin-config-editor/issues/01-config-editor-description-and-multi-file.md","specHref":"","specPath":"","excerpt":"# 01: L4D2 插件配置缺少含义说明与多文件展示\n\nStatus: needs-triage\nType: enhancement\n来源: 用户反馈（2026-10-19）\n\n## 现象\n\nL4D2 插件管理的配置弹窗目前有两类可用性问题：\n\n1. **当前值缺少含义说明**：配置项只展示键名、默认值/范围与输入框，无法从界面理解这个配置代表什么、修改后会影响什么。\n2. **配置文件无法完整支持多文件编辑**：一个插件可能包含多个 cfg 文件，但界面不能可靠地展示并按文件组织全部配置修改。\n\n复现入口：\n\n- 打开 `http://localhost:3002/extensions/app/l4d2/plugins?instanceId=97`\n- 点击「1.11插件平台linux版」的配置\n- 点击「自选-多特感插件(v1.3.7)(Tordecybombo, breezy)」的配置\n\n## 期望\n\n参考 `assets/` 下两张截图：\n\n- 一个配置弹窗内按配置文件折叠/分组，例如 `sm_warmode_on.cfg`、`basevotes.cfg`、`funcommands.cfg`。\n- 每个配置项展示默认值、最小值/最大值（有则展示）、说明文字、当前值，以及「临时设置」「保存」等操作。\n- 多个 cfg 文件都能在同一弹窗中展开、查看和编辑，不因文件数量或文件切换而丢配置。\n\n![多配置文件参考](../assets/multi-file-config-reference.png)\n\n![配置项说明参考](../assets/specialspawner-config-reference.png)\n\n## 待 triage 确认\n\n- 说明文字来源：配置文件注释、插件元数据、后端解析结果，还是内置词条？\n- 多文件是“全部一个插件”展示，还是按插件安装目录聚合？\n- 当前是后端没有返回说明，还是前端未渲染说明？\n- 「保存」与「临时设置」在多个文件场景下各自的写入/RS 语义是否需要统一？\n- 是否要支持同一配置项在多个文件中重复时的冲突提示？\n\n## 验收\n\n- [ ] 含说明的配置项在界面上能看到可读说明。\n- [ ] 一个插件包含多个 cfg 文件时，全部文件可展开并分别查看配置。\n- [ ] 每个配置项仍能读取当前值，并支持预期的保存/临时设置操作。\n- [ ] 文件切换或折叠不会丢失未保存的输入状态。\n- [ ] 无说明或无范围的配置项有清晰降级展示，不空白、不错位。\n\n## 关联\n\n- 配置页入口：L4D2 插件管理页的配置弹窗。\n- 术语遵循 `CONTEXT.md` 的 L4D2 插件配置相关领域词汇。\n- 本 issue 仅记录问题，不包含实现。\n"},{"id":".scratch/l4d2-third-party-map-switch/issues/01-third-party-map-change-not-applied.md","title":"01: L4D2 切换第三方地图后未生效","number":"01","feature":"l4d2-third-party-map-switch","area":"L4D2 UI / plugins","status":"needs-triage","statusLabel":"待分诊","statusTone":"warning","statusSource":"registered","type":"bug","priority":"","source":"用户反馈（2026-10-19）","blockedBy":[],"closed":false,"summary":"在 L4D2 实例中请求切换第三方地图 c1918redsquarec1 后，/rcon/status 没有返回或保持为该目标地图，服务器仍停留在原地图。","acceptance":["在目标地图确实已安装的前提下，换图后 status.map 最终为 c1918redsquarec1。","无法换图时，接口返回可操作的错误信息，不再仅返回成功空结果。","重复切换或切换回官方地图不会留下错误选中/运行状态。","记录并覆盖一次 change-map → status 的自动化或手工验证。","地图不存在、实例离线、RCON 不可达三种失败路径都有明确反馈。"],"acceptanceChecks":["在目标地图确实已安装的前提下，换图后 status.map 最终为 c1918redsquarec1。","无法换图时，接口返回可操作的错误信息，不再仅返回成功空结果。","重复切换或切换回官方地图不会留下错误选中/运行状态。","记录并覆盖一次 change-map → status 的自动化或手工验证。","地图不存在、实例离线、RCON 不可达三种失败路径都有明确反馈。"],"questions":["目标地图是否已实际存在于服务器的 addons/maps 目录，且 maps 能看到该地图？","changelevel 的 RCON 回显是什么？服务器是否返回未知地图或错误？","该实例是 Docker 还是原生部署，地图文件路径是否与实际读取路径一致？","换图后等待多久再查 status？是否与地图加载耗时有关？","是否需要轮询到终态，而不是一次请求后立即判断？","用户提供的 token/cookie 只用于本次复现，不应写入仓库或继续复用。"],"comments":[],"href":"../l4d2-third-party-map-switch/issues/01-third-party-map-change-not-applied.md","specHref":"","specPath":"","excerpt":"# 01: L4D2 切换第三方地图后未生效\n\nStatus: needs-triage\nType: bug\n来源: 用户反馈（2026-10-19）\n\n## 现象\n\n在 L4D2 实例中请求切换第三方地图 `c1918_red_square_c1` 后，`/rcon/status` 没有返回或保持为该目标地图，服务器仍停留在原地图。\n\n用户提供的顺序：\n\n1. 调用 `POST /api/plugin/l4d2/rcon/change-map`，请求体包含 `{\"instanceId\":97,\"mapName\":\"c1918_red_square_c1\"}`。\n2. 随后调用 `POST /api/plugin/l4d2/rcon/status`，请求体包含 `{\"instanceId\":97}`。\n3. `status` 返回的地图不是替换后的三方地图 `c1918_red_square_c1`。\n\n复现入口：\n\n- L4D2 地图管理页切换第三方地图。\n- 或直接调用上述两个接口，以状态接口返回的 `map` 为最终判定。\n\n## 期望\n\n- 对已安装且服务器可识别的第三方地图，`change-map` 成功后，`status` 在合理等待时间内返回 `c1918_red_square_c1`。\n- 若服务器拒绝或无法加载该地图，接口不能只返回成功；需要给出可定位的失败结果或明确状态。\n- 原有地图管理能力（列表展示、选择地图、触发切换）继续可用。\n\n## 已核对的现状\n\n- 前端 `changeMap` 调用 `/rcon/change-map`。\n- 后端接口目前只执行 `changelevel \u003cmapName\u003e`，未把 RCON 输出或换图结果作为响应返回。\n- 仓库已有相关但不完全相同的问题：Docker addons 地图列表不可见（已记录、状态为 done）以及换图终态未被 E2E 强断言。本 issue 聚焦“接口返回/状态显示未切到指定三方地图”。\n\n## 脱敏复现请求\n\n请求头中的认证信息已移除，字段结构保持不变：\n\n```http\nPOST /api/plugin/l4d2/rcon/change-map\nAccept: */*\nContent-Type: application/json\nAuthorization: Bearer \u003cREDACTED\u003e\nCookie: \u003cREDACTED\u003e\n\n{\"instanceId\":97,\"mapName\":\"c1918_red_square_c1\"}\n```\n\n```http\nPOST /api/plugin/l4d2/rcon/status\nAccept: */*\nContent-Type: application/json\nAuthorization: Bearer \u003cREDACTED"},{"id":".scratch/l4d2-cloud-map-install/issues/01-patch-install-headers.md","title":"01: 主应用 PatchInstall 支持 headers（主机直连下载）","number":"01","feature":"l4d2-cloud-map-install","area":"L4D2 cloud maps","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["（无）"],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../l4d2-cloud-map-install/issues/01-patch-install-headers.md","specHref":"../l4d2-cloud-map-install/spec.md","specPath":".scratch/l4d2-cloud-map-install/spec.md","excerpt":"# 01: 主应用 PatchInstall 支持 headers（主机直连下载）\n\nStatus: ready-for-human\n\n## 任务\n\n- `PatchInstallRequest` 增加 `Map\u003cString,String\u003e headers` 字段（可空；非空时仅远程下载路径生效）。\n- `PatchInstallExecutor.remoteDownload`：\n  - 物理机路径：headers 非空时先 SFTP 写临时文件（如 `/tmp/.gp-hdr-{taskId}`，权限 0600），curl 用 `--header @file`（wget 不支持等价物时仅走 curl；无 curl 有 wget 时视为不支持 headers → 任务失败并带明确原因，由插件转中转）；下载完成 finally 删除临时文件。\n  - Docker 工具镜像路径：同样 `--header @file`（文件先落到主机再挂载进容器，或 `docker run -v` 挂载临时文件）。\n  - 远程 curl 版本探测（`curl --version` ≥7.55）不支持 @file → 失败原因带 `UNSUPPORTED_HEADER_FILE`。\n- sha256 校验、决策树、解压逻辑不动。\n- 单测：headers 拼装、临时文件清理、不支持的 curl 版本报错。\n\nBlocked by: （无）\n"},{"id":".scratch/l4d2-cloud-map-install/issues/02-sdk-transfer-passcode.md","title":"02: CloudDriveService.transfer 加 passcode 参数","number":"02","feature":"l4d2-cloud-map-install","area":"L4D2 cloud maps","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["（无）"],"closed":false,"summary":"","acceptance":["编译通过；executor 单测补 passcode 透传断言。","Blocked by: （无）"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../l4d2-cloud-map-install/issues/02-sdk-transfer-passcode.md","specHref":"../l4d2-cloud-map-install/spec.md","specPath":".scratch/l4d2-cloud-map-install/spec.md","excerpt":"# 02: CloudDriveService.transfer 加 passcode 参数\n\nStatus: ready-for-human\n\n## 任务\n\n- plugin SDK `CloudDriveService.transfer` 签名改为 `(accountName, shareUrl, passcode, targetPath, timeout)`（passcode null=无提取码）。\n- core `CloudDriveExecutor`/`CloudDriveServiceFactory` 同步：`TransferRequest.of(shareUrl,target)` 改为带 passcode 的构造（查 SDK：`new TransferRequest(shareUrl, passcode, targetMountPath, rule)`）。\n- 既有测试/调用方同步（当前无插件调用方，破坏面为零）。\n\n## 验收\n\n- 编译通过；executor 单测补 passcode 透传断言。\n\nBlocked by: （无）\n"},{"id":".scratch/l4d2-cloud-map-install/issues/03-cloud-install-task.md","title":"03: 插件 cloud-install 任务链路（转存→筛选→直连/中转→安装）","number":"03","feature":"l4d2-cloud-map-install","area":"L4D2 cloud maps","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["01","02"],"closed":false,"summary":"","acceptance":["真实夸克/天翼分享链接走通 DIRECT 与 RELAY 两通道；直链过期场景自动重试转中转；取消任务可中断。","Blocked by: 01, 02"],"acceptanceChecks":[],"questions":[],"comments":["2026-09-15 实现完成并热部署冒烟：handler 注册（cloud-install）、REST /download/cloud 校验、假链接端到端（任务中心执行→transfer 拒绝非 189 链接→记录 FAILED+errorMessage 落库）、详情/列表/删除均验证。附带修复 DownloadService getTask/cancel/delete 只按内部 id 查记录的存量问题（CLOUD 与重启后的 URL/WORKSHOP 记录均受益，改为 id/name 双查）。真实网盘分享链接的 DIRECT/RELAY 两通道待有真实链接时联调。"],"href":"../l4d2-cloud-map-install/issues/03-cloud-install-task.md","specHref":"../l4d2-cloud-map-install/spec.md","specPath":".scratch/l4d2-cloud-map-install/spec.md","excerpt":"# 03: 插件 cloud-install 任务链路（转存→筛选→直连/中转→安装）\n\nStatus: ready-for-human\n\n## 任务\n\n- `CloudInstallTaskHandler`（taskType=`cloud-install`，注册进 L4D2TaskHandlerExtension）：\n  - payload：`{instanceId, accountName, shareUrl, passcode?, source?, sourceId?, title?}`。\n  - 阶段①（0-40%）：`cloudDriveService.list(account, /maps/{source}-{sourceId})` 探测已转存（有 .vpk/.zip 即跳过转存）；否则 `transfer(...passcode...)`。\n  - 阶段②（40-80%）：list 产物筛选 .vpk/.zip；`probeHost` 判定：可自治 → DIRECT（`link()` 拿直链+headers → `patchInstallService.install(PatchInstallRequest{instanceId,url,targetPath=left4dead2/addons/,headers})`，轮询任务；失败原因含 UNSUPPORTED_HEADER_FILE 或下载失败 → 重取直链重试一次 → 仍失败 RELAY）；否则 RELAY（`cloudDriveService.download` 到 tmp → VPK magic 校验 → zip 走 `ArchiveExtractUtil.extractVpks` → `uploadLocalFile`）。\n  - 阶段③（80-100%）：上传/安装，覆盖语义，`context.log` 注明；结果 summary 列出实际安装文件与 transferMode。\n  - 与 URL/Workshop 共用 DownloadService 3 并发 Semaphore。\n- `DownloadTaskSpec` 加 `accountName`/`cloudPath`/`transferMode` 字段，taskType 加 `CLOUD`；下载页列表可见。\n- REST：`POST /api/plugin/l4d2/download/cloud`（入参同 payload），挂 DownloadController。\n\n## 验收\n\n- 真实夸克/天翼分享链接走通 DIRECT 与 RELAY 两通道；直链过期场景自动重试转中转；取消任务可中断。\n\nBlocked by: 01, 02\n\n## Comments\n\n2026-09-15 实现完成并热部署冒烟：handle"},{"id":".scratch/l4d2-cloud-map-install/issues/04-frontend-entries.md","title":"04: 前端入口（MapCenter 转存并安装 + Download 云盘链接页）","number":"04","feature":"l4d2-cloud-map-install","area":"L4D2 cloud maps","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["03"],"closed":false,"summary":"","acceptance":["两入口均可提交并在下载页看到任务进度与结果。","Blocked by: 03"],"acceptanceChecks":[],"questions":[],"comments":["2026-09-15 网页真实测试（IAB + 全栈 8080/3000）：","Download「云盘分享」tab：账号下拉跨应用拉到主应用 /cloud/accounts（天翼直播盘），提交后任务列表出现\"云盘\"类型行，失败原因透传展示 ✅","MapCenter 行展开：三条链接各带「转存并安装」；弹窗自动带地图名/分享链接/转存目录 /maps/orange-810/自带提取码 ✅","真实提交走通到天翼转存引擎；爬虫库全部分享链接已过期（天翼个人分享 30 天），clp-web 对照同一链接同样 resource-gone，非集成问题。有效分享的成功路径待真实链接联调。","修复部署问题：plugins/ 目录同时存在旧 SNAPSHOT 与新 1.0.0 jar，PF4J 加载旧的同 id jar 导致 UI 未更新（已删除旧 jar）。"],"href":"../l4d2-cloud-map-install/issues/04-frontend-entries.md","specHref":"../l4d2-cloud-map-install/spec.md","specPath":".scratch/l4d2-cloud-map-install/spec.md","excerpt":"# 04: 前端入口（MapCenter 转存并安装 + Download 云盘链接页）\n\nStatus: ready-for-human\n\n## 任务\n\n- MapCenter.vue 详情展开区 downloadLinks 旁加「转存并安装」按钮 → Dialog：云盘账号下拉（直调主应用 `GET /api/cloud/accounts`，只列 HEALTHY）、目标实例下拉（复用现有实例选择）、可选提取码；提交 `POST /api/plugin/l4d2/download/cloud`（自动带 source/sourceId/title）。\n- Download.vue 加「云盘分享链接」表单：账号 + 分享链接 + 提取码 + 实例 + 可选 targetPath；裸链接无 sourceId 时后端用 `share-{hash8}`。\n- 任务列表展示 taskType=CLOUD（tag 云盘），详情含 transferMode/accountName/cloudPath。\n\n## 验收\n\n- 两入口均可提交并在下载页看到任务进度与结果。\n\nBlocked by: 03\n\n## Comments\n\n2026-09-15 网页真实测试（IAB + 全栈 8080/3000）：\n- Download「云盘分享」tab：账号下拉跨应用拉到主应用 /cloud/accounts（天翼直播盘），提交后任务列表出现\"云盘\"类型行，失败原因透传展示 ✅\n- MapCenter 行展开：三条链接各带「转存并安装」；弹窗自动带地图名/分享链接/转存目录 /maps/orange-810/自带提取码 ✅\n- 真实提交走通到天翼转存引擎；爬虫库全部分享链接已过期（天翼个人分享 30 天），clp-web 对照同一链接同样 resource-gone，非集成问题。有效分享的成功路径待真实链接联调。\n- 修复部署问题：plugins/ 目录同时存在旧 SNAPSHOT 与新 1.0.0 jar，PF4J 加载旧的同 id jar 导致 UI 未更新（已删除旧 jar）。\n"},{"id":".scratch/backlog/issues/01-backup-async-executor-stuck.md","title":"01 — 备份异步执行器不推进，备份功能不可用","number":"01","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"创建备份接口成功（记录落库、前端提示\"备份任务已创建\"），但备份记录状态永远停在 0（备份中），10 分钟无进展、无终态、无 errormessage。备份/还原功能实质不可用。","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../backlog/issues/01-backup-async-executor-stuck.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 01 — 备份异步执行器不推进，备份功能不可用\n\n**Status:** wontfix（裁决：备份功能临时下线，不修复——2026-09-10）\n\n\u003e **处置记录**：备份还原 tab 已从实例详情页摘除（`detail.vue` tabs 数组与 el-tab-pane 块），\n\u003e 对应 E2E 用例随之移除；脚本/后端代码保持 dormant，恢复功能时还原 tab 块并按下方根因修复。\n\n## 现象\n\n创建备份接口成功（记录落库、前端提示\"备份任务已创建\"），但备份记录状态**永远停在 0（备份中）**，10 分钟无进展、无终态、无 error_message。备份/还原功能实质不可用。\n\n## 根因（两层叠加）\n\n1. **`@Async` 不生效**：`BackupServiceImpl.performFileBackupAsync` 为 `@Async protected` 且由同类 `createFileBackup` 直接调用——Spring AOP 代理不拦截 protected 方法，且自调用完全绕过代理，异步执行路径从未启动。\n2. **Docker 实例源路径不存在**：`createFileBackup` 兜底使用元数据 `installPath`，而 Docker 部署的服务端文件在容器/卷内，宿主机路径 `~/games/...` 为空目录——即使执行也会失败。\n\n## 复现证据\n\n- E2E：`frontend/e2e/main-app/instance/lifecycle.spec.js` 备份用例，创建成功后状态轮询 10 分钟卡 0（票 06 / 票 09 整轮）。\n- 代码：`backend/core/src/main/java/com/gameplatform/service/impl/BackupServiceImpl.java`。\n\n## 修复建议\n\n1. 异步执行拆到独立 Bean（`BackupExecutor`），方法 public + `@Async`，经代理调用；或改用任务中心队列（TaskHandler 模式，与 map-upload 一致）。\n2. 执行路径按部署类型解析：Docker 实例经 `docker exec` 或容器卷路径取文件；失败时 `handleBackupFailure` 落终态（status=2 + error_message），**任何路径不得无终态**。\n\n## E2E 断言转正\n\n`lifecycle.spec.js`：备份用例的\"状态卡 0 → SKIP\"块改回轮询 `status===1`（成功）；\n\"还原备份任务启动\"用例解除 `record.status !== 1` 前置。跑 `npm run e2e:round` 验证。\n"},{"id":".scratch/backlog/issues/02-docker-addons-invisible-to-map-list.md","title":"02 — Docker 实例 addons 对宿主机地图列表不可见，地图管理半失效","number":"02","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"Docker 部署的 l4d2 实例：地图上传成功（map-upload 任务 COMPLETED，VPK 经 VpkParser 真实解析+裁剪），但地图列表为空（\"暂无数据\"），换图选择器的三方地图也为空——上传的地图\"消失\"。","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../backlog/issues/02-docker-addons-invisible-to-map-list.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 02 — Docker 实例 addons 对宿主机地图列表不可见，地图管理半失效\n\n**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）\n\n## 现象\n\nDocker 部署的 l4d2 实例：地图**上传成功**（map-upload 任务 COMPLETED，VPK 经 VpkParser 真实解析+裁剪），但**地图列表为空**（\"暂无数据\"），换图选择器的三方地图也为空——上传的地图\"消失\"。\n\n## 根因\n\n`VpkParserService`/地图列表经 SSH 读取宿主机 `installPath/left4dead2/addons`；Docker 部署的 addons 在**容器/卷内**（cm2network 镜像无宿主机映射），宿主机路径不存在：日志 WARN \"addons 目录不存在或不是目录: left4dead2/addons\"。\n\n## 复现证据\n\n- E2E：`frontend/e2e/plugins/l4d2/plugin-subapp.spec.js` 地图用例（上传 COMPLETED 后列表断言条件跳过）。\n- 后端日志：`MapService - 获取地图列表` + `VpkParserService - addons 目录不存在`（票 07 整轮）。\n\n## 修复建议\n\n1. Docker 实例的 addons 读写统一走容器内路径解析：写入 `configInfo.containerWorkDir=/app` 的先例已在（LinuxGsmDockerAdapter），l4d2 Docker 适配器同样记录容器名/容器内 addons 路径到 runtimeMetadata，文件服务按容器路径走 `docker exec` 读写；或\n2. 元数据 `docker.volumes` 声明把 addons 映射到宿主机 installPath（需要迁移存量容器数据，动用户现有实例，成本高）。\n\n## E2E 断言转正\n\n`plugin-subapp.spec.js` 地图用例：删除\"列表可见性 SKIP\"块，恢复列表包含 `e2e-test-map.vpk` 断言 + 换图到上传地图的真实验证（RCON 密码问题见票 06 备注）。\n"},{"id":".scratch/backlog/issues/03-system-settings-not-persisted.md","title":"03 — 系统设置假回环：GET 硬编码 / PUT 空壳，保存永不生效","number":"03","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"系统设置页（/system/configuration）修改平台名称等配置，点\"保存配置\"提示\"保存成功\"，重新进入页面值回退为默认——设置从未被保存过。","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../backlog/issues/03-system-settings-not-persisted.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 03 — 系统设置假回环：GET 硬编码 / PUT 空壳，保存永不生效\n\n**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）\n\n## 现象\n\n系统设置页（/system/configuration）修改平台名称等配置，点\"保存配置\"提示\"保存成功\"，重新进入页面值回退为默认——**设置从未被保存过**。\n\n## 根因\n\n`SystemController`（backend/core/.../controller/SystemController.java）：\n\n- `GET /api/system/settings`：直接 new 一个 `SystemSettingsVO` 返回**硬编码默认值**，不读任何存储；\n- `PUT /api/system/settings`：方法体只有一行 TODO 注释 `// 实际应保存到配置文件或数据库`，直接 `Result.success()`。\n\n前端（settings.vue）按真实接口对接，整条链路是\"保存成功\"的假回环。E2E 首轮发现。\n\n## 修复建议\n\n配置落库：新表 `sys_setting`（key-value 或单行 JSON，多方言注意 ADR-0015 建表脚本拆分），GET 启动时读库（库空回退默认值），PUT 写库。三个 tab（platform/ssh/docker）同一张表按 type 分组。\n\n## E2E 断言转正\n\n`frontend/e2e/main-app/system/settings.spec.js`：当前用例只断言\"保存往返不报错\"（文件头记录了本缺陷）；修复后补\"重进页面值保持\"持久化断言（用例注释里已写明）。\n"},{"id":".scratch/backlog/issues/03-vpk-deep-parse-tool-container.md","title":"03: VPK 深度解析移植到工具容器（mission/chapters 提取）","number":"03","feature":"backlog","area":"Backlog","status":"resolved","statusLabel":"已解决","statusTone":"success","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":true,"summary":"","acceptance":["地图「详情」不再触发全量下载；大 vpk 详情秒级返回。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../backlog/issues/03-vpk-deep-parse-tool-container.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 03: VPK 深度解析移植到工具容器（mission/chapters 提取）\n\nStatus: resolved\n\n## 背景\n\n`/maps/list` 已改为纯目录列举（0.18s，此前每个 vpk 全量 SFTP 下载解析 20s 级）。\n地图列表不再需要 vpk 深度信息；但「详情」（missionInfo：标题/章节）与裁剪预检仍依赖\nVpkParser 的深度解析，当前走\"全量下载到平台→Java 解析\"老路径。\n\n## 方向（ADR-0026 延伸）\n\n- 主应用 `HostToolingService` 增加语义方法（如 `inspectVpk(hostId, remoteVpkPath)`）：\n  借 platform-tools 容器在主机侧提取 missions/章节信息（容器内 python/脚本报 JSON），\n  文件不过平台。\n- 插件「详情/裁剪」切换到该能力；`VpkParserService` 缓存保留或退役视届时实现定。\n- 需要镜像内置 vpk 解析手段（7z 可解 vpk？或镜像加 python+vpy 模块），先验证可行性再动。\n\n## 验收\n\n- 地图「详情」不再触发全量下载；大 vpk 详情秒级返回。\n\n## Answer\n\n- 实现与集成提交 `5887ba39`：`HostToolingService` 新增 `inspectVpk(instanceId, relativeVpkPath)`，通过 `platform-tools` 在主机侧只读 VPK 头部，返回战役与章节，不下载完整 VPK，也不计算整文件摘要。\n- L4D2 地图详情改走 `inspectVpk`；`analyzeVpk` 保留摘要与元数据语义，供需要内容指纹的调用方使用。\n- 回归测试通过：`VpkToolingAnalyzerTest` 6 项、`MapServiceTest` 16 项、VPK Python 脚本 3 项。\n- 本机没有 Docker/Podman/nerdctl，未在真实容器、SSH 主机和大型 VPK 上执行端到端验证。\n"},{"id":".scratch/backlog/issues/04-db-init-race-after-tomcat-up.md","title":"04 — 数据库初始化竞态：Tomcat 可服务后 ~15s 内所有请求 500","number":"04","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"全新 SQLite 库启动时：Tomcat 先就绪（Started 日志），DatabaseInitializer（CommandLineRunner）在 10~18 秒后才执行核心建表（sysuser 等）。窗口期内任何 /api 请求 500（\"no such table: sysuser\"）——全新部署后立刻登录必踩。","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../backlog/issues/04-db-init-race-after-tomcat-up.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 04 — 数据库初始化竞态：Tomcat 可服务后 ~15s 内所有请求 500\n\n**Status:** done（2026-09-10 修复，E2E 断言已转正/验证）\n\n## 现象\n\n全新 SQLite 库启动时：Tomcat 先就绪（Started 日志），`DatabaseInitializer`（CommandLineRunner）在 **10~18 秒后**才执行核心建表（sys_user 等）。窗口期内任何 `/api` 请求 500（\"no such table: sys_user\"）——**全新部署后立刻登录必踩**。\n\n## 根因\n\nCommandLineRunner 在应用 Started 之后才运行，且被插件加载（PluginAutoLoader 逐插件初始化）拖延；期间 Web 层已可服务。\n\n## 复现证据\n\n- E2E 票 01：runner 就绪探测曾用\"端口可通\"判就绪 → 用例在窗口期登录 500。\n- 日志：`Started GamePlatformApplication`（01:14:13）→ `no such table: sys_user`（01:14:21）→ `DatabaseInitializer 建表完成`（01:14:24）。\n\n## 修复建议\n\n把建表/种子/迁移提前到 **Web 服务端口绑定之前**：如 `DataSource` 就绪后立即执行（`BeanFactoryPostProcessor`/`DataSourceInitializer` 或 `ApplicationRunner` 前置到 listen 之前），或至少让 `/actuator/health` readiness 在初始化完成前返回 503。\n\n## E2E 现状\n\nrunner 已改用\"种子管理员真实登录成功\"作为就绪标准绕过（`e2e/runner.mjs` waitForBackendLogin），产品修复后此绕过仍兼容、无需回改。\n"},{"id":".scratch/backlog/issues/05-l4d2-subapp-secondary-pages-cases.md","title":"05 — l4d2 子应用次要页面渲染用例补齐（约 8 条）","number":"05","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":["上述 8 条用例绿（挂到 npm run e2e:round 插件分组）","整轮仍 PASS"],"acceptanceChecks":["上述 8 条用例绿（挂到 npm run e2e:round 插件分组）","整轮仍 PASS"],"questions":[],"comments":[],"href":"../backlog/issues/05-l4d2-subapp-secondary-pages-cases.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 05 — l4d2 子应用次要页面渲染用例补齐（约 8 条）\n\n**Status:** needs-triage\n\n## 背景\n\n票 07 已覆盖 l4d2 子应用 6 个主路径页（仪表盘/RCON/地图管理/SourceMod 插件/服务器配置/重启管理）。子应用共 **17 个路由**（backend/plugin-l4d2/frontend/src/router/index.ts），以下页面尚无用例。\n\n## 要补的用例（每页一条\"可达渲染 + 关键交互冒烟\"）\n\n| 路由 | 页面 | 冒烟断言建议 |\n|------|------|--------------|\n| /monitor | 系统监控 | 页面标题/指标区块渲染 |\n| /logs | 日志 | 日志区渲染、刷新可点 |\n| /player-stats | 玩家统计 | 面板渲染（空数据态） |\n| /admins | 管理员 | 列表/空态渲染 |\n| /server-info | 服务器信息 | 信息字段渲染 |\n| /preset | 预设场景 | 预设卡片/列表渲染 |\n| /download | 下载管理 | 列表/空态渲染 |\n| /map-center | 地图中心 | 页面可达、区块渲染（数据依赖三方源，容忍加载失败提示） |\n\n## 实施要点\n\n- 复用 `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js` 的共享 fixture 模式（beforeAll API 部署 l4d2 运行实例 + afterAll 清理）；若票 02（addons 可见性）已修，可直接扩展现有文件。\n- 选择器事实已探明：`backend/plugin-l4d2/frontend/src/pages/*` 各页根元素类名（`.dashboard-page` 风格）。\n- 每条用例头按既有格式声明\"页面/用例/前置/步骤/通过标准\"。\n\n## 验收\n\n- [ ] 上述 8 条用例绿（挂到 `npm run e2e:round` 插件分组）\n- [ ] 整轮仍 PASS\n"},{"id":".scratch/backlog/issues/06-rcon-deep-ops-with-live-players.md","title":"06 — RCON 深度操作用例（踢人/封禁/难度/换图验证，需真实玩家在线）","number":"06","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":["环境可行性结论（真实玩家源方案）","用例实现并挂到整轮插件分组（标记为环境依赖组）"],"acceptanceChecks":["环境可行性结论（真实玩家源方案）","用例实现并挂到整轮插件分组（标记为环境依赖组）"],"questions":[],"comments":[],"href":"../backlog/issues/06-rcon-deep-ops-with-live-players.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 06 — RCON 深度操作用例（踢人/封禁/难度/换图验证，需真实玩家在线）\n\n**Status:** needs-triage\n\n## 背景\n\n清单 E2E-061~065 的 RCON 深度操作在本轮只覆盖了 `status` 执行与特殊字符命令（票 07）。踢人/封禁/难度切换的**效果断言**需要服务器上有真实玩家（或 bot）在线。\n\n## 要补的用例\n\n| ID | 操作 | 效果断言 |\n|----|------|----------|\n| E2E-062 | 踢人 | 玩家列表中出现目标 → 踢出 → 玩家消失（经 A2S/status 双确认） |\n| E2E-063 | 封禁 | 封禁对话框 → addban 生效（ban 列表/日志可见） |\n| E2E-064 | 切换难度 | mp_coop Mission 难度 CVAR 变更（经 status/cvar 查询确认） |\n| E2E-092 | 防注入拦截 | **注意：当前 RCON 控制台无前端/后端拦截实现**（平台仅有 SourceMod CVAR 黑名单）——先做产品决策：是否要在 RCON 命令链路加拦截，再定用例 |\n\n## 前置条件（环境）\n\n- 一个能进真实玩家（或 SourceBot/模拟连接脚本）的 l4d2 服务器；\n- RCON 密码可达：retag 镜像无法注入 SRCDS_RCONPW（laoyutang 镜像用 L4D2_* 约定），需用官方 cm2network 镜像（网络可达后）或给该镜像适配 env。\n\n## 实施要点\n\n- 放在 `frontend/e2e/plugins/l4d2/` 用例包内，与票 07 共享 fixture；\n- 玩家模拟：srcds 支持 bot（`tf_bot` 类比 l4d2 无 bot 指令，需真实客户端或 SteamCMD 模拟工具）——先做环境可行性验证再写用例。\n\n## 验收\n\n- [ ] 环境可行性结论（真实玩家源方案）\n- [ ] 用例实现并挂到整轮插件分组（标记为环境依赖组）\n"},{"id":".scratch/backlog/issues/07-linuxgsm-github-blocked-environment.md","title":"07 — 环境阻塞：容器内 GitHub 不可达，dst/sdtd 启停断言待转正","number":"07","feature":"backlog","area":"Backlog","status":"open (directory)","statusLabel":"目录内待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":["阻塞解除（容器内 curl -m 8 -sI https://raw.githubusercontent.com 返回 2xx/3xx）","sdtd 腿完整启停绿","整轮 PASS"],"acceptanceChecks":["阻塞解除（容器内 curl -m 8 -sI https://raw.githubusercontent.com 返回 2xx/3xx）","sdtd 腿完整启停绿","整轮 PASS"],"questions":[],"comments":[],"href":"../backlog/issues/07-linuxgsm-github-blocked-environment.md","specHref":"../backlog/README.md","specPath":".scratch/backlog/README.md","excerpt":"# 07 — 环境阻塞：容器内 GitHub 不可达，dst/sdtd 启停断言待转正\n\n**Status:** needs-triage\n\n## 背景\n\nLinuxGSM 容器首启需访问 GitHub 下载 serverlist.csv，本机 WSL 容器内访问 GitHub 不通 → `/app/\u003cshortname\u003e` 脚本永不生成 → dst/sdtd 服务器无法进入运行中。这是**环境问题**（LinuxGsmDockerAdapter 源码注释有预言），非产品缺陷。票 08 已实现连通性预检秒级跳过。\n\n## 解除条件（三选一）\n\n1. 给 Docker 容器配置 HTTP 代理（daemon/容器级 `HTTP_PROXY`）；\n2. 在可直连 GitHub 的环境跑 E2E（远程牺牲主机，凭据走 `E2E_TEST_HOST_*`）；\n3. 为 LinuxGSM 提供离线 serverlist（镜像侧改造，成本最高）。\n\n## 转正步骤\n\n解除阻塞后，`frontend/e2e/main-app/instance/drill-legs.spec.js`：\n- dst 腿：`needsToken: true` 保持（另需 DST cluster token，Steam 账号生成——见票内备注）；启停断言中\"无 token 启动即退\"逻辑确认是否仍适用；\n- sdtd 腿：删除\"轮询重试启动\"用例中 `waitForLinuxGsmReady` 返回 false 的 SKIP 分支，恢复完整 `运行中` 断言；\n- 跑 `npm run e2e:round` 验证整轮 PASS。\n\n## 验收\n\n- [ ] 阻塞解除（容器内 `curl -m 8 -sI https://raw.githubusercontent.com` 返回 2xx/3xx）\n- [ ] sdtd 腿完整启停绿\n- [ ] 整轮 PASS\n"},{"id":".scratch/ui-e2e-automation/issues/01-e2e-infra-bootstrap.md","title":"01 — E2E 工程基建与最小打通","number":"01","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/01-e2e-infra-bootstrap.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 01 — E2E 工程基建与最小打通\n\n**What to build:** E2E 用例集的地基与第一条 tracer bullet：Playwright + Chromium 工程就位（放主前端项目之下），\"受管模式\" runner 一条命令完成——临时 SQLite 起后端 → 起前端 → 执行用例 → HTML 报告 → 清理（停进程、删临时库）。另支持\"附着模式\"（经 `E2E_BASE_URL` 指向已运行环境）。目录约定按**应用域 → 页面 → 功能**两级组织，预留**主应用**与**插件用例包**两个一级命名空间（为后续其他插件的用例接入立好位置），并建立公共 helper 层：登录态复用、平台 API 断言客户端（带 JWT）、SKIP 机制挂点。\n\n**Blocked by:** None — can start immediately\n\n**Status:** done\n\n- [x] 一条命令完成\"起栈 → 跑用例 → 报告 → 清理\"，重复执行不留残留进程/临时库\n- [x] 最小用例（打开登录页 → admin 登录成功 → 进入工作台）通过\n- [x] 附着模式可用：同一最小用例指向已运行环境跑通\n- [x] 目录约定含主应用与插件用例包两个命名空间，新增一条用例不需要改框架代码\n- [x] 失败用例自动留存截图与 trace\n- [x] 用例头注释声明前置条件、步骤、通过标准（本票以最小用例示范该格式）\n\n\u003e 实施备注：后端就绪标准 = 种子管理员真实登录成功（`DatabaseInitializer` 在 Tomcat 可服务后约 10-18s 才建核心表，端口通≠可开测）。发现的存量问题：`package-lock.json` 有 15 处下载地址指向不可达的内网 Nexus，已替换为等价的 npmmirror 地址（content-addressed，integrity 不变）。\n"},{"id":".scratch/ui-e2e-automation/issues/02-fixtures-and-host-contract.md","title":"02 — 测试数据仓库 + 主机凭据契约与 SKIP 机制","number":"02","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/02-fixtures-and-host-contract.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 02 — 测试数据仓库 + 主机凭据契约与 SKIP 机制\n\n**What to build:** 测试数据仓库与\"有没有真实主机\"的统一处理。集中资产目录收纳用例所需数据：YAML 导入用游戏元数据文件、SourceMod 插件样例文件、按 VPK 格式合成的最小地图包（自检格式合法；真机可用性在地图上传票验证），用例只从仓库取数、运行时禁止临时外网下载。定义主机凭据环境契约（`E2E_TEST_HOST_ADDRESS` / `E2E_TEST_HOST_PORT` / `E2E_TEST_HOST_USERNAME` / `E2E_TEST_HOST_AUTH`），实现全局 SKIP 帮助器：凭据缺失时主机类用例统一跳过并在报告注明 `SKIP (no test host)`。用一条依赖主机的哑用例验证两态行为。\n\n**Blocked by:** 01\n\n**Status:** done\n\n- [x] 资产入库且可被用例引用，含合成 VPK、SourceMod 插件样例、YAML 元数据\n- [x] 无主机凭据 → 主机类用例 SKIP 且报告注明原因\n- [x] 有主机凭据 → 同一批用例正常执行\n- [x] 环境契约与配置样例写入工程 README（含\"凭据不入库\"红线）\n\n\u003e 实施备注：资产格式按后端真实解析逻辑合成——VPK 对齐 `VpkParser`（magic 0x55AA1234 v1 + 目录树 missions/*.txt 条目，preload=0 时与标准 VPK v1 布局逐字节一致）；smx 平台侧只做扩展名/名称处理，样例为占位二进制；YAML 满足 `GameYamlConfig.isValid`（gameCode 固定 e2edrill）。SKIP 帮助器为 `skipWithoutTestHost()`（声明级 `test.skip(condition, description)`，注解进报告），哑用例在 `e2e/infra/host-contract.spec.js`。两态实测：无凭据 1 skipped（注解带原因）+2 passed；哑凭据 3 passed。\n"},{"id":".scratch/ui-e2e-automation/issues/03-auth-and-navigation-cases.md","title":"03 — 认证与导航用例","number":"03","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/03-auth-and-navigation-cases.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 03 — 认证与导航用例\n\n**What to build:** 主应用认证与路由链路的自动化用例：登录成功进工作台、错误密码提示、退出登录回登录页、token 失效后操作自动跳登录、未登录访问受保护路由跳登录（带 redirect）、已登录访问登录页跳首页、访问不存在路由显示 404、工作台仪表盘加载与统计卡渲染。\n\n**Blocked by:** 01\n\n**Status:** done\n\n- [x] 上述每个场景各有一条用例且全绿\n- [x] 每条用例头声明前置条件、步骤、通过标准\n- [x] 无主机依赖，附着/受管两种模式均可跑\n\n\u003e 实施备注：8 条用例分布于 auth/login.spec.js（未登录重定向、登录成功、错误密码提示、退出登录确认+token 清除）、auth/navigation.spec.js（受保护路由 redirect 参数、已登录访问 /login 回工作台、伪造 token 会话过期自动登出、404 页）、workspace/overview.spec.js（仪表盘标题/态势条/核心指标/快捷入口）。新增 support/session.js（API 换真实 JWT 注入 localStorage，键名对齐 stores/user.js）。实施中修正的选择器事实：用户下拉菜单为 trigger=click（非 hover）；vue-router 的 query 值不做百分号编码；仪表盘并发 401 会叠多条警告 toast，断言取 first()。\n"},{"id":".scratch/ui-e2e-automation/issues/04-host-management-cases.md","title":"04 — 主机纳管用例","number":"04","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/04-host-management-cases.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 04 — 主机纳管用例\n\n**What to build:** 主机模块全功能用例，打真实牺牲主机：新增主机走**连接测试门禁**（先测试连接成功才允许保存，填入环境契约里的主机信息）、主机列表渲染与操作、主机详情与资源监控数据渲染、Web 终端（连接成功 + 命令可输入；不对 xterm canvas 做输出文本断言）、编辑主机、删除主机、连接失败错误态（故意填错地址验证错误提示不崩溃）。整组受 SKIP 机制约束。\n\n**Blocked by:** 02\n\n**Status:** done\n\n- [x] 新增主机用例真实通过连接测试门禁并落库，列表可见\n- [x] 详情页资源监控有数据渲染\n- [x] Web 终端可连上牺牲主机并接受输入\n- [x] 错误凭据/地址时出现错误提示且页面不崩溃\n- [x] 删除主机后列表更新\n- [x] 无凭据环境整组 SKIP 并注明\n\n\u003e 实施备注：牺牲主机 = 本机 WSL（127.0.0.1:22 wslrelay 转发，haki/密码），凭据存 gitignored 的 e2e/.env.local（runner 经 support/env-file.js 装载，真实环境变量优先）。串行链 = 门禁真连保存 → 错误端口失败态 → 详情资源监控 → xterm 终端输入 → 输名确认删除，现场自清。直连后端的 API 路径必须带 /api 前缀（createApi 契约）。\n"},{"id":".scratch/ui-e2e-automation/issues/05-host-free-pages-cases.md","title":"05 — 无主机页面组用例","number":"05","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/05-host-free-pages-cases.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 05 — 无主机页面组用例\n\n**What to build:** 不依赖真实主机的页面全功能用例：游戏元数据（列表、编辑默认端口、YAML 导入从测试数据仓库取文件且导入前格式校验生效）、系统设置（加载、修改保存）、任务中心（列表/详情/筛选的页面结构与空态）、插件列表（显示 l4d2 已启动、点击\"进入管理\"弹实例选择框并断言跳转 URL 结构）。\n\n**Blocked by:** 02\n\n**Status:** done\n\n- [x] 游戏元数据用例绿（列表/筛选/YAML 导入/删除清理）。偏差：页面**没有\"编辑默认端口\"功能**——元数据只能经 YAML 导入创建/更新，端口为只读展示，用例按实际功能组织（加载/筛选/导入/删除）\n- [x] 系统设置改存生效 → **降级为\"保存往返不报错\"**。E2E 首轮发现产品缺陷：`GET /system/settings` 返回硬编码 VO、`PUT /system/settings` 未落库（SystemController 内 TODO 注释），设置保存是\"假回环\"；用例不断言持久化并在文件头记录缺陷，待产品修复后补断言\n- [x] 任务中心结构用例绿（tab/筛选/空态与表格双兼容/详情容错态）\n- [x] 插件列表用例绿（l4d2 卡片状态\"已启动\"、0 实例点进入工作区出未找到实例警告）\n- [x] 整组不依赖真实主机，受管/附着模式均可跑\n\n\u003e 实施备注：游戏目录 139 个元数据分页展示，断言定位一律走关键词筛选；插件卡片状态显示后端 stateDesc 中文（\"已启动\"）；fixture YAML 必须满足 SnakeYAML 严格绑定（DockerConfig 字段为 image/tag，非 imageRepo/imageTag）。\n"},{"id":".scratch/ui-e2e-automation/issues/06-instance-lifecycle-cases.md","title":"06 — 实例生命周期用例（l4d2 演练腿·前半）","number":"06","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/06-instance-lifecycle-cases.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 06 — 实例生命周期用例（l4d2 演练腿·前半）\n\n**What to build:** 最重的一条写链路，打真实牺牲主机：部署向导全流程（选游戏 l4d2 → 选牺牲主机 → 选部署方式 → 端口 → 提交）真实部署；任务中心出现部署任务并轮询至完成（任务页 + 任务 API 双通道断言）；实例列表出现新实例且状态正确；实例详情静态数据先渲染、动态 metrics 异步加载；启动/停止/重启用例（超时放宽至分钟级）；备份创建（进度可见）/还原/删除备份。建立**共享演练实例 fixture** 模式：本轮部署一次供多条用例及插件腿复用，腿末经平台 API 删除实例、清理现场。\n\n**Blocked by:** 04\n\n**Status:** done\n\n- [x] 部署向导提交后任务中心可见部署任务并最终完成，实例列表出现新实例 → **修正**：经实测部署任务**不进任务中心**（/api/tasks 仅收录插件任务类型），断言改为实例状态轮询（安装中→运行中，25 分钟上限）\n- [x] 实例详情静态渲染 + metrics 异步加载用例绿\n- [x] 启动/停止/重启各一条用例绿（逐用例超时声明生效）\n- [x] 备份创建含进度展示、还原、删除备份用例绿 → **部分调整**：创建备份成功 + 记录出现已绿；**状态推进被产品缺陷阻塞**（见下），状态轮询到终态前显式 SKIP；还原用例随前置条件 SKIP\n- [x] 共享 fixture 模式成型：一次部署多处复用、腿末自动删除实例\n- [x] 整票跑完牺牲主机无残留实例与进程\n\n\u003e **产品修复 ×2**（E2E 发现）：① `DockerAdapter.getPortMappings/getVolumeMounts` 对游戏元数据字符串形式的端口/卷映射（\"27015:27015/tcp\"）盲转 Map 抛 ClassCastException——docker 部署类型对所有此类元数据不可用，已兼容两种形式（含匿名卷）；② `detail.vue` 创建备份发送 `name/type`，后端契约要求 `backupName/backupType`——备份创建功能整体不可用，已按契约映射。\n\u003e\n\u003e **产品修复 ×3**（整轮演练发现）：③ `host_info.ip_address` 有数据库唯一约束而删除主机为软删除——**同一 IP 主机删除后永远无法重新纳管**（500 UNIQUE 冲突）；`HostServiceImpl.createHost` 现于插入前物理清理同 IP 软删行，整轮验证修复路径被实战触发。\n\u003e\n\u003e **待修缺陷记录**：④ 备份异步执行器不推进——`BackupServiceImpl.performFileBackupAsync` 为 `@Async pr"},{"id":".scratch/ui-e2e-automation/issues/07-plugin-subapp-cases-l4d2.md","title":"07 — 插件子应用深测用例（l4d2 · 插件用例包范式）","number":"07","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/07-plugin-subapp-cases-l4d2.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 07 — 插件子应用深测用例（l4d2 · 插件用例包范式）\n\n**What to build:** 以 l4d2 为**第一个\"插件用例包\"样板**，深测插件子应用全部页面（前置：共享演练实例 fixture 提供运行中的 l4d2 实例）：Wujie 容器（子应用加载无 403/404、菜单切换仅切页不重挂载、刷新后菜单定位保持）、仪表盘（状态卡片渲染、离线提示）、RCON 控制台（执行 status 返回状态、恶意命令防注入拦截）、地图管理（从测试数据仓库上传 VPK → **经实例文件 API 验证文件写入实例目标目录** → 切换地图）、SourceMod 插件管理（上传样例插件）、服务器配置（修改保存、重置默认）、重启管理（三种重启模式展示、立即重启生效）。插件用例包结构必须**可复制**：包内自带 fixture 约定与清理钩子说明，未来其他插件的用例照此范式接入、不改框架。\n\n**Blocked by:** 06\n\n**Status:** done\n\n- [x] Wujie 容器三条用例（加载/菜单切换/刷新定位）绿——进入工作区单实例直跳、容器挂载、子应用仪表盘渲染\n- [x] 仪表盘、RCON 控制台用例绿（含特殊字符命令不崩溃；注：清单 E2E-092\"防注入拦截\"在 RCON 控制台无对应实现，平台仅 SourceMod CVAR 黑名单拦截——按现状断言）\n- [x] 地图上传后经平台解析成功（map-upload 任务 COMPLETED，合成 VPK 过 VpkParser 真实解析+裁剪）；列表可见性受缺陷 #5 阻塞 → 条件跳过\n- [x] SourceMod 插件上传、服务器配置保存同步、重启管理渲染用例绿\n- [x] 插件用例包结构可复制，README 说明\"新插件如何照此接入\"\n- [x] 用例包自带清理钩子（afterAll 删实例与前置主机），跑完无残留\n\n\u003e **待修缺陷 #5**：地图列表读宿主机 `installPath/left4dead2/addons`，而 Docker 实例的 addons 在容器/卷内——上传成功（任务 COMPLETED）但列表不可见，换图选择器三方地图为空。建议 Docker 实例的地图读写走 `docker exec` 或声明卷映射到 installPath。\n\u003e\n\u003e **环境适配记录**：RCON 密码受 retag 镜像限制（laoyutang/l4d2-pure 用 L4D2_* 而非 SRCDS_* 环境变量，适配器 env 来自元数据 yml，无法注入 L4D2_RCON_PASSWORD）——换图结果容忍\"指令已发送/切换失败\"两种回显；若使用可拉取的官方 cm2network 镜像则 RCON 全通。\n\u003e\n\u003e 共享 fixture：beforeAll API"},{"id":".scratch/ui-e2e-automation/issues/08-drill-legs-dst-sdtd.md","title":"08 — dst / sdtd 演练腿","number":"08","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/08-drill-legs-dst-sdtd.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 08 — dst / sdtd 演练腿\n\n**What to build:** 验证演练链的**参数化机制**：把实例生命周期用例（部署 → 启停/重启 → 备份还原 → 删除实例）以演练游戏配置驱动的方式复用到 dst、sdtd 两个演练游戏（这两腿无插件段）。同一套用例代码，不同游戏参数（游戏元数据、默认端口、部署方式）各跑一条完整腿，腿末清理。\n\n**Blocked by:** 06\n\n**Status:** done\n\n- [x] dst 腿：部署完成（compose up + LinuxGSM 容器创建，20 秒），到达稳定态；卸载清理绿\n- [x] sdtd 腿：同上绿\n- [x] 两腿复用同一套参数化用例，未复制粘贴出第二份用例代码\n- [x] 每腿结束牺牲主机无残留实例\n- [x] **启停断言按环境阻塞显式 SKIP**（见下）\n\n\u003e **环境阻塞（非产品缺陷）**：LinuxGSM 容器首启需从 GitHub 下载 serverlist.csv 完成\n\u003e 初始化，本机网络环境容器内访问 GitHub 不通 → `/app/\u003cshortname\u003e` 脚本永不生成 →\n\u003e 服务器无法进入运行中。LinuxGsmDockerAdapter 源码注释对此有预言（网络/DNS 问题）。\n\u003e `waitForLinuxGsmReady`（host-hygiene.js）先做容器内连通性预检，不通则秒级失败，\n\u003e 启停用例显式 SKIP 注明原因；在可访问 GitHub 的环境或配置代理后，启停断言自动生效。\n\u003e\n\u003e 实施事实：CONTAINER_NAME 需注入自定义值（默认名 dstserver-lgsm/sdtdserver-lgsm\n\u003e 会与宿主机真实容器同名冲突）；自动启动需关闭（容器首启自动安装耗时分钟级，\n\u003e 自动启动抢跑 start 会因 /app/\u003cshortname\u003e 不存在判异常）——部署后由\n\u003e `waitForLinuxGsmReady` 等就绪再启动。\n"},{"id":".scratch/ui-e2e-automation/issues/09-full-round-orchestration.md","title":"09 — 整轮编排 + 通过判定 + 报告完善","number":"09","feature":"ui-e2e-automation","area":"E2E automation","status":"open (unregistered)","statusLabel":"待登记状态","statusTone":"open","statusSource":"unregistered","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"","acceptance":[],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../ui-e2e-automation/issues/09-full-round-orchestration.md","specHref":"../ui-e2e-automation/spec.md","specPath":".scratch/ui-e2e-automation/spec.md","excerpt":"# 09 — 整轮编排 + 通过判定 + 报告完善\n\n**What to build:** 收口成\"一条命令回答过没过\"：整轮 runner 按演练链顺序（l4d2 → dst → sdtd 腿 + 无主机用例组）编排执行；腿间与轮末强制实例清理；全局看门狗超时中止并产出部分报告；总报告输出总数/通过/失败/跳过（附原因）+ 失败截图 trace + **整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）**。完善工程 README 四件事：怎么跑整轮/单组、凭据怎么配、怎么新增用例（页面 × 功能）、其他插件如何新增用例包。\n\n**Blocked by:** 07, 08\n\n**Status:** done\n\n- [x] 一条命令跑完整轮并产出含通过判定的报告\n- [x] 看门狗超时场景验证：中止并给出部分报告\n- [x] 轮末牺牲主机与临时库零残留\n- [x] README 覆盖：运行方式、凭据配置、新增用例指南、新插件用例包接入指南\n\n\u003e **最终整轮验证（PASS）**：`E2E_FAST=1 npm run e2e:round` 六组保序执行——冒烟与导航（9）→ 无主机页面组（10）→ 主机纳管（5）→ 实例生命周期 l4d2（6+2 缺陷跳过）→ 插件子应用（6+1 缺陷跳过）→ dst/sdtd 演练腿（4+2 环境跳过）。判定：除显式 SKIP 外全部用例通过 = PASS。分组结果经 runPlaywright 管道捕获并聚合；看门狗（E2E_ROUND_TIMEOUT，默认 150 分钟）超时中止剩余分组并输出部分报告。\n\u003e\n\u003e 实施事实：登录客户端加固（业务码严格校验 + 瞬时失败重试 2 次）——整轮演练曾因登录瞬时抖动导致演练组全链 401 空响应。\n"},{"id":".scratch/architecture-review-20261015/issues/01-patchinstall-payload-drops-fields.md","title":"01 — PatchInstall 的 headers / includePattern 跨 seam 静默丢失","number":"01","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"PatchInstallRequest 携带 7 个字段，但经任务中心 payload 往返后只剩 5 个。headers 与 includePattern","acceptance":["往返测试覆盖全部 7 个字段，含 headers 与 includePattern。","CloudInstallService 的 DIRECT 路径实测带上请求头；UNSUPPORTEDHEADERFILE 分支可达。","压缩包转存安装（zip/rar → includePattern=.vpk）产物筛选生效。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/01-patchinstall-payload-drops-fields.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 01 — PatchInstall 的 headers / includePattern 跨 seam 静默丢失\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 1）\r\n\r\n## 现象\r\n\r\n`PatchInstallRequest` 携带 7 个字段，但经任务中心 payload 往返后只剩 5 个。`headers` 与 `includePattern`\r\n被静默丢弃，`PatchInstallExecutor` 读到的永远是 `null`。**不报错、不告警**，只在真实云端分享链接下表现异常。\r\n\r\n## 根因\r\n\r\n请求↔payload 的字段清单被手写在三处，其中两处已互相矛盾：\r\n\r\n| 站点 | 行 | 内容 |\r\n|---|---|---|\r\n| `PatchInstallServiceImpl` | :47-56 | 只 `put` instanceId / url / targetPath / format / sha256 |\r\n| `PatchInstallHandler` | :70-76 | 只 `builder` 重建这 5 个 |\r\n| `PatchInstallExecutor` | :146 / :155 / :272 | 读 `getHeaders()` 与 `getIncludePattern()` |\r\n\r\n两个被丢字段的用途：\r\n\r\n- `headers` — ADR-0025「主机直连（DIRECT）」的**唯一理由**：云盘分享直链需要 Cookie/UA。\r\n  `CloudInstallService:301-315` 构造了它，`CloudInstallService:321` 还专门分支判断\r\n  `UNSUPPORTED_HEADER_FILE` —— **该错误路径永不触发**，直连实际在无请求头下载。\r\n- `includePattern` — ADR-0026 的产物筛选（如压缩包只取 `*.vpk`）。\r\n\r\n零测试覆盖：`backend/core/src/test` 中 `headers` 零命中。\r\n\r\n## 修复建议\r\n\r\n把请求↔payload 往返收敛为一个 module，字段清单只存在一处：\r\n\r\n```\r\nPatchInstallContract.toPayload(PatchInstallRequest) → Map\u003cString,Object\u003e\r\nPatchInstallContract.fromPayload(TaskPayload) → PatchInstallRequest\r\n```\r\n\r\nService 与 Handler 两侧都调它。补一条往返测试：断言每个非 nu"},{"id":".scratch/architecture-review-20261015/issues/02-instance-state-reconciliation.md","title":"02 — 实例状态对账有三条独立路径，判定规则各说各话","number":"02","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"「实例现在是什么状态」这一个概念，被四条触发路径、三套判定算法各自回答：","acceptance":["判定逻辑有纯函数单测（不依赖 SSH）。","四条路径共用同一判定；新增部署类型只加观测、不加路径。","基础设施故障不再把实例写成 ERROR（与真实「异常」状态区分）。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/02-instance-state-reconciliation.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 02 — 实例状态对账有三条独立路径，判定规则各说各话\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 3）\r\n\r\n## 现象\r\n\r\n「实例现在是什么状态」这一个概念，被**四条触发路径、三套判定算法**各自回答：\r\n\r\n| 路径 | 位置 | 判定依据 |\r\n|---|---|---|\r\n| A 定时 | `DockerInstanceSyncStrategy` :146-190 | `docker ps` → 容器匹配 |\r\n| B 定时 | `NativeInstanceSyncStrategy` :52-120 | `pgrep -f \"-game \u003ckey\u003e\"` |\r\n| C 按需 | `InstanceServiceImpl.refreshStatus` :565-600 | `adapter.getStatus()`（部署适配器） |\r\n| D 启动 | `InstanceSyncStartupRunner` | 复用 A/B |\r\n\r\n调其中一处不改变另两处的结论。\r\n\r\n## 根因\r\n\r\nADR-0005 已把 `InstanceStatus` 定为唯一**词汇表**，但「谁写 `run_status` 这一列」从未收口——\r\n词汇统一了，写入方仍有三处。\r\n\r\n附带缺陷：路径 C 的 catch 分支把**基础设施故障**写成实例进入 `ERROR` 状态\r\n（`InstanceServiceImpl:598`），即「查不到 ≠ 出错了」被混为一谈。\r\n\r\n## 修复建议\r\n\r\n抽 `InstanceStateReconciler` 深模块，把**观测**与**判定**分离：\r\n\r\n```\r\nobserve(instanceId) → ObservedState        // 容器 / 进程 / 适配器，三种观测源\r\nreconcile(observed, dbStatus) → Decision   // 纯函数：观测 ↔ 库中状态 → 决策\r\n```\r\n\r\n定时 / 按需 / 启动只是不同的**触发方式**，共用同一判定。判定为纯函数，\r\n可直接单测，无需 SSH 或真实主机。\r\n\r\n## 验收\r\n\r\n- 判定逻辑有纯函数单测（不依赖 SSH）。\r\n- 四条路径共用同一判定；新增部署类型只加观测、不加路径。\r\n- 基础设施故障不再把实例写成 `ERROR`（与真实「异常」状态区分）。\r\n\r\n## 关联\r\n\r\n与候选 7（HostSession）天然合流——都涉及「连主机 + 对账」这一组行为的收口。\r\n"},{"id":".scratch/architecture-review-20261015/issues/03-remotehost-deep-module.md","title":"03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组","number":"03","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"上一轮评审（2026-08-13 候选 2）已建立 DeploymentAccess 深模块收敛「deployType 分类 + Host→SSH 凭据解析」。","acceptance":["SshUtil 不再被 core 业务代码直接引用（只剩 RemoteHost 与其自身测试）。","凭据解析与提权策略各只有一处实现，有单测（注入假传输）。","DeployService 的本地「丢弃私钥」策略被移除或上提为 RemoteHost 的显式选项。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/03-remotehost-deep-module.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 2）\r\n\r\n## 现象\r\n\r\n上一轮评审（2026-08-13 候选 2）已建立 `DeploymentAccess` 深模块收敛「deployType 分类 + Host→SSH 凭据解析」。\r\n但该 seam **只覆盖了 credentials/connect，没有把传输层包进去**，于是调用方从旁边绕回来：\r\n\r\n```\r\n45 处 sshUtil.executeCommand(host, port, user, key, pwd, cmd, timeout)\r\n```\r\n\r\n分布：`InstanceFileServiceImpl` 11 · `HostsFileRefresher` 8 · `DeployService` 6 · `BackupServiceImpl` 5\r\n· `SudoAwareSshRunner` 4 · 其余 8 个文件各 1-2。\r\n\r\n## 根因\r\n\r\n`SshUtil` 的 interface 宽达 **7 参数 × 11 方法**，且它本身就是 seam 的所在地——\r\n调用方直接传 7 元组，等于把「凭据如何解析」重新摊给每个调用方。\r\n16 个文件里每一个都得自己记得 `getHost → 判空 → credentials → 传包`。\r\n\r\n两个后果：\r\n\r\n- 凭据解析规则（ADR 明文禁止把用户名当密码、私钥优先密码回退）在 seam 外失效。\r\n- `DeployService:1026` 自带一条本地策略（有密码时丢弃私钥）覆盖 `DeploymentAccess` 的行为——\r\n  同一个规则，两个模块各说各话。\r\n- 另有第二个解凭据的模块 `SudoAwareSshRunner`（仅 5 个使用方），与 `DeploymentAccess` 平行存在。\r\n\r\n## 修复建议\r\n\r\n`RemoteHost` 深模块以 **hostId 为唯一入口**，承载凭据解析、提权策略、超时、重试与在线状态对账；\r\n`SshUtil` 降为它的内部实现细节（内部 seam，供本模块自身测试注入假传输）。\r\n\r\n```\r\nremoteHost.exec(hostId, command)          → CommandResult\r\nremoteHost.execPrivileged(hostId, command)\r\nremoteHost.upload(hostId, local, remote)\r\n```\r\n\r\n调用方写 `remoteHost.exec(hos"},{"id":".scratch/architecture-review-20261015/issues/04-typed-task-payload.md","title":"04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文","number":"04","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"每次 service → handler 交接都是一个无类型 Map\u003cString,Object，字段名/类型/必填性写在 Javadoc 与 ADR 正文里，","acceptance":["至少一个任务族（PATCHINSTALL）完成类型化，含往返 codec 单测。","消除 getString/getLong 类型漂移。","生产端与消费端字段不一致时编译期或测试期即失败。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/04-typed-task-payload.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 4）\r\n\r\n## 现象\r\n\r\n每次 service → handler 交接都是一个无类型 `Map\u003cString,Object\u003e`，字段名/类型/必填性写在 Javadoc 与 ADR 正文里，\r\n没有编译期约束让生产端与消费端吻合。\r\n\r\n**同一个逻辑值 `instanceId`，读法不一致**：\r\n\r\n| 消费端 | 行 | 读法 |\r\n|---|---|---|\r\n| `PatchInstallHandler` | :70 | `payload.getLong(\"instanceId\")` |\r\n| `CloudInstallService` | :173-179 | `payload.getLong(\"instanceId\")` |\r\n| `MapUploadTaskHandler` | :64-66 | `Long.parseLong(payload.getString(\"instanceId\"))` |\r\n\r\n生产端同样不一致：`CloudInstallService:117-142` 放 `Long`，`MapService:314-321` 放 `String`。\r\n\r\n## 根因\r\n\r\n`TaskPayload` 是 `Map\u003cString,Object\u003e`，契约由各 Handler 自行约定。票 01（headers/includePattern 被静默丢弃）\r\n正是这套契约的必然产物——一个 field 可以无声消失，两侧无人察觉。\r\n\r\n## 修复建议\r\n\r\n按任务族定义类型化 payload（`PatchInstallPayload`、`CloudInstallPayload` 等），\r\n由一个 codec 负责两侧序列化/反序列化；提交接口收 spec 对象而非 Map：\r\n\r\n```\r\nsubmit(taskType, source, scope, SPEC spec)   // 框架把 SPEC 落成 JSON\r\nexecute(context, SPEC spec)                  // handler 拿到类型化 spec\r\n```\r\n\r\n## 验收\r\n\r\n- 至少一个任务族（PATCH_INSTALL）完成类型化，含往返 codec 单测。\r\n- 消除 `getString`/`getLong` 类型漂移。\r\n- 生产端与消费端字段不一致时编译期或测试期即失败。\r\n\r\n## 关联\r\n\r\n- **前置**：票 01 已把 PATCH_INSTALL "},{"id":".scratch/architecture-review-20261015/issues/05-host-tooling-port-neutrality.md","title":"05 — VPK 语义住在 core，工具容器端口不再中立","number":"05","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"ADR-0026 设计 HostToolingService.extractArchive(hostId, archive, dest, includePattern) 时明确","acceptance":["core 不再依赖游戏专属类型（VpkAnalyzeResult 移出 SDK）。","端口只暴露游戏中立原语；VPK 脚本随插件分发。","L4D2 地图识别（ADR-0027）功能不变，回归通过。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/05-host-tooling-port-neutrality.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 05 — VPK 语义住在 core，工具容器端口不再中立\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 5）· **与 ADR-0027 冲突（需先谈 ADR）**\r\n\r\n## 现象\r\n\r\nADR-0026 设计 `HostToolingService.extractArchive(hostId, archive, dest, includePattern)` 时明确\r\n「不开放裸容器执行权」，是一个**游戏中立**的语义端口。ADR-0027 随后在同一端口上加了 `analyzeVpk`，\r\n于是 core 里住进了 L4D2 的战役/章节解释器：\r\n\r\n| 产物 | 位置 |\r\n|---|---|\r\n| `VpkToolingAnalyzer` | `backend/core/.../clouddrive/`（core 的 `@Service`） |\r\n| `vpk_analyze.py`（218 行 L4D2 解析器） | `backend/core/src/main/resources/tooling/` |\r\n| `VpkAnalyzeResult` / `VpkInvalidException` | `backend/plugin/.../service/`（L4D2 类型进 SDK） |\r\n\r\nCONTEXT.md 反复规定「语义层归插件」；`VpkToolingAnalyzer` 解释 missions/campaigns/chapters，正是语义层。\r\n\r\n## 根因\r\n\r\nADR-0027 把 VPK 脚本放进 core 是当时的快路径。代价：\r\n**第二款想做「在主机上跑一段平台脚本」的插件，必须复用 L4D2 的 analyzer**，\r\n或再开一条 ADR 往端口上堆语义方法。\r\n\r\n## 修复建议\r\n\r\n端口暴露中立原语，VPK 解释权与脚本所有权退回插件：\r\n\r\n```\r\nHostToolingService.runToolScript(hostId, relativePath, scriptResource) → String  // 原始 stdout\r\n```\r\n\r\ncore 只保留：instance→host 路由、工具容器调用、脚本分发、摘要。\r\n插件自己拥有 `vpk_analyze.py` 与 `VpkAnalyzeResult` 的解析。\r\n\r\n## 验收\r\n\r\n- core 不再依赖游戏专属类型（`VpkAnalyzeResult` 移出 SDK）。\r\n- 端口只暴露游戏中立原语；VPK 脚本随插件分发。\r\n- L4D2 地图识别（ADR-0027）功能不变，回归通过。\r\n\r\n## 关联\r\n\r\n- **A"},{"id":".scratch/architecture-review-20261015/issues/06-child-task-follower.md","title":"06 — 子任务跟随与进度窗口在两个 service 里逐字重复","number":"06","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"「跟随一个已提交的子任务」这段握手在两个 service 里各写一遍：","acceptance":["插件 SDK 暴露 ChildTaskFollower，两个 service 不再有 pollPatchTask。","轮询间隔与任务状态词只存在一处。","取消语义收敛为一种；用假 TaskService 可直接单测跟随逻辑。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/06-child-task-follower.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 06 — 子任务跟随与进度窗口在两个 service 里逐字重复\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 6）\r\n\r\n## 现象\r\n\r\n「跟随一个已提交的子任务」这段握手在两个 service 里各写一遍：\r\n\r\n| 位置 | 内容 |\r\n|---|---|\r\n| `CloudInstallService:426-458` | `pollPatchTask` + `Thread.sleep(2000)` |\r\n| `DownloadService:432-476` | 同名方法，同 4 状态 switch，同 sleep |\r\n\r\n两处都实现「每 2s 查 `taskService.getTask(id)`，把 PENDING/RUNNING/COMPLETED/FAILED/CANCELLED\r\n映射到本地状态与进度」。差异只在写往哪里（VO vs `RecordUpdater`）。\r\n\r\n进度窗口换算第三次重复于 `MapUploadTaskHandler:181-219`（0-100 折进 `[startPercent, endPercent]`）。\r\n\r\n## 根因\r\n\r\nplugin SDK 的 `TaskService` 有 `getTask(String)`，但**没有「跟随」这一等能力**。\r\n于是每个用到它的 service 各自实现轮询循环、状态映射与进度换算。\r\n\r\n**取消语义还不一致**：`CloudInstallService` 抛 `CancelledSignal`，`DownloadService` 只同步终态。\r\n\r\n## 修复建议\r\n\r\nSDK 提供 `ChildTaskFollower`：\r\n\r\n```\r\nfollow(childTaskId, ProgressWindow(base, slice), TaskContext, ChildOutcome) → void\r\n```\r\n\r\n内部承担轮询节奏、状态映射、取消传播与进度窗口换算。两个 service 删掉各自的循环。\r\n\r\n## 验收\r\n\r\n- 插件 SDK 暴露 `ChildTaskFollower`，两个 service 不再有 `pollPatchTask`。\r\n- 轮询间隔与任务状态词只存在一处。\r\n- 取消语义收敛为一种；用假 `TaskService` 可直接单测跟随逻辑。\r\n\r\n## 关联\r\n\r\n`TaskVO.getStatus()` 的字符串状态词（`\"PENDING\"` 等）散落在这些循环里，\r\n若未来任务中心状态词变更，本票能一并收口。\r\n"},{"id":".scratch/architecture-review-20261015/issues/07-host-session-module.md","title":"07 — HostServiceImpl 四处重复「连主机→写在线状态」，错误契约自相矛盾","number":"07","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"HostServiceImpl 有四个方法，各自重复同一套四步动作","acceptance":["在线状态对账规则只有一处实现，可用假 SSH 传输单测。","错误契约统一（消除 null / 写 0 双标）。","HostServiceImpl 不再引用 SshTunnelManager（改用 SDK 的 SshTunnelService）。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/07-host-session-module.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 07 — HostServiceImpl 四处重复「连主机→写在线状态」，错误契约自相矛盾\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 7）\r\n\r\n## 现象\r\n\r\n`HostServiceImpl` 有四个方法，各自重复同一套四步动作\r\n（`selectById → 判空 → credentials → ssh 操作 → updateOnlineStatus(0|1) → 组装 VO`）：\r\n\r\n| 方法 | 行 |\r\n|---|---|\r\n| `testConnection` | :242-276 |\r\n| `refreshStatus` | :279-330 |\r\n| `checkPort` | :405-439 |\r\n| `getHostResourceInfo` | :442-518 |\r\n\r\n**同一个 SSH 调用，两种错误契约**：`refreshStatus` 失败写 `0`（离线），\r\n`getHostResourceInfo` 失败返回 `null`。`refreshStatus` 与 `getHostResourceInfo` 还抓取**同一份**\r\n`SshUtil.ResourceInfo` 再组装成不同形状。\r\n\r\n## 根因\r\n\r\nSSH 调用与数据库副作用（写在线状态）被焊死在同一个方法体里，\r\n所以「什么时候把主机标离线」这句话在四处各写一遍且不一致，\r\n且**无法按接口测试**——想验证「失败时怎么标记主机」只能真连一台主机。\r\n\r\n附带：`HostServiceImpl:17` 导入的是宿主内部实现 `SshTunnelManager`（住在 plugin 包），\r\n而面向插件的 SDK 契约是 `SshTunnelService` —— core 顺着内部类型穿过了自己的 seam。\r\n\r\n## 修复建议\r\n\r\n`HostSession` 深模块以 hostId + 操作为入口，内部承担凭据、超时、在线状态对账与统一错误契约：\r\n\r\n```\r\n\u003cT\u003e T run(hostId, HostOp\u003cT\u003e op)\r\n```\r\n\r\n四个公开方法退化为一行委托。\r\n\r\n## 验收\r\n\r\n- 在线状态对账规则只有一处实现，可用假 SSH 传输单测。\r\n- 错误契约统一（消除 `null` / 写 `0` 双标）。\r\n- `HostServiceImpl` 不再引用 `SshTunnelManager`（改用 SDK 的 `SshTunnelService`）。\r\n\r\n## 关联\r\n\r\n与票 03（RemoteHost）是同一组行为的两个入口，建议一并设计。\r\n"},{"id":".scratch/architecture-review-20261015/issues/08-l4d2-status-vocabulary.md","title":"08 — 难度/模式词汇表散在 3 语言 4 副本，已有可见漂移","number":"08","feature":"architecture-review-20261015","area":"Architecture review","status":"open (review)","statusLabel":"架构评审待处理","statusTone":"open","statusSource":"directory","type":"unspecified","priority":"","source":"","blockedBy":[],"closed":false,"summary":"L4D2 的玩家数正则与难度/模式中英对照表共 4 份副本：","acceptance":["玩家数正则只有一处定义。","难度/模式词汇表只有一处；前端不再有对照表与兼容层。","未知值行为统一（不再一处 normal、一处空串）。","现有 StatusParserTest 扩展为词汇表的权威用例集。"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../architecture-review-20261015/issues/08-l4d2-status-vocabulary.md","specHref":"../architecture-review-20261015/README.md","specPath":".scratch/architecture-review-20261015/README.md","excerpt":"# 08 — 难度/模式词汇表散在 3 语言 4 副本，已有可见漂移\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 8）\r\n\r\n## 现象\r\n\r\nL4D2 的玩家数正则与难度/模式中英对照表共 **4 份副本**：\r\n\r\n| 副本 | 位置 | 内容 |\r\n|---|---|---|\r\n| 1 | `L4D2RconService:32` | `PLAYERS_PATTERN` 正则 |\r\n| 2 | `StatusParser:37` | **逐字相同**的正则副本 |\r\n| 3 | `L4D2RconService:288-389` | 难度/模式中文↔英文切换表（≈100 行） |\r\n| 4 | `frontend/src/utils/statusParser.ts:232,251` | TS 侧难度/模式对照表 |\r\n| — | `frontend/src/utils/gameConstants.ts:6,31` | 第四份，含 `alias` 字段 |\r\n| — | `frontend/src/api/index.ts:21-23` | `toCode()` 兼容层，只用于把 Java 输出翻回前端期望 |\r\n\r\n**已经漂移**：`statusParser.ts` 对未知值返回 `'normal'`，而 API 层对未知返回 `''` —— \r\n`api/index.test.ts:57` 这条用例存在的目的就是给这处不一致打补丁。\r\n\r\n## 根因\r\n\r\n同一份词汇表被重新实现在 3 种语言里，且没有一个 owner。改一次要动 4 处。\r\n\r\n**已有实际成本**：`ad6d58b fix(l4d2): 仪表盘难度/游戏模式前端映射修复` —— \r\n一次修复被施加在前端副本上。\r\n\r\nADR-0005 已为实例状态确立「后端枚举是唯一文本源」的做法（前端只保留 UI 元数据），\r\n难度/模式未套用同一模式。\r\n\r\n## 修复建议\r\n\r\n插件侧一个词汇表 module（以 `StatusParser` 为唯一 owner，吸收 `L4D2RconService` 的切换表）：\r\n\r\n```\r\nparse(statusText) → Status\r\ndifficultyLabel(raw) → String      // 后端出中文标签\r\ngameModeLabel(raw) → String\r\ntoWireCode(cnLabel) → String\r\n```\r\n\r\n前端删除 `difficultyMap` / `modeMap` / `toCode()`，改为消费后端已翻译的中文标签\r\n（与 `instanceStatus.js` 消费 `ru"},{"id":".scratch/cloud-drive-host-capability/issues/01-clp-sdk-into-core.md","title":"01: clp-sdk 及全 Provider 依赖进 core","number":"01","feature":"cloud-drive-host-capability","area":"Cloud drive","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["（无）"],"closed":false,"summary":"","acceptance":["mvn clean compile 通过（本地仓库已装 clp-sdk 前提下）。","应用启动无 provider ServiceLoader 缺失告警，client.getProviders() 返回 6 个 providerType。","Blocked by: （无）"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../cloud-drive-host-capability/issues/01-clp-sdk-into-core.md","specHref":"../cloud-drive-host-capability/spec.md","specPath":".scratch/cloud-drive-host-capability/spec.md","excerpt":"# 01: clp-sdk 及全 Provider 依赖进 core\n\nStatus: ready-for-human\n\n## 任务\n\n- core `pom.xml` 引入 `com.haki.clouddrive:clp-sdk:0.1.0` 及全部 provider 模块（clp-provider-aliyun / cloud189 / xunlei；baidu/quark 随 sdk 传递）。\n- OkHttp 为新依赖，Jackson 版本与主应用对齐（必要时 dependencyManagement 收口）。\n- 在 core 定义 `CloudDriveClient` Bean：进程单例、`AutoCloseable`（`@Bean(destroyMethod=\"close\")`），不配置 clp-storage-jdbc / 索引。\n- 构建说明：`backend` README 或构建脚本注释中写明前置 `cd cloud_list_platform \u0026\u0026 mvn -pl clp-sdk -am install`。\n\n## 验收\n\n- `mvn clean compile` 通过（本地仓库已装 clp-sdk 前提下）。\n- 应用启动无 provider ServiceLoader 缺失告警，`client.getProviders()` 返回 6 个 providerType。\n\nBlocked by: （无）\n"},{"id":".scratch/cloud-drive-host-capability/issues/02-extension-client-host-namespace.md","title":"02: ExtensionClient 宿主化（保留命名空间 platform）","number":"02","feature":"cloud-drive-host-capability","area":"Cloud drive","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["（无）"],"closed":false,"summary":"","acceptance":["宿主 ExtensionClient 可对 CloudAccountResource 做 CRUD，数据落 extensions 表（groupname='platform'）。","插件侧 ExtensionClient 查不到 group='platform' 的数据（隔离验证）。","spec 中 credential 为密文。","Blocked by: （无）"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../cloud-drive-host-capability/issues/02-extension-client-host-namespace.md","specHref":"../cloud-drive-host-capability/spec.md","specPath":".scratch/cloud-drive-host-capability/spec.md","excerpt":"# 02: ExtensionClient 宿主化（保留命名空间 platform）\n\nStatus: ready-for-human\n\n## 任务\n\n- core 主容器注册宿主 `ExtensionClient`：`new ExtensionClientImpl(jdbcTemplate, extensionRouter, \"platform\", ...)`（参照 `PluginSpringContextFactory` 的插件侧构造方式）。\n- 定义 `CloudAccountResource` 模型：`@ExtensionModel(strategy = SHARED, group = \"platform\", kind = \"cloud_account\")`，落既有 `extensions` 表。spec 字段建议：`providerType`、`displayName`、`credential`（AES 密文）、`credentialHint`（脱敏尾号）、`status`（HEALTHY/UNHEALTHY/DISABLED）、`remark`；`name` 为唯一业务标识。\n- 凭证加解密复用主应用现有 AES 工具/密钥体系（core 内公开 Bean 或工具类）。\n- 在 ADR-0002 正文中补一行指向 ADR-0024（宿主共享表边界扩展）。\n- 防冲突：文档/校验说明保留名 `platform`，真实插件不得取该 ID（可加启动期告警日志即可，不做强拦截）。\n\n## 验收\n\n- 宿主 ExtensionClient 可对 `CloudAccountResource` 做 CRUD，数据落 `extensions` 表（group_name='platform'）。\n- 插件侧 ExtensionClient 查不到 group='platform' 的数据（隔离验证）。\n- spec 中 credential 为密文。\n\nBlocked by: （无）\n"},{"id":".scratch/cloud-drive-host-capability/issues/03-clouddrive-service-sdk.md","title":"03: CloudDriveService SDK 接口 + 账号 REST","number":"03","feature":"cloud-drive-host-capability","area":"Cloud drive","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["01","02"],"closed":false,"summary":"","acceptance":["以真实夸克/百度账号走通 verify → list → transfer（同步）→ download 全链路。","超时场景：底层 Job 被取消，接口抛超时异常。","非 admin 调账号 REST 返回 403；响应无明文凭证。","Blocked by: 01, 02"],"acceptanceChecks":[],"questions":[],"comments":["2026-09-15 实现完成：T01–T04 全部落地并验证（后端 mvn compile/install 通过、启动冒烟 8 provider 加载、前端 npm run build 通过）。两点实现口径偏离 ticket 原文：","权限：现有体系仅 JWT 认证无角色细分，账号 REST 按\"登录即可 + 不回显明文\"实现；引入角色体系时再收紧。","转存超时：clp-sdk 无取消作业 API，超时语义为\"抛错并附 jobId，底层作业后台继续\"（ADR-0024 已注明的尽力取消不可行）。"],"href":"../cloud-drive-host-capability/issues/03-clouddrive-service-sdk.md","specHref":"../cloud-drive-host-capability/spec.md","specPath":".scratch/cloud-drive-host-capability/spec.md","excerpt":"# 03: CloudDriveService SDK 接口 + 账号 REST\n\nStatus: ready-for-human\n\n## 任务\n\n- plugin SDK 模块定义 `CloudDriveService` 接口，core 实现并注册给插件可调用（照 `RconService` 的暴露模式，含调用方审计）：\n  - `list(accountName, path, refresh)` → ListResult\n  - `link(accountName, path)` → 直链（url 与 headers 连带语义保留在返回类型中）\n  - `download(accountName, path, OutputStream)`\n  - `transfer(accountName, shareUrl, targetPath, Duration timeout)` → 同步阻塞，返回转存后目标路径；超时尽力取消底层 Job；默认超时 10 分钟做服务参数\n  - 账号 → 凭证/mount 解析：默认挂载 `/{providerType}/{accountName}/`，由宿主隐式派生\n- 账号 REST（core，管理员权限）：CRUD、`POST /accounts/{name}/verify`、`GET /accounts/{name}/quota`；任何响应不回显明文凭证（仅 credentialHint）。\n- 转存/列目录/直链/下载**不出 REST**，只走 SDK。\n\n## 验收\n\n- 以真实夸克/百度账号走通 verify → list → transfer（同步）→ download 全链路。\n- 超时场景：底层 Job 被取消，接口抛超时异常。\n- 非 admin 调账号 REST 返回 403；响应无明文凭证。\n\nBlocked by: 01, 02\n\n## Comments\n\n2026-09-15 实现完成：T01–T04 全部落地并验证（后端 `mvn compile`/`install` 通过、启动冒烟 8 provider 加载、前端 `npm run build` 通过）。两点实现口径偏离 ticket 原文：\n1. 权限：现有体系仅 JWT 认证无角色细分，账号 REST 按\"登录即可 + 不回显明文\"实现；引入角色体系时再收紧。\n2. 转存超时：clp-sdk 无取消作业 API，超时语义为\"抛错并附 jobId，底层作业后台继续\"（ADR-0024 已注明的尽力取消不可行）。\n"},{"id":".scratch/cloud-drive-host-capability/issues/04-frontend-cloud-accounts-page.md","title":"04: 主前端\"云盘账号\"页面","number":"04","feature":"cloud-drive-host-capability","area":"Cloud drive","status":"ready-for-human","statusLabel":"需要人工处理","statusTone":"human","statusSource":"registered","type":"unspecified","priority":"","source":"","blockedBy":["03"],"closed":false,"summary":"","acceptance":["admin 登录可见页面，CRUD/verify/quota 全部可用，表单不回显明文凭证。","非该权限用户不见菜单/路由拒绝。","Blocked by: 03"],"acceptanceChecks":[],"questions":[],"comments":[],"href":"../cloud-drive-host-capability/issues/04-frontend-cloud-accounts-page.md","specHref":"../cloud-drive-host-capability/spec.md","specPath":".scratch/cloud-drive-host-capability/spec.md","excerpt":"# 04: 主前端\"云盘账号\"页面\n\nStatus: ready-for-human\n\n## 任务\n\n- 新页面 `frontend/src/views/system/accounts.vue`（参照 `views/system/settings.vue` 风格），路由 `/system/accounts`，挂系统设置组，菜单名\"云盘账号\"。\n- 功能：账号列表（providerType 标签、displayName、status、quota）、新增/编辑（providerType 下拉 + 凭证粘贴框，明文只写不读）、删除确认、verify 按钮、quota 展示。\n- Header\"账号与安全\"占位跳转**不改**。\n- UI 遵循 docs/design/ui-design-spec.md。\n\n## 验收\n\n- admin 登录可见页面，CRUD/verify/quota 全部可用，表单不回显明文凭证。\n- 非该权限用户不见菜单/路由拒绝。\n\nBlocked by: 03\n"},{"id":".scratch/dnf-tw-compose-variable-handoff/issues/05-compose-variables-not-propagated-to-confirm-and-deploy.md","title":"05: dnf-tw 部署时 Compose 变量未传到确认页和部署载荷","number":"05","feature":"dnf-tw-compose-variable-handoff","area":"Deployment","status":"done","statusLabel":"已完成","statusTone":"success","statusSource":"registered","type":"bug","priority":"","source":"用户部署反馈（2026-10-19）","blockedBy":[],"closed":true,"summary":"在部署 dnf-tw（dnftw / Docker Compose）时，用户已在“配置参数”步骤修改 Compose 变量：","acceptance":["MYSQLPORT 从 3000 改为 3010 后，确认页显示 3010，部署请求携带 3010。","PUBLICIP 从 127.0.0.1 改为实际主机 IP 后，确认页和部署请求均使用新值。","修改 DNFDBROOTPASSWORD 后，确认页保持掩码，生成的 .env 使用新密码。","不改任何变量时，确认页与部署请求使用 yml 默认值，不发生空值或丢字段。","GATEAESKEY 仍按隐藏变量的默认值进入 .env，不会被可见表单覆盖。","配置步骤与确认页之间往返、展开折叠和切换游戏/部署方式后，变量状态不串值。","dnf-tw Docker Compose 实际部署成功，实例运行，容器 MySQL 端口映射和 configInfo 与 .env 一致。","增加前端测试，覆盖“默认值初始化、显式修改、确认页读取、提交载荷”四条路径。"],"acceptanceChecks":["MYSQLPORT 从 3000 改为 3010 后，确认页显示 3010，部署请求携带 3010。","PUBLICIP 从 127.0.0.1 改为实际主机 IP 后，确认页和部署请求均使用新值。","修改 DNFDBROOTPASSWORD 后，确认页保持掩码，生成的 .env 使用新密码。","不改任何变量时，确认页与部署请求使用 yml 默认值，不发生空值或丢字段。","GATEAESKEY 仍按隐藏变量的默认值进入 .env，不会被可见表单覆盖。","配置步骤与确认页之间往返、展开折叠和切换游戏/部署方式后，变量状态不串值。","dnf-tw Docker Compose 实际部署成功，实例运行，容器 MySQL 端口映射和 configInfo 与 .env 一致。","增加前端测试，覆盖“默认值初始化、显式修改、确认页读取、提交载荷”四条路径。"],"questions":["用户是手动输入、使用步进器，还是浏览器自动填充？分别验证三种修改方式。","确认页回退是否同时伴随提交载荷错误，还是仅摘要展示错误？可通过部署请求体或 configinfo 核对。","后端 .env 生成是否还会被数据库节组装或其他默认值逻辑覆盖？","是否需要把 Compose 变量统一收敛到一个可测试的表单状态模型，避免父子双状态源？","修复后是否需要补一条真实部署验证：确认 .env、容器端口映射和实例配置三者一致？"],"comments":["2026-10-19 实施结果","This was generated by AI during triage.","根因","部署向导和变量表单各维护一份状态，用户在表单中修改后，确认页读取的父级状态没有及时更新。","父组件对 const reactive({}) 使用 v-model，Vue 编译时会改写绑定引用，进一步放大父子状态分叉。"],"href":"../dnf-tw-compose-variable-handoff/issues/05-compose-variables-not-propagated-to-confirm-and-deploy.md","specHref":"","specPath":"","excerpt":"\u003e *This was generated by AI during triage.*\n\n# 05: dnf-tw 部署时 Compose 变量未传到确认页和部署载荷\n\nStatus: done\nType: bug\n来源: 用户部署反馈（2026-10-19）\n\n## 现象\n\n在部署 dnf-tw（`dnf_tw` / Docker Compose）时，用户已在“配置参数”步骤修改 Compose 变量：\n\n- MySQL 端口：`3010`\n- 数据库 root 密码：自定义值\n- 对外 IP：`192.168.111.253`\n\n但进入“确认部署”步骤后，变量摘要显示为：\n\n- MySQL 端口：`3000`\n- 数据库 root 密码：掩码，无法看出是否为用户值\n- 对外 IP：`127.0.0.1`\n\n即确认页展示的是变量默认值，而不是用户在配置步骤填写的值。用户要求改后的变量能够带到下一步，并按该值完成部署。\n\n## 复现步骤\n\n1. 打开实例部署向导，选择 dnf-tw、Docker Compose 和目标主机。\n2. 进入“配置参数”步骤。\n3. 将 Compose 变量改为 `MYSQL_PORT=3010`、自定义 `DNF_DB_ROOT_PASSWORD`、`PUBLIC_IP=192.168.111.253`。\n4. 点击“下一步”，进入“环境校验”，再进入“确认部署”。\n5. 查看“Compose 变量”摘要。\n\n## 实际行为\n\n确认页显示 `MYSQL_PORT=3000`、`PUBLIC_IP=127.0.0.1`，与配置步骤的输入不一致。\n后端 `generateEnvFileContent` 从 `configInfo` 顶层读取 Compose 变量；若提交载荷也未采用用户值，生成的 `.env` 与实例配置会继续使用默认值，导致部署结果不符合用户配置。\n\n## 期望行为\n\n- 配置步骤修改后的 Compose 变量在确认页原样展示，密码仍以掩码展示。\n- “开始部署”提交的 `configInfo` 使用用户修改后的变量值，而不是 yml 默认值。\n- 生成的 `.env` 与实例 `config_info` 中的变量值一致，部署使用该 `.env`。\n- 未修改的变量继续使用 yml 默认值，隐藏变量 `GATE_AES_KEY` 不会被可见表单覆盖或丢失。\n- 展开和收起配置文件、切换步骤、返回上一步再继续时，已修改值不丢失。\n\n## 初步定位\n\n前端变量输入存在两处状态源：\n\n- `deploy.vue` 的 `deployVariablesValues`：确认页摘要和提交载荷读取它。\n- `DeployVariableForm.vue` 的本地 `formData`：表单输入实际绑定它。\n\n`DeployVar"},{"id":".scratch/mattpocock-skills-refresh/issues/01-pin-upstream-and-sync-project-copies.md","title":"01: 固定上游 commit 并同步项目级 skill 副本","number":"01","feature":"mattpocock-skills-refresh","area":"Agent workflow","status":"resolved","statusLabel":"已解决","statusTone":"success","statusSource":"registered","type":"task","priority":"","source":"","blockedBy":["None"],"closed":true,"summary":"","acceptance":["锁文件记录上游 commit 49dd158d1076134a641b33efb035946536778336 对应的 27 个 engineering / productivity skill。","25 个已有 skill 的 SKILL.md 与外置引用文件刷新到该 commit。","新增 implement-spec、pr、retro，包含各自的同目录附属文件。","resolving-merge-conflicts 从锁文件、项目级副本与 agent 映射中移除。","game-platform-dev、gameplatform-e2e、gameplatform-plugin-dev 未被覆盖。",".agents/skills/\u003cname/SKILL.md 与 .claude/skills/\u003cname/SKILL.md 对全部上游来源 skill 内容一致。","更新过程不依赖浮动的 main；可重复得到同一版本。","记录本次使用的同步方式；当前 Node 低于 skills@1.7.2 要求，优先固定 commit 的 git clone 或先升级 Node。"],"acceptanceChecks":["锁文件记录上游 commit 49dd158d1076134a641b33efb035946536778336 对应的 27 个 engineering / productivity skill。","25 个已有 skill 的 SKILL.md 与外置引用文件刷新到该 commit。","新增 implement-spec、pr、retro，包含各自的同目录附属文件。","resolving-merge-conflicts 从锁文件、项目级副本与 agent 映射中移除。","game-platform-dev、gameplatform-e2e、gameplatform-plugin-dev 未被覆盖。",".agents/skills/\u003cname/SKILL.md 与 .claude/skills/\u003cname/SKILL.md 对全部上游来源 skill 内容一致。","更新过程不依赖浮动的 main；可重复得到同一版本。","记录本次使用的同步方式；当前 Node 低于 skills@1.7.2 要求，优先固定 commit 的 git clone 或先升级 Node。"],"questions":[],"comments":[],"href":"../mattpocock-skills-refresh/issues/01-pin-upstream-and-sync-project-copies.md","specHref":"../mattpocock-skills-refresh/spec.md","specPath":".scratch/mattpocock-skills-refresh/spec.md","excerpt":"# 01: 固定上游 commit 并同步项目级 skill 副本\r\n\r\nStatus: resolved\r\nType: task\r\nBlocked by: None\r\n\r\n## 要交付的行为\r\n\r\n项目内 `skills-lock.json` 指向确定的 `mattpocock/skills` commit，`.agents/skills/` 与 `.claude/skills/` 中的上游来源 skill 与该 commit 一致；自定义平台 skill 保持原样，新的三个工程 skill 可用，已删除的 skill 不再出现在锁文件与项目副本中。\r\n\r\n## 验收\r\n\r\n- [x] 锁文件记录上游 commit `49dd158d1076134a641b33efb035946536778336` 对应的 27 个 `engineering` / `productivity` skill。\r\n- [x] 25 个已有 skill 的 `SKILL.md` 与外置引用文件刷新到该 commit。\r\n- [x] 新增 `implement-spec`、`pr`、`retro`，包含各自的同目录附属文件。\r\n- [x] `resolving-merge-conflicts` 从锁文件、项目级副本与 agent 映射中移除。\r\n- [x] `game-platform-dev`、`gameplatform-e2e`、`gameplatform-plugin-dev` 未被覆盖。\r\n- [x] `.agents/skills/\u003cname\u003e/SKILL.md` 与 `.claude/skills/\u003cname\u003e/SKILL.md` 对全部上游来源 skill 内容一致。\r\n- [x] 更新过程不依赖浮动的 `main`；可重复得到同一版本。\r\n- [x] 记录本次使用的同步方式；当前 Node 低于 `skills@1.7.2` 要求，优先固定 commit 的 git clone 或先升级 Node。\r\n\r\n## 实现提示\r\n\r\n上游 1.3.1 的目标范围只是：\r\n\r\n- `skills/engineering/*`\r\n- `skills/productivity/*`\r\n\r\n不要安装 `in-progress`、`misc`、`deprecated`。自定义 skill 目录以项目现有副本为权威。\r\n\r\n## 完成证据\r\n\r\n- lock diff。\r\n- 目标 skill 数量与名称清单。\r\n- 副本一致性检查输出。\r\n- 自定义 skill 未被改动的前后 hash。\r\n\r\n## Answer\r\n\r\n- 实现提交 `93a23533`，合入 integration branch 后为 `5eb7343`。\r\n- 使用固定 commit 的 clone，未跟随"},{"id":".scratch/mattpocock-skills-refresh/issues/02-migrate-glossary-naming.md","title":"02: 把领域术语源迁移为 GLOSSARY.md","number":"02","feature":"mattpocock-skills-refresh","area":"Agent workflow","status":"resolved","statusLabel":"已解决","statusTone":"success","statusSource":"registered","type":"task","priority":"","source":"","blockedBy":["01"],"closed":true,"summary":"","acceptance":["现有术语内容迁入根目录 GLOSSARY.md。","CONTEXT.md 保留为简短兼容指针，指向 GLOSSARY.md，不复制术语正文。","docs/agents/domain.md 把权威读取入口改为 GLOSSARY.md，继续声明 ADR 位于 docs/design/adr/。","根 AGENTS.md 的 Domain docs 指引改为读取 GLOSSARY.md，保留单上下文布局说明。","活跃规则、README、agent 配置不再把 CONTEXT.md 当权威术语源；历史 ADR、ticket 与归档内容可保留原引用。","用 rg 审计 CONTEXT.md 命中，逐项确认属于兼容指针、历史记录或需要迁移的活跃指引。"],"acceptanceChecks":["现有术语内容迁入根目录 GLOSSARY.md。","CONTEXT.md 保留为简短兼容指针，指向 GLOSSARY.md，不复制术语正文。","docs/agents/domain.md 把权威读取入口改为 GLOSSARY.md，继续声明 ADR 位于 docs/design/adr/。","根 AGENTS.md 的 Domain docs 指引改为读取 GLOSSARY.md，保留单上下文布局说明。","活跃规则、README、agent 配置不再把 CONTEXT.md 当权威术语源；历史 ADR、ticket 与归档内容可保留原引用。","用 rg 审计 CONTEXT.md 命中，逐项确认属于兼容指针、历史记录或需要迁移的活跃指引。"],"questions":[],"comments":[],"href":"../mattpocock-skills-refresh/issues/02-migrate-glossary-naming.md","specHref":"../mattpocock-skills-refresh/spec.md","specPath":".scratch/mattpocock-skills-refresh/spec.md","excerpt":"# 02: 把领域术语源迁移为 GLOSSARY.md\r\n\r\nStatus: resolved\r\nType: task\r\nBlocked by: 01\r\n\r\n## 要交付的行为\r\n\r\n上游新版工程 skill 能自动在仓库根目录找到领域术语；现有链接与历史文档仍能理解旧名已迁移。仓库只有一个权威术语源，不再让 `CONTEXT.md` 与 `GLOSSARY.md` 各自演化。\r\n\r\n## 验收\r\n\r\n- [x] 现有术语内容迁入根目录 `GLOSSARY.md`。\r\n- [x] `CONTEXT.md` 保留为简短兼容指针，指向 `GLOSSARY.md`，不复制术语正文。\r\n- [x] `docs/agents/domain.md` 把权威读取入口改为 `GLOSSARY.md`，继续声明 ADR 位于 `docs/design/adr/`。\r\n- [x] 根 `AGENTS.md` 的 `Domain docs` 指引改为读取 `GLOSSARY.md`，保留单上下文布局说明。\r\n- [x] 活跃规则、README、agent 配置不再把 `CONTEXT.md` 当权威术语源；历史 ADR、ticket 与归档内容可保留原引用。\r\n- [x] 用 `rg` 审计 `CONTEXT.md` 命中，逐项确认属于兼容指针、历史记录或需要迁移的活跃指引。\r\n\r\n## 验证\r\n\r\n- 从根目录按 `GLOSSARY.md` 能读到现有全部领域术语。\r\n- 访问 `CONTEXT.md` 会明确指向新文件。\r\n- `$domain-modeling`、`$grill-with-docs`、`$wait-what` 的读取路径与仓库布局一致。\r\n\r\n## Answer\r\n\r\n- 根目录 `GLOSSARY.md` 承载原有 71 个术语条目，`CONTEXT.md` 仅保留兼容指针。`docs/agents/domain.md`、根 `AGENTS.md` 和活跃源码注释已切换到新入口。\r\n- `rg` 剩余旧路径命中仅来自历史 ADR 与测试研究记录。\r\n"},{"id":".scratch/mattpocock-skills-refresh/issues/03-write-usage-and-parallel-runbook.md","title":"03: 编写中文使用指南与并行执行 runbook","number":"03","feature":"mattpocock-skills-refresh","area":"Agent workflow","status":"resolved","statusLabel":"已解决","statusTone":"success","statusSource":"registered","type":"task","priority":"","source":"","blockedBy":["None"],"closed":true,"summary":"","acceptance":["新增中文使用指南，覆盖主线：grill-with-docs → to-spec → to-tickets → implement-spec 或 implement → code-review → pr → retro。","用表格说明至少这些 skill 的适用场景：ask-matt、grill-with-docs、to-spec、to-tickets、implement、implement-spec、tdd、code-review、pr、retro、triage、diagnosing-bugs、wayfinder、improve-codebase-architecture。","明确 local tracker 的一票一文件约定、Status: 与 Blocked by: 语义、ready frontier 的领取规则。","给出并排执行的推荐做法：先完成前置票，再让无依赖票并行；每张实现票按 task graph 合并到同一 integration branch。","说明 implement 与 implement-spec 的取舍：单票或小改走前者的 fresh context；整份 spec 的并行 frontier 走后者。","说明 resolving-merge-conflicts 已下线，遇到冲突由 agent 按当前 git 状态、提交意图与自动化检查直接解决。","说明更新与漂移检查入口，不复制上游 skill 全文。","根 AGENTS.md 只增加一个导航指针，不重复整页内容。"],"acceptanceChecks":["新增中文使用指南，覆盖主线：grill-with-docs → to-spec → to-tickets → implement-spec 或 implement → code-review → pr → retro。","用表格说明至少这些 skill 的适用场景：ask-matt、grill-with-docs、to-spec、to-tickets、implement、implement-spec、tdd、code-review、pr、retro、triage、diagnosing-bugs、wayfinder、improve-codebase-architecture。","明确 local tracker 的一票一文件约定、Status: 与 Blocked by: 语义、ready frontier 的领取规则。","给出并排执行的推荐做法：先完成前置票，再让无依赖票并行；每张实现票按 task graph 合并到同一 integration branch。","说明 implement 与 implement-spec 的取舍：单票或小改走前者的 fresh context；整份 spec 的并行 frontier 走后者。","说明 resolving-merge-conflicts 已下线，遇到冲突由 agent 按当前 git 状态、提交意图与自动化检查直接解决。","说明更新与漂移检查入口，不复制上游 skill 全文。","根 AGENTS.md 只增加一个导航指针，不重复整页内容。"],"questions":[],"comments":[],"href":"../mattpocock-skills-refresh/issues/03-write-usage-and-parallel-runbook.md","specHref":"../mattpocock-skills-refresh/spec.md","specPath":".scratch/mattpocock-skills-refresh/spec.md","excerpt":"# 03: 编写中文使用指南与并行执行 runbook\r\n\r\nStatus: resolved\r\nType: task\r\nBlocked by: None\r\n\r\n## 要交付的行为\r\n\r\n项目维护者能在一页内看懂什么时候使用哪个 skill，如何从想法走到 spec 和 tickets，如何选择单票 `/implement` 或整 spec `/implement-spec`，以及本仓库的 `.scratch` local tracker、`GLOSSARY.md`、`docs/design/adr/` 特例。\r\n\r\n## 验收\r\n\r\n- [x] 新增中文使用指南，覆盖主线：`grill-with-docs` → `to-spec` → `to-tickets` → `implement-spec` 或 `implement` → `code-review` → `pr` → `retro`。\r\n- [x] 用表格说明至少这些 skill 的适用场景：`ask-matt`、`grill-with-docs`、`to-spec`、`to-tickets`、`implement`、`implement-spec`、`tdd`、`code-review`、`pr`、`retro`、`triage`、`diagnosing-bugs`、`wayfinder`、`improve-codebase-architecture`。\r\n- [x] 明确 local tracker 的一票一文件约定、`Status:` 与 `Blocked by:` 语义、ready frontier 的领取规则。\r\n- [x] 给出并排执行的推荐做法：先完成前置票，再让无依赖票并行；每张实现票按 task graph 合并到同一 integration branch。\r\n- [x] 说明 `implement` 与 `implement-spec` 的取舍：单票或小改走前者的 fresh context；整份 spec 的并行 frontier 走后者。\r\n- [x] 说明 `resolving-merge-conflicts` 已下线，遇到冲突由 agent 按当前 git 状态、提交意图与自动化检查直接解决。\r\n- [x] 说明更新与漂移检查入口，不复制上游 skill 全文。\r\n- [x] 根 `AGENTS.md` 只增加一个导航指针，不重复整页内容。\r\n\r\n## 完成证据\r\n\r\n- 指南文件：`docs/agents/skill-workflow-runbook.md`\r\n- `AGENTS.md` 最小导航指针。\r\n- 首次使用短路径与整 spec 并行短路径均包含在指南。\r\n\r\n## Answer\r\n\r\n- 实现提交 `62bce0b4`，合入 integration bran"},{"id":".scratch/mattpocock-skills-refresh/issues/04-verify-refresh-and-agent-integration.md","title":"04: 验证刷新结果与 agent 接入","number":"04","feature":"mattpocock-skills-refresh","area":"Agent workflow","status":"resolved","statusLabel":"已解决","statusTone":"success","statusSource":"registered","type":"task","priority":"","source":"","blockedBy":["01","02","03"],"closed":true,"summary":"","acceptance":["从固定上游 commit 重算 27 个目标 skill 的 SKILL.md SHA-256，并与锁文件一致。","项目级 .agents/skills/ 与 .claude/skills/ 的上游来源 skill 内容一致。","npx skills list --json 或等价扫描显示目标工程/生产力 skill 可见，三个自定义平台 skill 仍可见。","resolving-merge-conflicts 不再可见。","implement-spec、pr、retro 在对应 agent 中可见，metadata 与上游一致。","GLOSSARY.md 可读、CONTEXT.md 只作兼容指针，活跃文档的权威入口一致。","中文使用指南中的命令与路径均能在当前仓库解析。","给出一次完整验证命令清单与结果摘要，不修改业务代码。"],"acceptanceChecks":["从固定上游 commit 重算 27 个目标 skill 的 SKILL.md SHA-256，并与锁文件一致。","项目级 .agents/skills/ 与 .claude/skills/ 的上游来源 skill 内容一致。","npx skills list --json 或等价扫描显示目标工程/生产力 skill 可见，三个自定义平台 skill 仍可见。","resolving-merge-conflicts 不再可见。","implement-spec、pr、retro 在对应 agent 中可见，metadata 与上游一致。","GLOSSARY.md 可读、CONTEXT.md 只作兼容指针，活跃文档的权威入口一致。","中文使用指南中的命令与路径均能在当前仓库解析。","给出一次完整验证命令清单与结果摘要，不修改业务代码。"],"questions":[],"comments":[],"href":"../mattpocock-skills-refresh/issues/04-verify-refresh-and-agent-integration.md","specHref":"../mattpocock-skills-refresh/spec.md","specPath":".scratch/mattpocock-skills-refresh/spec.md","excerpt":"# 04: 验证刷新结果与 agent 接入\r\n\r\nStatus: resolved\r\nType: task\r\nBlocked by: 01, 02, 03\r\n\r\n## 要交付的行为\r\n\r\n更新后的 skill 集合、锁文件、术语入口和中文指南在同一仓库状态下彼此一致。维护者能用一个可重复的检查过程发现上游副本漂移、遗漏 skill、残留废弃 skill 或文档入口错误。\r\n\r\n## 验收\r\n\r\n- [x] 从固定上游 commit 重算 27 个目标 skill 的 `SKILL.md` SHA-256，并与锁文件一致。\r\n- [x] 项目级 `.agents/skills/` 与 `.claude/skills/` 的上游来源 skill 内容一致。\r\n- [x] `npx skills list --json` 或等价扫描显示目标工程/生产力 skill 可见，三个自定义平台 skill 仍可见。\r\n- [x] `resolving-merge-conflicts` 不再可见。\r\n- [x] `implement-spec`、`pr`、`retro` 在对应 agent 中可见，metadata 与上游一致。\r\n- [x] `GLOSSARY.md` 可读、`CONTEXT.md` 只作兼容指针，活跃文档的权威入口一致。\r\n- [x] 中文使用指南中的命令与路径均能在当前仓库解析。\r\n- [x] 给出一次完整验证命令清单与结果摘要，不修改业务代码。\r\n\r\n## 失败处理\r\n\r\n- 若锁文件与固定 clone 不一致，回到票 01 修正 source path 或 hash，不在验证票里手改单条 hash。\r\n- 若 agent 只看到旧版本，检查项目级目录、agent link 与当前工作目录，不要用全局副本掩盖项目级漂移。\r\n- 若 `CONTEXT.md` 仍出现在活跃规则中，回到票 02 区分兼容指针与待迁移引用。\r\n\r\n## Answer\r\n\r\n- 固定上游 clone 的 27 个目录 tree hash 与 `skills-lock.json` 全部一致；27 个 `SKILL.md` 的 SHA-256 与上游逐一相等。\r\n- `.agents/skills/` 与 `.claude/skills/` 的 54 个上游目录比较无差异；3 个自定义 skill 保留。\r\n- `skills@1.7.2 list --json` 发现 30 项：27 个上游来源 + 3 个自定义；新增 3 项可见，`resolving-merge-conflicts` 为 0 项。\r\n- `GLOSSARY.md` 有 71 个术语条目；`CONTEXT.md` 无术语正文且指向新文件；`docs/agents/domain.md` 与根 `AGENTS.m"}]}</script>
+  <script>
+    (function () {
+      'use strict';
+      const payload = JSON.parse(document.getElementById('ticket-data').textContent);
+      const state = { view: 'open', feature: 'all', source: 'all', search: '', sort: 'area', expanded: null, columns: {} };
+      const columnOrder = [
+        { key: 'triage', label: '待分诊', tones: ['warning'] },
+        { key: 'agent', label: 'Agent 可执行', tones: ['agent'] },
+        { key: 'human', label: '需要人工处理', tones: ['human'] },
+        { key: 'open', label: '目录内待处理', tones: ['open'] },
+        { key: 'active', label: '处理中', tones: ['active'] },
+      ];
+      const $ = (selector) => document.querySelector(selector);
+      const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+      const openTickets = () => payload.tickets.filter((ticket) => !ticket.closed);
+      const textMatches = (ticket, query) => {
+        if (!query) return true;
+        const haystack = [ticket.title, ticket.id, ticket.feature, ticket.area, ticket.status, ticket.statusLabel, ticket.type, ticket.source, ticket.summary, ...ticket.blockedBy].join(' ').toLowerCase();
+        return query.toLowerCase().split(/s+/).every((part) => haystack.includes(part));
+      };
+      function viewMatches(ticket) {
+        if (state.search && !textMatches(ticket, state.search)) return false;
+        if (state.feature !== 'all' && ticket.feature !== state.feature) return false;
+        if (state.source !== 'all' && ticket.statusSource !== state.source) return false;
+        if (state.view === 'open') return !ticket.closed;
+        if (state.view === 'triage') return ticket.statusTone === 'warning';
+        if (state.view === 'work') return ticket.statusTone === 'agent' || ticket.statusTone === 'human' || ticket.statusTone === 'active';
+        return true;
+      }
+      function sorted(tickets) {
+        const copy = tickets.slice();
+        if (state.sort === 'priority') {
+          const priority = { P0: 0, P1: 1, P2: 2, P3: 3 };
+          copy.sort((a, b) => (priority[a.priority] ?? 9) - (priority[b.priority] ?? 9) || a.title.localeCompare(b.title, 'zh-CN'));
+        } else if (state.sort === 'number') {
+          copy.sort((a, b) => a.number.localeCompare(b.number) || a.area.localeCompare(b.area));
+        } else if (state.sort === 'recent') {
+          copy.sort((a, b) => b.id.split('/').length - a.id.split('/').length || a.title.localeCompare(b.title, 'zh-CN'));
+        }
+        return copy;
+      }
+      function toneFor(ticket) {
+        if (ticket.statusTone === 'warning') return 'warning';
+        if (ticket.statusTone === 'agent') return 'agent';
+        if (ticket.statusTone === 'human') return 'human';
+        if (ticket.statusTone === 'active') return 'active';
+        return 'open';
+      }
+      function statusTag(ticket) {
+        return '<span class="tag status ' + esc(ticket.statusTone) + '">' + esc(ticket.statusLabel) + '</span>';
+      }
+      function card(ticket) {
+        const tags = [statusTag(ticket)];
+        if (ticket.priority) tags.push('<span class="tag priority">' + esc(ticket.priority) + '</span>');
+        if (ticket.blockedBy.length) tags.push('<span class="tag blocked">依赖 ' + esc(ticket.blockedBy.join(',')) + '</span>');
+        return '<article class="ticket-card" data-id="' + esc(ticket.id) + '" data-tone="' + toneFor(ticket) + '" tabindex="0" role="button" aria-label="查看 ' + esc(ticket.title) + '">'
+          + '<div class="card-top"><span class="number">' + esc(ticket.number) + '</span>' + tags.join('') + '</div>'
+          + '<h4 class="card-title">' + esc(ticket.title) + '</h4>'
+          + (ticket.summary ? '<p class="card-summary">' + esc(ticket.summary) + '</p>' : '')
+          + '<div class="card-meta"><span>' + esc(ticket.area) + '</span><span>·</span><span>' + esc(ticket.type) + '</span><span>·</span><span>' + esc(ticket.feature) + '</span></div>'
+          + '</article>';
+      }
+      function renderFilters() {
+        const searchMatched = payload.tickets.filter((ticket) => textMatches(ticket, state.search));
+        const features = payload.features
+          .map((feature) => ({
+            ...feature,
+            visibleCount: searchMatched.filter((ticket) => ticket.feature === feature.id).length,
+          }))
+          .filter((feature) => feature.visibleCount > 0 || state.feature === feature.id);
+        $('#feature-filters').innerHTML = features.map((feature) =>
+          '<button class="filter feature-filter' + (state.feature === feature.id ? ' active' : '') + '" data-filter="feature" data-value="' + esc(feature.id) + '" title="' + esc(feature.id) + '">'
+          + '<span>' + esc(feature.label) + '</span><span class="count">' + feature.visibleCount + '</span></button>'
+        ).join('');
+        document.querySelectorAll('.filter').forEach((button) => {
+          button.classList.toggle('active', button.dataset.filter === state.view
+            || button.dataset.filter === state.feature && button.dataset.value === state.feature
+            || button.dataset.filter === state.source && button.dataset.value === state.source);
+          if (button.dataset.filter === 'feature' && button.dataset.value === 'all') button.classList.toggle('active', state.feature === 'all');
+          if (button.dataset.filter === 'source' && button.dataset.value === 'all') button.classList.toggle('active', state.source === 'all');
+        });
+        const all = payload.tickets;
+        const open = openTickets();
+        $('#open-count').textContent = open.length;
+        $('#triage-count').textContent = open.filter((ticket) => ticket.statusTone === 'warning').length;
+        $('#work-count').textContent = open.filter((ticket) => ['agent', 'human', 'active'].includes(ticket.statusTone)).length;
+        $('#all-count').textContent = all.length;
+        $('#feature-all-count').textContent = searchMatched.length;
+        const sourceCandidates = searchMatched.filter((ticket) => state.feature === 'all' || ticket.feature === state.feature);
+        $('#source-registered-count').textContent = sourceCandidates.filter((ticket) => ticket.statusSource === 'registered').length;
+        $('#source-directory-count').textContent = sourceCandidates.filter((ticket) => ticket.statusSource === 'directory').length;
+        $('#source-unregistered-count').textContent = sourceCandidates.filter((ticket) => ticket.statusSource === 'unregistered').length;
+        $('#stat-open').textContent = open.length;
+        $('#stat-triage').textContent = open.filter((ticket) => ticket.statusTone === 'warning').length;
+        $('#stat-work').textContent = open.filter((ticket) => ['agent', 'human', 'active'].includes(ticket.statusTone)).length;
+        $('#stat-blocked').textContent = open.filter((ticket) => ticket.blockedBy.length).length;
+        $('#stat-total').textContent = all.length;
+      }
+      function renderFiltersToolbar() {
+        document.querySelectorAll('.filter').forEach((button) => {
+          const isMainView = button.dataset.filter === state.view;
+          const isFeature = button.dataset.filter === 'feature' && button.dataset.value === state.feature;
+          const isSource = button.dataset.filter === 'source' && button.dataset.value === state.source;
+          button.classList.toggle('active', isMainView || isFeature || isSource);
+        });
+      }
+      function renderBoard() {
+        const visible = sorted(payload.tickets.filter(viewMatches));
+        const groups = new Map(columnOrder.map((column) => [column.key, []]));
+        for (const ticket of visible) {
+          const key = toneFor(ticket);
+          if (groups.has(key)) groups.get(key).push(ticket);
+          else groups.get('open').push(ticket);
+        }
+        $('#board').innerHTML = columnOrder.map((column) => {
+          const items = groups.get(column.key);
+          const collapsed = state.columns[column.key] === true;
+          return '<section class="column' + (collapsed ? ' collapsed' : '') + '"><button class="column-head" data-column="' + column.key + '" aria-expanded="' + String(!collapsed) + '"><span class="column-caret" aria-hidden="true"></span><h3>' + column.label + '</h3><span class="count">' + items.length + '</span></button>'
+            + '<div class="column-body">' + (items.length ? items.map(card).join('') : '<div class="empty">当前筛选下没有 ticket</div>') + '</div></section>';
+        }).join('');
+        document.querySelectorAll('.column-head').forEach((element) => {
+          element.addEventListener('click', () => {
+            const key = element.dataset.column;
+            state.columns[key] = !state.columns[key];
+            renderBoard();
+          });
+        });
+        const titleText = state.view === 'open' ? '未完成的 ticket' : state.view === 'triage' ? '待分诊的 ticket' : state.view === 'work' ? '可执行 / 处理中的 ticket' : '全部 issue';
+        $('#result-title').textContent = titleText;
+        $('#result-note').textContent = '显示 ' + visible.length + ' / ' + payload.tickets.length + ' 张 · 生成于 ' + new Date(payload.generatedAt).toLocaleString('zh-CN');
+        document.querySelectorAll('.ticket-card').forEach((element) => {
+          element.addEventListener('click', () => openTicket(element.dataset.id));
+          element.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openTicket(element.dataset.id);
+            }
+          });
+        });
+        renderFilters();
+      }
+      function detail(ticket) {
+        const statusSource = ticket.statusSource === 'registered' ? '文件内 Status 行' : ticket.statusSource === 'directory' ? '目录约定（未写 Status）' : '未登记';
+        const tags = [statusTag(ticket), '<span class="tag type">' + esc(ticket.type) + '</span>'];
+        if (ticket.priority) tags.push('<span class="tag priority">' + esc(ticket.priority) + '</span>');
+        if (ticket.blockedBy.length) tags.push('<span class="tag blocked">Blocked by ' + esc(ticket.blockedBy.join(', ')) + '</span>');
+        const acceptance = ticket.acceptance.length
+          ? '<ul>' + ticket.acceptance.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>'
+          : '<p>票内没有提取到验收条目。</p>';
+        const questions = ticket.questions.length
+          ? '<ul>' + ticket.questions.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>'
+          : '';
+        const comments = ticket.comments.length
+          ? '<div class="section"><h3>最近评论</h3><ul>' + ticket.comments.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul></div>'
+          : '';
+        return '<div class="tag-row">' + tags.join('') + '</div>'
+          + '<dl class="detail-grid">'
+          + '<dt>状态</dt><dd>' + esc(ticket.status) + ' · ' + esc(statusSource) + '</dd>'
+          + '<dt>项目域</dt><dd>' + esc(ticket.area) + ' / <code>' + esc(ticket.feature) + '</code></dd>'
+          + '<dt>来源</dt><dd>' + (ticket.source ? esc(ticket.source) : '未登记') + '</dd>'
+          + '<dt>文件</dt><dd><code>' + esc(ticket.id) + '</code></dd>'
+          + (ticket.specPath ? '<dt>Feature 文档</dt><dd><code>' + esc(ticket.specPath) + '</code></dd>' : '')
+          + '</dl>'
+          + (ticket.statusSource !== 'registered' ? '<div class="notice">这张票没有显式 Status 行，当前状态来自目录约定或“待登记”。处理前建议补齐 Status，页面才能在刷新后准确分栏。</div>' : '')
+          + '<div class="section"><h3>摘要</h3><p>' + (ticket.summary ? esc(ticket.summary) : '票内没有摘要段落。') + '</p></div>'
+          + '<div class="section"><h3>验收</h3>' + acceptance + '</div>'
+          + (questions ? '<div class="section"><h3>待确认</h3>' + questions + '</div>' : '')
+          + comments
+          + '<div class="section"><h3>原文线索</h3><pre class="excerpt">' + esc(ticket.excerpt) + '</pre></div>'
+          + '<div class="section"><h3>打开文件</h3><p><a href="' + esc(ticket.href) + '">查看 Markdown 原文</a>'
+          + (ticket.specHref ? ' · <a href="' + esc(ticket.specHref) + '">查看 feature 文档</a>' : '')
+          + '</p></div>';
+      }
+      function openTicket(id) {
+        const ticket = payload.tickets.find((item) => item.id === id);
+        if (!ticket) return;
+        state.expanded = id;
+        $('#drawer-eyebrow').textContent = ticket.area + ' · ' + ticket.number + ' · ' + ticket.statusLabel;
+        $('#drawer-title').textContent = ticket.title;
+        $('#drawer-body').innerHTML = detail(ticket);
+        $('#drawer-wrap').classList.add('open');
+        $('#drawer-wrap').setAttribute('aria-hidden', 'false');
+        $('#drawer-close').focus();
+      }
+      function closeDrawer() {
+        state.expanded = null;
+        $('#drawer-wrap').classList.remove('open');
+        $('#drawer-wrap').setAttribute('aria-hidden', 'true');
+      }
+      function setFilter(filter, value) {
+        if (filter === 'feature') state.feature = value;
+        else if (filter === 'source') state.source = value;
+        else state.view = value;
+        renderBoard();
+      }
+      $('.rail').addEventListener('click', (event) => {
+        const button = event.target.closest('.filter');
+        if (button) setFilter(button.dataset.filter, button.dataset.value);
+      });
+      $('#search').addEventListener('input', (event) => { state.search = event.target.value.trim(); renderBoard(); });
+      $('#sort').addEventListener('change', (event) => { state.sort = event.target.value; renderBoard(); });
+      $('#clear').addEventListener('click', () => {
+        state.view = 'open'; state.feature = 'all'; state.source = 'all'; state.search = ''; state.sort = 'area';
+        $('#search').value = ''; $('#sort').value = 'area'; renderBoard();
+      });
+      $('#refresh').addEventListener('click', () => window.location.reload());
+      $('#drawer-close').addEventListener('click', closeDrawer);
+      $('#backdrop').addEventListener('click', closeDrawer);
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDrawer(); });
+      renderBoard();
+    })();
+  </script>
+</body>
+</html>

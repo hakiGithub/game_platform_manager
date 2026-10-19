@@ -1,6 +1,6 @@
 # 03: VPK 深度解析移植到工具容器（mission/chapters 提取）
 
-Status: ready-for-agent
+Status: resolved
 
 ## 背景
 
@@ -19,3 +19,10 @@ VpkParser 的深度解析，当前走"全量下载到平台→Java 解析"老路
 ## 验收
 
 - 地图「详情」不再触发全量下载；大 vpk 详情秒级返回。
+
+## Answer
+
+- 实现与集成提交 `5887ba39`：`HostToolingService` 新增 `inspectVpk(instanceId, relativeVpkPath)`，通过 `platform-tools` 在主机侧只读 VPK 头部，返回战役与章节，不下载完整 VPK，也不计算整文件摘要。
+- L4D2 地图详情改走 `inspectVpk`；`analyzeVpk` 保留摘要与元数据语义，供需要内容指纹的调用方使用。
+- 回归测试通过：`VpkToolingAnalyzerTest` 6 项、`MapServiceTest` 16 项、VPK Python 脚本 3 项。
+- 本机没有 Docker/Podman/nerdctl，未在真实容器、SSH 主机和大型 VPK 上执行端到端验证。

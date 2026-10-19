@@ -221,10 +221,11 @@ public interface HostToolingService {
                                 String destDir, String includePattern);
     String fileDigest(Long instanceId, String relativePath);
     VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
+    VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
 }
 ```
 
-`extractArchive` 在目标主机解压，优先原生工具，缺失时回退 `platform-tools` 镜像。`includePattern` 是逗号分隔、大小写不敏感的 glob（如 `*.vpk`）；提供时只把匹配文件平铺到 `destDir`。`fileDigest` 接受实例相对路径，返回小写 SHA-256 hex。`analyzeVpk` 读取 VPK 元数据，返回战役与章节：
+`extractArchive` 在目标主机解压，优先原生工具，缺失时回退 `platform-tools` 镜像。`includePattern` 是逗号分隔、大小写不敏感的 glob（如 `*.vpk`）；提供时只把匹配文件平铺到 `destDir`。`fileDigest` 接受实例相对路径，返回小写 SHA-256 hex。`analyzeVpk` 计算摘要并读取 VPK 元数据；`inspectVpk` 只读 VPK 头部返回战役与章节，不计算摘要，适合地图详情等同步读取：
 
 ```java
 @Data

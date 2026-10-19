@@ -296,6 +296,7 @@ List<String> extractArchive(Long hostId, String remoteArchive,
                             String destDir, String includePattern);
 String fileDigest(Long instanceId, String relativePath);
 VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
+VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
 ```
 
 ### FileTransferProgressCallback
