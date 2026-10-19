@@ -10,7 +10,8 @@ Type: enhancement
 
 `CloudDriveExecutor.transfer` 在等待转存 Job 超时后会抛出业务异常并保留 `jobId`，
 但 clp-sdk 没有公开的 Job 取消 API，底层转存作业可能继续在网盘侧执行。
-当前 ADR-0024 仍写着“超时则尽力取消底层 Job”，与可交付能力不一致。
+当前 `.scratch/cloud-drive-host-capability/spec.md:19` 仍写着“超时尽力取消底层 Job”，
+与 ADR-0024、服务 Javadoc 和实现的“超时抛错 + 返回 jobId、底层作业可能继续”不一致。
 
 ## 期望
 
@@ -18,6 +19,65 @@ Type: enhancement
 - 若提供，宿主 `CloudDriveExecutor.transfer` 超时时应调用取消，并返回取消结果。
 - 若取消失败，异常必须保留 `jobId`、失败原因和“底层作业可能继续”的说明。
 - 取消能力实现前，平台与服务契约只承诺“超时抛错 + 返回 jobId”，不承诺远端停止。
+
+## 2026-10-20 SDK 源码核对
+
+只读检查本地 `D:\program\ai\cloud_list_platform`，工作树 HEAD 为
+`d601a0d5f92ca1a2672d7aae3f4237ba2e10b157`（`master`，落后 `origin/master` 2 个提交）。
+同时核对了本地 `origin/master`；两条提交线均未出现取消能力。
+
+可用的公开 SDK 转存/作业接口：
+
+- `CloudDriveClient.submitTransfer(TransferRequest)`：提交异步转存并返回 `jobId`。
+- `CloudDriveClient.getJob(String jobId)`：按 `jobId` 查询 `JobRecord`。
+- `CloudDriveClient.listHistory(Optional<JobStatus>, int)`：查询转存作业历史。
+- `CloudDriveClient.listJobs(Optional<JobStatus>, Optional<JobType>, int)`：统一查询转存与扫描作业。
+- `CloudDriveClient.transferAndWait(TransferRequest, Duration)`：同步等待终态；超时抛
+  `IllegalStateException`，异常消息包含 `job continues: <jobId>`。
+
+源码证据：
+
+- `clp-sdk/src/main/java/com/haki/clouddrive/sdk/CloudDriveClient.java:320-353`
+  没有 `cancelJob` / `abortJob` 等公开方法；`transferAndWait` 超时只退出等待并保留
+  `jobId`。
+- `clp-core/src/main/java/com/haki/clouddrive/core/domain/JobStatus.java:4-7`
+  只有 `RUNNING`、`COMPLETED`、`FAILED`，没有 `CANCELLED` / `CANCELED` 状态。
+- `clp-core/src/main/java/com/haki/clouddrive/core/provider/ShareTransferCapability.java:21-41`
+  Provider SPI 只有 `openShare`、`listShare`、`transfer`、`poll`、`rename`，没有取消原语。
+- `clp-core/src/main/java/com/haki/clouddrive/core/model/TransferStatus.java:6-21`
+  sealed 状态只有 `Running`、`Completed`、`Failed`，没有取消终态。
+- `clp-core/src/main/java/com/haki/clouddrive/core/transfer/TransferEngine.java:99-139`
+  `submit` 仅入队并返回 `jobId`，公开查询接口只有 `getJob` / 历史列表；引擎没有取消入口。
+- `clp-web/src/main/java/com/haki/clouddrive/web/JobController.java:31-58` 与
+  `TransferController.java:38-61` 只提供提交与查询端点，没有取消 REST 端点。
+- `clp-sdk/src/test/java/com/haki/clouddrive/sdk/CloudDriveClientTest.java:239`
+  的 `transferAndWaitTimesOutButJobContinues` 明确测试并断言超时后作业继续后台执行。
+- `clp-sdk/README.md:424-428, 564-566` 明确说明超时只中断等待，之后仍可 `getJob(jobId)`
+  查询；文档没有任何取消接口或幂等语义。
+
+结论：截至上述本地 SDK 版本，**不存在经测试的公开转存 Job 取消 API**。
+不存在可集成到本仓库的取消成功/失败/已完成三终态路径；强行实现只会发明新的
+Provider/SDK 契约，不属于本仓库可独立完成的范围。
+
+## 待人类决定的两种契约
+
+1. **接受当前能力边界**：`CloudDriveService.transfer` 继续承诺“超时抛错 + 返回
+   `jobId`，底层作业可能继续”；调用方只按异常/JOB ID 查询或重试，不显示“已取消”。
+   这需要同步修正 `.scratch/cloud-drive-host-capability/spec.md:19` 的“超时尽力取消”
+   表述；ADR-0024、CloudDriveService Javadoc 与实现目前已经一致。
+2. **新增 SDK 取消能力**：先在 `cloud_list_platform` 设计 Provider 取消 SPI、`JobStatus`
+   取消终态、幂等语义、各 Provider 能力矩阵与测试，再把新版 SDK 集成回本仓库。
+   在此之前本仓库不能实现验收中的三种取消终态测试。
+
+## Comments
+
+2026-10-20 收口：源码核对未发现可用取消 API；未修改外部仓库，未发明取消契约。
+新增超时路径回归测试
+`CloudDriveExecutorTransferTest.timeoutReportsJobMayContinue`，锁定“异常含 jobId、
+明确底层作业继续、不得误报已取消”的现有承诺。验收中的取消成功/取消失败/Job 已完成
+三种终态仍被 SDK 能力阻塞；ADR-0024、CloudDriveService Javadoc 与实现语义已一致。
+spec 第 19 行仍与 ADR/实现冲突，已拆到 `07-spec-timeout-cancellation-contract-conflict.md`
+（`needs-triage`）等待产品决策。
 
 ## 验收
 

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -81,9 +82,41 @@ class CloudDriveExecutorTransferTest {
         assertThat(request.getValue().passcode()).isEmpty();
     }
 
+    @Test
+    @DisplayName("超时抛出含 jobId 的异常，不承诺远端取消")
+    void timeoutReportsJobMayContinue() {
+        CloudAccountService accountService = mock(CloudAccountService.class);
+        CloudDriveClient client = mock(CloudDriveClient.class);
+        CloudDriveExecutor executor = new CloudDriveExecutor(accountService, client, new CloudDriveProperties());
+
+        CloudAccountResource account = new CloudAccountResource();
+        account.setName("cloud189-main");
+        CloudAccountSpec spec = new CloudAccountSpec();
+        spec.setProviderType("cloud189");
+        account.setSpec(spec);
+        when(accountService.get("cloud189-main")).thenReturn(Optional.of(account));
+        when(accountService.mountPath(account)).thenReturn("/cloud189/cloud189-main");
+        when(client.submitTransfer(any())).thenReturn("job-timeout");
+        when(client.getJob("job-timeout")).thenReturn(Optional.of(runningJob()));
+
+        assertThatThrownBy(() -> executor.transfer("cloud189-main",
+                "https://cloud.189.cn/t/example", null,
+                "/maps/orange-807", java.time.Duration.ZERO, "test-plugin"))
+                .isInstanceOf(com.gameplatform.common.exception.BusinessException.class)
+                .hasMessageContaining("jobId=job-timeout")
+                .hasMessageContaining("底层作业仍在后台执行")
+                .hasMessageNotContaining("已取消");
+    }
+
     private static JobRecord completedJob() {
         Instant now = Instant.now();
         return new JobRecord("job", JobType.TRANSFER, JobStatus.COMPLETED, "done", "ok",
                 null, List.of("/maps/orange-807/map.vpk"), now, now, JobSource.MANUAL, null);
+    }
+
+    private static JobRecord runningJob() {
+        Instant now = Instant.now();
+        return new JobRecord("job-timeout", JobType.TRANSFER, JobStatus.RUNNING, "POLL", "running",
+                null, List.of(), now, null, JobSource.MANUAL, null);
     }
 }
