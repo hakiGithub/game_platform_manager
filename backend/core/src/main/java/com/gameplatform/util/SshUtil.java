@@ -338,6 +338,8 @@ public class SshUtil {
         } catch (Exception e) {
             log.error("执行远程命令失败: {} - {}", command, e.getMessage());
             result.setSuccess(false);
+            // 没有拿到远端退出码，属于连接/会话故障；非零业务退出码在重试路径中保留。
+            result.setExitCode(-1);
             result.setError(e.getMessage());
             return result;
         }
@@ -479,8 +481,17 @@ public class SshUtil {
      * SFTP 操作函数式接口
      */
     @FunctionalInterface
-    private interface SftpOperation<T> {
+    public interface SftpOperation<T> {
         T execute(SftpClient sftp) throws Exception;
+    }
+
+    /** 在连接池会话上执行 SFTP 操作（供 hostaccess 传输适配器使用）。 */
+    public <T> T withSftp(String host, int port, String username,
+                          String privateKey, String password,
+                          SftpOperation<T> operation) throws Exception {
+        long timeoutMs = sshConfig != null ? sshConfig.getSessionTimeout() : DEFAULT_TIMEOUT;
+        return executeSftpWithRetry(host, port, username, privateKey, password,
+                timeoutMs, true, operation);
     }
 
     /**

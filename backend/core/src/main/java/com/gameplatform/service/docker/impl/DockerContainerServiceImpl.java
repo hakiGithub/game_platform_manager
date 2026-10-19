@@ -1,11 +1,12 @@
 package com.gameplatform.service.docker.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.ContainerLogQueryDTO;
 import com.gameplatform.dto.docker.ContainerOperationDTO;
 import com.gameplatform.entity.GameInstance;
@@ -13,7 +14,6 @@ import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerContainerService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ContainerDetailVO;
 import com.gameplatform.vo.docker.ContainerHealthVO;
 import com.gameplatform.vo.docker.ContainerListVO;
@@ -41,8 +41,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
 
     private final HostMapper hostMapper;
     private final GameInstanceMapper instanceMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -51,7 +50,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         
         // 执行docker ps命令获取容器列表
         String command = "docker ps -a --format '{{json .}}'";
-        SshUtil.CommandResult result = executeCommand(host, command, 30000);
+        CommandResult result = executeCommand(host, command, 30000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.HOST_CONNECTION_FAILED, "获取容器列表失败: " + result.getError());
@@ -98,7 +97,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
 
         // 获取容器详细信息
         String command = String.format("docker inspect %s", containerId);
-        SshUtil.CommandResult result = executeCommand(host, command, 10000);
+        CommandResult result = executeCommand(host, command, 10000);
 
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.NOT_FOUND, "容器不存在: " + containerId);
@@ -142,7 +141,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         Host host = getHost(hostId);
         
         String command = String.format("docker start %s", containerId);
-        SshUtil.CommandResult result = executeCommand(host, command, 30000);
+        CommandResult result = executeCommand(host, command, 30000);
         
         if (result.isSuccess()) {
             return new ContainerOperationResult(true, containerId, "容器启动成功");
@@ -165,7 +164,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         
         command.append(" ").append(containerId);
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 60000);
+        CommandResult result = executeCommand(host, command.toString(), 60000);
         
         if (result.isSuccess()) {
             return new ContainerOperationResult(true, containerId, "容器已停止");
@@ -186,7 +185,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         
         command.append(" ").append(containerId);
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 60000);
+        CommandResult result = executeCommand(host, command.toString(), 60000);
         
         if (result.isSuccess()) {
             return new ContainerOperationResult(true, containerId, "容器重启成功");
@@ -211,7 +210,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         
         command.append(" ").append(containerId);
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 30000);
+        CommandResult result = executeCommand(host, command.toString(), 30000);
         
         if (result.isSuccess()) {
             return new ContainerOperationResult(true, containerId, "容器已删除");
@@ -225,7 +224,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         Host host = getHost(hostId);
         
         String command = String.format("docker stats --no-stream --format '{{json .}}' %s", containerId);
-        SshUtil.CommandResult result = executeCommand(host, command, 10000);
+        CommandResult result = executeCommand(host, command, 10000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.NOT_FOUND, "获取容器统计失败: " + result.getError());
@@ -242,7 +241,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         String command = String.format(
                 "docker inspect --format '{{json .State.Health}}' %s 2>/dev/null || echo '{}'",
                 containerId);
-        SshUtil.CommandResult result = executeCommand(host, command, 10000);
+        CommandResult result = executeCommand(host, command, 10000);
         
         ContainerHealthVO healthVO = new ContainerHealthVO();
         healthVO.setContainerId(containerId);
@@ -285,7 +284,7 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         
         command.append(" ").append(containerId).append(" 2>&1");
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 30000);
+        CommandResult result = executeCommand(host, command.toString(), 30000);
         
         List<LogLine> logs = new ArrayList<>();
         String[] lines = result.getOutput().split("\n");
@@ -318,17 +317,12 @@ public class DockerContainerServiceImpl implements DockerContainerService {
         return host;
     }
 
-    private SshUtil.CommandResult executeCommand(Host host, String command) {
+    private CommandResult executeCommand(Host host, String command) {
         return executeCommand(host, command, 30000);
     }
 
-    private SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        HostCredentials conn = deployAccess.credentials(host);
-        return sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                command,
-                timeoutMs
-        );
+    private CommandResult executeCommand(Host host, String command, long timeoutMs) {
+        return remoteHost.exec(host, command, timeoutMs);
     }
 
     private List<ContainerListVO> parseContainerList(String output) {

@@ -1,12 +1,12 @@
 package com.gameplatform.service.sync;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.gameplatform.adapter.DeployAdapter.InstanceStatus;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.GameInstanceMapper;
-import com.gameplatform.util.SshUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -38,14 +38,11 @@ public class NativeInstanceSyncStrategy {
     private static final Pattern GAME_PARAM_PATTERN = Pattern.compile("-game\\s+(\\S+)");
     private static final Pattern JAR_PARAM_PATTERN = Pattern.compile("-jar\\s+(\\S+)");
 
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
     private final GameInstanceMapper instanceMapper;
 
-    public NativeInstanceSyncStrategy(SshUtil sshUtil, DeploymentAccess deployAccess,
-                                      GameInstanceMapper instanceMapper) {
-        this.sshUtil = sshUtil;
-        this.deployAccess = deployAccess;
+    public NativeInstanceSyncStrategy(RemoteHost remoteHost, GameInstanceMapper instanceMapper) {
+        this.remoteHost = remoteHost;
         this.instanceMapper = instanceMapper;
     }
 
@@ -139,7 +136,7 @@ public class NativeInstanceSyncStrategy {
     private InstanceStatus detectProcessStatus(Host host, String keyword) {
         try {
             String command = String.format("pgrep -f \"%s\" 2>/dev/null", escapeKeyword(keyword));
-            SshUtil.CommandResult result = executeCommand(host, command, 10000);
+            CommandResult result = executeCommand(host, command, 10000);
             int exitCode = result.getExitCode();
             if (exitCode == 0) {
                 return InstanceStatus.RUNNING;
@@ -161,15 +158,10 @@ public class NativeInstanceSyncStrategy {
     }
 
     /**
-     * 通过 Host 实体执行 SSH 命令（凭据统一走 DeploymentAccess）
+     * 通过 Host 实体执行 SSH 命令（凭据统一走 RemoteHost）
      */
-    private SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        HostCredentials conn = deployAccess.credentials(host);
-        return sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                command,
-                timeoutMs
-        );
+    private CommandResult executeCommand(Host host, String command, long timeoutMs) {
+        return remoteHost.exec(host, command, timeoutMs);
     }
 
     private void updateInstanceStatus(GameInstance instance, InstanceStateReconciler.Decision decision) {

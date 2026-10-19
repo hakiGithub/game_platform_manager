@@ -3,6 +3,7 @@ package com.gameplatform.patch;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.common.exception.BusinessException;
+import com.gameplatform.hostaccess.CommandResult;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.service.FileService;
 import lombok.RequiredArgsConstructor;
@@ -64,7 +65,7 @@ public class HostCapabilityProber {
         // SFTP 推送脚本（不区分局域网，ADR-0006 决策 3）
         fileService.writeTextFile(hostId, REMOTE_SCRIPT_PATH, script);
         // 执行探测
-        com.gameplatform.util.SshUtil.CommandResult result =
+        CommandResult result =
                 fileService.executeCommand(hostId, "sh " + REMOTE_SCRIPT_PATH, PROBE_TIMEOUT_MS);
         if (result == null || !result.isSuccess()) {
             throw new BusinessException("能力探测执行失败: "

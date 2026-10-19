@@ -1,5 +1,7 @@
 package com.gameplatform.patch;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.http.HttpUtil;
 import com.gameplatform.common.exception.BusinessException;
@@ -10,7 +12,6 @@ import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.service.AbstractInstanceFileService;
 import com.gameplatform.plugin.service.AbstractInstanceFileService.FileRoute;
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -235,7 +236,7 @@ public class PatchInstallExecutor {
      * 以 SSH 用户的 UID/GID 运行容器，避免 root 解压产物无法被普通用户移动或清理；
      * volumes 形如 "-v /tmp/x:/w -v /tmp/y:/d"，innerCmd 在容器内执行。
      */
-    private SshUtil.CommandResult dockerRunTool(Host host, String volumes, String innerCmd) {
+    private CommandResult dockerRunTool(Host host, String volumes, String innerCmd) {
         return execOnHostQuietly(host, "docker run --rm --user \"$(id -u):$(id -g)\" "
                 + volumes + " " + toolingImage + " " + innerCmd);
     }
@@ -324,7 +325,7 @@ public class PatchInstallExecutor {
         }
     }
 
-    private void requireDownloadOk(SshUtil.CommandResult r) {
+    private void requireDownloadOk(CommandResult r) {
         if (r == null || !r.isSuccess()) {
             throw new RetryableException("远程下载失败: " + (r != null ? r.getError() : "无响应"));
         }
@@ -365,7 +366,7 @@ public class PatchInstallExecutor {
 
     private boolean hostSupportsHeaderFileCurl(Host host) {
         return headerFileCurlCache.computeIfAbsent(host.getId(), id -> {
-            SshUtil.CommandResult r = execOnHostQuietly(host, "curl --version");
+            CommandResult r = execOnHostQuietly(host, "curl --version");
             if (r == null || !r.isSuccess() || r.getOutput() == null) {
                 return false;
             }
@@ -408,7 +409,7 @@ public class PatchInstallExecutor {
         if (sha256 == null || sha256.isBlank()) {
             return;
         }
-        SshUtil.CommandResult r;
+        CommandResult r;
         if (caps.hasTool("sha256sum")) {
             r = execOnHost(host, "sha256sum " + shellQuote(remoteFile) + " | awk '{print $1}'");
         } else if (caps.hasTool("shasum")) {
@@ -429,7 +430,7 @@ public class PatchInstallExecutor {
     // ==================== 解压与移动（远程） ====================
 
     private Set<String> listRemoteEntries(Host host, HostCapabilities caps, PatchFormat format, String remoteArchive) {
-        SshUtil.CommandResult r;
+        CommandResult r;
         if (caps.hasTool("tar")) {
             r = execOnHost(host, "tar -tzf " + shellQuote(remoteArchive));
         } else if (caps.hasDocker()) {
@@ -456,7 +457,7 @@ public class PatchInstallExecutor {
 
     private void remoteExtract(Host host, HostCapabilities caps, PatchFormat format, String archive, String destDir) {
         execOk(host, "mkdir -p " + shellQuote(destDir));
-        SshUtil.CommandResult r;
+        CommandResult r;
         if (decisionEngine.canExtractNative(caps, format)) {
             String cmd = switch (format) {
                 case TAR_GZ -> "tar -xzf";
@@ -514,7 +515,7 @@ public class PatchInstallExecutor {
             remoteExtract(host, caps, format, archive, tmpDir + "/extracted");
             if (includePattern != null && !includePattern.isBlank()) {
                 String findExpr = buildFindExpr(includePattern);
-                SshUtil.CommandResult list = execOnHost(host,
+                CommandResult list = execOnHost(host,
                         "cd " + shellQuote(tmpDir + "/extracted") + " && find . -type f " + findExpr
                                 + " | sed 's|^\\./||' | sort");
                 if (list == null || !list.isSuccess() || list.getOutput() == null) {
@@ -535,7 +536,7 @@ public class PatchInstallExecutor {
                 return placed;
             }
             // 全量解压：列顶层条目移入
-            SshUtil.CommandResult list = execOnHost(host,
+            CommandResult list = execOnHost(host,
                     "cd " + shellQuote(tmpDir + "/extracted") + " && find . -maxdepth 1 -mindepth 1 | sed 's|^\\./||' | sort");
             List<String> placed = new ArrayList<>();
             if (list != null && list.isSuccess() && list.getOutput() != null) {
@@ -562,7 +563,7 @@ public class PatchInstallExecutor {
                                         String includePattern, String targetPath,
                                         ProgressListener progress) {
         String findExpr = buildFindExpr(includePattern);
-        SshUtil.CommandResult list = execOnHost(host,
+        CommandResult list = execOnHost(host,
                 "cd " + shellQuote(extractedDir) + " && find . -type f " + findExpr
                         + " | sed 's|^\\./||' | sort");
         if (list == null || !list.isSuccess() || list.getOutput() == null) {
@@ -684,7 +685,7 @@ public class PatchInstallExecutor {
 
     /** docker inspect 解析 Mounts，返回目标路径命中的挂载（未命中返回 null；inspect 失败不猜测路径） */
     private MountMatch detectMount(Host host, String containerId, String containerPath) {
-        SshUtil.CommandResult r = execOnHostQuietly(host,
+        CommandResult r = execOnHostQuietly(host,
                 "docker inspect " + containerId + " --format '{{json .Mounts}}'");
         if (r == null || !r.isSuccess()) {
             throw new BusinessException("容器未运行或无法解析挂载信息，无法可靠判定写入路径");
@@ -716,14 +717,14 @@ public class PatchInstallExecutor {
         execOk(host, "mkdir -p " + shellQuote(backupDir));
         for (String entry : topLevel) {
             String src = route.resolvedPath + "/" + entry;
-            SshUtil.CommandResult exists = execOnHostQuietly(host,
+            CommandResult exists = execOnHostQuietly(host,
                     "test -e " + shellQuote(src) + " && echo yes || echo no");
             if (exists == null || !"yes".equals(exists.getOutput().trim())) {
                 continue; // 新条目，无需备份
             }
             if (route.isNative()) {
                 // 宿主机：tar 打包（无 tar 时 cp -r 兜底）
-                SshUtil.CommandResult tar = execOnHostQuietly(host,
+                CommandResult tar = execOnHostQuietly(host,
                         "tar -czf " + shellQuote(backupDir + "/" + entry + ".tar.gz")
                                 + " -C " + shellQuote(route.resolvedPath) + " " + shellQuote(entry));
                 if (tar == null || !tar.isSuccess()) {
@@ -741,7 +742,7 @@ public class PatchInstallExecutor {
 
     private void rollback(FileRoute route, Host host, Set<String> topLevel) {
         // 使用最近一次备份目录（backupDir 基于时间戳——回滚需找到最新；简化：恢复最近一个）
-        SshUtil.CommandResult r = execOnHostQuietly(host,
+        CommandResult r = execOnHostQuietly(host,
                 "ls -1 " + shellQuote(backupRoot(route)) + " 2>/dev/null | tail -1");
         if (r == null || !r.isSuccess() || r.getOutput().isBlank()) {
             return;
@@ -751,7 +752,7 @@ public class PatchInstallExecutor {
             String backupEntry = latest + "/" + entry;
             if (route.isNative()) {
                 String archive = backupEntry + ".tar.gz";
-                SshUtil.CommandResult has = execOnHostQuietly(host, "test -e " + shellQuote(archive) + " && echo yes || echo no");
+                CommandResult has = execOnHostQuietly(host, "test -e " + shellQuote(archive) + " && echo yes || echo no");
                 if (has != null && "yes".equals(has.getOutput().trim())) {
                     execOk(host, "tar -xzf " + shellQuote(archive) + " -C " + shellQuote(route.resolvedPath));
                 } else {
@@ -775,7 +776,7 @@ public class PatchInstallExecutor {
     }
 
     private void pruneBackups(FileRoute route, Host host) {
-        SshUtil.CommandResult r = execOnHostQuietly(host,
+        CommandResult r = execOnHostQuietly(host,
                 "ls -1t " + shellQuote(backupRoot(route)) + " 2>/dev/null | tail -n +" + (BACKUP_KEEP + 1));
         if (r == null || !r.isSuccess() || r.getOutput().isBlank()) {
             return;
@@ -812,18 +813,18 @@ public class PatchInstallExecutor {
         }
     }
 
-    private SshUtil.CommandResult execOnHost(Host host, String command) {
+    private CommandResult execOnHost(Host host, String command) {
         return execOnHostQuietly(host, command);
     }
 
     private void execOk(Host host, String command) {
-        SshUtil.CommandResult r = execOnHostQuietly(host, command);
+        CommandResult r = execOnHostQuietly(host, command);
         if (r == null || !r.isSuccess()) {
             throw new RetryableException("SSH 命令执行失败: " + command + " - " + (r != null ? r.getError() : "无响应"));
         }
     }
 
-    private SshUtil.CommandResult execOnHostQuietly(Host host, String command) {
+    private CommandResult execOnHostQuietly(Host host, String command) {
         try {
             return fileService.executeCommand(host.getId(), command, SSH_TIMEOUT_MS);
         } catch (Exception e) {

@@ -1,15 +1,15 @@
 package com.gameplatform.service.docker.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.FileContentUpdateDTO;
 import com.gameplatform.dto.docker.FileCopyDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerFileService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ContainerFileInfoVO;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -41,8 +41,7 @@ import java.util.regex.Pattern;
 public class DockerFileServiceImpl implements DockerFileService {
 
     private final HostMapper hostMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
     
     private static final long MAX_PREVIEW_SIZE = 10 * 1024 * 1024; // 10MB
     private static final long MAX_EDIT_SIZE = 1 * 1024 * 1024; // 1MB
@@ -66,7 +65,7 @@ public class DockerFileServiceImpl implements DockerFileService {
         command.append("([ -e \"$f\" ] || [ -L \"$f\" ]) && stat -c \"%A %h %U %G %s %Y %n\" \"$f\"; done' _ ");
         command.append(escapePath(path));
 
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 30000);
+        CommandResult result = executeCommand(host, command.toString(), 30000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.NOT_FOUND, "获取文件列表失败: " + result.getError());
@@ -88,7 +87,7 @@ public class DockerFileServiceImpl implements DockerFileService {
         // 先检查文件大小
         String sizeCommand = String.format("docker exec %s stat -c %%s %s 2>/dev/null", 
                 containerId, escapePath(path));
-        SshUtil.CommandResult sizeResult = executeCommand(host, sizeCommand, 10000);
+        CommandResult sizeResult = executeCommand(host, sizeCommand, 10000);
         
         long fileSize = 0;
         boolean truncated = false;
@@ -122,7 +121,7 @@ public class DockerFileServiceImpl implements DockerFileService {
             command.append(escapePath(path));
         }
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 60000);
+        CommandResult result = executeCommand(host, command.toString(), 60000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.NOT_FOUND, "读取文件失败: " + result.getError());
@@ -166,7 +165,7 @@ public class DockerFileServiceImpl implements DockerFileService {
             backupPath = path + ".bak." + System.currentTimeMillis();
             String backupCommand = String.format("docker exec %s cp %s %s",
                     containerId, escapePath(path), escapePath(backupPath));
-            SshUtil.CommandResult backupResult = executeCommand(host, backupCommand, 10000);
+            CommandResult backupResult = executeCommand(host, backupCommand, 10000);
             
             if (!backupResult.isSuccess()) {
                 log.warn("备份文件失败: {}", backupResult.getError());
@@ -182,7 +181,7 @@ public class DockerFileServiceImpl implements DockerFileService {
                 containerId, base64Content, escapePath(path)
         );
         
-        SshUtil.CommandResult result = executeCommand(host, writeCommand, 30000);
+        CommandResult result = executeCommand(host, writeCommand, 30000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.FAILED, "写入文件失败: " + result.getError());
@@ -198,7 +197,7 @@ public class DockerFileServiceImpl implements DockerFileService {
         Host host = getHost(hostId);
         
         String command = String.format("docker exec %s rm -rf %s", containerId, escapePath(path));
-        SshUtil.CommandResult result = executeCommand(host, command, 30000);
+        CommandResult result = executeCommand(host, command, 30000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.FAILED, "删除文件失败: " + result.getError());
@@ -227,7 +226,7 @@ public class DockerFileServiceImpl implements DockerFileService {
             String copyCommand = String.format("docker cp %s %s:%s",
                     tempFile.toString(), containerId, escapePath(targetPath));
             
-            SshUtil.CommandResult result = executeCommand(host, copyCommand, 60000);
+            CommandResult result = executeCommand(host, copyCommand, 60000);
             
             // 删除临时文件
             Files.deleteIfExists(tempFile);
@@ -264,7 +263,7 @@ public class DockerFileServiceImpl implements DockerFileService {
             String copyCommand = String.format("docker cp %s:%s %s",
                     containerId, escapePath(path), tempFile.toString());
             
-            SshUtil.CommandResult result = executeCommand(host, copyCommand, 60000);
+            CommandResult result = executeCommand(host, copyCommand, 60000);
             
             if (result.isSuccess()) {
                 // 读取文件并写入响应
@@ -303,7 +302,7 @@ public class DockerFileServiceImpl implements DockerFileService {
             throw new BusinessException(ResultCode.VALIDATE_FAILED, "无效的拷贝方向: " + direction);
         }
         
-        SshUtil.CommandResult result = executeCommand(host, command, 60000);
+        CommandResult result = executeCommand(host, command, 60000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.FAILED, "拷贝文件失败: " + result.getError());
@@ -322,17 +321,12 @@ public class DockerFileServiceImpl implements DockerFileService {
         return host;
     }
 
-    private SshUtil.CommandResult executeCommand(Host host, String command, int timeout) {
+    private CommandResult executeCommand(Host host, String command, int timeout) {
         try {
-            HostCredentials conn = deployAccess.credentials(host);
-            return sshUtil.executeCommand(
-                    conn.host(), conn.port(), conn.username(), null, conn.password(),
-                    command,
-                    timeout
-            );
+            return remoteHost.exec(host, command, timeout);
         } catch (Exception e) {
             log.error("执行SSH命令失败: {}", e.getMessage(), e);
-            SshUtil.CommandResult errorResult = new SshUtil.CommandResult();
+            CommandResult errorResult = new CommandResult();
             errorResult.setExitCode(1);
             errorResult.setOutput("");
             errorResult.setError(e.getMessage());
@@ -405,7 +399,7 @@ public class DockerFileServiceImpl implements DockerFileService {
     private LocalDateTime getFileModifiedTime(Host host, String containerId, String path) {
         String command = String.format("docker exec %s stat -c %%Y %s 2>/dev/null",
                 containerId, escapePath(path));
-        SshUtil.CommandResult result = executeCommand(host, command, 10000);
+        CommandResult result = executeCommand(host, command, 10000);
         
         if (result.isSuccess()) {
             try {

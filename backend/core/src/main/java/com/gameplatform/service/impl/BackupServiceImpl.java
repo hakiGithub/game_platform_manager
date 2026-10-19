@@ -1,9 +1,10 @@
 package com.gameplatform.service.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.config.GamePlatformConfig;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.BackupRecord;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
@@ -13,7 +14,6 @@ import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.BackupService;
 import com.gameplatform.service.InstanceService;
 import com.gameplatform.util.AesUtil;
-import com.gameplatform.util.SshUtil;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,13 +62,10 @@ public class BackupServiceImpl implements BackupService {
     private InstanceService instanceService;
 
     @Autowired
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Autowired
     private AesUtil aesUtil;
-
-    @Autowired
-    private DeploymentAccess deployAccess;
 
     @Autowired
     private GamePlatformConfig gamePlatformConfig;
@@ -394,23 +391,13 @@ public class BackupServiceImpl implements BackupService {
         try {
             updateProgress(backupId, 20);
 
-            // 凭据解析统一走 DeploymentAccess
-            HostCredentials conn = deployAccess.credentials(host);
-
             updateProgress(backupId, 30);
 
             // 在远程主机上打包文件
             String remoteTarPath = "/tmp/" + backupFileName;
             String tarCommand = String.format("tar -czf %s -C %s .", remoteTarPath, sourcePath);
 
-            SshUtil.CommandResult result = sshUtil.executeCommand(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    null,
-                    tarCommand
-            );
+            CommandResult result = remoteHost.exec(host, tarCommand);
 
             if (!result.isSuccess()) {
                 throw new BusinessException("远程打包失败: " + result.getError());
@@ -421,23 +408,15 @@ public class BackupServiceImpl implements BackupService {
             // 检查是否取消
             if (cancelled != null && cancelled.get()) {
                 // 清理远程临时文件
-                sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                        conn.privateKey(), null, "rm -f " + remoteTarPath);
+                remoteHost.exec(host, "rm -f " + remoteTarPath);
                 throw new InterruptedException("备份已取消");
             }
 
             updateProgress(backupId, 70);
 
             // 下载打包文件
-            boolean downloadSuccess = sshUtil.downloadFile(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    null,
-                    remoteTarPath,
-                    tarFilePath.toString()
-            );
+            boolean downloadSuccess = remoteHost.download(
+                    host, remoteTarPath, tarFilePath.toString());
 
             if (!downloadSuccess) {
                 throw new BusinessException("下载备份文件失败");
@@ -446,8 +425,7 @@ public class BackupServiceImpl implements BackupService {
             updateProgress(backupId, 80);
 
             // 清理远程临时文件
-            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                    conn.privateKey(), null, "rm -f " + remoteTarPath);
+            remoteHost.exec(host, "rm -f " + remoteTarPath);
 
             updateProgress(backupId, 90);
 
@@ -675,24 +653,14 @@ public class BackupServiceImpl implements BackupService {
             restorePath = instance.getInstallPath();
         }
 
-        // 凭据解析统一走 DeploymentAccess
-        HostCredentials conn = deployAccess.credentials(host);
-
         // 停止实例
         instanceService.stopInstance(instance.getId());
 
         try {
             // 上传备份文件到远程主机
             String remoteBackupPath = "/tmp/restore_" + backupId + ".tar.gz";
-            boolean uploadSuccess = sshUtil.uploadFile(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    null,
-                    backupFilePath,
-                    remoteBackupPath
-            );
+            boolean uploadSuccess = remoteHost.upload(
+                    host, backupFilePath, remoteBackupPath);
 
             if (!uploadSuccess) {
                 throw new BusinessException("上传备份文件失败");
@@ -702,22 +670,14 @@ public class BackupServiceImpl implements BackupService {
             String restoreCommand = String.format("cd %s && tar -xzf %s --overwrite",
                     restorePath, remoteBackupPath);
 
-            SshUtil.CommandResult result = sshUtil.executeCommand(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    null,
-                    restoreCommand
-            );
+            CommandResult result = remoteHost.exec(host, restoreCommand);
 
             if (!result.isSuccess()) {
                 throw new BusinessException("还原文件失败: " + result.getError());
             }
 
             // 清理远程临时文件
-            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                    conn.privateKey(), null, "rm -f " + remoteBackupPath);
+            remoteHost.exec(host, "rm -f " + remoteBackupPath);
 
             log.info("文件还原成功: backupId={}", backupId);
 

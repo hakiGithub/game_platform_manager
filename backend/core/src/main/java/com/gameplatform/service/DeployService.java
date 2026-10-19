@@ -3,13 +3,12 @@ package com.gameplatform.service;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -48,10 +47,7 @@ public class DeployService {
     private HostMapper hostMapper;
 
     @Autowired
-    private SshUtil sshUtil;
-
-    @Autowired
-    private DeploymentAccess deployAccess;
+    private RemoteHost remoteHost;
 
     // 部署任务状态缓存
     private final Map<Long, DeployTaskStatus> taskStatusMap = new ConcurrentHashMap<>();
@@ -892,16 +888,8 @@ public class DeployService {
      * 检查SSH连接
      */
     private boolean checkSshConnection(Host host) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "echo 'SSH connection test'",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host, "echo 'SSH connection test'", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
         return result.isSuccess();
     }
 
@@ -909,16 +897,8 @@ public class DeployService {
      * 检查Docker是否已安装
      */
     private boolean checkDockerInstalled(Host host) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "docker --version",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host, "docker --version", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
         return result.isSuccess() && result.getOutput().contains("Docker version");
     }
 
@@ -926,16 +906,8 @@ public class DeployService {
      * 检查Docker是否运行
      */
     private boolean checkDockerRunning(Host host) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "docker info",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host, "docker info", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
         return result.isSuccess();
     }
 
@@ -943,16 +915,9 @@ public class DeployService {
      * 检查Docker Compose是否已安装
      */
     private boolean checkDockerComposeInstalled(Host host) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "docker compose version || docker-compose --version",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host,
+                "docker compose version || docker-compose --version", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
         return result.isSuccess() &&
                 (result.getOutput().contains("Docker Compose") || result.getOutput().contains("docker-compose"));
     }
@@ -961,16 +926,9 @@ public class DeployService {
      * 检查磁盘空间
      */
     private boolean checkDiskSpace(Host host, Map<String, Object> config) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host,
+                "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
 
         if (result.isSuccess()) {
             try {
@@ -987,16 +945,9 @@ public class DeployService {
      * 检查内存
      */
     private boolean checkMemory(Host host, Map<String, Object> config) {
-        HostCredentials conn = sshCredentials(host);
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                conn.host(),
-                conn.port(),
-                conn.username(),
-                conn.privateKey(),
-                conn.password(),
-                "free | grep Mem | awk '{print ($3/$2) * 100.0}'",
-                10000
-        );
+        CommandResult result = remoteHost.exec(host,
+                "free | grep Mem | awk '{print ($3/$2) * 100.0}'", 10000,
+                RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT);
 
         if (result.isSuccess()) {
             try {
@@ -1015,20 +966,6 @@ public class DeployService {
     private boolean checkPorts(Host host, Map<String, Object> config) {
         // 端口检查由适配器具体实现
         return true;
-    }
-
-    /**
-     * 解析主机 SSH 凭据（统一走 DeploymentAccess）
-     *
-     * <p>本服务保留一条本地策略：密码存在时优先密码认证、不下发私钥，
-     * 避免 SshUtil 优先使用私钥导致认证失败。</p>
-     */
-    private HostCredentials sshCredentials(Host host) {
-        HostCredentials conn = deployAccess.credentials(host);
-        if (conn.password() != null && !conn.password().isEmpty()) {
-            return new HostCredentials(conn.host(), conn.port(), conn.username(), null, conn.password());
-        }
-        return conn;
     }
 
     // ========== 回调通知方法 ==========

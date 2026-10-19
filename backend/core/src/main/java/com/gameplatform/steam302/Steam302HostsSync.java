@@ -1,11 +1,12 @@
 package com.gameplatform.steam302;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import com.gameplatform.util.SudoAwareSshRunner;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.config.Steam302Properties;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -103,7 +104,7 @@ public class Steam302HostsSync {
     /** 容器共享加速是否开启（flag 文件存在） */
     public boolean isContainerShareEnabled(Long hostId) {
         String flagPath = props.getDataDir() + "/" + CONTAINER_SHARE_FLAG;
-        SshUtil.CommandResult r = runner.runPrivileged(hostId, "test -f " + flagPath + " && echo YES", 10_000);
+        CommandResult r = runner.runPrivileged(hostId, "test -f " + flagPath + " && echo YES", 10_000);
         return r.isSuccess() && r.getOutput().contains("YES");
     }
 
@@ -119,7 +120,7 @@ public class Steam302HostsSync {
 
     private Set<String> readActiveDomains(Long hostId) {
         String caddyfilePath = props.getDataDir() + "/steamcommunity_302.caddy.json";
-        SshUtil.CommandResult r = runner.run(hostId, "cat " + caddyfilePath, 30_000);
+        CommandResult r = runner.run(hostId, "cat " + caddyfilePath, 30_000);
         if (!r.isSuccess()) {
             throw new BusinessException("读取 Caddyfile 失败: " + caddyfilePath);
         }
@@ -194,7 +195,7 @@ public class Steam302HostsSync {
     }
 
     private String readHosts(Long hostId) {
-        SshUtil.CommandResult r = runner.run(hostId, "cat " + ETC_HOSTS, 15_000);
+        CommandResult r = runner.run(hostId, "cat " + ETC_HOSTS, 15_000);
         if (!r.isSuccess()) {
             throw new BusinessException("读取 /etc/hosts 失败: " + r.getError());
         }

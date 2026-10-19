@@ -1,11 +1,11 @@
 package com.gameplatform.patch;
 
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.plugin.service.AbstractInstanceFileService;
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +39,7 @@ class PatchInstallExecutorCommandShapeTest {
         host.setId(1L);
         HostCapabilities capabilities = new HostCapabilities();
         capabilities.setTools(Map.of("unzip", true));
-        SshUtil.CommandResult ok = new SshUtil.CommandResult();
+        CommandResult ok = new CommandResult();
         ok.setSuccess(true);
         ok.setExitCode(0);
         ok.setOutput("");
@@ -73,7 +73,7 @@ class PatchInstallExecutorCommandShapeTest {
         HostCapabilities capabilities = new HostCapabilities();
         capabilities.setTools(Map.of());
         capabilities.setDocker(true);
-        SshUtil.CommandResult ok = new SshUtil.CommandResult();
+        CommandResult ok = new CommandResult();
         ok.setSuccess(true);
         ok.setExitCode(0);
         ok.setOutput("");
@@ -107,7 +107,7 @@ class PatchInstallExecutorCommandShapeTest {
         HostCapabilities capabilities = new HostCapabilities();
         capabilities.setTools(Map.of());
         capabilities.setDocker(true);
-        SshUtil.CommandResult ok = new SshUtil.CommandResult();
+        CommandResult ok = new CommandResult();
         ok.setSuccess(true);
         ok.setExitCode(0);
         ok.setOutput("");

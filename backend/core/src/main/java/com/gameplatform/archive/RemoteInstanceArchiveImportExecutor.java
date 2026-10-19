@@ -1,5 +1,7 @@
 package com.gameplatform.archive;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.entity.Host;
@@ -16,7 +18,6 @@ import com.gameplatform.plugin.service.InstanceArchiveImportListener;
 import com.gameplatform.plugin.service.InstanceArchiveImportRequest;
 import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -204,7 +205,7 @@ public class RemoteInstanceArchiveImportExecutor
         String markerPath = handle.target() + "/" + handle.commitMarker();
         String command = "mkdir -p " + shellQuote(handle.target())
                 + " && touch " + shellQuote(markerPath);
-        SshUtil.CommandResult result = handle.containerId() == null
+        CommandResult result = handle.containerId() == null
                 ? exec(host, command)
                 : execDocker(host, handle.containerId(), command);
         if (result == null || !result.isSuccess()) {
@@ -239,7 +240,7 @@ public class RemoteInstanceArchiveImportExecutor
                     + " && mv -f " + shellQuote(handle.backup()) + " "
                     + shellQuote(handle.target())
                 : "rm -rf " + shellQuote(handle.target());
-        SshUtil.CommandResult result = handle.containerId() == null
+        CommandResult result = handle.containerId() == null
                 ? exec(host, inner)
                 : execDocker(host, handle.containerId(), inner);
         if (result == null || !result.isSuccess()) {
@@ -323,7 +324,7 @@ public class RemoteInstanceArchiveImportExecutor
     }
 
     private void normalizePluginRoot(Host host, String staging, String structureRoot) {
-        SshUtil.CommandResult root = execOk(host, InstanceArchiveImportService.Phase.EXTRACT,
+        CommandResult root = execOk(host, InstanceArchiveImportService.Phase.EXTRACT,
                 "test -d " + shellQuote(staging + "/" + structureRoot)
                         + " && echo ROOT || "
                         + "find " + shellQuote(staging) + " -mindepth 1 -maxdepth 1 -type d "
@@ -365,7 +366,7 @@ public class RemoteInstanceArchiveImportExecutor
     }
 
     private void requireNoLinks(Host host, String containerId, String staging) {
-        SshUtil.CommandResult links = execPath(host, containerId,
+        CommandResult links = execPath(host, containerId,
                 "find " + shellQuote(staging) + " -type l -print -quit");
         if (links == null || !links.isSuccess()
                 || (links.getOutput() != null && !links.getOutput().isBlank())) {
@@ -376,7 +377,7 @@ public class RemoteInstanceArchiveImportExecutor
                     links == null ? "校验符号链接的 SSH 命令无响应"
                             : "staging 包含符号链接: " + safeOutput(links));
         }
-        SshUtil.CommandResult hardLinks = execPath(host, containerId,
+        CommandResult hardLinks = execPath(host, containerId,
                 "find " + shellQuote(staging) + " -type f -links +1 -print -quit");
         if (hardLinks == null || !hardLinks.isSuccess()
                 || (hardLinks.getOutput() != null && !hardLinks.getOutput().isBlank())) {
@@ -390,7 +391,7 @@ public class RemoteInstanceArchiveImportExecutor
     }
 
     private List<String> listFiles(Host host, String containerId, String staging) {
-        SshUtil.CommandResult result = execPath(host, containerId,
+        CommandResult result = execPath(host, containerId,
                 "cd " + shellQuote(staging)
                         + " && find . -type f -print | sed 's|^\\./||' | sort");
         if (result == null || !result.isSuccess()) {
@@ -408,7 +409,7 @@ public class RemoteInstanceArchiveImportExecutor
     }
 
     private long sumBytes(Host host, String containerId, String staging) {
-        SshUtil.CommandResult result = execPath(host, containerId,
+        CommandResult result = execPath(host, containerId,
                 "cd " + shellQuote(staging)
                         + " && find . -type f -exec stat -c '%s' {} + 2>/dev/null "
                         + "| awk '{sum += $1} END {print sum + 0}'");
@@ -445,7 +446,7 @@ public class RemoteInstanceArchiveImportExecutor
                         "非法关键文件路径: " + relative);
             }
             String requiredPath = staging + "/" + relative;
-            SshUtil.CommandResult result = execPath(host, containerId,
+            CommandResult result = execPath(host, containerId,
                     "test -e " + shellQuote(requiredPath)
                             + " && echo EXISTS || echo MISSING");
             if (result == null || !result.isSuccess()
@@ -458,7 +459,7 @@ public class RemoteInstanceArchiveImportExecutor
                         "ARCHIVE_REQUIRED_FILE_MISSING",
                         "缺少关键文件: " + relative, null);
             }
-            SshUtil.CommandResult readable = execPath(host, containerId,
+            CommandResult readable = execPath(host, containerId,
                     "test -r " + shellQuote(requiredPath)
                             + " && echo READABLE || echo UNREADABLE");
             if (readable == null || !readable.isSuccess()
@@ -480,7 +481,7 @@ public class RemoteInstanceArchiveImportExecutor
         if (extensionPredicate.isEmpty()) {
             return;
         }
-        SshUtil.CommandResult emptyFiles = execPath(host, containerId,
+        CommandResult emptyFiles = execPath(host, containerId,
                 "find " + shellQuote(staging) + " -type f "
                         + extensionPredicate + " "
                         + "-size 0c -print");
@@ -504,7 +505,7 @@ public class RemoteInstanceArchiveImportExecutor
                             .reduce((left, right) -> left + ", " + right).orElse(""), null);
         }
 
-        SshUtil.CommandResult unreadable = execPath(host, containerId,
+        CommandResult unreadable = execPath(host, containerId,
                 "find " + shellQuote(staging) + " -type f "
                         + extensionPredicate + " "
                         + "-not -readable -print");
@@ -580,7 +581,7 @@ public class RemoteInstanceArchiveImportExecutor
         int failed = 0;
         for (Host host : hosts) {
             try {
-                SshUtil.CommandResult result = exec(host,
+                CommandResult result = exec(host,
                         "find /tmp -mindepth 1 -maxdepth 1 -type d "
                                 + "-name " + shellQuote(basename(HOST_TEMP_ROOT_PREFIX) + "*")
                                 + " -exec rm -rf {} +");
@@ -603,7 +604,7 @@ public class RemoteInstanceArchiveImportExecutor
                 "mkdir -p " + shellQuote(parentOf(target)), parentOf(target),
                 CommandCategory.FILESYSTEM_MOVE,
                 "检查目标目录权限");
-        SshUtil.CommandResult result = exec(host,
+        CommandResult result = exec(host,
                 "if [ -e " + shellQuote(target) + " ]; then mv -f "
                         + shellQuote(target) + " " + shellQuote(backup) + " && echo BACKED_UP; fi"
                         + " && mv -f " + shellQuote(staging) + " " + shellQuote(target));
@@ -621,7 +622,7 @@ public class RemoteInstanceArchiveImportExecutor
 
     private boolean atomicMoveInContainer(Host host, String containerId,
                                           String staging, String target, String backup) {
-        SshUtil.CommandResult result = execDocker(host, containerId,
+        CommandResult result = execDocker(host, containerId,
                 "mkdir -p " + shellQuote(parentOf(target))
                         + " && if [ -e " + shellQuote(target) + " ]; then mv -f "
                         + shellQuote(target) + " " + shellQuote(backup)
@@ -643,7 +644,7 @@ public class RemoteInstanceArchiveImportExecutor
 
     private MountMatch detectMount(long hostId, String containerId, String containerPath) {
         Host host = requireHost(hostId);
-        SshUtil.CommandResult result = exec(host,
+        CommandResult result = exec(host,
                 "docker inspect " + shellQuote(containerId)
                         + " --format '{{json .Mounts}}'");
         if (result == null || !result.isSuccess()) {
@@ -681,18 +682,18 @@ public class RemoteInstanceArchiveImportExecutor
         }
     }
 
-    private SshUtil.CommandResult execPath(Host host, String containerId, String inner) {
+    private CommandResult execPath(Host host, String containerId, String inner) {
         return containerId == null ? exec(host, inner) : execDocker(host, containerId, inner);
     }
 
-    private SshUtil.CommandResult exec(Host host, String command) {
+    private CommandResult exec(Host host, String command) {
         return fileService.executeCommand(host.getId(), command, SSH_TIMEOUT_MS);
     }
 
-    private SshUtil.CommandResult execOk(Host host, InstanceArchiveImportService.Phase phase,
+    private CommandResult execOk(Host host, InstanceArchiveImportService.Phase phase,
                                          String command, String displayPath, CommandCategory category,
                                          String suggestion) {
-        SshUtil.CommandResult result = exec(host, command);
+        CommandResult result = exec(host, command);
         if (result == null || !result.isSuccess()) {
             throw archiveFailure(phase, displayPath, category,
                     result == null ? null : result.getExitCode(),
@@ -702,7 +703,7 @@ public class RemoteInstanceArchiveImportExecutor
         return result;
     }
 
-    private SshUtil.CommandResult execDocker(Host host, String containerId, String inner) {
+    private CommandResult execDocker(Host host, String containerId, String inner) {
         String escaped = inner.replace("'", "'\\''");
         return exec(host, "docker exec " + shellQuote(containerId)
                 + " sh -c '" + escaped + "'");
@@ -710,7 +711,7 @@ public class RemoteInstanceArchiveImportExecutor
 
     private void execDockerOk(Host host, String containerId, String inner, String displayPath,
                               InstanceArchiveImportService.Phase phase) {
-        SshUtil.CommandResult result = execDocker(host, containerId, inner);
+        CommandResult result = execDocker(host, containerId, inner);
         if (result == null || !result.isSuccess()) {
             throw archiveFailure(phase,
                     displayPath, CommandCategory.CONTAINER_COPY,
@@ -778,11 +779,11 @@ public class RemoteInstanceArchiveImportExecutor
         return "'" + value.replace("'", "'\\''") + "'";
     }
 
-    private static String safeOutput(SshUtil.CommandResult result) {
+    private static String safeOutput(CommandResult result) {
         return result.getOutput() == null ? "" : result.getOutput().trim();
     }
 
-    private static String safeError(SshUtil.CommandResult result) {
+    private static String safeError(CommandResult result) {
         return result.getError() == null ? "" : result.getError();
     }
 

@@ -1,9 +1,9 @@
 package com.gameplatform.adapter;
 
-import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 class DockerComposeAdapterTest {
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private HostMapper hostMapper;
@@ -35,19 +35,15 @@ class DockerComposeAdapterTest {
     @Mock
     private GameInstanceMapper instanceMapper;
 
-    @Mock
-    private DeploymentAccess deployAccess;
-
     private DockerComposeAdapter dockerComposeAdapter;
 
     @BeforeEach
     void setUp() {
         dockerComposeAdapter = new DockerComposeAdapter();
         // 手动注入依赖
-        injectField(dockerComposeAdapter, "sshUtil", sshUtil);
+        injectField(dockerComposeAdapter, "remoteHost", remoteHost);
         injectField(dockerComposeAdapter, "hostMapper", hostMapper);
         injectField(dockerComposeAdapter, "instanceMapper", instanceMapper);
-        injectField(dockerComposeAdapter, "deployAccess", deployAccess);
     }
 
     /**
@@ -134,26 +130,21 @@ class DockerComposeAdapterTest {
         host.setSshUser("u");
         when(hostMapper.selectById(1L)).thenReturn(host);
 
-        when(deployAccess.credentials(host)).thenReturn(
-                new com.gameplatform.deploy.HostCredentials("192.168.1.10", 22, "u", null, null));
-
         Map<String, Object> config = new HashMap<>();
         config.put("composeTemplate", "services:\n  l4d2:\n    image: example/l4d2:latest\n");
         config.put("workDir", "/home/u/games/l4d2");
 
-        SshUtil.CommandResult ok = new SshUtil.CommandResult();
+        CommandResult ok = new CommandResult();
         ok.setSuccess(true);
         ok.setOutput("0e42358fc43b");
         ok.setExitCode(0);
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), anyString(), anyLong())).thenReturn(ok);
-        lenient().when(sshUtil.uploadFile(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), anyString(), anyString())).thenReturn(true);
+        when(remoteHost.exec(eq(host), anyString(), anyLong())).thenReturn(ok);
+        lenient().when(remoteHost.upload(eq(host), anyString(), anyString())).thenReturn(true);
 
         dockerComposeAdapter.deploy(1L, config, DeployProgressCallback.NO_OP);
 
-        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("COMPOSE_HTTP_TIMEOUT=300"), anyLong());
+        verify(remoteHost, atLeastOnce()).exec(eq(host),
+                contains("COMPOSE_HTTP_TIMEOUT=300"), anyLong());
     }
 
     @Test
@@ -341,19 +332,15 @@ class DockerComposeAdapterTest {
         host.setSshPort(22);
         host.setSshUser("u");
         when(hostMapper.selectById(1L)).thenReturn(host);
-        when(deployAccess.credentials(host)).thenReturn(
-                new com.gameplatform.deploy.HostCredentials("192.168.1.10", 22, "u", null, null));
-
-        SshUtil.CommandResult down = okResult("");
-        SshUtil.CommandResult cleanup = failedResult(1, "rm: cannot remove root-owned data");
-        lenient().when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
-                contains("printf %s"), eq(10000L))).thenReturn(okResult("/home/u"));
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
-                contains("docker compose version"), eq(10000L))).thenReturn(okResult("Docker Compose version v2"));
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
-                contains("COMPOSE_HTTP_TIMEOUT=300"), eq(120000L))).thenReturn(down);
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
-                contains("rm -rf"), eq(60000L))).thenReturn(cleanup);
+        CommandResult down = okResult("");
+        CommandResult cleanup = failedResult(1, "rm: cannot remove root-owned data");
+        lenient().when(remoteHost.exec(eq(host), contains("printf %s"), eq(10000L)))
+                .thenReturn(okResult("/home/u"));
+        when(remoteHost.exec(eq(host), contains("docker compose version"), eq(10000L)))
+                .thenReturn(okResult("Docker Compose version v2"));
+        when(remoteHost.exec(eq(host), contains("COMPOSE_HTTP_TIMEOUT=300"), eq(120000L)))
+                .thenReturn(down);
+        when(remoteHost.exec(eq(host), contains("rm -rf"), eq(60000L))).thenReturn(cleanup);
 
         Map<String, Object> config = new HashMap<>();
         config.put("workDir", "/home/u/games/dnf tw's");
@@ -364,10 +351,9 @@ class DockerComposeAdapterTest {
         assertEquals(UninstallResult.Status.PARTIAL_SUCCESS, result.status());
         assertEquals("/home/u/games/dnf tw's", result.residualPath());
         assertTrue(result.message().contains("cannot remove root-owned data"));
-        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("rm -rf '/home/u/games/dnf tw'\\''s'"), anyLong());
-        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("sudo"), anyLong());
+        verify(remoteHost, atLeastOnce()).exec(eq(host),
+                contains("rm -rf '/home/u/games/dnf tw'\\''s'"), anyLong());
+        verify(remoteHost, never()).exec(eq(host), contains("sudo"), anyLong());
     }
 
     @Test
@@ -393,8 +379,7 @@ class DockerComposeAdapterTest {
 
         assertEquals(UninstallResult.Status.FAILED, result.status());
         assertTrue(result.message().contains("删除根目录"));
-        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("rm -rf"), anyLong());
+        verify(remoteHost, never()).exec(eq(host), contains("rm -rf"), anyLong());
     }
 
     @Test
@@ -419,20 +404,19 @@ class DockerComposeAdapterTest {
                 1L, config, DeployProgressCallback.NO_OP);
 
         assertEquals(UninstallResult.Status.FAILED, result.status());
-        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("rm -rf"), anyLong());
+        verify(remoteHost, never()).exec(eq(host), contains("rm -rf"), anyLong());
     }
 
-    private SshUtil.CommandResult okResult(String output) {
-        SshUtil.CommandResult result = new SshUtil.CommandResult();
+    private CommandResult okResult(String output) {
+        CommandResult result = new CommandResult();
         result.setSuccess(true);
         result.setExitCode(0);
         result.setOutput(output);
         return result;
     }
 
-    private SshUtil.CommandResult failedResult(int exitCode, String error) {
-        SshUtil.CommandResult result = new SshUtil.CommandResult();
+    private CommandResult failedResult(int exitCode, String error) {
+        CommandResult result = new CommandResult();
         result.setSuccess(false);
         result.setExitCode(exitCode);
         result.setError(error);

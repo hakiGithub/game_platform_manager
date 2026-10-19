@@ -1,12 +1,13 @@
 package com.gameplatform.hosttool;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.patch.HostCapabilityProber;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.util.SudoAwareSshRunner;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -74,7 +75,7 @@ public class HostToolService {
             return "工具 " + tool + " 已安装，无需重复安装";
         }
         String command = catalog.buildInstallCommand(tool, caps.getPackageManager());
-        SshUtil.CommandResult result = sshRunner.runPrivileged(hostId, command, INSTALL_TIMEOUT_MS);
+        CommandResult result = sshRunner.runPrivileged(hostId, command, INSTALL_TIMEOUT_MS);
         if (result == null || !result.isSuccess()) {
             String error = result != null ? result.getError() : "无响应";
             throw new BusinessException("安装 " + catalog.displayName(tool) + " 失败（可在主机详情用 Web 终端手动安装）: "

@@ -2,7 +2,7 @@ package com.gameplatform.adapter;
 
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -83,7 +83,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         // 检查必要的依赖
         String[] requiredCommands = {"curl", "wget", "tar", "gzip", "jq"};
         for (String cmd : requiredCommands) {
-            SshUtil.CommandResult result = executeCommand(host, "which " + cmd);
+            CommandResult result = executeCommand(host, "which " + cmd);
             if (!result.isSuccess() || result.getOutput().trim().isEmpty()) {
                 log.warn("主机 {} 缺少必要依赖: {}", hostId, cmd);
                 // 某些依赖不是必须的，仅记录警告
@@ -132,7 +132,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         try {
             notifyProgress(callback, 10, "PRE_DEPLOY", "创建安装目录");
             // 创建安装目录
-            SshUtil.CommandResult mkdirResult = executeCommand(host, "mkdir -p " + installPath);
+            CommandResult mkdirResult = executeCommand(host, "mkdir -p " + installPath);
             if (!mkdirResult.isSuccess()) {
                 notifyError(callback, "创建安装目录失败: " + mkdirResult.getError(), "PRE_DEPLOY", false);
                 return false;
@@ -151,7 +151,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
             String shortname = getGameShortname(gameType);
             String lgsmScript = installPath + "/" + shortname;
 
-            SshUtil.CommandResult downloadResult = executeCommand(host,
+            CommandResult downloadResult = executeCommand(host,
                     String.format("cd %s && curl -Lo %s https://linuxgsm.sh && chmod +x %s",
                             installPath, shortname, shortname), 120000);
 
@@ -162,7 +162,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 80, "PRE_DEPLOY", "初始化LinuxGSM");
             // 初始化LinuxGSM
-            SshUtil.CommandResult initResult = executeCommand(host,
+            CommandResult initResult = executeCommand(host,
                     String.format("cd %s && ./%s", installPath, shortname), 60000);
 
             if (!initResult.isSuccess()) {
@@ -199,7 +199,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         try {
             notifyProgress(callback, 10, "DEPLOY", "执行游戏服务器安装");
             // 执行安装（这可能需要很长时间）
-            SshUtil.CommandResult installResult = executeCommand(host,
+            CommandResult installResult = executeCommand(host,
                     String.format("cd %s && ./%s auto-install", installPath, shortname), 1800000);
 
             if (!installResult.isSuccess()) {
@@ -216,7 +216,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 80, "DEPLOY", "验证安装");
             // 验证安装
-            SshUtil.CommandResult detailsResult = executeCommand(host,
+            CommandResult detailsResult = executeCommand(host,
                     String.format("cd %s && ./%s details", installPath, shortname), 30000);
 
             if (!detailsResult.isSuccess()) {
@@ -259,7 +259,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
             return false;
         }
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s start", installPath, shortname), 60000);
 
         return result.isSuccess() && (result.getOutput().contains("started") || result.getOutput().contains("already running"));
@@ -282,7 +282,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
             return false;
         }
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s stop", installPath, shortname), 60000);
 
         return result.isSuccess() && (result.getOutput().contains("stopped") || result.getOutput().contains("not running"));
@@ -305,7 +305,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
             return false;
         }
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s restart", installPath, shortname), 120000);
 
         return result.isSuccess() && result.getOutput().contains("restarted");
@@ -328,7 +328,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         }
 
         // 使用monitor命令检查状态
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s monitor", installPath, shortname), 30000);
 
         return result.isSuccess() && result.getOutput().contains("OK");
@@ -361,7 +361,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 50, "UPDATE", "执行更新");
             // 执行更新
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("cd %s && ./%s update", installPath, shortname), 600000);
 
             if (!result.isSuccess()) {
@@ -409,7 +409,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "UNINSTALL", "删除安装目录");
             // 删除安装目录
-            SshUtil.CommandResult result = executeCommand(host, "rm -rf " + installPath);
+            CommandResult result = executeCommand(host, "rm -rf " + installPath);
 
             if (!result.isSuccess()) {
                 notifyError(callback, "删除目录失败: " + result.getError(), "UNINSTALL", true);
@@ -446,7 +446,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         // 获取日志文件路径
         String logPath = installPath + "/log/console/" + shortname + "-console.log";
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("tail -n %d %s 2>/dev/null || echo '日志文件不存在'", lines, logPath));
 
         return result.getOutput();
@@ -469,7 +469,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         }
 
         // 检查进程状态
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s status", installPath, shortname), 10000);
 
         String output = result.getOutput().toLowerCase();
@@ -506,7 +506,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         }
 
         // 获取LinuxGSM详情
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s details", installPath, shortname), 30000);
 
         if (result.isSuccess()) {
@@ -543,7 +543,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         }
 
         // 执行LinuxGSM命令
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && ./%s %s", installPath, shortname, command), 60000);
 
         return result.getOutput() + (result.getError().isEmpty() ? "" : "\n错误: " + result.getError());
@@ -572,7 +572,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
         try {
             notifyProgress(callback, 50, "BACKUP", "执行备份");
             // 执行备份
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("cd %s && ./%s backup", installPath, shortname), 300000);
 
             if (!result.isSuccess()) {
@@ -582,7 +582,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             // 获取备份文件路径
             String backupDir = installPath + "/backup";
-            SshUtil.CommandResult listResult = executeCommand(host,
+            CommandResult listResult = executeCommand(host,
                     String.format("ls -t %s/*.tar.gz 2>/dev/null | head -1", backupDir));
 
             String backupPath = listResult.getOutput().trim();
@@ -629,7 +629,7 @@ public class LinuxGsmAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "RESTORE", "解压备份文件");
             // 解压备份
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("cd %s && tar -xzf %s", installPath, backupPath), 300000);
 
             if (!result.isSuccess()) {

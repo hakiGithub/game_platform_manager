@@ -1,10 +1,11 @@
 package com.gameplatform.service.docker.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.docker.ContainerLinkDTO;
 import com.gameplatform.entity.DockerContainerLink;
 import com.gameplatform.entity.GameInstance;
@@ -14,7 +15,6 @@ import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerContainerLinkService;
 import com.gameplatform.service.docker.dto.ContainerInfo;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ContainerLinkVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,8 +40,7 @@ public class DockerContainerLinkServiceImpl implements DockerContainerLinkServic
     private final DockerContainerLinkMapper linkMapper;
     private final HostMapper hostMapper;
     private final GameInstanceMapper instanceMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
 
     @Override
     @Transactional
@@ -249,7 +248,7 @@ public class DockerContainerLinkServiceImpl implements DockerContainerLinkServic
     public List<ContainerInfo> getContainers(Host host) {
         // 使用 --no-trunc 返回完整容器ID（64位），避免与 runtime_metadata.containerId（完整ID）比较时失败
         String command = "docker ps -a --no-trunc --format '{{.ID}}|{{.Names}}|{{.Image}}'";
-        SshUtil.CommandResult result = executeCommand(host, command, 30000);
+        CommandResult result = executeCommand(host, command, 30000);
         
         List<ContainerInfo> containers = new ArrayList<>();
         if (result.isSuccess()) {
@@ -291,7 +290,7 @@ public class DockerContainerLinkServiceImpl implements DockerContainerLinkServic
         }
         try {
             String command = String.format("docker inspect -f '{{.State.Status}}' %s 2>/dev/null", containerId);
-            SshUtil.CommandResult result = executeCommand(host, command, 10000);
+            CommandResult result = executeCommand(host, command, 10000);
             if (result.isSuccess() && result.getOutput() != null) {
                 String status = result.getOutput().trim();
                 return status.isEmpty() ? null : status;
@@ -306,7 +305,7 @@ public class DockerContainerLinkServiceImpl implements DockerContainerLinkServic
 
     private boolean containerExists(Host host, String containerId) {
         String command = String.format("docker ps -aq -f id=%s", containerId);
-        SshUtil.CommandResult result = executeCommand(host, command, 10000);
+        CommandResult result = executeCommand(host, command, 10000);
         return result.isSuccess() && !result.getOutput().trim().isEmpty();
     }
 
@@ -337,17 +336,12 @@ public class DockerContainerLinkServiceImpl implements DockerContainerLinkServic
         return null;
     }
 
-    private SshUtil.CommandResult executeCommand(Host host, String command, int timeout) {
+    private CommandResult executeCommand(Host host, String command, int timeout) {
         try {
-            HostCredentials conn = deployAccess.credentials(host);
-            return sshUtil.executeCommand(
-                    conn.host(), conn.port(), conn.username(), null, conn.password(),
-                    command,
-                    timeout
-            );
+            return remoteHost.exec(host, command, timeout);
         } catch (Exception e) {
             log.error("执行SSH命令失败: {}", e.getMessage(), e);
-            SshUtil.CommandResult errorResult = new SshUtil.CommandResult();
+            CommandResult errorResult = new CommandResult();
             errorResult.setExitCode(1);
             errorResult.setOutput("");
             errorResult.setError(e.getMessage());

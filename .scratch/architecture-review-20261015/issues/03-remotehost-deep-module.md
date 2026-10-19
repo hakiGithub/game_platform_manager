@@ -1,6 +1,6 @@
 # 03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组
 
-**Status:** needs-triage
+**Status:** resolved
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 2）
 
@@ -51,3 +51,10 @@ remoteHost.upload(hostId, local, remote)
 ## 关联
 
 候选 7（HostSession）是本票在 HostService 一侧的同形问题，可一并考虑。
+
+## Answer
+
+- 新增 `RemoteHost` 深模块，以 `hostId`/`Host` 为入口承载凭据解析、命令执行、提权、文件传输、资源查询、端口检查与钉住会话获取；`HostAccessTransport` 隔离底层传输。
+- `SshUtil` 已降为 `SshHostAccessTransport` 的内部实现细节，core 业务代码不再直接传凭据七元组；`DeploymentAccess.connect(Host)` 保留给 WebSocket 交互式长连接。
+- `DeployService` 的本地“有密码时丢弃私钥”策略已移除，改为显式使用 `RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT`；提权策略统一由 `RemoteHost` 承担。
+- 相关适配器、文件、备份、同步、补丁、云盘工具与 Steam302 调用点已迁移；新增 `RemoteHostTest`、`HostSessionTest`，完整后端测试 832 条通过。

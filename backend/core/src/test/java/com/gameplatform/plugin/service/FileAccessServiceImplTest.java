@@ -1,7 +1,7 @@
 package com.gameplatform.plugin.service;
 
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,7 +60,7 @@ class FileAccessServiceImplTest {
     @Test
     @DisplayName("executeCommand 委托 FileService 并转换结果类型")
     void executeCommandDelegatesAndConverts() {
-        SshUtil.CommandResult core = new SshUtil.CommandResult();
+        CommandResult core = new CommandResult();
         core.setSuccess(true);
         core.setExitCode(0);
         core.setOutput("ok");

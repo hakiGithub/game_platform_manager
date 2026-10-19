@@ -1,9 +1,10 @@
 package com.gameplatform.steam302;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import com.gameplatform.util.SudoAwareSshRunner;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.config.Steam302Properties;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,7 +49,7 @@ public class Steam302InstallExecutor {
         String container = props.getContainerName();
 
         progress.onProgress(5, "探测 Docker 环境");
-        SshUtil.CommandResult dockerVersion = runDocker(hostId, "docker version --format '{{.Server.Version}}'", DOCKER_TIMEOUT_MS);
+        CommandResult dockerVersion = runDocker(hostId, "docker version --format '{{.Server.Version}}'", DOCKER_TIMEOUT_MS);
         if (!dockerVersion.isSuccess()) {
             throw new BusinessException("主机未安装 Docker 或当前账号无权访问（"
                     + firstLine(dockerVersion.getError()) + "），请先安装 Docker");
@@ -56,10 +57,10 @@ public class Steam302InstallExecutor {
         progress.onLog("Docker 版本: " + firstLine(dockerVersion.getOutput()));
 
         progress.onProgress(15, "解析镜像 " + image);
-        SshUtil.CommandResult inspect = runDocker(hostId, "docker image inspect " + image, DOCKER_TIMEOUT_MS);
+        CommandResult inspect = runDocker(hostId, "docker image inspect " + image, DOCKER_TIMEOUT_MS);
         if (!inspect.isSuccess()) {
             progress.onLog("本地无镜像，开始拉取（可能耗时较长）...");
-            SshUtil.CommandResult pull = runDocker(hostId, "docker pull " + image, PULL_TIMEOUT_MS);
+            CommandResult pull = runDocker(hostId, "docker pull " + image, PULL_TIMEOUT_MS);
             if (!pull.isSuccess()) {
                 throw new BusinessException("拉取镜像失败: " + image + " - " + firstLine(pull.getError()));
             }
@@ -68,7 +69,7 @@ public class Steam302InstallExecutor {
         }
 
         progress.onProgress(40, "准备数据目录 " + dataDir);
-        SshUtil.CommandResult mkdir = runner.runPrivileged(hostId,
+        CommandResult mkdir = runner.runPrivileged(hostId,
                 "mkdir -p " + dataDir, DOCKER_TIMEOUT_MS);
         if (!mkdir.isSuccess()) {
             throw new BusinessException("创建数据目录失败: " + dataDir + " - " + firstLine(mkdir.getError()));
@@ -85,7 +86,7 @@ public class Steam302InstallExecutor {
                 + " --network host"
                 + " -v " + dataDir + ":/data"
                 + " " + image;
-        SshUtil.CommandResult run = runDocker(hostId, runCmd, DOCKER_TIMEOUT_MS);
+        CommandResult run = runDocker(hostId, runCmd, DOCKER_TIMEOUT_MS);
         if (!run.isSuccess()) {
             throw new BusinessException("启动容器失败: " + firstLine(run.getError()));
         }
@@ -98,7 +99,7 @@ public class Steam302InstallExecutor {
             if (progress.isCancelled()) {
                 throw new BusinessException("安装任务已取消");
             }
-            SshUtil.CommandResult check = runner.run(hostId, "test -f " + caPath, 10_000);
+            CommandResult check = runner.run(hostId, "test -f " + caPath, 10_000);
             if (check.isSuccess()) {
                 certReady = true;
                 break;
@@ -126,7 +127,7 @@ public class Steam302InstallExecutor {
         ensurePlatformManagedHosts(hostId, dataDir, progress);
 
         progress.onProgress(92, "停止容器并写入 hosts 劫持条目");
-        SshUtil.CommandResult stop = runDocker(hostId,
+        CommandResult stop = runDocker(hostId,
                 "docker stop " + container, DOCKER_TIMEOUT_MS);
         if (!stop.isSuccess()) {
             throw new BusinessException("写入 hosts 前停止容器失败: " + firstLine(stop.getError()));
@@ -136,7 +137,7 @@ public class Steam302InstallExecutor {
                 : "hosts 劫持条目已就绪（无变化）");
 
         progress.onProgress(96, "重新启动容器并校验 hosts 状态");
-        SshUtil.CommandResult start = runDocker(hostId,
+        CommandResult start = runDocker(hostId,
                 "docker start " + container, DOCKER_TIMEOUT_MS);
         if (!start.isSuccess()) {
             throw new BusinessException("hosts 写入后启动容器失败: " + firstLine(start.getError()));
@@ -156,7 +157,7 @@ public class Steam302InstallExecutor {
      */
     private void ensurePlatformManagedHosts(Long hostId, String dataDir, ProgressListener progress) {
         String iniPath = dataDir + "/S302.ini";
-        SshUtil.CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
+        CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
         if (!current.isSuccess()) {
             throw new BusinessException("读取 S302.ini 失败，无法关闭自动改写 hosts: " + firstLine(current.getError()));
         }
@@ -175,9 +176,9 @@ public class Steam302InstallExecutor {
      */
     private String trustCertificate(Long hostId, String dataDir) {
         String caPath = dataDir + "/steamcommunityCA.pem";
-        SshUtil.CommandResult deb = runner.runPrivileged(hostId,
+        CommandResult deb = runner.runPrivileged(hostId,
                 "test -d /usr/local/share/ca-certificates && echo DEB", 10_000);
-        SshUtil.CommandResult rhel = runner.runPrivileged(hostId,
+        CommandResult rhel = runner.runPrivileged(hostId,
                 "test -d /etc/pki/ca-trust/source/anchors && echo RHEL", 10_000);
 
         String trustCmd;
@@ -194,7 +195,7 @@ public class Steam302InstallExecutor {
             return "未识别的发行版信任库，CA 证书未自动信任；请手动安装 " + caPath;
         }
 
-        SshUtil.CommandResult trust = runner.runPrivileged(hostId, trustCmd, TRUST_TIMEOUT_MS);
+        CommandResult trust = runner.runPrivileged(hostId, trustCmd, TRUST_TIMEOUT_MS);
         if (!trust.isSuccess()) {
             return "CA 证书信任失败（" + distro + "）: " + firstLine(trust.getError())
                     + "；请手动安装 " + caPath;
@@ -210,13 +211,13 @@ public class Steam302InstallExecutor {
      */
     private String trustDockerDaemon(Long hostId, String dataDir) {
         String caPath = dataDir + "/steamcommunityCA.pem";
-        SshUtil.CommandResult hasDocker = runner.run(hostId, "test -d /etc/docker && echo YES", 10_000);
+        CommandResult hasDocker = runner.run(hostId, "test -d /etc/docker && echo YES", 10_000);
         if (!hasDocker.isSuccess() || !hasDocker.getOutput().contains("YES")) {
             return "未检测到 /etc/docker，跳过 dockerd 信任配置";
         }
         String cmd = "for r in registry-1.docker.io auth.docker.io production.cloudflare.docker.com; do"
                 + " mkdir -p /etc/docker/certs.d/$r && cp " + caPath + " /etc/docker/certs.d/$r/ca.crt; done";
-        SshUtil.CommandResult r = runner.runPrivileged(hostId, cmd, 30_000);
+        CommandResult r = runner.runPrivileged(hostId, cmd, 30_000);
         return r.isSuccess() ? "已为 dockerd 配置 certs.d 信任（registry-1.docker.io 等 3 个域）"
                 : "dockerd certs.d 信任配置失败: " + firstLine(r.getError());
     }
@@ -227,7 +228,7 @@ public class Steam302InstallExecutor {
     private void awaitProxyReady(Long hostId) {
         long deadline = System.currentTimeMillis() + 30_000;
         while (System.currentTimeMillis() < deadline) {
-            SshUtil.CommandResult r = runner.run(hostId,
+            CommandResult r = runner.run(hostId,
                     "(ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -q ':443 '", 10_000);
             if (r.isSuccess() && r.getExitCode() == 0) {
                 return;
@@ -245,8 +246,8 @@ public class Steam302InstallExecutor {
     /**
      * 执行 docker 命令：先直跑，权限被拒（不在 docker 组）时经 sudo 提权重试
      */
-    private SshUtil.CommandResult runDocker(Long hostId, String command, long timeoutMs) {
-        SshUtil.CommandResult direct = runner.run(hostId, command, timeoutMs);
+    private CommandResult runDocker(Long hostId, String command, long timeoutMs) {
+        CommandResult direct = runner.run(hostId, command, timeoutMs);
         if (direct.isSuccess()) {
             return direct;
         }

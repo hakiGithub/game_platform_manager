@@ -2,7 +2,7 @@ package com.gameplatform.adapter;
 
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
@@ -59,13 +59,13 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
     private String getComposeCommand(Host host) {
         return composeCommandCache.computeIfAbsent(host.getId(), hostId -> {
             // 优先检测 docker compose（CLI 插件形式）
-            SshUtil.CommandResult pluginResult = executeCommand(host, "docker compose version 2>/dev/null", 10000);
+            CommandResult pluginResult = executeCommand(host, "docker compose version 2>/dev/null", 10000);
             if (pluginResult.isSuccess() && pluginResult.getOutput().toLowerCase().contains("compose")) {
                 log.info("主机 {} 使用 docker compose（CLI 插件）", hostId);
                 return "docker compose";
             }
             // 其次检测 docker-compose（独立二进制）
-            SshUtil.CommandResult binaryResult = executeCommand(host, "docker-compose version 2>/dev/null", 10000);
+            CommandResult binaryResult = executeCommand(host, "docker-compose version 2>/dev/null", 10000);
             if (binaryResult.isSuccess() && binaryResult.getOutput().toLowerCase().contains("compose")) {
                 log.info("主机 {} 使用 docker-compose（独立二进制）", hostId);
                 return "docker-compose";
@@ -140,7 +140,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             // 把展开后的绝对路径回写到 config，供后续 deploy/start/stop 等方法复用
             config.put("workDir", workDir);
             // 创建工作目录
-            SshUtil.CommandResult mkdirResult = executeCommand(host, "mkdir -p " + workDir);
+            CommandResult mkdirResult = executeCommand(host, "mkdir -p " + workDir);
             if (!mkdirResult.isSuccess()) {
                 notifyError(callback, "创建工作目录失败: " + mkdirResult.getError(), "PRE_DEPLOY", false);
                 return false;
@@ -200,7 +200,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             notifyProgress(callback, 60, "PRE_DEPLOY", "验证Compose配置");
             // 验证配置
             String composeCmd = getComposeCommand(host);
-            SshUtil.CommandResult validateResult = executeCommand(host,
+            CommandResult validateResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s config", workDir, composeCmd, projectName), 30000);
 
             if (!validateResult.isSuccess()) {
@@ -216,7 +216,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
                 notifyProgress(callback, 90, "PRE_DEPLOY", "本地镜像已存在，跳过拉取");
             } else {
                 // 拉取镜像（L4D2 等游戏镜像较大，超时设置为 20 分钟）
-                SshUtil.CommandResult pullResult = executeCommand(host,
+                CommandResult pullResult = executeCommand(host,
                         String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s pull", workDir, composeCmd, projectName), 1200000);
 
                 if (!pullResult.isSuccess()) {
@@ -254,9 +254,9 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "DEPLOY", "启动服务");
             // 启动所有服务（若镜像未在 pull 阶段完成拉取，up -d 会自动拉取，超时同样设为 20 分钟）。
-            // timeout 1200 兜底：SshUtil 的 timeoutMs 仅作用于建连，命令执行无超时
+            // timeout 1200 兜底：RemoteHost 的超时参数仅作用于建连，命令执行无超时
             // （executeRemoteCommand 阻塞直到命令结束），拉取卡死会无限阻塞部署线程
-            SshUtil.CommandResult upResult = executeCommand(host,
+            CommandResult upResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 timeout 1200 %s -p %s up -d",
                             workDir, composeCmd, projectName), 1200000);
 
@@ -270,7 +270,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             Thread.sleep(5000);
 
             // 验证服务状态
-            SshUtil.CommandResult psResult = executeCommand(host,
+            CommandResult psResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps", workDir, composeCmd, projectName), 30000);
 
             // docker-compose V1 输出状态为 "Up"，V2（docker compose）输出状态为 "running"
@@ -280,7 +280,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
                     && (psOutput.contains("running") || psOutput.contains("Up"));
             if (!isRunning) {
                 // 获取日志
-                SshUtil.CommandResult logResult = executeCommand(host,
+                CommandResult logResult = executeCommand(host,
                         String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s logs --no-color --tail 50", workDir, composeCmd, projectName), 30000);
                 notifyError(callback, "服务启动异常，日志: " + stripAnsiCodes(logResult.getOutput()), "DEPLOY", false);
                 return false;
@@ -373,7 +373,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
         String composeCmd = getComposeCommand(host);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s start", workDir, composeCmd, projectName), 60000);
 
         return result.isSuccess();
@@ -391,7 +391,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
         String composeCmd = getComposeCommand(host);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s stop", workDir, composeCmd, projectName), 120000);
 
         return result.isSuccess();
@@ -409,7 +409,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
         String composeCmd = getComposeCommand(host);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s restart", workDir, composeCmd, projectName), 120000);
         if (result.isSuccess()) {
             return true;
@@ -425,7 +425,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             log.error("实例 {} 无 runtimeMetadata.containerId，无法回退容器级重启", instanceId);
             return false;
         }
-        SshUtil.CommandResult fallback = executeCommand(host,
+        CommandResult fallback = executeCommand(host,
                 String.format("docker restart %s", containerId), 120000);
         if (!fallback.isSuccess()) {
             log.error("实例 {} docker restart {} 失败（exitCode={}，stderr={}）",
@@ -461,7 +461,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String composeCmd = getComposeCommand(host);
 
         // 检查所有服务状态
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps -q", workDir, composeCmd, projectName), 30000);
 
         if (!result.isSuccess() || result.getOutput().trim().isEmpty()) {
@@ -472,7 +472,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String[] containers = result.getOutput().trim().split("\n");
         for (String containerId : containers) {
             if (!containerId.trim().isEmpty()) {
-                SshUtil.CommandResult healthResult = executeCommand(host,
+                CommandResult healthResult = executeCommand(host,
                         String.format("docker inspect -f '{{.State.Running}}' %s", containerId.trim()));
                 if (!healthResult.isSuccess() || !"true".equals(healthResult.getOutput().trim())) {
                     return false;
@@ -510,12 +510,12 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 30, "UPDATE", "拉取最新镜像");
             // 拉取最新镜像
-            SshUtil.CommandResult pullResult = executeCommand(host,
+            CommandResult pullResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s pull", workDir, composeCmd, projectName), 600000);
 
             notifyProgress(callback, 60, "UPDATE", "重新创建服务");
             // 重新创建服务
-            SshUtil.CommandResult upResult = executeCommand(host,
+            CommandResult upResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s up -d --force-recreate", workDir, composeCmd, projectName), 300000);
 
             if (!upResult.isSuccess()) {
@@ -566,7 +566,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "UNINSTALL", "停止并删除服务");
             // 停止并删除服务
-            SshUtil.CommandResult downResult = executeCommand(host,
+            CommandResult downResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down",
                             shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
 
@@ -577,7 +577,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             notifyProgress(callback, 60, "UNINSTALL", "清理数据");
             // 是否删除卷
             boolean removeVolumes = getConfigBoolean(config, "removeVolumes", false);
-            SshUtil.CommandResult volumeResult = null;
+            CommandResult volumeResult = null;
             if (removeVolumes) {
                 volumeResult = executeCommand(host,
                         String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down -v",
@@ -623,7 +623,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         }
     }
 
-    private String summarizeSshError(SshUtil.CommandResult result) {
+    private String summarizeSshError(CommandResult result) {
         String error = result.getError();
         if (error == null || error.isBlank()) {
             error = result.getOutput();
@@ -651,7 +651,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String serviceArg = serviceName.isEmpty() ? "" : " " + serviceName;
 
         // 使用 --no-color 禁用 ANSI 颜色控制字符，避免前端显示乱码
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s logs --no-color --tail %d%s",
                         workDir, composeCmd, projectName, lines, serviceArg), 30000);
 
@@ -685,7 +685,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String composeCmd = getComposeCommand(host);
 
         // 获取服务状态（兼容新旧 docker compose 版本：优先 json 格式，失败回退普通格式）
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps --format json 2>/dev/null || %s -p %s ps",
                         workDir, composeCmd, projectName, composeCmd, projectName), 30000);
 
@@ -719,7 +719,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String composeCmd = getComposeCommand(host);
 
         // 获取服务列表
-        SshUtil.CommandResult psResult = executeCommand(host,
+        CommandResult psResult = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps", workDir, composeCmd, projectName), 30000);
 
         if (psResult.isSuccess()) {
@@ -727,7 +727,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         }
 
         // 获取配置
-        SshUtil.CommandResult configResult = executeCommand(host,
+        CommandResult configResult = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s config", workDir, composeCmd, projectName), 30000);
 
         if (configResult.isSuccess()) {
@@ -735,7 +735,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         }
 
         // 获取统计信息
-        SshUtil.CommandResult statsResult = executeCommand(host,
+        CommandResult statsResult = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s top", workDir, composeCmd, projectName), 30000);
 
         if (statsResult.isSuccess()) {
@@ -776,7 +776,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         }
 
         String composeCmd = getComposeCommand(host);
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s exec %s %s",
                         workDir, composeCmd, projectName, serviceName, command), 60000);
 
@@ -802,7 +802,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             notifyProgress(callback, 40, "BACKUP", "导出卷数据");
             // 获取所有卷
             String composeCmd = getComposeCommand(host);
-            SshUtil.CommandResult volumesResult = executeCommand(host,
+            CommandResult volumesResult = executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s config --volumes", workDir, composeCmd, projectName), 30000);
 
             if (volumesResult.isSuccess()) {
@@ -821,7 +821,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 70, "BACKUP", "备份配置文件");
             // 备份compose文件和配置
-            SshUtil.CommandResult backupResult = executeCommand(host,
+            CommandResult backupResult = executeCommand(host,
                     String.format("tar czf %s -C %s .", backupPath, workDir), 60000);
 
             if (!backupResult.isSuccess()) {
@@ -862,7 +862,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 50, "RESTORE", "恢复配置");
             // 恢复配置文件
-            SshUtil.CommandResult restoreResult = executeCommand(host,
+            CommandResult restoreResult = executeCommand(host,
                     String.format("tar xzf %s -C %s", backupPath, workDir), 60000);
 
             if (!restoreResult.isSuccess()) {
@@ -1202,7 +1202,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             return workDir;
         }
         try {
-            SshUtil.CommandResult homeResult = executeCommand(host, "echo $HOME");
+            CommandResult homeResult = executeCommand(host, "echo $HOME");
             if (homeResult.isSuccess()) {
                 String home = homeResult.getOutput().trim();
                 if (!home.isEmpty() && home.startsWith("/")) {
@@ -1235,7 +1235,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
         for (String volumeName : namedVolumes) {
             String fullVolumeName = projectName + "_" + volumeName;
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("docker volume inspect %s -f '{{.Mountpoint}}'", fullVolumeName));
             if (result.isSuccess() && !result.getOutput().trim().isEmpty()) {
                 volumePaths.put(volumeName, result.getOutput().trim());
@@ -1261,7 +1261,7 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String composeCmd = getComposeCommand(host);
         String cmd = String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s ps -q 2>/dev/null | head -1",
                 workDir, composeCmd, projectName);
-        SshUtil.CommandResult result = executeCommand(host, cmd);
+        CommandResult result = executeCommand(host, cmd);
         if (result.isSuccess()) {
             return result.getOutput().trim();
         }

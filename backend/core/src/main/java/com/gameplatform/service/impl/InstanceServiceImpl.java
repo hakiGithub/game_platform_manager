@@ -25,7 +25,6 @@ import com.gameplatform.service.DeployService;
 import com.gameplatform.service.InstanceService;
 import com.gameplatform.service.docker.ContainerAdoptionService;
 import com.gameplatform.service.sync.InstanceStateReconciler;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import com.gameplatform.vo.InstanceDeleteResultVO;
 import lombok.RequiredArgsConstructor;
@@ -57,7 +56,6 @@ public class InstanceServiceImpl implements InstanceService {
     private final HostMapper hostMapper;
     private final DeployAdapterFactory adapterFactory;
     private final DeployService deployService;
-    private final SshUtil sshUtil;
     private final PluginLifecycleHook pluginLifecycleHook;
     private final RconConnectionManager rconConnectionManager;
     private final InstanceInfoService instanceInfoService;

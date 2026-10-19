@@ -1,11 +1,10 @@
 package com.gameplatform.service.sync;
 
-import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
-import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,8 +21,7 @@ import static org.mockito.Mockito.*;
  * NativeInstanceSyncStrategy 单元测试
  * 覆盖 pgrep 进程检测、状态对账、异常隔离
  *
- * <p>凭据解析统一走 DeploymentAccess（测试中 Host 不设密码/私钥，
- * credentials 返回空凭据，跳过解密逻辑）。
+ * <p>远程命令执行统一走 RemoteHost。
  *
  * @author GamePlatform
  * @version 1.0.0
@@ -32,12 +30,11 @@ import static org.mockito.Mockito.*;
 class NativeInstanceSyncStrategyTest {
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private GameInstanceMapper instanceMapper;
 
-    private DeploymentAccess deployAccess;
     private NativeInstanceSyncStrategy strategy;
 
     private Host host;
@@ -45,8 +42,7 @@ class NativeInstanceSyncStrategyTest {
 
     @BeforeEach
     void setUp() {
-        deployAccess = new DeploymentAccess(mock(HostMapper.class));
-        strategy = new NativeInstanceSyncStrategy(sshUtil, deployAccess, instanceMapper);
+        strategy = new NativeInstanceSyncStrategy(remoteHost, instanceMapper);
 
         host = new Host();
         host.setId(1L);
@@ -65,8 +61,8 @@ class NativeInstanceSyncStrategyTest {
         instance.setStartCommand("./start.sh -game left4dead2");
     }
 
-    private SshUtil.CommandResult mockResult(int exitCode, String output) {
-        SshUtil.CommandResult result = new SshUtil.CommandResult();
+    private CommandResult mockResult(int exitCode, String output) {
+        CommandResult result = new CommandResult();
         result.setExitCode(exitCode);
         result.setOutput(output);
         result.setSuccess(exitCode == 0);
@@ -75,8 +71,7 @@ class NativeInstanceSyncStrategyTest {
 
     @Test
     void pgrepFound_processRunning_updatesToRunning() {
-        when(sshUtil.executeCommand(eq("192.168.1.100"), eq(22), eq("root"), any(), any(),
-                contains("pgrep"), anyLong()))
+        when(remoteHost.exec(eq(host), contains("pgrep"), eq(10_000L)))
                 .thenReturn(mockResult(0, "12345"));
         when(instanceMapper.updateById(any())).thenReturn(1);
 
@@ -88,7 +83,7 @@ class NativeInstanceSyncStrategyTest {
 
     @Test
     void pgrepNotFound_processNotRunning_updatesToStopped() {
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), contains("pgrep"), anyLong()))
+        when(remoteHost.exec(any(Host.class), contains("pgrep"), eq(10_000L)))
                 .thenReturn(mockResult(1, ""));
         when(instanceMapper.updateById(any())).thenReturn(1);
 
@@ -101,7 +96,7 @@ class NativeInstanceSyncStrategyTest {
 
     @Test
     void pgrepCommandException_skipsInstance() {
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), anyString(), anyLong()))
+        when(remoteHost.exec(any(Host.class), anyString(), eq(10_000L)))
                 .thenThrow(new RuntimeException("SSH timeout"));
 
         strategy.syncHost(host, List.of(instance));
@@ -111,7 +106,7 @@ class NativeInstanceSyncStrategyTest {
 
     @Test
     void pgrepUnexpectedExitCode_keepsDatabaseStatus() {
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), anyString(), anyLong()))
+        when(remoteHost.exec(any(Host.class), anyString(), eq(10_000L)))
                 .thenReturn(mockResult(2, "pgrep: permission denied"));
 
         instance.setRunStatus(1);
@@ -127,7 +122,7 @@ class NativeInstanceSyncStrategyTest {
 
         strategy.syncHost(host, List.of(instance));
 
-        verifyNoInteractions(sshUtil);
+        verifyNoInteractions(remoteHost);
         verify(instanceMapper, never()).updateById(any());
     }
 
@@ -137,12 +132,12 @@ class NativeInstanceSyncStrategyTest {
 
         strategy.syncHost(host, List.of(instance));
 
-        verifyNoInteractions(sshUtil);
+        verifyNoInteractions(remoteHost);
     }
 
     @Test
     void statusUnchanged_noUpdate() {
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), contains("pgrep"), anyLong()))
+        when(remoteHost.exec(any(Host.class), contains("pgrep"), eq(10_000L)))
                 .thenReturn(mockResult(0, "12345"));
 
         instance.setRunStatus(1); // 当前运行中，pgrep 也找到进程
@@ -155,7 +150,7 @@ class NativeInstanceSyncStrategyTest {
     void startCommandWithComplexEscaping_parsesGameParam() {
         instance.setStartCommand("bash -lc 'cd /opt/server && ./srcds_run -game left4dead2 +map c1m1_hotel'");
 
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), contains("left4dead2"), anyLong()))
+        when(remoteHost.exec(any(Host.class), contains("left4dead2"), eq(10_000L)))
                 .thenReturn(mockResult(0, "12345"));
         when(instanceMapper.updateById(any())).thenReturn(1);
 
@@ -170,7 +165,7 @@ class NativeInstanceSyncStrategyTest {
         // 无 -game 参数，应取可执行文件名作为关键字
         instance.setStartCommand("/opt/minecraft/server.jar nogui");
 
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), contains("server.jar"), anyLong()))
+        when(remoteHost.exec(any(Host.class), contains("server.jar"), eq(10_000L)))
                 .thenReturn(mockResult(0, "12345"));
         when(instanceMapper.updateById(any())).thenReturn(1);
 
@@ -184,7 +179,7 @@ class NativeInstanceSyncStrategyTest {
     void emptyInstanceList_doesNothing() {
         strategy.syncHost(host, List.of());
 
-        verifyNoInteractions(sshUtil);
+        verifyNoInteractions(remoteHost);
         verify(instanceMapper, never()).updateById(any());
     }
 
@@ -192,7 +187,7 @@ class NativeInstanceSyncStrategyTest {
     void nullInstanceList_doesNothing() {
         strategy.syncHost(host, null);
 
-        verifyNoInteractions(sshUtil);
+        verifyNoInteractions(remoteHost);
     }
 
     @Test
@@ -210,7 +205,7 @@ class NativeInstanceSyncStrategyTest {
         goodInstance.setRunStatus(0);
         goodInstance.setStartCommand("./start.sh -game left4dead2");
 
-        when(sshUtil.executeCommand(any(), anyInt(), any(), any(), any(), contains("left4dead2"), anyLong()))
+        when(remoteHost.exec(any(Host.class), contains("left4dead2"), eq(10_000L)))
                 .thenReturn(mockResult(0, "12345"));
         when(instanceMapper.updateById(any())).thenReturn(1);
 
