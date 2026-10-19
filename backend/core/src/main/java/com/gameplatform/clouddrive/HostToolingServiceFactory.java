@@ -2,7 +2,6 @@ package com.gameplatform.clouddrive;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.service.HostToolingService;
-import com.gameplatform.plugin.service.VpkAnalyzeResult;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.patch.PatchDecisionEngine;
 import com.gameplatform.patch.PatchFormat;
@@ -36,9 +35,11 @@ public class HostToolingServiceFactory {
     private final com.gameplatform.patch.HostCapabilityProber prober;
     private final PatchDecisionEngine decisionEngine;
     private final com.gameplatform.patch.PatchInstallExecutor executorBridge;
-    private final VpkToolingAnalyzer vpkToolingAnalyzer;
+    private final ToolScriptRunner toolScriptRunner;
+    private final ToolScriptRegistry toolScriptRegistry;
 
-    public HostToolingService forPlugin(String pluginId) {
+    public HostToolingService forPlugin(String pluginId, ClassLoader pluginClassLoader) {
+        registerScriptResources(pluginId, pluginClassLoader);
         return new HostToolingService() {
             @Override
             public List<String> extractArchive(Long hostId, String remoteArchive,
@@ -62,21 +63,46 @@ public class HostToolingServiceFactory {
             @Override
             public String fileDigest(Long instanceId, String relativePath) {
                 log.info("[HostTooling][{}] fileDigest instance={} path={}", pluginId, instanceId, relativePath);
-                return vpkToolingAnalyzer.fileDigest(instanceId, relativePath);
+                return toolScriptRunner.fileDigest(instanceId, relativePath);
             }
 
             @Override
-            public VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath) {
-                log.info("[HostTooling][{}] analyzeVpk instance={} path={}", pluginId, instanceId, relativeVpkPath);
-                return vpkToolingAnalyzer.analyzeVpk(instanceId, relativeVpkPath);
-            }
-
-            @Override
-            public VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath) {
-                log.info("[HostTooling][{}] inspectVpk instance={} path={}", pluginId, instanceId, relativeVpkPath);
-                return vpkToolingAnalyzer.inspectVpk(instanceId, relativeVpkPath);
+            public String runToolScript(Long instanceId, String relativePath, String scriptResource) {
+                String scriptId = pluginId + ":" + scriptResource;
+                if (!toolScriptRegistry.contains(scriptId)) {
+                    throw new BusinessException("插件未注册工具脚本资源: " + scriptResource);
+                }
+                log.info("[HostTooling][{}] runToolScript instance={} path={} script={}",
+                        pluginId, instanceId, relativePath, scriptResource);
+                return toolScriptRunner.runToolScript(instanceId, relativePath, scriptId);
             }
         };
+    }
+
+    private void registerScriptResources(String pluginId, ClassLoader pluginClassLoader) {
+        toolScriptRegistry.unregisterPlugin(pluginId);
+        try (var input = pluginClassLoader.getResourceAsStream("plugin.properties")) {
+            if (input == null) {
+                return;
+            }
+            java.util.Properties properties = new java.util.Properties();
+            properties.load(input);
+            String configured = properties.getProperty("plugin.tooling.scripts", "").trim();
+            for (String resource : configured.split(",")) {
+                String script = resource.trim();
+                if (script.isEmpty()) {
+                    continue;
+                }
+                if (pluginClassLoader.getResource(script) != null) {
+                    toolScriptRegistry.register(pluginId + ":" + script, pluginClassLoader, script);
+                } else {
+                    log.warn("[HostTooling][{}] 声明的工具脚本不存在，已跳过: {}", pluginId, script);
+                }
+            }
+        } catch (Exception e) {
+            throw new BusinessException("读取插件工具脚本声明失败: " + pluginId
+                    + " - " + e.getMessage(), e);
+        }
     }
 
     private PatchFormat detectFormat(String archivePath) {

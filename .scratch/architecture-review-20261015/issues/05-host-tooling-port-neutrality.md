@@ -1,6 +1,6 @@
 # 05 — VPK 语义住在 core，工具容器端口不再中立
 
-**Status:** needs-triage
+**Status:** claimed
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 5）· **与 ADR-0027 冲突（需先谈 ADR）**
 

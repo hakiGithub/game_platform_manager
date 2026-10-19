@@ -5,10 +5,9 @@ import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.MissionInfoVO;
 import com.gameplatform.plugin.l4d2.vo.VpkTrimResultVO;
-import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
-import com.gameplatform.plugin.service.VpkAnalyzeResult;
+import com.gameplatform.plugin.l4d2.vo.VpkAnalyzeResult;
 import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +65,7 @@ class MapServiceTest {
     private com.gameplatform.plugin.task.TaskService taskService;
 
     @Mock
-    private HostToolingService hostToolingService;
+    private VpkToolingService vpkToolingService;
 
     private final L4D2Config config = new L4D2Config();
 
@@ -81,7 +80,7 @@ class MapServiceTest {
         mapService = new MapService(
                 vpkParserService, vpkTrimService, instanceQueryService,
                 instanceFileService, rconService, config, pathResolver,
-                mapRecognitionService, taskService, hostToolingService);
+                mapRecognitionService, taskService, vpkToolingService);
 
         instance = new InstanceVO();
         instance.setId(1L);
@@ -282,7 +281,7 @@ class MapServiceTest {
         chapter.setTitle("Chapter 1");
         chapter.setModes(List.of("coop", "versus"));
         analyzed.setChapters(List.of(chapter));
-        when(hostToolingService.inspectVpk(1L, remoteVpkPath)).thenReturn(analyzed);
+        when(vpkToolingService.inspectVpk(1L, remoteVpkPath)).thenReturn(analyzed);
 
         MissionInfoVO result = mapService.getMission(1L, "test.vpk");
 
@@ -292,7 +291,7 @@ class MapServiceTest {
         assertEquals("c1m1_hotel", result.getChapters().get(0).getCode());
         assertEquals(List.of("coop", "versus"), result.getChapters().get(0).getModes());
 
-        verify(hostToolingService).inspectVpk(1L, remoteVpkPath);
+        verify(vpkToolingService).inspectVpk(1L, remoteVpkPath);
         // 验收：详情不下载 VPK，只按实例目录确认目标文件
         verify(instanceFileService).listFiles(1L, "left4dead2/addons");
         verify(instanceFileService, org.mockito.Mockito.never())
@@ -314,15 +313,15 @@ class MapServiceTest {
         VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
         analyzed.setTitle("Red Square Campaign");
         analyzed.setChapters(List.of());
-        when(hostToolingService.inspectVpk(1L, "left4dead2/addons/red_square.vpk"))
+        when(vpkToolingService.inspectVpk(1L, "left4dead2/addons/red_square.vpk"))
                 .thenReturn(analyzed);
 
         MissionInfoVO result = mapService.getMission(1L, "red_square.vpk");
 
         assertEquals("red_square.vpk", result.getVpkName());
         assertEquals("Red Square Campaign", result.getTitle());
-        verify(hostToolingService).inspectVpk(1L, "left4dead2/addons/red_square.vpk");
-        verify(hostToolingService, org.mockito.Mockito.never())
+        verify(vpkToolingService).inspectVpk(1L, "left4dead2/addons/red_square.vpk");
+        verify(vpkToolingService, org.mockito.Mockito.never())
                 .inspectVpk(1L, "left4dead2/addons/l4d2_mission_6429457440640959025.vpk");
     }
 
@@ -338,7 +337,7 @@ class MapServiceTest {
                 () -> mapService.getMission(1L, "red_square.vpk"));
 
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
-        verify(hostToolingService, org.mockito.Mockito.never())
+        verify(vpkToolingService, org.mockito.Mockito.never())
                 .inspectVpk(anyLong(), anyString());
     }
 
@@ -353,7 +352,7 @@ class MapServiceTest {
         VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
         analyzed.setTitle(null);
         analyzed.setChapters(List.of());
-        when(hostToolingService.inspectVpk(1L, "left4dead2/addons/empty.vpk"))
+        when(vpkToolingService.inspectVpk(1L, "left4dead2/addons/empty.vpk"))
                 .thenReturn(analyzed);
 
         L4D2PluginException ex = assertThrows(L4D2PluginException.class,
