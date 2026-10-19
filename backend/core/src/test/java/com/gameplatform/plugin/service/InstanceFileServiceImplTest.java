@@ -299,4 +299,33 @@ class InstanceFileServiceImplTest {
         assertTrue(files.get(1).isDirectory());
         assertEquals("rwxr-x---", files.get(1).getPermissions());
     }
+
+    @Test
+    @DisplayName("认领 Docker 实例合并 runtimeMetadata 的容器 ID")
+    void listFiles_adoptedDockerInstanceUsesRuntimeMetadataContainerId() {
+        InstanceVO dockerInstance = new InstanceVO();
+        dockerInstance.setId(3L);
+        dockerInstance.setHostId(10L);
+        dockerInstance.setDeployType("docker");
+        dockerInstance.setConfigInfo(Map.of("containerWorkDir", "/l4d2"));
+        dockerInstance.setRuntimeMetadata(Map.of(
+                "containerId", "adopted-container-id",
+                "containerName", "l4d2"));
+        when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+
+        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        when(result.getExitCode()).thenReturn(0);
+        when(result.getOutput()).thenReturn(
+                "d\t755\t4096\t1700000001.000\tplugins_store\n");
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), anyString()))
+                .thenReturn(result);
+
+        List<FileInfo> files = service.listFiles(3L, "left4dead2/addons/sourcemod");
+
+        assertEquals(1, files.size());
+        verify(sshUtil).executeCommand(eq("192.168.1.100"), eq(22), eq("gameserver"),
+                isNull(), isNull(), contains("docker exec adopted-container-id"));
+    }
 }

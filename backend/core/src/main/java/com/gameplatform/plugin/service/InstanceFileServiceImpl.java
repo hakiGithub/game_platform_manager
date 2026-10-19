@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -65,9 +66,16 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
                 deployType, safeRel, resolvedPath);
         }
         if (deployAccess.isDockerDeploy(deployType)) {
-            Map<String, Object> metadata = instance.getConfigInfo();
-            if (metadata == null) {
-                metadata = Map.of();
+            // 容器身份与工作目录分别可能来自 configInfo 和 runtimeMetadata：
+            // 认领实例的 containerId/containerName 只写在 runtimeMetadata，
+            // 而 containerWorkDir 通常由用户在 configInfo 中补充。合并后统一解析，
+            // 避免已认领容器被错误回退成 game-instance-{id}。
+            Map<String, Object> metadata = new HashMap<>();
+            if (instance.getRuntimeMetadata() != null) {
+                metadata.putAll(instance.getRuntimeMetadata());
+            }
+            if (instance.getConfigInfo() != null) {
+                metadata.putAll(instance.getConfigInfo());
             }
             String containerWorkDir = getString(metadata, "containerWorkDir",
                 getString(metadata, "workDir", defaultContainerWorkDir(deployType)));
