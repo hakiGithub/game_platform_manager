@@ -57,12 +57,19 @@ function firstMatch(text, pattern) {
 }
 
 function parseMetadata(text) {
-  const status = firstMatch(text, /^Status:\s*(.+)$/im)
-  const type = firstMatch(text, /^Type:\s*(.+)$/im)
-  const priority = firstMatch(text, /^Priority:\s*(.+)$/im)
-  const source = firstMatch(text, /^来源:\s*(.+)$/im)
-  const blockedBy = firstMatch(text, /^Blocked by:\s*(.+)$/im)
+  const metadataLine = (label) => new RegExp(`^\\*{0,2}${label}:\\*{0,2}\\s*(.+)$`, 'im')
+  const status = firstMatch(text, metadataLine('Status'))
+  const type = firstMatch(text, metadataLine('Type'))
+  const priority = firstMatch(text, metadataLine('Priority'))
+  const source = firstMatch(text, metadataLine('来源'))
+  const blockedBy = firstMatch(text, metadataLine('Blocked by'))
   return { status, type, priority, source, blockedBy }
+}
+
+function isClosureStatus(status) {
+  const normalized = status.trim()
+  if (closureStatuses.has(normalized)) return true
+  return /^(done|resolved|closed|wontfix|cancelled|canceled)(?:\b|[（(]|$)/i.test(normalized)
 }
 
 function sectionBody(text, heading) {
@@ -249,7 +256,7 @@ async function build() {
     const acceptanceChecks = checkboxes(acceptanceBody)
     const questionItems = listItems(questionsBody)
     const comments = commentsBody ? listItems(commentsBody).slice(0, 5) : []
-    const closed = closureStatuses.has(inferred.status) || closureStatuses.has(inferred.status.split(' ')[0])
+    const closed = isClosureStatus(inferred.status)
 
     tickets.push({
       id: repoRelative(file),
