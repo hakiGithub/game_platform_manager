@@ -16,6 +16,7 @@ import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { createApi, ensureHostByIp, login } from "../../support/api.js";
 import {
+  evaluateGithubHttpsProbe,
   execWslBash,
   getWslLanIp,
   inspectSteam302HostState,
@@ -237,20 +238,20 @@ test.describe.serial("Steam302 GitHub 专项", () => {
     expect(dns.stdout).toMatch(/raw\.githubusercontent\.com/);
 
     const curl = execWslBash(
-      `docker exec ${fixture} sh -lc "curl -m 10 -sS -I -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com"`,
+      `docker exec ${fixture} sh -lc "curl -m 10 -sS -I -o /dev/null -w '%{http_code}\\n' https://raw.githubusercontent.com; printf 'exit=%s\\n' $?"`,
     );
-    const httpCode = curl.stdout.trim();
-    const proxyUpstreamFailure = curl.ok && /^50[234]$/.test(httpCode);
+    const evaluated = evaluateGithubHttpsProbe(curl);
+    const proxyUpstreamFailure =
+      evaluated.transportOk && /^50[234]$/.test(evaluated.httpCode);
     check(
       "bridge 消费者容器内 GitHub HTTPS 返回 2xx/3xx",
-      curl.ok && /^[23]\d\d$/.test(httpCode),
-      `http=${httpCode || "none"}${curl.stderr ? `, stderr=${curl.stderr}` : ""}`,
+      evaluated.reachable,
+      evaluated.actual,
       proxyUpstreamFailure
         ? "Steam302 已收到请求，但其上游 GitHub 连接失败；检查主机外网连通性并查看 docker exec steam302 tail -80 /data/caddy.log"
         : "检查宿主 CA bundle、Caddy 代理和 hosts 映射；失败时查看 docker logs steam302",
     );
-    expect(curl.ok, curl.stderr || curl.stdout).toBe(true);
-    expect(httpCode).toMatch(/^[23]\d\d$/);
+    expect(evaluated.reachable, evaluated.actual).toBe(true);
     execWslBash(`docker rm -f ${fixture} >/dev/null 2>&1 || true`);
   });
 

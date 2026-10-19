@@ -319,8 +319,36 @@ function inspectDns(containerName, checks, options = {}) {
   return { lines, ip };
 }
 
+export function evaluateGithubHttpsProbe(probe) {
+  const rawOutput = String(probe?.stdout ?? "").trim();
+  const exitMatch = rawOutput.match(/(?:^|\s)exit=(\d+)$/);
+  const exitCode = exitMatch ? Number(exitMatch[1]) : null;
+  const statusOutput = exitMatch
+    ? rawOutput.slice(0, exitMatch.index).trim()
+    : rawOutput;
+  const code = statusOutput.split(/\s+/).at(-1) ?? "";
+  const stderr = String(probe?.stderr ?? "").trim();
+  const transportOk = Boolean(probe?.ok) && exitCode !== null && exitCode === 0;
+  const reachable = transportOk && /^[23]\d\d$/.test(code);
+  const actual = [
+    `http=${code || "none"}`,
+    `exit=${exitCode ?? "unknown"}`,
+    stderr ? `stderr=${stderr}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return {
+    reachable,
+    transportOk,
+    httpCode: reachable ? code : null,
+    exitCode,
+    actual,
+  };
+}
+
 function inspectGithubHttps(containerName, checks, attempts = 3) {
   let last = "curl 未执行";
+  let lastProbe = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const out = wslDocker(
       [
@@ -328,19 +356,29 @@ function inspectGithubHttps(containerName, checks, attempts = 3) {
         containerName,
         "sh",
         "-lc",
-        "curl -m 8 -sS -I -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com",
+        "curl -m 8 -sS -I -o /dev/null -w '%{http_code}\\n' https://raw.githubusercontent.com; printf 'exit=%s\\n' $?",
       ],
       20_000,
     );
-    const code = out.stdout.trim().split(/\s+/).at(-1) ?? "";
-    last = `http=${code || "none"}${out.stderr ? `, stderr=${out.stderr}` : ""}`;
-    if (out.ok && /^[23]\d\d$/.test(code)) {
-      record(checks, "容器内 GitHub HTTPS", true, `attempt=${attempt}, http=${code}`);
-      return { ok: true, httpCode: code };
+    const evaluated = evaluateGithubHttpsProbe(out);
+    lastProbe = evaluated;
+    last = evaluated.actual;
+    if (evaluated.reachable) {
+      record(
+        checks,
+        "容器内 GitHub HTTPS",
+        true,
+        `attempt=${attempt}, ${evaluated.actual}`,
+      );
+      return {
+        ok: true,
+        httpCode: evaluated.httpCode,
+        exitCode: evaluated.exitCode,
+      };
     }
     if (attempt < attempts) wslBash("sleep 2", 10_000);
   }
-  const isProxyUpstreamFailure = /http=50[234]$/.test(last);
+  const isProxyUpstreamFailure = /^50[234]$/.test(lastProbe?.httpCode);
   record(checks, "容器内 GitHub HTTPS", false, last, {
     hint: isProxyUpstreamFailure
       ? "Steam302 已收到请求，但其上游 GitHub 连接失败（看 caddy.log 的 dial tcp timeout）"
