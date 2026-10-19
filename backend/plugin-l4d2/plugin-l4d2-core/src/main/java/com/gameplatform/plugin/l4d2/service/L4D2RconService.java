@@ -173,7 +173,24 @@ public class L4D2RconService {
      */
     public void changeDifficulty(long instanceId, String difficulty) {
         String englishDifficulty = statusParser.difficultyCode(difficulty);
-        executeCommand(instanceId, "z_difficulty " + englishDifficulty);
+        // SourceMod servers expose z_difficulty as a protected replicated cvar.
+        // A bare "z_difficulty <value>" can be accepted with an empty echo while
+        // leaving the value unchanged, so prefer SourceMod's privileged setter.
+        // Plain servers may not have SourceMod; fall back to the native setter
+        // when SourceMod rejects the command.
+        String setResult = executeCommand(
+                instanceId, "sm_cvar z_difficulty " + englishDifficulty);
+        if (RconFailureDetector.isFailed(setResult)) {
+            executeCommand(instanceId, "z_difficulty " + englishDifficulty);
+        }
+
+        String actual = statusParser.parseDifficulty(
+                executeCommand(instanceId, "z_difficulty"));
+        String expected = statusParser.difficultyLabel(englishDifficulty);
+        if (!expected.equals(actual)) {
+            throw new IllegalStateException(
+                    "难度切换未生效：期望 " + expected + "，实际 " + actual);
+        }
     }
 
     /**
