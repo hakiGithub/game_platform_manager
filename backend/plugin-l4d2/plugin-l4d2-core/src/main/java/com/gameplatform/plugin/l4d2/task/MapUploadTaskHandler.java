@@ -7,6 +7,7 @@ import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskHandler;
 import com.gameplatform.plugin.task.TaskPayload;
+import com.gameplatform.plugin.task.ProgressWindow;
 import com.gameplatform.plugin.task.TaskResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -99,7 +100,7 @@ public class MapUploadTaskHandler implements TaskHandler {
         context.reportProgress(20, "解析 VPK 并上传到 addons 目录");
         // SSH 传输进度映射到任务进度 20→95 区间
         mapService.doUpload(instanceId, stagedFile, filename,
-                transferProgressCallback(context, 20, 95, "上传 " + filename));
+                transferProgressCallback(context, new ProgressWindow(20, 95), "上传 " + filename));
         context.reportProgress(95, "上传完成");
         context.log("地图上传完成: " + filename);
         context.reportProgress(100, "地图上传完成");
@@ -132,12 +133,13 @@ public class MapUploadTaskHandler implements TaskHandler {
                 File vpk = vpks.get(i);
                 int startPercent = 20 + (int) (i * 70.0 / vpks.size());
                 int endPercent = 20 + (int) ((i + 1) * 70.0 / vpks.size());
+                ProgressWindow progressWindow = new ProgressWindow(startPercent, endPercent);
                 String label = "上传 " + vpk.getName() + "（" + (i + 1) + "/" + vpks.size() + "）";
-                context.reportProgress(startPercent, label);
+                context.reportProgress(progressWindow.startPercent(), label);
                 try {
                     // SSH 传输进度映射到当前 VPK 分到的任务进度区间
                     mapService.doUpload(instanceId, vpk.toPath(), vpk.getName(),
-                            transferProgressCallback(context, startPercent, endPercent, label));
+                            transferProgressCallback(context, progressWindow, label));
                     success++;
                     context.log("上传成功: " + vpk.getName());
                 } catch (Exception e) {
@@ -169,7 +171,7 @@ public class MapUploadTaskHandler implements TaskHandler {
      * 节流由两层保证：传输层（64KB / 1%）+ 任务框架内部 1s 节流（ADR-014）。
      */
     private FileTransferProgressCallback transferProgressCallback(TaskContext context,
-                                                                  int startPercent, int endPercent,
+                                                                  ProgressWindow window,
                                                                   String label) {
         return new FileTransferProgressCallback() {
             @Override
@@ -182,14 +184,14 @@ public class MapUploadTaskHandler implements TaskHandler {
                 if (totalBytes <= 0) {
                     return;
                 }
-                int percent = startPercent + (int) ((endPercent - startPercent)
-                        * bytesTransferred / (double) totalBytes);
-                context.reportProgress(Math.min(percent, endPercent), label + " " + percent + "%");
+                int percent = (int) Math.min(100,
+                        bytesTransferred * 100 / (double) totalBytes);
+                context.reportProgress(window.map(percent), label + " " + percent + "%");
             }
 
             @Override
             public void onComplete() {
-                context.reportProgress(endPercent, label + " 100%");
+                context.reportProgress(window.endPercent(), label + " 100%");
             }
 
             @Override

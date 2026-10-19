@@ -33,7 +33,8 @@ public class TaskVO {
     private String source;
 
     /**
-     * 状态：PENDING / RUNNING / COMPLETED / FAILED / CANCELLED
+     * 状态词由任务中心产生；插件跟随子任务时应使用
+     * {@link ChildTaskFollower}，不要在本地重复解释状态词。
      */
     private String status;
 

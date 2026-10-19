@@ -294,6 +294,62 @@ class TaskServiceIntegrationTest {
         }
 
         @Test
+        @DisplayName("Handler 抛共同取消信号：状态 RUNNING → CANCELLED，调用 onCancel")
+        void childCancellationFlow() {
+            TestHandler handler = new TestHandler("cancel", true, 3, 0) {
+                @Override
+                public TaskResult execute(TaskContext context, TaskPayload payload) {
+                    callOrder.add("execute");
+                    throw new ChildTaskCancelledException("任务已取消");
+                }
+
+                @Override
+                public void onCancel(TaskContext context, TaskPayload payload) {
+                    callOrder.add("onCancel");
+                }
+            };
+            handlerRegistry.register("MAIN", "cancel", handler);
+
+            String taskId = taskService.submit(submitRequest("cancel", "MAIN", null, Map.of()));
+
+            verify(taskRecordMapper).updateToCancelledFromRunning(eq(taskId), any(), anyLong(), any());
+            verify(taskRecordMapper, never()).updateToFailed(eq(taskId), anyString(), any(),
+                    any(), anyLong(), any());
+            assertEquals("CANCELLED", db.get(taskId).getStatus());
+            assertEquals(List.of(
+                    "onSubmit", "onBeforeExecute", "execute", "onCancel"), handler.callOrder);
+        }
+
+        @Test
+        @DisplayName("Handler 抛共同超时信号：状态 RUNNING → FAILED，调用 onFailure")
+        void childTimeoutFlow() {
+            TestHandler handler = new TestHandler("timeout", true, 3, 0) {
+                @Override
+                public TaskResult execute(TaskContext context, TaskPayload payload) {
+                    callOrder.add("execute");
+                    throw new ChildTaskTimeoutException("任务已超时");
+                }
+
+                @Override
+                public void onFailure(TaskContext context, TaskPayload payload, Throwable error) {
+                    callOrder.add("onFailure");
+                }
+            };
+            handlerRegistry.register("MAIN", "timeout", handler);
+
+            String taskId = taskService.submit(submitRequest("timeout", "MAIN", null, Map.of()));
+
+            verify(taskRecordMapper).updateToFailed(eq(taskId), eq("任务已超时"), anyString(),
+                    any(), anyLong(), any());
+            verify(taskRecordMapper, never()).updateToCancelledFromRunning(eq(taskId), any(),
+                    anyLong(), any());
+            assertEquals("FAILED", db.get(taskId).getStatus());
+            assertEquals(List.of(
+                    "onSubmit", "onBeforeExecute", "execute",
+                    "onAfterExecute", "onFailure"), handler.callOrder);
+        }
+
+        @Test
         @DisplayName("Handler 未注册：抛 TaskTypeNotFoundException")
         void unregisteredHandler() {
             assertThrows(TaskTypeNotFoundException.class,

@@ -11,6 +11,8 @@ import com.gameplatform.plugin.service.CloudDriveService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.plugin.task.TaskContext;
+import com.gameplatform.plugin.task.ChildTaskCancelledException;
+import com.gameplatform.plugin.task.ChildTaskTimeoutException;
 import com.gameplatform.plugin.task.TaskPayload;
 import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.vo.InstanceVO;
@@ -100,11 +102,11 @@ class CloudInstallServiceTest {
     void relayDownload_shouldStopWritingWhenTaskIsCancelled() throws Exception {
         CloudInstallService.ProgressOutputStream output = new CloudInstallService.ProgressOutputStream(
                 new ByteArrayOutputStream(), 10L, pct -> { }, () -> {
-                    throw new CloudInstallService.CancelledSignal("任务已取消");
+                    throw new ChildTaskCancelledException("任务已取消");
                 });
 
-        CloudInstallService.CancelledSignal signal = assertThrows(
-                CloudInstallService.CancelledSignal.class,
+        ChildTaskCancelledException signal = assertThrows(
+                ChildTaskCancelledException.class,
                 () -> output.write(new byte[]{1, 2, 3}, 0, 3));
 
         assertEquals("任务已取消", signal.getMessage());
@@ -124,7 +126,7 @@ class CloudInstallServiceTest {
                 .thenAnswer(invocation -> {
                     OutputStream out = invocation.getArgument(2);
                     out.write(new byte[]{1});
-                    throw new CloudInstallService.CancelledSignal("任务已取消");
+                    throw new ChildTaskCancelledException("任务已取消");
                 });
 
         TaskPayload payload = new TaskPayload(Map.of(
@@ -134,7 +136,7 @@ class CloudInstallServiceTest {
                 "shareUrl", "https://cloud.189.cn/t/share",
                 "cloudPath", "/maps/share-80f0499c"));
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
+        ChildTaskCancelledException ex = assertThrows(ChildTaskCancelledException.class,
                 () -> service.execute(taskContext, payload));
 
         assertTrue(ex.getMessage().contains("任务已取消"));
@@ -166,7 +168,7 @@ class CloudInstallServiceTest {
                 "shareUrl", "https://cloud.189.cn/t/share",
                 "cloudPath", "/maps/share-80f0499c"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        ChildTaskCancelledException error = assertThrows(ChildTaskCancelledException.class,
                 () -> service.execute(taskContext, payload));
 
         assertTrue(error.getMessage().contains("任务已取消"));
@@ -178,7 +180,7 @@ class CloudInstallServiceTest {
     }
 
     @Test
-    void relayDownload_whenTimeoutAfterHostWrapsException_shouldPersistCancelledNotFailed() {
+    void relayDownload_whenTimeoutAfterHostWrapsException_shouldPersistFailed() {
         AtomicBoolean timeout = new AtomicBoolean(false);
         when(taskContext.isCancelled()).thenReturn(false);
         when(taskContext.isTimeout()).thenAnswer(invocation -> timeout.get());
@@ -197,14 +199,14 @@ class CloudInstallServiceTest {
                 "shareUrl", "https://cloud.189.cn/t/share",
                 "cloudPath", "/maps/share-80f0499c"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        ChildTaskTimeoutException error = assertThrows(ChildTaskTimeoutException.class,
                 () -> service.execute(taskContext, payload));
 
         assertTrue(error.getMessage().contains("任务已超时"));
         ArgumentCaptor<DownloadTaskResource> captor = ArgumentCaptor.forClass(DownloadTaskResource.class);
         verify(extensionClient, atLeastOnce()).update(captor.capture());
         DownloadTaskResource updated = captor.getValue();
-        assertEquals(DownloadService.STATUS_CANCELLED, updated.getSpec().getTaskStatus());
+        assertEquals(DownloadService.STATUS_FAILED, updated.getSpec().getTaskStatus());
     }
 
     @Test

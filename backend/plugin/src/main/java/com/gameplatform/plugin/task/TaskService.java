@@ -41,6 +41,19 @@ public interface TaskService {
     String submit(TaskSubmitRequest request);
 
     /**
+     * Submit a task whose input is encoded through a typed codec.
+     *
+     * <p>Defaulting to the existing raw request keeps third-party TaskService
+     * implementations source compatible while giving callers a typed option.
+     */
+    default <T> String submit(TypedTaskSubmitRequest<T> request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request 不能为空");
+        }
+        return submit(request.toTaskSubmitRequest());
+    }
+
+    /**
      * 获取任务详情
      *
      * @param taskId 任务ID

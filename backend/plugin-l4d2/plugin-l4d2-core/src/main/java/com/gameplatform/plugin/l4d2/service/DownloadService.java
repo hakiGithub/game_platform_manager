@@ -18,8 +18,12 @@ import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.patch.PatchInstallService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
+import com.gameplatform.plugin.task.ChildTaskCancellation;
+import com.gameplatform.plugin.task.ChildTaskCancelledException;
+import com.gameplatform.plugin.task.ChildTaskFollower;
+import com.gameplatform.plugin.task.ChildTaskOutcome;
+import com.gameplatform.plugin.task.ProgressWindow;
 import com.gameplatform.plugin.task.TaskService;
-import com.gameplatform.plugin.task.TaskVO;
 import com.gameplatform.vo.InstanceVO;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -192,7 +196,7 @@ public class DownloadService {
             DownloadTaskRuntime runtime = new DownloadTaskRuntime(vo, resource);
             tasks.put(taskId, runtime);
 
-            runtime.future = CompletableFuture.runAsync(() -> pollPatchTask(runtime));
+            runtime.future = CompletableFuture.runAsync(() -> followPatchTask(runtime));
             taskIds.add(taskId);
             log.info("创建 URL 下载任务（委托 PatchInstallService）: taskId={}, patchTaskId={}, url={}, instanceId={}",
                     taskId, patchTaskId, url, dto.getInstanceId());
@@ -429,7 +433,7 @@ public class DownloadService {
      * <p>状态映射：任务中心 PENDING/RUNNING → 插件 DOWNLOADING；
      * COMPLETED → COMPLETED；FAILED → FAILED（透传 errorMessage）；CANCELLED → CANCELLED。</p>
      */
-    private void pollPatchTask(DownloadTaskRuntime runtime) {
+    private void followPatchTask(DownloadTaskRuntime runtime) {
         DownloadTaskVO vo = runtime.vo;
         String patchTaskId = runtime.resource.getSpec().getPatchTaskId();
         if (patchTaskId == null || patchTaskId.isBlank()) {
@@ -437,38 +441,28 @@ public class DownloadService {
             return;
         }
         try {
-            while (!runtime.cancelled) {
-                TaskVO task = taskService.getTask(patchTaskId);
-                if (task == null) {
-                    Thread.sleep(2000);
-                    continue;
-                }
-                String status = task.getStatus();
-                if ("PENDING".equals(status) || "RUNNING".equals(status)) {
+            ChildTaskOutcome outcome = ChildTaskFollower.follow(
+                    taskService, patchTaskId, ProgressWindow.full(),
+                    new ChildTaskCancellation() {
+                        @Override
+                        public boolean isCancelled() {
+                            return runtime.cancelled;
+                        }
+                    },
+                    progress -> {
                     vo.setStatus(STATUS_DOWNLOADING);
-                    if (task.getProgress() != null) {
-                        vo.setProgress(task.getProgress().doubleValue());
-                    }
+                    vo.setProgress((double) progress.mappedPercent());
                     updateDb(runtime);
-                } else if ("COMPLETED".equals(status)) {
-                    vo.setStatus(STATUS_COMPLETED);
-                    vo.setProgress(100.0);
-                    vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
-                    updateDb(runtime);
-                    return;
-                } else if ("FAILED".equals(status)) {
-                    markFailed(runtime, task.getErrorMessage() != null
-                            ? task.getErrorMessage() : "安装失败");
-                    return;
-                } else if ("CANCELLED".equals(status)) {
-                    vo.setStatus(STATUS_CANCELLED);
-                    vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
-                    updateDb(runtime);
-                    return;
-                }
-                Thread.sleep(2000);
+                    });
+            if (outcome.completedSuccessfully()) {
+                vo.setStatus(STATUS_COMPLETED);
+                vo.setProgress(100.0);
+                vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
+                updateDb(runtime);
+            } else {
+                markFailed(runtime, outcome.message());
             }
-            // 被取消：同步终态
+        } catch (ChildTaskCancelledException cancelled) {
             vo.setStatus(STATUS_CANCELLED);
             vo.setCompleteTime(LocalDateTime.now().format(TIME_FORMATTER));
             updateDb(runtime);
@@ -731,7 +725,7 @@ public class DownloadService {
                         DownloadTaskVO vo = toVO(resource);
                         DownloadTaskRuntime runtime = new DownloadTaskRuntime(vo, resource);
                         tasks.put(spec.getTaskId(), runtime);
-                        runtime.future = CompletableFuture.runAsync(() -> pollPatchTask(runtime));
+                        runtime.future = CompletableFuture.runAsync(() -> followPatchTask(runtime));
                         log.info("启动恢复：重新轮询主应用任务 taskId={}, patchTaskId={}",
                                 spec.getTaskId(), spec.getPatchTaskId());
                         continue;

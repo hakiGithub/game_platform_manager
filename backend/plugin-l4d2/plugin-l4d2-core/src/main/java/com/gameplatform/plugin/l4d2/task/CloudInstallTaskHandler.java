@@ -16,7 +16,8 @@ import java.util.Map;
  * 云盘转存安装任务处理器（ADR-0025）。
  *
  * <p>流程实现在 {@link CloudInstallService#execute}：转存（0-40%）→ 产物筛选（40-45%）→
- * 主机直连/平台中转下载安装（45-95%）→ 完成。取消/超时经 CancelledSignal 中断，
+ * 主机直连/平台中转下载安装（45-95%）→ 完成。取消/超时经统一
+ * {@code ChildTaskCancelledException} 中断，
  * DownloadTaskResource（taskType=CLOUD）随阶段同步更新。
  *
  * <p>任务参数（payload）：

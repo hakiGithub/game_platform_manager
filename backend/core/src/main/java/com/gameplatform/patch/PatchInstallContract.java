@@ -2,6 +2,7 @@ package com.gameplatform.patch;
 
 import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.task.TaskPayload;
+import com.gameplatform.plugin.task.TaskPayloadCodec;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -11,9 +12,24 @@ import java.util.Map;
  *
  * <p>服务提交与 Handler 执行必须共用这里，避免新增字段只接到一侧后在任务队列中静默丢失。
  */
-public final class PatchInstallContract {
+public final class PatchInstallContract implements TaskPayloadCodec<PatchInstallRequest> {
+
+    /**
+     * Shared codec instance used by both submission and execution.
+     */
+    public static final PatchInstallContract INSTANCE = new PatchInstallContract();
 
     private PatchInstallContract() {
+    }
+
+    @Override
+    public Map<String, Object> encode(PatchInstallRequest request) {
+        return toPayload(request);
+    }
+
+    @Override
+    public PatchInstallRequest decode(TaskPayload payload) {
+        return fromPayload(payload);
     }
 
     public static Map<String, Object> toPayload(PatchInstallRequest request) {

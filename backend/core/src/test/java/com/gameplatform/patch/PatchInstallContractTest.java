@@ -32,10 +32,10 @@ class PatchInstallContractTest {
                 .includePattern("*.vpk")
                 .build();
 
-        String json = objectMapper.writeValueAsString(PatchInstallContract.toPayload(original));
+        String json = objectMapper.writeValueAsString(PatchInstallContract.INSTANCE.encode(original));
         Map<String, Object> persisted = objectMapper.readValue(json, new TypeReference<>() {
         });
-        PatchInstallRequest restored = PatchInstallContract.fromPayload(
+        PatchInstallRequest restored = PatchInstallContract.INSTANCE.decode(
                 new TaskPayload(persisted));
 
         assertEquals(original.getInstanceId(), restored.getInstanceId());
