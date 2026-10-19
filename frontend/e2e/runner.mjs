@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApi, login } from "./support/api.js";
+import { parseE2eArgs } from "./support/e2e-args.js";
 import { e2eEnv } from "./support/env.js";
 
 const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -28,11 +29,11 @@ const BACKEND_ARG_FILE_POINTER = join(
 const FRONTEND_PID_FILE = join(PROJECT_DIR, "frontend", "logs", "frontend.pid");
 const VITE_CACHE_DIR = join(FRONTEND_DIR, "node_modules", ".vite");
 
-const ATTACH = process.argv.includes("--attach");
-const ROUND = process.argv.includes("--round");
-const passthroughIndex = process.argv.indexOf("--");
-const PLAYWRIGHT_ARGS =
-  passthroughIndex === -1 ? [] : process.argv.slice(passthroughIndex + 1);
+const {
+  attach: ATTACH,
+  round: ROUND,
+  playwrightArgs: PLAYWRIGHT_ARGS,
+} = parseE2eArgs(process.argv.slice(2));
 let BASE_URL = e2eEnv.baseUrl;
 const BACKEND_URL = e2eEnv.backendUrl;
 let FRONTEND_PORT = new URL(BASE_URL).port || "80";

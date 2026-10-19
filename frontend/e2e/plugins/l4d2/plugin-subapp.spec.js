@@ -237,9 +237,11 @@ test.describe.serial("l4d2 插件子应用", () => {
 
   async function pluginRow(name) {
     const list = await api.get(
-      `/api/plugin/l4d2/plugins/list?instanceId=${instanceId}`,
+      `/api/plugin/l4d2/plugins/list?instanceId=${instanceId}&page=1&size=100`,
     );
-    return (list.body?.data ?? []).find((row) => row.name === name) ?? null;
+    const data = list.body?.data;
+    const rows = Array.isArray(data) ? data : (data?.records ?? []);
+    return rows.find((row) => row.name === name) ?? null;
   }
 
   async function expectPluginStatus(name, status, timeout = 30_000) {
