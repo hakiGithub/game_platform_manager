@@ -1,5 +1,6 @@
 /**
  * 页面: 插件扩展台 + l4d2 插件子应用（Wujie 容器：仪表盘/RCON 控制台/地图管理/SourceMod 插件/服务器配置/重启管理）
+ *       以及系统监控/日志/玩家统计/管理员/服务器信息/预设场景/下载管理/地图中心 8 个次要页面
  * 用例: 插件用例包样板 —— API 造运行中 l4d2 实例为共享 fixture，深测插件子应用全主路径
  * 前置: 平台前后端已运行；E2E_TEST_HOST_* 指向装有 Docker 的牺牲主机；fixtures 提供
  *       e2e-test-map.vpk 与 e2e-sample-plugin.smx；RCON 密码与镜像默认 SRCDS_RCONPW 对齐
@@ -12,6 +13,14 @@
  *  - SourceMod: 上传 .smx 样例成功
  *  - 服务器配置: 修改保存出现同步成功提示
  *  - 重启管理: 页面渲染（模式 radio + 可用模式 tag）
+ *  - 系统监控: 标题、实时指标卡与历史趋势区域渲染
+ *  - 日志: 日志文件表与日志视图渲染，刷新入口发起文件列表请求
+ *  - 玩家统计: 趋势/玩家面板渲染，空数据时显示明确空态；游玩时长格式校验可见
+ *  - 管理员: 列表或空态渲染；新增对话框可打开并触发 Steam ID 必填校验
+ *  - 服务器信息: 名称/MOTD/主机信息字段与版本折叠内容渲染
+ *  - 预设场景: 预设卡片或明确空态渲染
+ *  - 下载管理: URL/Workshop/云盘入口与任务列表或空态渲染
+ *  - 地图中心: 筛选、爬取状态与地图列表/空态/加载失败提示至少一项渲染
  *  - 远端仓库: 按实际配置状态分支 —— 未配置时展示引导空态并可打开设置弹窗；
  *    已配置时展示仓库列表并可打开设置弹窗。不触发测试连接、不保存配置，保持幂等
  */
@@ -527,6 +536,13 @@ test.describe.serial("l4d2 插件子应用", () => {
     }
   });
 
+  /**
+   * 页面: l4d2 / 系统监控
+   * 用例: 次要页面可达渲染与历史查询冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /monitor → 断言标题与实时指标 → 点击历史趋势查询
+   * 通过标准: 页面根、指标卡、历史趋势区域可见，查询请求成功返回
+   */
   test("系统监控页渲染指标与历史区域", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -537,9 +553,24 @@ test.describe.serial("l4d2 插件子应用", () => {
       timeout: 30_000,
     });
     await expect(page.getByText("历史趋势", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "查询" })).toBeVisible();
+    const historyResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/plugin/l4d2/monitor/history") &&
+        response.ok(),
+      { timeout: 30_000 },
+    );
+    await page.getByRole("button", { name: "查询" }).click();
+    await historyResponse;
   });
 
+  /**
+   * 页面: l4d2 / 日志
+   * 用例: 次要页面可达渲染与刷新冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /logs → 断言文件表与日志视图 → 点击刷新并等待文件列表响应
+   * 通过标准: 日志区可见，刷新触发成功的日志文件列表请求
+   */
   test("服务器日志页渲染文件表与刷新入口", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -548,10 +579,28 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(
       page.getByRole("heading", { name: "服务器日志" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "刷新" })).toBeVisible();
     await expect(page.getByText("日志文件", { exact: true })).toBeVisible();
+    await expect(page.locator(".log-viewer")).toBeVisible();
+
+    const filesResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/plugin/l4d2/logs/files") &&
+        response.ok(),
+      { timeout: 30_000 },
+    );
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await filesResponse;
   });
 
+  /**
+   * 页面: l4d2 / 玩家统计
+   * 用例: 次要页面可达渲染、玩家空态与游玩时长校验冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /player-stats → 断言趋势空态 → 切到玩家列表断言列表/空态 →
+   *       切到游玩时长并提交非法 SteamID
+   * 通过标准: 玩家统计面板渲染，玩家列表显示数据或明确空态，格式错误提示可见
+   */
   test("玩家统计页可切换到游玩时长并展示格式校验", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -559,6 +608,21 @@ test.describe.serial("l4d2 插件子应用", () => {
     await gotoPluginPage(page, "player-stats", ".player-stats-page");
 
     await expect(page.getByRole("heading", { name: "玩家统计" })).toBeVisible();
+    await expect(
+      page
+        .locator(".chart")
+        .first()
+        .or(page.getByText("暂无趋势数据", { exact: true })),
+    ).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("tab", { name: "玩家列表" }).click();
+    await expect(
+      page
+        .locator(".el-table__row")
+        .first()
+        .or(page.getByText("暂无玩家数据", { exact: true })),
+    ).toBeVisible({ timeout: 30_000 });
+
     await page.getByRole("tab", { name: "游玩时长" }).click();
     const steamId = page.getByPlaceholder("格式：STEAM_1:0:12345");
     await expect(steamId).toBeVisible();
@@ -571,6 +635,13 @@ test.describe.serial("l4d2 插件子应用", () => {
     ).toBeVisible();
   });
 
+  /**
+   * 页面: l4d2 / 管理员
+   * 用例: 次要页面可达渲染、列表空态与新增必填校验冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /admins → 断言管理员列表或空态 → 打开新增对话框并空提交
+   * 通过标准: 页面与列表区域渲染，Steam ID 必填提示可见且对话框保持打开
+   */
   test("管理员页可打开新增对话框并触发必填校验", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -580,6 +651,12 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(
       page.getByRole("heading", { name: "管理员管理" }),
     ).toBeVisible();
+    await expect(
+      page
+        .locator(".admins-card")
+        .locator(".el-table__row, .el-table__empty-text")
+        .first(),
+    ).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "添加管理员" }).click();
     const dialog = page.getByRole("dialog", { hasText: "添加管理员" });
     await expect(dialog).toBeVisible();
@@ -589,6 +666,13 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(dialog).toBeVisible();
   });
 
+  /**
+   * 页面: l4d2 / 服务器信息
+   * 用例: 次要页面可达渲染与版本折叠冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /server-info → 断言名称/MOTD/主机信息字段 → 展开版本信息
+   * 通过标准: 三类信息字段渲染，版本折叠展开后内容区域可见
+   */
   test("服务器信息页渲染名称/MOTD/主机信息与版本折叠", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -601,12 +685,24 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(page.getByText("服务器名称", { exact: true })).toBeVisible();
     await expect(page.getByText("进服公告", { exact: true })).toBeVisible();
     await expect(page.getByText("主机信息", { exact: true })).toBeVisible();
+    await expect(
+      page.getByPlaceholder("输入服务器名称，如：L4D2 中国区 1 号服"),
+    ).toBeVisible();
+    await expect(page.getByPlaceholder("输入进服公告内容")).toBeVisible();
+    await expect(page.getByPlaceholder("输入主机信息内容")).toBeVisible();
     await page.getByText("版本信息（插件构建 / 提交 / 运行环境）").click();
     await expect(page.locator(".version-block")).toBeVisible({
       timeout: 30_000,
     });
   });
 
+  /**
+   * 页面: l4d2 / 预设场景
+   * 用例: 次要页面可达渲染与列表/空态冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /preset → 等待预设列表加载完成
+   * 通过标准: 至少一个预设卡片或明确的“暂无预设”空态可见
+   */
   test("预设场景页渲染列表或明确空态", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -614,12 +710,21 @@ test.describe.serial("l4d2 插件子应用", () => {
     await gotoPluginPage(page, "preset", ".preset-page");
 
     await expect(page.getByRole("heading", { name: "预设场景" })).toBeVisible();
-    await expect(page.locator(".preset-page")).toContainText(
-      /暂无预设|应用预设|当前实例/,
-      { timeout: 30_000 },
-    );
+    await expect(
+      page
+        .locator(".preset-card")
+        .first()
+        .or(page.locator(".el-empty").filter({ hasText: "暂无预设" })),
+    ).toBeVisible({ timeout: 30_000 });
   });
 
+  /**
+   * 页面: l4d2 / 下载管理
+   * 用例: 次要页面可达渲染与任务列表空态冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例
+   * 步骤: 打开 /download → 断言三种入口 → 切换 Workshop → 断言任务表
+   * 通过标准: 三种下载入口可见，任务表显示任务行或明确空态
+   */
   test("资源下载页渲染三种来源与任务区", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -637,8 +742,21 @@ test.describe.serial("l4d2 插件子应用", () => {
       page.getByPlaceholder(/输入 Workshop URL 或纯数字 ID/),
     ).toBeVisible();
     await expect(page.getByText("下载任务", { exact: true })).toBeVisible();
+    await expect(
+      page
+        .locator(".tasks-card .el-table__row")
+        .first()
+        .or(page.getByText("暂无下载任务", { exact: true })),
+    ).toBeVisible({ timeout: 30_000 });
   });
 
+  /**
+   * 页面: l4d2 / 地图中心
+   * 用例: 次要页面可达渲染与三方数据容错冒烟
+   * 前置: 共享 fixture 部署的运行中 l4d2 实例；地图中心数据可能来自三方源
+   * 步骤: 打开 /map-center → 断言筛选与爬取状态 → 点击刷新并等待地图列表响应
+   * 通过标准: 页面区块渲染，地图列表显示数据、明确空态或加载失败提示
+   */
   test("地图中心页渲染筛选、爬取状态与列表空态", async ({ page }) => {
     test.setTimeout(60_000);
     const { injectSession } = await import("../../support/session.js");
@@ -650,6 +768,22 @@ test.describe.serial("l4d2 插件子应用", () => {
     await expect(page.getByText("爬取状态：", { exact: true })).toBeVisible();
     await expect(page.locator(".el-table")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "手动爬取" })).toBeVisible();
+
+    const mapsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/plugin/l4d2/map-center/maps"),
+      { timeout: 30_000 },
+    );
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await mapsResponse;
+    await expect(
+      page
+        .locator(".list-card .el-table__row")
+        .first()
+        .or(page.locator(".list-card .el-table__empty-text"))
+        .or(page.locator(".el-message--error")),
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test("旧路由 /playtime /version /plugin-store 自动兼容到新页面", async ({
