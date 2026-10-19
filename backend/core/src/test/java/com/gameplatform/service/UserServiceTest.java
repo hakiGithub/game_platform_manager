@@ -85,6 +85,7 @@ class UserServiceTest {
         assertEquals("Bearer", result.getTokenType());
         assertNotNull(result.getUser());
         assertEquals("admin", result.getUser().getUsername());
+        assertEquals(java.util.List.of("ROLE_USER", "ROLE_ADMIN"), result.getUser().getRoles());
 
         verify(userMapper).selectByUsername("admin");
         verify(jwtTokenProvider).generateToken("admin");
@@ -141,6 +142,7 @@ class UserServiceTest {
         // Then
         assertNotNull(result);
         assertEquals("admin", result.getUsername());
+        assertEquals(java.util.List.of("ROLE_USER", "ROLE_ADMIN"), result.getRoles());
 
         // Cleanup
         SecurityContextHolder.clearContext();

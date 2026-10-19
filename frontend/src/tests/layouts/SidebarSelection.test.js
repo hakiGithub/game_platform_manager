@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { nextTick, ref } from "vue";
 
 const mockRoute = {
@@ -41,6 +42,7 @@ const slotStub = {
 };
 
 beforeEach(() => {
+  setActivePinia(createPinia());
   vi.clearAllMocks();
   mockRoute.path = "/extensions/app/l4d2/server-info";
   mockRoute.matched = [];

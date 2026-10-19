@@ -173,6 +173,19 @@ class CloudAccountServiceTest {
     }
 
     @Test
+    void updateDisplayPersistsThroughExtensionClient() {
+        CloudAccountResource res = resource("q1", "cloud189", null);
+        res.getSpec().setDisplayName("主号");
+        res.getSpec().setRemark("生产盘");
+        when(hostExtensionClient.get(CloudAccountResource.class, "q1")).thenReturn(Optional.of(res));
+
+        CloudAccountResource updated = service.updateDisplay(res);
+
+        assertThat(updated).isSameAs(res);
+        verify(hostExtensionClient).update(res);
+    }
+
+    @Test
     void quotaDelegatesToSdkAccount() throws Exception {
         CloudAccountResource res = resource("q1", "cloud189", "{\"ssonCookie\":\"x\",\"rootFolderId\":\"-11\"}");
         when(hostExtensionClient.get(CloudAccountResource.class, "q1")).thenReturn(Optional.of(res));

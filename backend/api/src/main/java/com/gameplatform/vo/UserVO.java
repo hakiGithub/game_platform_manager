@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 用户响应VO
@@ -29,6 +30,12 @@ public class UserVO implements Serializable {
      */
     @Schema(description = "用户名")
     private String username;
+
+    /**
+     * 角色标识（如 ROLE_ADMIN / ROLE_USER）
+     */
+    @Schema(description = "角色标识")
+    private List<String> roles;
 
     /**
      * 最后登录时间

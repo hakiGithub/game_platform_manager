@@ -80,7 +80,7 @@ public class CloudAccountController {
         if (dto.getRemark() != null) {
             res.getSpec().setRemark(dto.getRemark());
         }
-        return Result.success(toVo(res));
+        return Result.success(toVo(accountService.updateDisplay(res)));
     }
 
     @Operation(summary = "删除账号（连同挂载）")

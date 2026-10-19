@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getPluginList, getPluginManifestByPluginId } from "@/api/plugin";
 import { sendPluginNavigate } from "@/plugins/communication/pluginCommunication";
 import { generateWujieAppName } from "@/plugins/wujie/apps.config";
+import { useUserStore } from "@/stores/user";
 
 defineProps({
   collapsed: {
@@ -14,6 +15,7 @@ defineProps({
 
 const route = useRoute();
 const router = useRouter();
+const userStore = useUserStore();
 
 const workspaceMenuItems = [
   {
@@ -68,17 +70,17 @@ const staticExtensionMenuItems = [
   },
 ];
 
-const systemMenuItems = [
+const systemMenuItems = computed(() => [
   {
     index: "/system",
     icon: "Setting",
     title: "系统设置",
     children: [
       { index: "/system/configuration", title: "系统配置" },
-      { index: "/system/accounts", title: "云盘账号" },
+      ...(userStore.isAdmin ? [{ index: "/system/accounts", title: "云盘账号" }] : []),
     ],
   },
-];
+]);
 
 const pluginMenuItems = ref([]);
 
@@ -92,7 +94,7 @@ const menuSections = computed(() => [
   { key: "resources", label: "资源管理", items: resourceMenuItems },
   { key: "services", label: "服务编排", items: serviceMenuItems },
   { key: "extensions", label: "扩展中心", items: extensionMenuItems.value },
-  { key: "system", label: "平台设置", items: systemMenuItems },
+  { key: "system", label: "平台设置", items: systemMenuItems.value },
 ]);
 
 const activeMenu = computed(() => {

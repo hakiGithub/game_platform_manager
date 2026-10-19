@@ -23,6 +23,8 @@ export const useUserStore = defineStore("user", () => {
   const nickname = computed(
     () => userInfo.value?.nickname || userInfo.value?.username || "",
   );
+  const roles = computed(() => userInfo.value?.roles || []);
+  const isAdmin = computed(() => roles.value.includes("ROLE_ADMIN"));
   const avatar = computed(() => userInfo.value?.avatar || "");
   const email = computed(() => userInfo.value?.email || "");
 
@@ -192,6 +194,8 @@ export const useUserStore = defineStore("user", () => {
     isLoggedIn,
     username,
     nickname,
+    roles,
+    isAdmin,
     avatar,
     email,
 
