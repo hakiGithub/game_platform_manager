@@ -1,5 +1,5 @@
 /**
- * L4D2 官方战役章节目录（官方章节目录，ADR 语境见 CONTEXT.md「地图领域」）
+ * L4D2 官方战役章节目录（官方章节目录，ADR 语境见 GLOSSARY.md「地图领域」）
  *
  * 数据来源：l4d2-server-next 参考项目 frontend/src/data/officialMaps.ts（14 个战役全章节）。
  * 官方地图内置于游戏本体，无需服务器 addons 扫描即可作为换图目标；

@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root — the domain glossary (ubiquitous language).
+- **`GLOSSARY.md`** at the repo root — the domain glossary (ubiquitous language).
 - **`docs/design/adr/`** — read ADRs that touch the area you're about to work in. `docs/design/adr/README.md` is the index; `docs/design/adr/glossary.md` holds cross-ADR terms.
 
 Note: this repo keeps ADRs in `docs/design/adr/`, not the default `docs/adr/`.
@@ -17,7 +17,7 @@ Single-context repo:
 
 ```
 /
-├── CONTEXT.md
+├── GLOSSARY.md
 ├── docs/design/adr/
 │   ├── 0001-plugin-menu-ownership.md
 │   ├── ...
@@ -27,11 +27,11 @@ Single-context repo:
 └── frontend/                          # 主前端 + 插件微前端
 ```
 
-Multi-context layout (`CONTEXT-MAP.md` at the root) is not used in this repo.
+Legacy `CONTEXT.md` is a compatibility pointer to `GLOSSARY.md`. Multi-context layout (`GLOSSARY-MAP.md` at the root) is not used in this repo.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly avoids.
 
 If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 

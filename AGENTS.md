@@ -360,7 +360,7 @@ Issue 以本地 Markdown 文件形式存放在 `.scratch/<feature-slug>/`（一�
 
 ### Domain docs
 
-单上下文布局：根目录 `CONTEXT.md` + `docs/design/adr/`。See `docs/agents/domain.md`.
+单上下文布局：根目录 `GLOSSARY.md` + `docs/design/adr/`。`CONTEXT.md` 仅作兼容指针。See `docs/agents/domain.md`.
 
 ### Skill workflow
 
