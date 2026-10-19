@@ -778,6 +778,9 @@ export interface DownloadTaskVO {
   status: 'PENDING' | 'DOWNLOADING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'PENDING_MANUAL'
   errorMessage?: string
   targetPath?: string
+  accountName?: string
+  cloudPath?: string
+  transferMode?: 'DIRECT' | 'RELAY'
   workshopId?: string
   workshopTitle?: string
   previewUrl?: string

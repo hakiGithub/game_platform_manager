@@ -311,7 +311,7 @@
         <el-descriptions-item label="任务 ID">{{ detailTask.taskId }}</el-descriptions-item>
         <el-descriptions-item label="实例 ID">{{ detailTask.instanceId }}</el-descriptions-item>
         <el-descriptions-item label="任务类型">
-          {{ detailTask.taskType === 'WORKSHOP' ? 'Workshop' : 'URL' }}
+          {{ detailTask.taskType === 'WORKSHOP' ? 'Workshop' : detailTask.taskType === 'CLOUD' ? '云盘' : 'URL' }}
         </el-descriptions-item>
         <el-descriptions-item label="文件名">{{ detailTask.filename || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">
@@ -330,6 +330,15 @@
         </el-descriptions-item>
         <el-descriptions-item label="目标路径">
           {{ detailTask.targetPath || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detailTask.taskType === 'CLOUD'" label="云盘账号">
+          {{ detailTask.accountName || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detailTask.taskType === 'CLOUD'" label="云盘目录">
+          {{ detailTask.cloudPath || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detailTask.taskType === 'CLOUD'" label="传输通道">
+          {{ detailTask.transferMode || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="任务 URL">
           <span class="break-all">{{ detailTask.taskUrl || '-' }}</span>
