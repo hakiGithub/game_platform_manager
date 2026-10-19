@@ -295,8 +295,7 @@ record CloudLink(String url, Map<String, String> headers, Long expiresAtMillis) 
 List<String> extractArchive(Long hostId, String remoteArchive,
                             String destDir, String includePattern);
 String fileDigest(Long instanceId, String relativePath);
-VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
-VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
+String runToolScript(Long instanceId, String relativePath, String scriptResource);
 ```
 
 ### FileTransferProgressCallback
@@ -342,4 +341,3 @@ public final class PluginConstants {
 | `OptimisticLockException` | 更新时版本冲突 |
 | `ExtensionNotFoundException` | 目标资源不存在 |
 | `BusinessException` | 宿主服务拒绝或执行失败 |
-| `VpkInvalidException` | VPK 有效但缺少 L4D2 mission 元数据 |

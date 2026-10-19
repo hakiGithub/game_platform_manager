@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""VPK 地图分析脚本（ADR-0027，由平台分发到主机临时目录执行）。
+"""L4D2 VPK map metadata parser.
 
-读取 VPK 文件头部（header + 目录树）与少量 mission 条目（preload 或数据区），
-不读取 VPK 的数据区——400MB 的 VPK 只读头部与 mission 文本。
-
-用法: python3 vpk_analyze.py <file.vpk>
-输出: 单行 JSON {"title": "...", "chapters": [{"code","title","modes":[...]}]}
-退出码: 0=解析成功; 2=VPK 有效但无 missions（非 L4D2 地图）; 3=非 VPK/解析失败
-
-解析逻辑与插件侧 Java VpkParser 保持一致（v2 头部额外跳过 16 字节扩展字段）。
+The host distributes this plugin-owned script into the instance context and
+returns stdout unchanged. The plugin interprets the resulting JSON.
 """
 import json
 import os
@@ -19,14 +13,13 @@ import sys
 
 VPK_SIGNATURE = 0x55AA1234
 HEADER_SIZE = 12
-TARGET_ROOT_ENV = "GP_VPK_TARGET_ROOT"
+TARGET_ROOT_ENV = "GP_TOOL_TARGET_ROOT"
 SELF_ARCHIVE_INDEXES = {0x7FFF, 0xFFFF}
 KV_PATTERN = re.compile(r'"([^"]+)"\s+"([^"]+)"')
 GAME_MODES = {"coop", "survival", "halftank", "brawler", "versus", "scavenge", "realism"}
 
 
 def target_path(path):
-    """Map a target-container absolute path into the tool container's mounted root."""
     root = os.environ.get(TARGET_ROOT_ENV)
     if not root or not path.startswith("/"):
         return path
@@ -41,13 +34,6 @@ def read_null_terminated(buf, pos):
 
 
 def parse_tree(buf, pos, end):
-    """遍历 VPK 目录树。
-
-    返回 (missions_preload, mission_refs)：
-    - missions_preload: preload 内联的 mission 文本列表
-    - mission_refs: 内容在数据区的 mission 条目 [(archive_index, offset, size)]
-      （不少作者 VPK 的 mission txt 不内联，需要按偏移补读数据区）
-    """
     missions = []
     mission_refs = []
     while pos < end:
@@ -62,7 +48,6 @@ def parse_tree(buf, pos, end):
                 filename, pos = read_null_terminated(buf, pos)
                 if not filename:
                     break
-                # crc(u32) preloadBytes(u16) archiveIndex(u16) offset(u32) size(u32) terminator(u16)
                 if end - pos < 18:
                     return missions, mission_refs
                 crc, preload_bytes, archive_index, offset, size, term = struct.unpack_from(
@@ -75,14 +60,12 @@ def parse_tree(buf, pos, end):
                     if is_mission:
                         missions.append(preload.decode("utf-8", errors="replace"))
                 elif is_mission and size > 0:
-                    # 0x7FFF/0xFFFF = 数据在本文件内；其他 index 指向 archive_NNN.vpk。
                     mission_refs.append((archive_index, offset, size))
                 pos += preload_bytes
     return missions, mission_refs
 
 
 def read_data_section(path, tree_start, tree_size, mission_refs):
-    """按数据区偏移读取 mission 内容（自包含 VPK：数据区紧随目录树）。"""
     out = []
     if not mission_refs:
         return out
@@ -91,7 +74,7 @@ def read_data_section(path, tree_start, tree_size, mission_refs):
         file_len = f.tell()
         for archive_index, offset, size in mission_refs:
             if archive_index not in SELF_ARCHIVE_INDEXES:
-                continue  # 多卷归档的数据在 archive_NNN.vpk，暂不支持
+                continue
             start = tree_start + tree_size + offset
             if start + size > file_len:
                 continue
@@ -101,7 +84,6 @@ def read_data_section(path, tree_start, tree_size, mission_refs):
 
 
 def parse_mission(text):
-    """逐行解析 mission（Valve KeyValues），返回 {title, chapters:[...]}。移植自 Java parseMissionFile。"""
     campaign = {"title": None, "chapters": []}
     chapter_map = {}
     in_game_mode = False
@@ -125,7 +107,6 @@ def parse_mission(text):
         mode_text = lower.replace("{", " ").strip().strip('"').strip("'")
         if not in_game_mode and mode_text in GAME_MODES and (
                 lower.startswith('"') or lower.startswith("'") or "{" in line):
-            # 模式头可能单独一行，下一行才是 "{"。
             in_game_mode = True
             awaiting_mode_brace = "{" not in line
             brace_level = line.count("{") - line.count("}")
@@ -146,10 +127,8 @@ def parse_mission(text):
         for m in KV_PATTERN.finditer(line):
             key = m.group(1).lower()
             value = m.group(2)
-
             if key == "displaytitle" and campaign["title"] is None:
                 campaign["title"] = value
-
             if in_game_mode and current_mode:
                 if key == "map":
                     temp_map_name = value
@@ -159,12 +138,10 @@ def parse_mission(text):
                         chapter = {"code": temp_map_name, "title": value, "modes": [current_mode]}
                         campaign["chapters"].append(chapter)
                         chapter_map[temp_map_name] = chapter
-                    else:
-                        if current_mode not in chapter["modes"]:
-                            chapter["modes"].append(current_mode)
+                    elif current_mode not in chapter["modes"]:
+                        chapter["modes"].append(current_mode)
                     temp_map_name = None
 
-        # 同一行可能同时含 KV 和闭括号；先提取 KV，再结束模式区域。
         if in_game_mode:
             brace_level += line.count("{") - line.count("}")
             if brace_level <= 0:
@@ -172,7 +149,6 @@ def parse_mission(text):
                 awaiting_mode_brace = False
                 pending_mode = None
                 current_mode = None
-
     return campaign
 
 
@@ -209,7 +185,6 @@ def main():
             if signature != VPK_SIGNATURE:
                 print("not a VPK file (magic mismatch)", file=sys.stderr)
                 sys.exit(2)
-            # v2 头部含 4 个额外 u32（fileData/MD5/signature section 大小），目录树从 28 字节起
             tree_start = HEADER_SIZE + (16 if version >= 2 else 0)
             f.seek(tree_start)
             tree = f.read(tree_size)
@@ -218,13 +193,12 @@ def main():
         sys.exit(3)
 
     missions, mission_refs = parse_tree(tree, 0, len(tree))
-    # read_data_section 自行按 header_size + tree_size 定位数据区。
     missions.extend(read_data_section(path, tree_start, tree_size, mission_refs))
     merged = None
     for text in missions:
         try:
             campaign = parse_mission(text)
-        except Exception as e:  # 单个 mission 损坏不阻塞其余
+        except Exception as e:
             print("mission parse warning: %s" % e, file=sys.stderr)
             continue
         if campaign["chapters"] or campaign["title"]:

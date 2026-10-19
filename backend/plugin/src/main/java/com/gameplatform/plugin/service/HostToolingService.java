@@ -11,7 +11,7 @@ import java.util.List;
  * <p>
  * 每次调用自动携带调用方（插件 ID）写入日志审计，来源不可伪造。
  *
- * <p>ADR-0027 增补：文件摘要与 VPK 分析以<b>实例维度相对路径</b>为参数（与
+ * <p>ADR-0027 增补：文件摘要与工具脚本以<b>实例维度相对路径</b>为参数（与
  * {@link InstanceFileService} 同一寻址语义），由主应用负责解析到主机/容器实际
  * 存储位置（Native 直接定位 installPath；Docker 在容器或复用卷命名空间的工具容器内读取）。
  *
@@ -50,27 +50,16 @@ public interface HostToolingService {
     String fileDigest(Long instanceId, String relativePath);
 
     /**
-     * 分析实例侧 VPK 地图文件（ADR-0027）：读取 VPK 目录树与 mission preload
-     * （只读文件头部，不传输文件数据区到平台），返回战役名与章节信息。
-     * <p>分析脚本由平台维护并自动分发；优先主机原生 python3，缺失时回退
-     * platform-tools 工具容器（镜像需含 python3）；两路都不可用抛异常。
+     * 在目标实例的上下文内运行插件声明的工具脚本，返回原始 stdout。
+     * <p>脚本内容由宿主在插件加载时从插件 ClassLoader 注册，调用方只能使用
+     * 加载阶段注册过的资源名；不接受主机路径、命令或任意脚本文本。脚本参数固定为
+     * 实例内相对路径，宿主负责实例到主机/容器的寻址、脚本分发、临时文件清理与审计。
+     * 结果的业务解释（例如 VPK 的 missions/campaigns）归插件所有。
      *
-     * @param instanceId      实例 ID
-     * @param relativeVpkPath VPK 在实例根目录下的相对路径（如 left4dead2/addons/x.vpk）
-     * @return 摘要 + 战役标题 + 章节（章节 code 即开图命令所需地图码）
-     * @throws VpkInvalidException 文件不是有效的 L4D2 地图 VPK（无 mission 信息）
+     * @param instanceId     实例 ID
+     * @param relativePath   实例根目录下的相对路径（如 left4dead2/addons/x.vpk）
+     * @param scriptResource 加载阶段注册的插件资源名（如 tooling/my_analyzer.py）
+     * @return 脚本 stdout 原文；非 0 退出码抛业务异常
      */
-    VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
-
-    /**
-     * 只读 VPK 元数据（ADR-0027）：返回战役标题与章节，不计算文件摘要。
-     * <p>用于地图详情等无需摘要的同步读取场景；只读取 VPK 头部与 mission 内容，
-     * 不读取大文件数据区，也不将 VPK 传输到平台。返回值 {@code digest} 为 null。
-     *
-     * @param instanceId      实例 ID
-     * @param relativeVpkPath VPK 在实例根目录下的相对路径
-     * @return 战役标题 + 章节（不含摘要）
-     * @throws VpkInvalidException 文件不是有效的 L4D2 地图 VPK（无 mission 信息）
-     */
-    VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
+    String runToolScript(Long instanceId, String relativePath, String scriptResource);
 }

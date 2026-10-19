@@ -15,7 +15,7 @@ import com.gameplatform.plugin.service.FileTransferProgressCallback;
 import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
-import com.gameplatform.plugin.service.VpkAnalyzeResult;
+import com.gameplatform.plugin.l4d2.vo.VpkAnalyzeResult;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,7 +57,7 @@ public class MapService {
     private final L4D2PathResolver pathResolver;
     private final MapRecognitionService mapRecognitionService;
     private final com.gameplatform.plugin.task.TaskService taskService;
-    private final HostToolingService hostToolingService;
+    private final VpkToolingService vpkToolingService;
 
     /**
      * 列出实例的所有地图（VPK 战役）。
@@ -436,7 +436,7 @@ public class MapService {
         String remoteVpkPath = addonsPath + "/" + mapName;
 
         try {
-            VpkAnalyzeResult analyzed = hostToolingService.inspectVpk(instanceId, remoteVpkPath);
+            VpkAnalyzeResult analyzed = vpkToolingService.inspectVpk(instanceId, remoteVpkPath);
             MissionInfoVO mission = new MissionInfoVO();
             mission.setVpkName(mapName);
             mission.setTitle(analyzed.getTitle());

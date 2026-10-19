@@ -1,4 +1,4 @@
-package com.gameplatform.plugin.service;
+package com.gameplatform.plugin.l4d2.vo;
 
 import lombok.Data;
 
@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * VPK 地图分析结果（ADR-0027）：{@link HostToolingService#analyzeVpk} 的返回值。
+ * L4D2 VPK 地图分析结果。
  *
  * @author GamePlatform
  * @version 1.0.0
@@ -17,10 +17,7 @@ public class VpkAnalyzeResult implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /**
-     * VPK 文件 sha-256 摘要（小写 hex，64 位）。
-     * <p>{@link HostToolingService#inspectVpk} 只读元数据时为 null。
-     */
+    /** VPK 文件 sha-256 摘要（小写 hex，64 位）；按需读取元数据时为 null。 */
     private String digest;
 
     /** 战役标题（mission DisplayTitle） */

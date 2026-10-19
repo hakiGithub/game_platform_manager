@@ -14,8 +14,6 @@ RuntimeException
 │   ├── DuplicateExtensionException create 时 name 已存在
 │   ├── OptimisticLockException     update 时版本号不匹配
 │   └── ExtensionNotFoundException  get/update/delete 目标不存在
-└── VpkInvalidException (RuntimeException)
-    └── VPK 有效但不含 L4D2 mission 信息；HostToolingService.analyzeVpk 抛出
 ```
 
 宿主服务还可能抛出主应用通用 `BusinessException`。它表示宿主能力在语义校验或执行阶段拒绝请求，例如实例不存在、RCON / 云盘端点配置缺失、云盘账号或路径不可用、主机工具执行失败。
@@ -47,5 +45,4 @@ throw new ExtensionNotFoundException("plugin-mygame: 玩家不存在");
 | `IllegalStateException`: 菜单 path 为空 | `PluginMenuDeclaration.path` 为 null 或空白 | 每个 `PluginMenuDeclaration` 必须显式声明非空 path |
 | `IllegalArgumentException`（文件） | `InstanceFileService` 路径含 `..` 越界 | relativePath 仅用正斜杠相对路径，禁止 `..` |
 | `BusinessException`（宿主服务） | `InstanceQueryService` / `RconService` / `CloudDriveService` / `HostToolingService` 等宿主能力校验失败或执行失败 | 检查实例 / 主机 ID、`configInfo` 标准键、云盘账号与挂载内路径、归档路径与目标目录；不要在插件内重建连接或容器命令 |
-| `VpkInvalidException` | `HostToolingService.analyzeVpk` 收到有效 VPK，但其中没有 L4D2 mission 信息 | 先用 `fileDigest` 或文件列表确认地图文件；按业务结果记录为 INVALID，不要把无 mission 的有效 VPK 当作任务 FAILED |
 | 任务卡死不结束 | 未检查 `isCancelled`/`isTimeout` | 循环中定期检查，命中即 return |

@@ -9,6 +9,7 @@
 
 | 平台版本 | 变更 | 详见 |
 |---|---|---|
+| 3.13.0 | `HostToolingService` 恢复游戏中立：移除 VPK 专属 API，新增 `runToolScript` 与 `plugin.tooling.scripts` 显式脚本登记；VPK 脚本和解析类型回到 L4D2 插件 | [host-services.md](host-services.md) §10、[sdk-reference.md](sdk-reference.md) |
 | 3.12.0 | 新增 `CloudDriveService` 宿主服务（ADR-0024/0025，云盘列目录/直链/下载/同步转存）；新增 `HostToolingService` 宿主服务（ADR-0026/0027，主机侧解压/实例文件 SHA-256/VPK 分析） | [host-services.md](host-services.md) §9-10、[sdk-reference.md](sdk-reference.md) |
 | 3.10.0 | 新增 `RconService` 宿主服务（ADR-0016，插件不再自建 RCON 连接）；新增 `InstanceInfoProvider` 扩展点 + `InstanceDynamicInfo`（ADR-0017，玩家数插件化实时查询）；`InstanceFileService` / `FileAccessService` 上传/下载新增 `FileTransferProgressCallback` 进度回调（无回调旧签名保留为 default 方法，源兼容） | [host-services.md](host-services.md) §9、[extension-and-menus.md](extension-and-menus.md) §10 |
 | 3.8.0 | 新增定时任务体系：`ScheduledTaskHandler` / `ScheduledTaskDeclarationExtension` / `ScheduleService`（独立于任务中心，无重试无互斥，重叠 SKIPPED） | [scheduled-tasks.md](scheduled-tasks.md) |

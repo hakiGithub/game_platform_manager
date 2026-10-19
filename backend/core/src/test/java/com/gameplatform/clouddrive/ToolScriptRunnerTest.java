@@ -1,6 +1,5 @@
 package com.gameplatform.clouddrive;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.entity.Host;
@@ -10,7 +9,6 @@ import com.gameplatform.patch.HostCapabilityProber;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.plugin.service.ContainerIdResolver;
 import com.gameplatform.plugin.service.InstanceQueryService;
-import com.gameplatform.plugin.service.VpkAnalyzeResult;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,17 +30,15 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * VpkToolingAnalyzer 主机侧寻址回归测试（ADR-0027 / ticket 03）。
+ * ToolScriptRunner 主机侧寻址与脚本分发回归测试。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class VpkToolingAnalyzerTest {
+class ToolScriptRunnerTest {
 
     @Mock private DeploymentAccess deployAccess;
     @Mock private SshUtil sshUtil;
@@ -51,15 +47,19 @@ class VpkToolingAnalyzerTest {
     @Mock private InstanceQueryService instanceQueryService;
     @Mock private ContainerIdResolver containerIdResolver;
     @Mock private HostCapabilityProber prober;
+    @Mock private ToolScriptRegistry toolScriptRegistry;
 
-    private VpkToolingAnalyzer analyzer;
+    private ToolScriptRunner runner;
     private Host host;
     private InstanceVO dockerInstance;
 
     @BeforeEach
     void setUp() {
-        analyzer = new VpkToolingAnalyzer(deployAccess, sshUtil, new ObjectMapper(),
-                hostMapper, gameMetadataMapper, instanceQueryService, containerIdResolver, prober);
+        runner = new ToolScriptRunner(deployAccess, sshUtil,
+                hostMapper, gameMetadataMapper, instanceQueryService, containerIdResolver,
+                prober, toolScriptRegistry);
+        when(toolScriptRegistry.read("plugin-l4d2:tooling/vpk_analyze.py"))
+                .thenReturn("# test script\n");
         host = new Host();
         host.setId(10L);
         host.setIpAddress("127.0.0.1");
@@ -109,7 +109,7 @@ class VpkToolingAnalyzerTest {
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
                 anyString(), contains("sha256sum"))).thenReturn(ok);
 
-        analyzer.fileDigest(1L, "left4dead2/addons/map.vpk");
+        runner.fileDigest(1L, "left4dead2/addons/map.vpk");
 
         verify(sshUtil).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
@@ -135,7 +135,8 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        analyzer.analyzeVpk(1L, "left4dead2/addons/map.vpk");
+        runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
@@ -172,7 +173,8 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        analyzer.analyzeVpk(1L, "left4dead2/addons/map.vpk");
+        runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
@@ -197,10 +199,10 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        VpkAnalyzeResult result = analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk");
+        String result = runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
-        assertEquals("Test Campaign", result.getTitle());
-        assertNull(result.getDigest());
+        assertTrue(result.contains("Test Campaign"));
         verify(sshUtil, never()).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
                 contains("sha256sum"));
@@ -212,7 +214,7 @@ class VpkToolingAnalyzerTest {
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
                 org.mockito.ArgumentMatchers.isNull(), anyString(),
-                contains("GP_VPK_TARGET_ROOT=/gp-target"));
+                contains("GP_TOOL_TARGET_ROOT=/gp-target"));
         verify(sshUtil, never()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
                 org.mockito.ArgumentMatchers.isNull(), anyString(),
@@ -236,7 +238,8 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        analyzer.inspectVpk(1L, "left4dead2/addons/my map.vpk");
+        runner.runToolScript(1L, "left4dead2/addons/my map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
@@ -272,7 +275,8 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk");
+        runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
         verify(sshUtil, never()).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
@@ -301,7 +305,8 @@ class VpkToolingAnalyzerTest {
                 anyString(), anyString(),
                 org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
 
-        analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk");
+        runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                "plugin-l4d2:tooling/vpk_analyze.py");
 
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
@@ -340,7 +345,7 @@ class VpkToolingAnalyzerTest {
                 .thenReturn(dockerNoise);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), contains("rm -f '/tmp/gp_vpk_analyze_"))).thenReturn(cleanup);
+                anyString(), contains("rm -f '/tmp/gp_tool_"))).thenReturn(cleanup);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
                 anyString(), contains("docker cp "))).thenReturn(cleanup);
@@ -351,7 +356,8 @@ class VpkToolingAnalyzerTest {
 
         com.gameplatform.common.exception.BusinessException error = assertThrows(
                 com.gameplatform.common.exception.BusinessException.class,
-                () -> analyzer.inspectVpk(1L, "left4dead2/addons/red_square.vpk"));
+                () -> runner.runToolScript(1L, "left4dead2/addons/red_square.vpk",
+                        "plugin-l4d2:tooling/vpk_analyze.py"));
 
         assertTrue(error.getMessage().contains("red_square.vpk"));
         assertTrue(error.getMessage().contains("工具容器"), error.getMessage());
@@ -362,7 +368,7 @@ class VpkToolingAnalyzerTest {
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
                 org.mockito.ArgumentMatchers.isNull(), anyString(),
-                contains("rm -f '/tmp/gp_vpk_analyze_"));
+                contains("rm -f '/tmp/gp_tool_"));
     }
 
     @Test
@@ -394,14 +400,15 @@ class VpkToolingAnalyzerTest {
                 .thenReturn(pullFailure);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), contains("rm -f '/tmp/gp_vpk_analyze_"))).thenReturn(cleanup);
+                anyString(), contains("rm -f '/tmp/gp_tool_"))).thenReturn(cleanup);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
                 anyString(), contains("docker cp "))).thenReturn(cleanup);
 
         com.gameplatform.common.exception.BusinessException pullError = assertThrows(
                 com.gameplatform.common.exception.BusinessException.class,
-                () -> analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk"));
+                () -> runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                        "plugin-l4d2:tooling/vpk_analyze.py"));
         assertTrue(pullError.getMessage().contains("工具容器"), pullError.getMessage());
 
         SshUtil.CommandResult readFailure = command(1, "",
@@ -413,8 +420,9 @@ class VpkToolingAnalyzerTest {
 
         com.gameplatform.common.exception.BusinessException fileError = assertThrows(
                 com.gameplatform.common.exception.BusinessException.class,
-                () -> analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk"));
-        assertTrue(fileError.getMessage().contains("VPK 文件不可读"), fileError.getMessage());
+                () -> runner.runToolScript(1L, "left4dead2/addons/map.vpk",
+                        "plugin-l4d2:tooling/vpk_analyze.py"));
+        assertTrue(fileError.getMessage().contains("目标文件不可读"), fileError.getMessage());
     }
 
     private SshUtil.CommandResult command(int exit, String output, String error) {

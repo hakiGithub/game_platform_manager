@@ -85,6 +85,7 @@ public class PluginSpringContextFactory {
     private final com.gameplatform.rcon.RconServiceFactory rconServiceFactory;
     private final InstanceInfoProviderRegistry instanceInfoProviderRegistry;
     private final InstanceInfoService instanceInfoService;
+    private final com.gameplatform.clouddrive.ToolScriptRegistry toolScriptRegistry;
 
     /** 已加载的插件上下文信息 */
     private final Map<String, PluginContextInfo> loadedPlugins = new ConcurrentHashMap<>();
@@ -156,9 +157,10 @@ public class PluginSpringContextFactory {
         com.gameplatform.plugin.service.CloudDriveService cloudDriveService =
                 mainContext.getBean(com.gameplatform.clouddrive.CloudDriveServiceFactory.class).forPlugin(pluginId);
         childContext.getBeanFactory().registerSingleton("cloudDriveService", cloudDriveService);
-        // 注入 HostToolingService（ADR-0026）：绑定 pluginId 的工具容器宿主能力（语义化解压，审计调用方标识）
+        // 注入 HostToolingService（ADR-0026）：绑定 pluginId 与插件资源域的工具容器宿主能力。
         com.gameplatform.plugin.service.HostToolingService hostToolingService =
-                mainContext.getBean(com.gameplatform.clouddrive.HostToolingServiceFactory.class).forPlugin(pluginId);
+                mainContext.getBean(com.gameplatform.clouddrive.HostToolingServiceFactory.class)
+                        .forPlugin(pluginId, wrapper.getPluginClassLoader());
         childContext.getBeanFactory().registerSingleton("hostToolingService", hostToolingService);
         log.info("  已注册插件可用服务: InstanceQueryService, HostQueryService, FileAccessService, InstanceFileService, InstanceArchiveImportService, TaskService, SshTunnelService, ScheduleService, RconService, CloudDriveService, HostToolingService");
 
@@ -451,6 +453,11 @@ public class PluginSpringContextFactory {
         PluginUtils.invalidateCache(pluginId);
 
         log.info("插件 [{}] Spring 上下文已卸载", pluginId);
+        try {
+            toolScriptRegistry.unregisterPlugin(pluginId);
+        } catch (Exception e) {
+            log.warn("[HostTooling] 插件 [{}] 卸载时清理工具脚本失败: {}", pluginId, e.getMessage());
+        }
     }
 
     /**

@@ -82,7 +82,7 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 | `SshTunnelService` | SSH 本地端口转发隧道（[ADR-0009](../design/adr/0009-platform-capability-requirements.md)） | [reference/host-services.md](reference/host-services.md) |
 | `RconService` | RCON 命令执行与连通性测试（[ADR-0016](../design/adr/0016-rcon-host-capability.md)） | [reference/host-services.md](reference/host-services.md) |
 | `CloudDriveService` | 云盘列目录 / 直链 / 下载 / 同步转存（[ADR-0024](../design/adr/0024-cloud-drive-host-capability.md)） | [reference/host-services.md](reference/host-services.md) |
-| `HostToolingService` | 主机侧解压、实例文件摘要、VPK 分析（[ADR-0026](../design/adr/0026-host-tooling-container.md)） | [reference/host-services.md](reference/host-services.md) |
+| `HostToolingService` | 主机侧解压、实例文件摘要、插件脚本执行（[ADR-0026](../design/adr/0026-host-tooling-container.md)） | [reference/host-services.md](reference/host-services.md) |
 | `TaskService` | 任务提交 / 查询 / 取消（注入子容器） | [reference/async-tasks.md](reference/async-tasks.md) |
 | `ScheduleService` | 定时计划编程式服务（注入子容器，自动绑定本插件 source） | [reference/scheduled-tasks.md](reference/scheduled-tasks.md) |
 | `PluginContext` | 插件元数据上下文（仅元数据，不持数据访问） | [reference/extension-and-menus.md](reference/extension-and-menus.md) |
@@ -138,7 +138,7 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 - `FileAccessService`：主机级 SFTP + `executeCommand`。
 - `RconService`：按实例执行 RCON 命令，连接、端点与审计归宿主。
 - `CloudDriveService`：按云盘账号列目录、取直链、下载和同步转存。
-- `HostToolingService`：主机侧解压，以及实例相对路径的文件摘要和 VPK 分析。
+- `HostToolingService`：主机侧解压，以及实例相对路径的文件摘要和插件声明脚本执行。
 
 签名见 [reference/sdk-reference.md](reference/sdk-reference.md)。
 

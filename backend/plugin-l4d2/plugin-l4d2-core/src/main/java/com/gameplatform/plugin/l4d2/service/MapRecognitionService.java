@@ -14,8 +14,8 @@ import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
-import com.gameplatform.plugin.service.VpkAnalyzeResult;
-import com.gameplatform.plugin.service.VpkInvalidException;
+import com.gameplatform.plugin.l4d2.exception.VpkInvalidException;
+import com.gameplatform.plugin.l4d2.vo.VpkAnalyzeResult;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +56,7 @@ public class MapRecognitionService {
     private static final String REC_INVALID = "INVALID";
 
     private final HostToolingService hostToolingService;
+    private final VpkToolingService vpkToolingService;
     private final InstanceQueryService instanceQueryService;
     private final InstanceFileService instanceFileService;
     private final ExtensionClient extensionClient;
@@ -143,7 +144,7 @@ public class MapRecognitionService {
                     log(taskLog, "复用已有识别结果: " + entry.getVpkName());
                     continue;
                 }
-                VpkAnalyzeResult analyzed = hostToolingService.analyzeVpk(instanceId, vpkPath);
+                VpkAnalyzeResult analyzed = vpkToolingService.analyzeVpk(instanceId, vpkPath);
                 upsertRecognition(digest, analyzed, entry.getVpkName(), null);
                 // 批量识别也做开图命令匹配（vpk 文件名兜底；sourceId 仅安装链路可知）
                 resolveLaunchCommands(digest, null, entry.getVpkName());

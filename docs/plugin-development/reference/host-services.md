@@ -220,30 +220,24 @@ public interface HostToolingService {
     List<String> extractArchive(Long hostId, String remoteArchive,
                                 String destDir, String includePattern);
     String fileDigest(Long instanceId, String relativePath);
-    VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
-    VpkAnalyzeResult inspectVpk(Long instanceId, String relativeVpkPath);
+    String runToolScript(Long instanceId, String relativePath, String scriptResource);
 }
 ```
 
-`extractArchive` 在目标主机解压，优先原生工具，缺失时回退 `platform-tools` 镜像。`includePattern` 是逗号分隔、大小写不敏感的 glob（如 `*.vpk`）；提供时只把匹配文件平铺到 `destDir`。`fileDigest` 接受实例相对路径，返回小写 SHA-256 hex。`analyzeVpk` 计算摘要并读取 VPK 元数据；`inspectVpk` 只读 VPK 头部返回战役与章节，不计算摘要，适合地图详情等同步读取：
+`extractArchive` 在目标主机解压，优先原生工具，缺失时回退 `platform-tools` 镜像。`includePattern` 是逗号分隔、大小写不敏感的 glob（如 `*.vpk`）；提供时只把匹配文件平铺到 `destDir`。`fileDigest` 接受实例相对路径，返回小写 SHA-256 hex。
+
+`runToolScript` 运行插件 JAR 内的脚本，返回原始 stdout；宿主负责实例寻址、脚本分发、临时文件清理和调用方审计。脚本必须在插件加载前由 `plugin.properties` 显式登记，运行时不能传主机路径或脚本内容：
+
+```properties
+plugin.tooling.scripts=tooling/my_analyzer.py
+```
 
 ```java
-@Data
-public class VpkAnalyzeResult {
-    private String digest;
-    private String title;
-    private List<Chapter> chapters;
-
-    @Data
-    public static class Chapter {
-        private String code;
-        private String title;
-        private List<String> modes;
-    }
-}
+String rawJson = hostToolingService.runToolScript(
+        instanceId, "data/example.bin", "tooling/my_analyzer.py");
 ```
 
-`VpkInvalidException` 表示 VPK 有效，但不是含 mission 信息的 L4D2 地图。调用方应把它当业务上的 INVALID，而不是任务 FAILED。
+插件负责解释 stdout；业务结果和业务异常都不应进入 SDK。L4D2 的 VPK JSON 解析、`VpkAnalyzeResult` 与 `VpkInvalidException` 位于 `plugin-l4d2`。
 
 ## 11. 控制器规范
 
