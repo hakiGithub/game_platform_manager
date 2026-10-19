@@ -18,6 +18,7 @@
 | [02](issues/02-migrate-glossary-naming.md) | 把 `CONTEXT.md` 术语源迁移为 `GLOSSARY.md`，保留兼容指针 | 01 |
 | [03](issues/03-write-usage-and-parallel-runbook.md) | 写中文使用指南与并行执行 runbook | None |
 | [04](issues/04-verify-refresh-and-agent-integration.md) | 验证 lock、副本、agent 可发现性与文档接入 | 01, 02, 03 |
+| [05](issues/05-lock-schema-mismatch.md) | 修复 lock schema 漂移并补齐内容 hash | 04 |
 
 ## 第一批可并行 frontier
 

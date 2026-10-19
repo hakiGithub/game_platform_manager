@@ -27,7 +27,7 @@ Blocked by: 01, 02, 03
 
 ## Answer
 
-- 固定上游 clone 的 27 个目录 tree hash 与 `skills-lock.json` 全部一致；27 个 `SKILL.md` 的 SHA-256 与上游逐一相等。
+- 固定上游 clone 的 27 个目录 tree hash 与 `skills-lock.json` 全部一致；27 个 `SKILL.md` 的 SHA-256 与锁文件、上游逐一相等。
 - `.agents/skills/` 与 `.claude/skills/` 的 54 个上游目录比较无差异；3 个自定义 skill 保留。
 - `skills@1.7.2 list --json` 发现 30 项：27 个上游来源 + 3 个自定义；新增 3 项可见，`resolving-merge-conflicts` 为 0 项。
 - `GLOSSARY.md` 有 71 个术语条目；`CONTEXT.md` 无术语正文且指向新文件；`docs/agents/domain.md` 与根 `AGENTS.md` 使用新入口。
@@ -47,6 +47,10 @@ foreach ($prop in $lock.skills.PSObject.Properties) {
     if ($treeHash -ne $prop.Value.skillFolderHash) {
         throw "Tree hash mismatch: $($prop.Name)"
     }
+    $skillMdHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $clone $skillPath)).Hash.ToLowerInvariant()
+    if ($skillMdHash -ne $prop.Value.skillMdHash) {
+        throw "SKILL.md SHA-256 mismatch: $($prop.Name)"
+    }
     foreach ($base in @('.agents\skills', '.claude\skills')) {
         git diff --no-index --quiet -- (Join-Path $clone $folderPath) (Join-Path $base $folderName)
         if ($LASTEXITCODE -ne 0) {
@@ -55,3 +59,19 @@ foreach ($prop in $lock.skills.PSObject.Properties) {
     }
 }
 ```
+
+### 2026-10-20 独立复验补充
+
+- lock/tree/copy：27 个 lock 条目、27 个 Git tree hash、27 个 `SKILL.md`
+  SHA-256、54 个 `.agents`/`.claude` 目录比较全部通过，错误数为 0。
+- 项目级 CLI：`npx skills@1.7.2 update ask-matt -p -y` 输出
+  `All project skills are up to date`；`npx skills@1.7.2 list --json`
+  发现 30 项（27 个上游来源 + 3 个自定义）。
+- 发现性：`implement-spec`、`pr`、`retro` 均可见，
+  `resolving-merge-conflicts` 为 0 项。
+- 文档入口：`GLOSSARY.md` 有 71 个术语条目，`CONTEXT.md` 无术语正文且
+  指向 `GLOSSARY.md`；`docs/agents/domain.md` 与根 `AGENTS.md` 使用新入口。
+- 指南：14/14 必需 skill 均有覆盖，PowerShell 检查块解析错误为 0，最终
+  文档集的 41 个本地链接全部可解析。
+- 修复项：票 05 补齐 `computedHash` 与 `skillMdHash`，保留
+  `skillFolderHash`，恢复项目级 CLI 更新语义。
