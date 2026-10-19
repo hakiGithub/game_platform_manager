@@ -1,7 +1,6 @@
 package com.gameplatform.plugin.service;
 
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -125,7 +124,8 @@ public class FileAccessServiceImpl implements FileAccessService {
     @Override
     public CommandResult executeCommand(Long hostId, String command, long timeoutMs) {
         log.info("远程执行命令: hostId={}, command={}", hostId, command);
-        SshUtil.CommandResult coreResult = fileService.executeCommand(hostId, command, timeoutMs);
+        com.gameplatform.hostaccess.CommandResult coreResult =
+                fileService.executeCommand(hostId, command, timeoutMs);
         CommandResult result = new CommandResult();
         result.setSuccess(coreResult.isSuccess());
         result.setExitCode(coreResult.getExitCode());

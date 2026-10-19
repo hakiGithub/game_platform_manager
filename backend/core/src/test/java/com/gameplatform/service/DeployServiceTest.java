@@ -3,13 +3,12 @@ package com.gameplatform.service;
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,13 +47,10 @@ class DeployServiceTest {
     private HostMapper hostMapper;
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private DeployAdapter deployAdapter;
-
-    @Mock
-    private DeploymentAccess deployAccess;
 
     @InjectMocks
     private DeployService deployService;
@@ -82,8 +78,6 @@ class DeployServiceTest {
         // 默认 mock 行为
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(adapterFactory.getAdapter(anyString())).thenReturn(deployAdapter);
-        when(deployAccess.credentials(any(Host.class)))
-                .thenReturn(new HostCredentials("192.168.1.100", 22, "root", null, null));
     }
 
     @Test
@@ -269,12 +263,13 @@ class DeployServiceTest {
         when(hostMapper.selectById(1L)).thenReturn(testHost);
         
         // Mock SSH 命令执行结果（全部检查返回成功）
-        SshUtil.CommandResult successResult = new SshUtil.CommandResult();
+        CommandResult successResult = new CommandResult();
         successResult.setSuccess(true);
         successResult.setOutput("Docker version 24.0.0");
         successResult.setExitCode(0);
 
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(), anyString(), anyLong()))
+        when(remoteHost.exec(any(Host.class), anyString(), anyLong(),
+                eq(RemoteHost.AuthenticationPreference.PASSWORD_IF_PRESENT)))
                 .thenReturn(successResult);
 
         Map<String, Object> config = new HashMap<>();

@@ -5,13 +5,13 @@ import com.gameplatform.config.GamePlatformConfig;
 import com.gameplatform.entity.BackupRecord;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.BackupRecordMapper;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.impl.BackupServiceImpl;
-import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.util.AesUtil;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,13 +56,10 @@ class BackupServiceTest {
     private InstanceService instanceService;
 
     @Mock
-    private SshUtil sshUtil;
-
-    @Mock
     private AesUtil aesUtil;
 
     @Mock
-    private DeploymentAccess deployAccess;
+    private RemoteHost remoteHost;
 
     @Mock
     private GamePlatformConfig gamePlatformConfig;
@@ -119,6 +116,13 @@ class BackupServiceTest {
         record.setFilePath("/tmp/test-backup.zip");
         record.setBackupTime(LocalDateTime.now());
         return record;
+    }
+
+    private CommandResult successfulCommand() {
+        CommandResult result = new CommandResult();
+        result.setSuccess(true);
+        result.setExitCode(0);
+        return result;
     }
 
     @Test
@@ -194,6 +198,8 @@ class BackupServiceTest {
             record.setId(1L);
             return 1;
         });
+        when(remoteHost.exec(eq(host), anyString())).thenReturn(successfulCommand());
+        when(remoteHost.download(eq(host), anyString(), anyString())).thenReturn(true);
 
         BackupRecord result = backupService.createFileBackup(
                 1L,
@@ -210,6 +216,8 @@ class BackupServiceTest {
         assertEquals("/opt/game/saves", result.getSourcePath());
 
         verify(backupRecordMapper).insert(any(BackupRecord.class));
+        verify(remoteHost).exec(eq(host), contains("tar -czf"));
+        verify(remoteHost).download(eq(host), anyString(), anyString());
     }
 
     @Test
@@ -225,6 +233,8 @@ class BackupServiceTest {
             record.setId(1L);
             return 1;
         });
+        when(remoteHost.exec(eq(host), anyString())).thenReturn(successfulCommand());
+        when(remoteHost.download(eq(host), anyString(), anyString())).thenReturn(true);
 
         // 不指定源路径,应该使用安装路径
         BackupRecord result = backupService.createFileBackup(
@@ -237,6 +247,7 @@ class BackupServiceTest {
 
         assertNotNull(result);
         assertEquals("/opt/game/server", result.getSourcePath());
+        verify(remoteHost).exec(eq(host), contains("/opt/game/server"));
     }
 
     @Test

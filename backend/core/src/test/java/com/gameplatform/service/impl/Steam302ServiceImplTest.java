@@ -1,11 +1,11 @@
 package com.gameplatform.service.impl;
 
 import com.gameplatform.config.Steam302Properties;
+import com.gameplatform.hostaccess.CommandResult;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.steam302.Steam302HostsSync;
 import com.gameplatform.util.SudoAwareSshRunner;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -97,8 +97,8 @@ class Steam302ServiceImplTest {
         assertThat(startIndex).isGreaterThan(syncIndex);
     }
 
-    private static SshUtil.CommandResult result(boolean success, String output, String error) {
-        SshUtil.CommandResult r = new SshUtil.CommandResult();
+    private static CommandResult result(boolean success, String output, String error) {
+        CommandResult r = new CommandResult();
         r.setSuccess(success);
         r.setExitCode(success ? 0 : 1);
         r.setOutput(output);

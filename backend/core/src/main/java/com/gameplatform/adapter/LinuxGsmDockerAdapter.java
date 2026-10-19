@@ -2,7 +2,7 @@ package com.gameplatform.adapter;
 
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -56,12 +56,12 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
      */
     private String getComposeCommand(Host host) {
         return composeCommandCache.computeIfAbsent(host.getId(), hostId -> {
-            SshUtil.CommandResult pluginResult = executeCommand(host, "docker compose version 2>/dev/null", 10000);
+            CommandResult pluginResult = executeCommand(host, "docker compose version 2>/dev/null", 10000);
             if (pluginResult.isSuccess() && pluginResult.getOutput().toLowerCase().contains("compose")) {
                 log.info("主机 {} 使用 docker compose（CLI 插件）", hostId);
                 return "docker compose";
             }
-            SshUtil.CommandResult binaryResult = executeCommand(host, "docker-compose version 2>/dev/null", 10000);
+            CommandResult binaryResult = executeCommand(host, "docker-compose version 2>/dev/null", 10000);
             if (binaryResult.isSuccess() && binaryResult.getOutput().toLowerCase().contains("compose")) {
                 log.info("主机 {} 使用 docker-compose（独立二进制）", hostId);
                 return "docker-compose";
@@ -126,7 +126,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             workDir = resolveWorkDir(host, workDir);
             config.put("workDir", workDir);
             // 创建工作目录
-            SshUtil.CommandResult mkdirResult = executeCommand(host, "mkdir -p " + workDir);
+            CommandResult mkdirResult = executeCommand(host, "mkdir -p " + workDir);
             if (!mkdirResult.isSuccess()) {
                 notifyError(callback, "创建工作目录失败: " + mkdirResult.getError(), "PRE_DEPLOY", false);
                 return false;
@@ -164,7 +164,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 70, "PRE_DEPLOY", "验证 Compose 配置");
             String composeCmd = getComposeCommand(host);
-            SshUtil.CommandResult validateResult = executeCommand(host,
+            CommandResult validateResult = executeCommand(host,
                     String.format("cd %s && %s -p %s config", workDir, composeCmd, projectName), 30000);
             if (!validateResult.isSuccess()) {
                 notifyError(callback, "Compose 配置验证失败: " + validateResult.getError(), "PRE_DEPLOY", false);
@@ -178,7 +178,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
                 notifyProgress(callback, 92, "PRE_DEPLOY", "本地镜像已存在，跳过拉取");
             } else {
                 // LinuxGSM 镜像较大（约 1-2GB），超时设为 20 分钟
-                SshUtil.CommandResult pullResult = executeCommand(host,
+                CommandResult pullResult = executeCommand(host,
                         String.format("cd %s && %s -p %s pull", workDir, composeCmd, projectName), 1200000);
                 if (!pullResult.isSuccess()) {
                     notifyError(callback, "拉取镜像失败: " + pullResult.getError(), "PRE_DEPLOY", true);
@@ -217,9 +217,9 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             String composeCmd = getComposeCommand(host);
 
             notifyProgress(callback, 30, "DEPLOY", "启动容器");
-            // timeout 1200 兜底：compose up -d 可能长时间拉取镜像，SshUtil 的
+            // timeout 1200 兜底：compose up -d 可能长时间拉取镜像，RemoteHost 的
             // timeoutMs 仅作用于建连，命令执行无超时会无限阻塞部署线程
-            SshUtil.CommandResult upResult = executeCommand(host,
+            CommandResult upResult = executeCommand(host,
                     String.format("cd %s && timeout 1200 %s -p %s up -d", workDir, composeCmd, projectName), 1200000);
             if (!upResult.isSuccess()) {
                 notifyError(callback, "启动容器失败: " + upResult.getError(), "DEPLOY", false);
@@ -231,13 +231,13 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             Thread.sleep(8000);
 
             // 验证容器运行状态
-            SshUtil.CommandResult psResult = executeCommand(host,
+            CommandResult psResult = executeCommand(host,
                     String.format("cd %s && %s -p %s ps", workDir, composeCmd, projectName), 30000);
             String psOutput = psResult.getOutput();
             boolean isRunning = psResult.isSuccess()
                     && (psOutput.contains("running") || psOutput.contains("Up"));
             if (!isRunning) {
-                SshUtil.CommandResult logResult = executeCommand(host,
+                CommandResult logResult = executeCommand(host,
                         String.format("cd %s && %s -p %s logs --no-color --tail 50", workDir, composeCmd, projectName), 30000);
                 notifyError(callback, "容器启动异常，日志: " + stripAnsiCodes(logResult.getOutput()), "DEPLOY", false);
                 return false;
@@ -247,7 +247,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             // 通过 docker exec 验证 LinuxGSM 脚本是否已就绪
             // 首次启动时镜像 entrypoint 会自动 auto-install，这里仅做就绪检测
             String containerName = getContainerName(host, config, projectName, serviceName);
-            SshUtil.CommandResult detailsResult = executeLinuxGsmCommand(host, containerName, shortname,
+            CommandResult detailsResult = executeLinuxGsmCommand(host, containerName, shortname,
                     "details", 60000);
             if (!detailsResult.isSuccess()) {
                 log.warn("LinuxGSM details 命令执行失败（可能仍在安装中）: {}", detailsResult.getError());
@@ -318,7 +318,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         // 该过程依赖从 GitHub 下载 serverlist.csv。若容器内网络不通（如 DNS 污染、代理限制），
         // 脚本创建会失败，后续 start/stop/auto-install 全部报 "No such file or directory"。
         // 此时直接返回 false 并记录详细诊断信息，让用户知道根因是网络问题而非代码问题。
-        SshUtil.CommandResult scriptCheck = executeCommand(host,
+        CommandResult scriptCheck = executeCommand(host,
                 String.format("docker exec %s ls -la /app/%s 2>&1", containerName, shortname), 10000);
         if (!scriptCheck.isSuccess() || scriptCheck.getOutput() == null
                 || scriptCheck.getOutput().toLowerCase().contains("no such file")) {
@@ -334,9 +334,9 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         // 通过 LinuxGSM 启动游戏服务器
         // 注意：LinuxGSM start 命令在服务器已运行时会返回非零 exit code（如 2），
         // 但输出会包含 "already running"，这属于成功情况。
-        // SshUtil.executeCommand 已修改为非零 exit code 时仍捕获 stdout/stderr，
+        // 传输层在非零 exit code 时仍捕获 stdout/stderr，
         // 因此这里无论 isSuccess() 如何，都检查输出是否包含成功标识。
-        SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "start", 120000);
+        CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "start", 120000);
         String output = result.getOutput() == null ? "" : result.getOutput().toLowerCase();
         if (output.contains("started") || output.contains("already running") || output.contains("starting")) {
             return true;
@@ -350,7 +350,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
      */
     private String getContainerLogs(Host host, String containerName, int lines) {
         try {
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("docker logs --tail %d %s 2>&1", lines, containerName), 15000);
             return result.getOutput() != null ? result.getOutput() : "";
         } catch (Exception e) {
@@ -375,7 +375,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         }
         String composeCmd = getComposeCommand(host);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s stop", workDir, composeCmd, projectName), 120000);
 
         return result.isSuccess();
@@ -397,7 +397,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
         // 与 start 类似，stop 命令在服务器未运行时也可能返回非零 exit code，
         // 但输出包含 "not running"，这属于成功情况。
-        SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "stop", 60000);
+        CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "stop", 60000);
         String output = result.getOutput() == null ? "" : result.getOutput().toLowerCase();
         if (output.contains("stopped") || output.contains("not running") || output.contains("stopping")) {
             return true;
@@ -420,7 +420,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
         ensureContainerRunning(host, instanceId, config);
 
-        SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "restart", 120000);
+        CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "restart", 120000);
         String output = result.getOutput() == null ? "" : result.getOutput().toLowerCase();
         // restart 命令成功时输出包含 "restart"，失败时包含 "fail" 或为空
         return output.contains("restart") || output.contains("started") || output.contains("stopping");
@@ -444,7 +444,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         // 因此部署健康检查只验证容器是否成功启动并运行；
         // 游戏服务器层面的就绪状态由运行时的 status / metrics 接口反映。
         // 容器配置 restart: unless-stopped 保证容器级别的可用性。
-        SshUtil.CommandResult psResult = executeCommand(host,
+        CommandResult psResult = executeCommand(host,
                 String.format("cd %s && %s -p %s ps -q", workDir, composeCmd, projectName), 30000);
         if (!psResult.isSuccess() || psResult.getOutput().trim().isEmpty()) {
             log.warn("LinuxGSM Docker 健康检查失败：未找到运行中的容器 instanceId={}", instanceId);
@@ -454,7 +454,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String[] containers = psResult.getOutput().trim().split("\n");
         for (String containerId : containers) {
             if (!containerId.trim().isEmpty()) {
-                SshUtil.CommandResult healthResult = executeCommand(host,
+                CommandResult healthResult = executeCommand(host,
                         String.format("docker inspect -f '{{.State.Running}}' %s", containerId.trim()));
                 if (!healthResult.isSuccess() || !"true".equals(healthResult.getOutput().trim())) {
                     log.warn("LinuxGSM Docker 健康检查失败：容器未运行 containerId={}", containerId.trim());
@@ -487,7 +487,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             executeLinuxGsmCommand(host, containerName, shortname, "stop", 60000);
 
             notifyProgress(callback, 50, "UPDATE", "执行 LinuxGSM update");
-            SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "update", 600000);
+            CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "update", 600000);
             if (!result.isSuccess()) {
                 notifyError(callback, "更新失败: " + result.getError(), "UPDATE", false);
                 return false;
@@ -538,7 +538,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         try {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "UNINSTALL", "停止并删除容器");
-            SshUtil.CommandResult downResult = executeCommand(host,
+            CommandResult downResult = executeCommand(host,
                     String.format("cd %s && %s -p %s down",
                             shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
             if (!downResult.isSuccess()) {
@@ -547,7 +547,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "UNINSTALL", "清理数据卷");
             boolean removeVolumes = getConfigBoolean(config, "removeVolumes", false);
-            SshUtil.CommandResult volumeResult = null;
+            CommandResult volumeResult = null;
             if (removeVolumes) {
                 volumeResult = executeCommand(host,
                         String.format("cd %s && %s -p %s down -v",
@@ -592,7 +592,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         }
     }
 
-    private String summarizeSshError(SshUtil.CommandResult result) {
+    private String summarizeSshError(CommandResult result) {
         String error = result.getError();
         if (error == null || error.isBlank()) {
             error = result.getOutput();
@@ -619,7 +619,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String serviceArg = serviceName.isEmpty() ? "" : " " + serviceName;
 
         // 使用 --no-color 禁用 ANSI 颜色控制字符
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && %s -p %s logs --no-color --tail %d%s",
                         workDir, composeCmd, projectName, lines, serviceArg), 30000);
 
@@ -639,7 +639,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String composeCmd = getComposeCommand(host);
 
         // 1. 检查容器运行状态
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("cd %s && %s -p %s ps --format json 2>/dev/null || %s -p %s ps",
                         workDir, composeCmd, projectName, composeCmd, projectName), 30000);
         String output = result.getOutput();
@@ -658,7 +658,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String shortname = getConfigString(config, "shortname", "");
         String serviceName = getConfigString(config, "serviceName", shortname);
         String containerName = getContainerName(host, config, projectName, serviceName);
-        SshUtil.CommandResult lgsmStatus = executeLinuxGsmCommand(host, containerName, shortname, "status", 15000);
+        CommandResult lgsmStatus = executeLinuxGsmCommand(host, containerName, shortname, "status", 15000);
         String lgsmOutput = lgsmStatus.getOutput().toLowerCase();
 
         if (lgsmOutput.contains("running") || lgsmOutput.contains("online")) {
@@ -692,14 +692,14 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String containerName = getContainerName(host, config, projectName, serviceName);
 
         // 获取 LinuxGSM 详情（核心信息来源）
-        SshUtil.CommandResult detailsResult = executeLinuxGsmCommand(host, containerName, shortname, "details", 30000);
+        CommandResult detailsResult = executeLinuxGsmCommand(host, containerName, shortname, "details", 30000);
         if (detailsResult.isSuccess()) {
             details.put("linuxgsmDetails", stripAnsiCodes(detailsResult.getOutput()));
         }
 
         // 获取容器状态
         String composeCmd = getComposeCommand(host);
-        SshUtil.CommandResult psResult = executeCommand(host,
+        CommandResult psResult = executeCommand(host,
                 String.format("cd %s && %s -p %s ps", workDir, composeCmd, projectName), 30000);
         if (psResult.isSuccess()) {
             details.put("containerStatus", psResult.getOutput());
@@ -738,7 +738,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
         // 通过 docker exec 调用 LinuxGSM 命令
         // command 可以是 "details"、"monitor"、"update"、"send 'say hello'" 等
-        SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, command, 60000);
+        CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, command, 60000);
         return stripAnsiCodes(result.getOutput())
                 + (result.getError().isEmpty() ? "" : "\n错误: " + result.getError());
     }
@@ -761,7 +761,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
         try {
             notifyProgress(callback, 50, "BACKUP", "执行 LinuxGSM backup");
-            SshUtil.CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "backup", 600000);
+            CommandResult result = executeLinuxGsmCommand(host, containerName, shortname, "backup", 600000);
             if (!result.isSuccess()) {
                 notifyError(callback, "备份失败: " + result.getError(), "BACKUP", false);
                 return null;
@@ -807,7 +807,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "RESTORE", "恢复备份数据到容器");
             // 将备份文件拷贝回容器
-            SshUtil.CommandResult cpResult = executeCommand(host,
+            CommandResult cpResult = executeCommand(host,
                     String.format("docker cp %s/. %s:/data/lgsm/backup/ 2>/dev/null || docker cp %s/. %s:/home/linuxgsm/lgsm/backup/",
                             backupPath, containerName, backupPath, containerName), 120000);
             if (!cpResult.isSuccess()) {
@@ -912,7 +912,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             return workDir;
         }
         try {
-            SshUtil.CommandResult homeResult = executeCommand(host, "echo $HOME");
+            CommandResult homeResult = executeCommand(host, "echo $HOME");
             if (homeResult.isSuccess()) {
                 String home = homeResult.getOutput().trim();
                 if (!home.isEmpty() && home.startsWith("/")) {
@@ -960,7 +960,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
             workDir = getConfigString(config, "installPath", "");
         }
         String composeCmd = getComposeCommand(host);
-        SshUtil.CommandResult result;
+        CommandResult result;
         if (workDir.isEmpty()) {
             result = executeCommand(host,
                     String.format("%s -p %s ps -q 2>/dev/null | head -1", composeCmd, projectName), 15000);
@@ -972,7 +972,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         if (result.isSuccess()) {
             String containerId = result.getOutput().trim();
             if (!containerId.isEmpty()) {
-                SshUtil.CommandResult nameResult = executeCommand(host,
+                CommandResult nameResult = executeCommand(host,
                         String.format("docker inspect -f '{{.Name}}' %s | sed 's/^\\///'", containerId));
                 if (nameResult.isSuccess() && !nameResult.getOutput().trim().isEmpty()) {
                     return nameResult.getOutput().trim();
@@ -996,7 +996,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
      * @param timeoutMs    超时时间
      * @return 命令执行结果
      */
-    private SshUtil.CommandResult executeLinuxGsmCommand(Host host, String containerName,
+    private CommandResult executeLinuxGsmCommand(Host host, String containerName,
                                                           String shortname, String command, long timeoutMs) {
         // LinuxGSM Docker 镜像的 gameserver 脚本位于 /app 目录（镜像 WORKDIR）
         // /data 是数据持久化目录（serverfiles/log/config-lgsm 等）
@@ -1004,7 +1004,7 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         // （SSH exec 通道会把命令交给远程 shell 解析，bash -lc '...' 的单引号会被外层 shell 误处理，
         // 导致 exit code 127 "command not found"）
         //
-        // 注意：SshUtil 的 timeoutMs 仅作用于 SSH 建连/认证，命令读取是阻塞的
+        // 注意：RemoteHost 的超时参数仅作用于 SSH 建连/认证，命令读取是阻塞的
         // （executeRemoteCommand 直到命令结束才返回）。首次启动镜像 auto-install 时
         // details 等命令可能长时间挂起，导致部署线程无限阻塞（"验证 LinuxGSM 安装"卡住）。
         // 用 GNU timeout(1) 包一层 shell 级超时，超时后杀掉 docker exec（exit 124）。
@@ -1023,14 +1023,14 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
         String composeCmd = getComposeCommand(host);
 
-        SshUtil.CommandResult psResult = executeCommand(host,
+        CommandResult psResult = executeCommand(host,
                 String.format("cd %s && %s -p %s ps -q", workDir, composeCmd, projectName), 15000);
         if (psResult.isSuccess() && !psResult.getOutput().trim().isEmpty()) {
             // 检查容器是否在运行
             String[] containers = psResult.getOutput().trim().split("\n");
             for (String containerId : containers) {
                 if (!containerId.trim().isEmpty()) {
-                    SshUtil.CommandResult stateResult = executeCommand(host,
+                    CommandResult stateResult = executeCommand(host,
                             String.format("docker inspect -f '{{.State.Running}}' %s", containerId.trim()));
                     if (stateResult.isSuccess() && "false".equals(stateResult.getOutput().trim())) {
                         // 容器已停止，先启动容器

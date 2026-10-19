@@ -1,12 +1,11 @@
 package com.gameplatform.adapter;
 
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,16 +27,13 @@ import java.util.regex.Pattern;
 public abstract class AbstractDeployAdapter implements DeployAdapter {
 
     @Autowired
-    protected SshUtil sshUtil;
+    protected RemoteHost remoteHost;
 
     @Autowired
     protected HostMapper hostMapper;
 
     @Autowired
     protected GameInstanceMapper instanceMapper;
-
-    @Autowired
-    protected DeploymentAccess deployAccess;
 
     /**
      * 获取主机信息
@@ -78,25 +74,14 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
     }
 
     /**
-     * 解析主机 SSH 凭据（统一走 DeploymentAccess，替代各处内联解密副本）
-     */
-    protected HostCredentials credentials(Host host) {
-        return deployAccess.credentials(host);
-    }
-
-    /**
      * 执行远程命令
      *
      * @param host    主机信息
      * @param command 命令
      * @return 命令执行结果
      */
-    protected SshUtil.CommandResult executeCommand(Host host, String command) {
-        HostCredentials conn = credentials(host);
-        return sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                command
-        );
+    protected CommandResult executeCommand(Host host, String command) {
+        return remoteHost.exec(host, command);
     }
 
     /**
@@ -107,13 +92,8 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @param timeoutMs 超时时间（毫秒）
      * @return 命令执行结果
      */
-    protected SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        HostCredentials conn = credentials(host);
-        return sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                command,
-                timeoutMs
-        );
+    protected CommandResult executeCommand(Host host, String command, long timeoutMs) {
+        return remoteHost.exec(host, command, timeoutMs);
     }
 
     /**
@@ -125,12 +105,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否成功
      */
     protected boolean uploadFile(Host host, String localPath, String remotePath) {
-        HostCredentials conn = credentials(host);
-        return sshUtil.uploadFile(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                localPath,
-                remotePath
-        );
+        return remoteHost.upload(host, localPath, remotePath);
     }
 
     /**
@@ -142,12 +117,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否成功
      */
     protected boolean downloadFile(Host host, String remotePath, String localPath) {
-        HostCredentials conn = credentials(host);
-        return sshUtil.downloadFile(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                remotePath,
-                localPath
-        );
+        return remoteHost.download(host, remotePath, localPath);
     }
 
     /**
@@ -158,7 +128,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否被占用
      */
     protected boolean isPortInUse(Host host, int port) {
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("netstat -tuln | grep ':%d ' || ss -tuln | grep ':%d '", port, port));
         return result.isSuccess() && !result.getOutput().trim().isEmpty();
     }
@@ -170,7 +140,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否已安装
      */
     protected boolean isDockerInstalled(Host host) {
-        SshUtil.CommandResult result = executeCommand(host, "docker --version");
+        CommandResult result = executeCommand(host, "docker --version");
         return result.isSuccess() && result.getOutput().contains("Docker version");
     }
 
@@ -181,7 +151,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 是否已安装
      */
     protected boolean isDockerComposeInstalled(Host host) {
-        SshUtil.CommandResult result = executeCommand(host, "docker compose version || docker-compose --version");
+        CommandResult result = executeCommand(host, "docker compose version || docker-compose --version");
         return result.isSuccess() &&
                 (result.getOutput().contains("Docker Compose") || result.getOutput().contains("docker-compose"));
     }
@@ -194,7 +164,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 可用空间（GB），-1表示获取失败
      */
     protected double getAvailableDiskSpace(Host host, String path) {
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("df -BG %s | tail -1 | awk '{print $4}' | sed 's/G//'", path));
         if (result.isSuccess()) {
             try {
@@ -213,7 +183,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * @return 可用内存（MB），-1表示获取失败
      */
     protected long getAvailableMemory(Host host) {
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 "free -m | grep Mem | awk '{print $7}'");
         if (result.isSuccess()) {
             try {
@@ -346,7 +316,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
      * 删除已经过 {@link #resolveRemovableWorkDir(Host, String)} 校验的工作目录。
      */
     protected UninstallResult removeResolvedWorkDir(Host host, String resolvedPath) {
-        SshUtil.CommandResult result = executeCommand(host, "rm -rf " + shellQuote(resolvedPath), 60000);
+        CommandResult result = executeCommand(host, "rm -rf " + shellQuote(resolvedPath), 60000);
         if (result == null) {
             log.error("清理实例工作目录无响应: host={}, workDir={}",
                     host != null ? host.getId() : null, resolvedPath);
@@ -378,7 +348,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
             throw new IllegalArgumentException("路径包含换行符");
         }
         if (candidate.equals("~") || candidate.startsWith("~/")) {
-            SshUtil.CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
+            CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
             String home = homeResult != null && homeResult.isSuccess() ? homeResult.getOutput().trim() : "";
             if (home.isEmpty() || !home.startsWith("/")) {
                 throw new IllegalArgumentException("无法解析家目录");
@@ -400,7 +370,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
             throw new IllegalArgumentException("不允许删除根目录");
         }
 
-        SshUtil.CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
+        CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
         String home = homeResult != null && homeResult.isSuccess() ? homeResult.getOutput().trim() : "";
         if (!home.isEmpty() && normalized.equals(normalizeRemotePath(home))) {
             throw new IllegalArgumentException("不允许删除家目录");
@@ -435,7 +405,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
         return "'" + value.replace("'", "'\\''") + "'";
     }
 
-    private String summarizeCommandError(SshUtil.CommandResult result) {
+    private String summarizeCommandError(CommandResult result) {
         String error = result.getError();
         if (error == null || error.isBlank()) {
             error = result.getOutput();
@@ -674,7 +644,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
             String listCmd = String.format(
                     "cd %s && %s -p %s config 2>/dev/null | grep -E '^[[:space:]]*image:[[:space:]]'",
                     workDir, composeCmd, projectName);
-            SshUtil.CommandResult imagesResult = executeCommand(host, listCmd, 30000);
+            CommandResult imagesResult = executeCommand(host, listCmd, 30000);
             log.info("[ImageCheck] 执行命令: {}", listCmd);
             log.info("[ImageCheck] 命令成功: {}, 输出: [{}], 错误: [{}]",
                     imagesResult.isSuccess(), imagesResult.getOutput(), imagesResult.getError());
@@ -705,7 +675,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
             for (String image : images) {
                 // docker images -q 在镜像存在时输出镜像 ID（非空），不存在时输出空
                 String checkCmd = String.format("docker images -q %s", image);
-                SshUtil.CommandResult checkResult = executeCommand(host, checkCmd, 10000);
+                CommandResult checkResult = executeCommand(host, checkCmd, 10000);
                 log.info("[ImageCheck] 检查镜像 {}: 命令={}, 成功={}, 输出=[{}]",
                         image, checkCmd, checkResult.isSuccess(), checkResult.getOutput());
                 if (!checkResult.isSuccess() || checkResult.getOutput() == null
@@ -768,7 +738,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
         // 输出形如：container_id 1.23% 100MiB / 2GiB 5.00% 1.2GB / 2.3GB 10MB / 5MB container_name
         // 字段顺序：Container, CPUPerc, MemUsage, MemPerc, NetIO, BlockIO, Name（Pids 可选）
         String format = "{{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.Name}}";
-        SshUtil.CommandResult statsResult = executeCommand(host,
+        CommandResult statsResult = executeCommand(host,
                 String.format("docker stats --no-stream --format \"%s\" %s 2>/dev/null",
                         format, containerName), 15000);
 
@@ -783,7 +753,7 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
         }
 
         // 查询容器启动时间，计算运行时长（秒）
-        SshUtil.CommandResult startResult = executeCommand(host,
+        CommandResult startResult = executeCommand(host,
                 String.format("docker inspect -f '{{.State.StartedAt}}' %s 2>/dev/null", containerName), 10000);
         if (startResult.isSuccess()) {
             String startedAt = startResult.getOutput().trim();

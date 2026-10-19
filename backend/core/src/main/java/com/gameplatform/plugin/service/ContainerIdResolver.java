@@ -1,8 +1,7 @@
 package com.gameplatform.plugin.service;
 
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +24,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ContainerIdResolver {
 
-    private final DeploymentAccess deployAccess;
-    private final SshUtil sshUtil;
+    private final RemoteHost remoteHost;
 
     /**
      * 解析实例对应的容器标识（ID 或名称）。
@@ -67,7 +65,6 @@ public class ContainerIdResolver {
                 projectName = "game" + instance.getId();
             }
             String serviceName = getString(metadata, "serviceName", null);
-            HostCredentials conn = deployAccess.credentials(instance.getHostId());
             String cmd;
             if (serviceName != null && !serviceName.isBlank()) {
                 cmd = "docker compose -p " + projectName + " ps -q " + serviceName;
@@ -75,8 +72,7 @@ public class ContainerIdResolver {
                 // 项目前缀精确匹配（compose 容器名规范：{projectName}_{service}_{n}）
                 cmd = "docker ps -q -f name=" + projectName + "_";
             }
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(), cmd);
+            CommandResult r = remoteHost.exec(instance.getHostId(), cmd);
             if (r.getExitCode() == 0) {
                 String output = r.getOutput().trim();
                 if (!output.isEmpty()) {

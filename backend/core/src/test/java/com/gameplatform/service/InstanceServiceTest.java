@@ -16,7 +16,6 @@ import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.listener.PluginLifecycleHook;
 import com.gameplatform.service.impl.InstanceServiceImpl;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -66,9 +65,6 @@ class InstanceServiceTest {
 
     @Mock
     private DeployAdapter deployAdapter;
-
-    @Mock
-    private SshUtil sshUtil;
 
     @Mock
     private PluginLifecycleHook pluginLifecycleHook;

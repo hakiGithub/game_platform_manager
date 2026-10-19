@@ -1,15 +1,15 @@
 package com.gameplatform.service.docker.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.ResultCode;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.docker.DockerImageService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.docker.ImageListVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,8 +34,7 @@ import java.util.regex.Pattern;
 public class DockerImageServiceImpl implements DockerImageService {
 
     private final HostMapper hostMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -48,7 +47,7 @@ public class DockerImageServiceImpl implements DockerImageService {
             command.insert(7, " -f dangling=true");
         }
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 30000);
+        CommandResult result = executeCommand(host, command.toString(), 30000);
         
         if (!result.isSuccess()) {
             throw new BusinessException(ResultCode.HOST_CONNECTION_FAILED, "获取镜像列表失败: " + result.getError());
@@ -85,7 +84,7 @@ public class DockerImageServiceImpl implements DockerImageService {
         
         command.append(" ").append(imageId);
         
-        SshUtil.CommandResult result = executeCommand(host, command.toString(), 60000);
+        CommandResult result = executeCommand(host, command.toString(), 60000);
         
         if (result.isSuccess()) {
             // 解析被删除的镜像
@@ -105,7 +104,7 @@ public class DockerImageServiceImpl implements DockerImageService {
         Host host = getHost(hostId);
         
         String command = "docker image prune -f";
-        SshUtil.CommandResult result = executeCommand(host, command, 60000);
+        CommandResult result = executeCommand(host, command, 60000);
         
         if (result.isSuccess()) {
             // 解析清理结果
@@ -126,13 +125,8 @@ public class DockerImageServiceImpl implements DockerImageService {
         return host;
     }
 
-    private SshUtil.CommandResult executeCommand(Host host, String command, long timeoutMs) {
-        HostCredentials conn = deployAccess.credentials(host);
-        return sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                command,
-                timeoutMs
-        );
+    private CommandResult executeCommand(Host host, String command, long timeoutMs) {
+        return remoteHost.exec(host, command, timeoutMs);
     }
 
     private List<ImageListVO> parseImageList(String output, Host host) {
@@ -202,7 +196,7 @@ public class DockerImageServiceImpl implements DockerImageService {
         
         try {
             String command = "docker ps -a --format '{{.Image}} {{.ImageID}}'";
-            SshUtil.CommandResult result = executeCommand(host, command, 10000);
+            CommandResult result = executeCommand(host, command, 10000);
             
             if (result.isSuccess()) {
                 String[] lines = result.getOutput().split("\n");

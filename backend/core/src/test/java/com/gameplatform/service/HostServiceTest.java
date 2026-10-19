@@ -2,21 +2,24 @@ package com.gameplatform.service;
 
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.HostAccessException;
+import com.gameplatform.hostaccess.HostSession;
+import com.gameplatform.hostaccess.HostTunnelLifecycle;
+import com.gameplatform.hostaccess.PortCheckResult;
+import com.gameplatform.hostaccess.RemoteHost;
+import com.gameplatform.hostaccess.ResourceInfo;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.service.impl.HostServiceImpl;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -52,12 +55,11 @@ class HostServiceTest {
 
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
-    private DeploymentAccess deployAccess;
+    private HostTunnelLifecycle hostTunnelLifecycle;
 
-    @InjectMocks
     private HostServiceImpl hostService;
 
     private Host testHost;
@@ -66,6 +68,9 @@ class HostServiceTest {
 
     @BeforeEach
     void setUp() {
+        hostService = new HostServiceImpl(hostMapper, remoteHost,
+                new HostSession(hostMapper, remoteHost), hostTunnelLifecycle, jdbcTemplate);
+
         // createHost 会物理清理同 IP 软删行（jdbcTemplate.update），默认无清理记录
         when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(0);
 
@@ -102,9 +107,7 @@ class HostServiceTest {
         updateDTO.setSshUsername("admin");
         updateDTO.setIsLanHost(false);
 
-        // 凭据解析统一走 DeploymentAccess（真实语义由 DeploymentAccessTest 锁定）
-        lenient().when(deployAccess.credentials(any(Host.class)))
-                .thenReturn(new HostCredentials("192.168.1.100", 22, "root", null, null));
+        lenient().when(remoteHost.testConnection(any(Host.class))).thenReturn(false);
     }
 
     @Test
@@ -427,13 +430,20 @@ class HostServiceTest {
     @DisplayName("刷新主机状态-成功")
     void testRefreshStatusSuccess() {
         // Given
+        ResourceInfo resourceInfo = new ResourceInfo();
+        resourceInfo.setSuccess(true);
+        resourceInfo.setCpuUsage(12.5);
+        resourceInfo.setMemoryUsage(34.5);
+        resourceInfo.setDiskUsage(56.5);
         when(hostMapper.selectById(1L)).thenReturn(testHost);
+        when(remoteHost.getResourceInfo(testHost)).thenReturn(resourceInfo);
 
         // When
         hostService.refreshStatus(1L);
 
         // Then
         verify(hostMapper).selectById(1L);
-        // 注意：当前实现为TODO，实际刷新逻辑待实现
+        verify(hostMapper).updateResourceUsage(eq(1L), any(), any(), any(), any());
+        verify(hostMapper).updateOnlineStatus(1L, 1);
     }
 }

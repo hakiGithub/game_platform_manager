@@ -1,5 +1,7 @@
 package com.gameplatform.service.impl;
 
+import com.gameplatform.hostaccess.CommandResult;
+
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.config.Steam302Properties;
 import com.gameplatform.mapper.HostMapper;
@@ -8,7 +10,6 @@ import com.gameplatform.plugin.task.TaskSubmitRequest;
 import com.gameplatform.service.Steam302Service;
 import com.gameplatform.steam302.Steam302HostsSync;
 import com.gameplatform.util.SudoAwareSshRunner;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.Steam302StatusVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,7 +51,7 @@ public class Steam302ServiceImpl implements Steam302Service {
     public Steam302StatusVO status(Long hostId) {
         Steam302StatusVO vo = new Steam302StatusVO();
 
-        SshUtil.CommandResult ps = runDocker(hostId, "docker ps -a --filter name=^/"
+        CommandResult ps = runDocker(hostId, "docker ps -a --filter name=^/"
                 + props.getContainerName() + "$ --format '{{.State}}|{{.Status}}|{{.Image}}'", DOCKER_TIMEOUT_MS);
         if (!ps.isSuccess() || ps.getOutput().isBlank()) {
             vo.setPhase(PHASE_NOT_INSTALLED);
@@ -72,7 +73,7 @@ public class Steam302ServiceImpl implements Steam302Service {
         vo.setTargetIp(shareMode ? hostMapper.selectById(hostId).getIpAddress() : "127.0.0.1");
 
         // /etc/hosts 劫持条目数（容器停止时 CLI 已撤条目，为 0 属正常）
-        SshUtil.CommandResult hosts = runner.run(hostId, "grep -c '#S302' /etc/hosts || true", FAST_TIMEOUT_MS);
+        CommandResult hosts = runner.run(hostId, "grep -c '#S302' /etc/hosts || true", FAST_TIMEOUT_MS);
         vo.setHostsEntries(hosts.isSuccess() ? parseIntOr(hosts.getOutput(), 0) : -1);
 
         // 自愈：容器被 docker 策略自起（如宿主机重启、WSL 重生成 /etc/hosts）后条目丢失，自动补写
@@ -89,7 +90,7 @@ public class Steam302ServiceImpl implements Steam302Service {
         // 状态一致性：API 声称容器共享模式时必须能从实际 hosts 看到 LAN 标记。
         // 这里不做静默修正，保留真实状态供面板和 E2E 判定；修复动作由安装/启停流程负责。
         if (running && shareMode && vo.getHostsEntries() != null && vo.getHostsEntries() > 0) {
-            SshUtil.CommandResult lan = runner.run(hostId, "grep -c '#S302-LAN' /etc/hosts || true", FAST_TIMEOUT_MS);
+            CommandResult lan = runner.run(hostId, "grep -c '#S302-LAN' /etc/hosts || true", FAST_TIMEOUT_MS);
             int lanEntries = lan.isSuccess() ? parseIntOr(lan.getOutput(), 0) : -1;
             if (lanEntries <= 0) {
                 vo.setMessage("运行中（容器共享加速未生效：/etc/hosts 仍为本机模式）");
@@ -100,7 +101,7 @@ public class Steam302ServiceImpl implements Steam302Service {
         }
 
         // Caddyfile 代理域名数（只统计行首站点地址行，避免把 reverse_proxy 上游计入）
-        SshUtil.CommandResult domains = runner.run(hostId,
+        CommandResult domains = runner.run(hostId,
                 "grep -E '^https?://' " + props.getDataDir()
                         + "/steamcommunity_302.caddy.json 2>/dev/null"
                         + " | grep -oE 'https?://[A-Za-z0-9.*_-]+' | sort -u | wc -l", FAST_TIMEOUT_MS);
@@ -142,7 +143,7 @@ public class Steam302ServiceImpl implements Steam302Service {
 
     @Override
     public void stop(Long hostId) {
-        SshUtil.CommandResult r = runDocker(hostId, "docker stop " + props.getContainerName(), DOCKER_TIMEOUT_MS);
+        CommandResult r = runDocker(hostId, "docker stop " + props.getContainerName(), DOCKER_TIMEOUT_MS);
         if (!r.isSuccess()) {
             throw new BusinessException("停止失败: " + firstLine(r.getError()));
         }
@@ -157,7 +158,7 @@ public class Steam302ServiceImpl implements Steam302Service {
     @Override
     public LinkedHashMap<String, String> getConfig(Long hostId) {
         String iniPath = props.getDataDir() + "/S302.ini";
-        SshUtil.CommandResult r = runner.run(hostId, "cat " + iniPath, FAST_TIMEOUT_MS);
+        CommandResult r = runner.run(hostId, "cat " + iniPath, FAST_TIMEOUT_MS);
         if (!r.isSuccess()) {
             throw new BusinessException("读取配置失败（未安装或无权访问）: " + firstLine(r.getError()));
         }
@@ -216,7 +217,7 @@ public class Steam302ServiceImpl implements Steam302Service {
         if (enabled) {
             runner.writeFilePrivileged(hostId, flagPath, "1", DOCKER_TIMEOUT_MS);
         } else {
-            SshUtil.CommandResult rm = runner.runPrivileged(hostId, "rm -f " + flagPath, FAST_TIMEOUT_MS);
+            CommandResult rm = runner.runPrivileged(hostId, "rm -f " + flagPath, FAST_TIMEOUT_MS);
             if (!rm.isSuccess()) {
                 throw new BusinessException("关闭容器共享加速失败: " + firstLine(rm.getError()));
             }
@@ -247,7 +248,7 @@ public class Steam302ServiceImpl implements Steam302Service {
      */
     private boolean ensurePlatformManagedHosts(Long hostId) {
         String iniPath = props.getDataDir() + "/S302.ini";
-        SshUtil.CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
+        CommandResult current = runner.run(hostId, "cat " + iniPath, DOCKER_TIMEOUT_MS);
         if (!current.isSuccess()) {
             throw new BusinessException("读取 S302.ini 失败，无法关闭自动改写 hosts: "
                     + firstLine(current.getError()));
@@ -260,12 +261,12 @@ public class Steam302ServiceImpl implements Steam302Service {
                 throw new BusinessException("S302.ini 缺少 Auto_Modify_Hosts 配置项，无法保证平台独占 hosts 管理");
             }
             runner.writeFilePrivileged(hostId, iniPath, updated, DOCKER_TIMEOUT_MS);
-            SshUtil.CommandResult state = runDocker(hostId,
+            CommandResult state = runDocker(hostId,
                     "docker inspect --format '{{.State.Running}}' " + props.getContainerName(),
                     FAST_TIMEOUT_MS);
             boolean running = state.isSuccess() && "true".equals(state.getOutput().trim());
             if (running) {
-                SshUtil.CommandResult restart = runDocker(hostId,
+                CommandResult restart = runDocker(hostId,
                         "docker restart " + props.getContainerName(), DOCKER_TIMEOUT_MS);
                 if (!restart.isSuccess()) {
                     throw new BusinessException("关闭 Auto_Modify_Hosts 后重启 Steam302 失败: "
@@ -289,7 +290,7 @@ public class Steam302ServiceImpl implements Steam302Service {
     private int reconcileHostsAndStart(Long hostId, boolean forceStart) {
         boolean wasRunning = isContainerRunning(hostId);
         if (wasRunning) {
-            SshUtil.CommandResult stop = runDocker(hostId,
+            CommandResult stop = runDocker(hostId,
                     "docker stop " + props.getContainerName(), DOCKER_TIMEOUT_MS);
             if (!stop.isSuccess()) {
                 throw new BusinessException("写入 hosts 前停止 Steam302 失败: "
@@ -307,7 +308,7 @@ public class Steam302ServiceImpl implements Steam302Service {
 
         try {
             if (wasRunning || forceStart) {
-                SshUtil.CommandResult start = runDocker(hostId,
+                CommandResult start = runDocker(hostId,
                         "docker start " + props.getContainerName(), DOCKER_TIMEOUT_MS);
                 if (!start.isSuccess()) {
                     throw new BusinessException("hosts 写入后启动 Steam302 失败: "
@@ -329,7 +330,7 @@ public class Steam302ServiceImpl implements Steam302Service {
     }
 
     private boolean isContainerRunning(Long hostId) {
-        SshUtil.CommandResult state = runDocker(hostId,
+        CommandResult state = runDocker(hostId,
                 "docker inspect --format '{{.State.Running}}' " + props.getContainerName(),
                 FAST_TIMEOUT_MS);
         return state.isSuccess() && "true".equals(state.getOutput().trim());
@@ -339,7 +340,7 @@ public class Steam302ServiceImpl implements Steam302Service {
     private void awaitProxyReady(Long hostId) {
         long deadline = System.currentTimeMillis() + 30_000;
         while (System.currentTimeMillis() < deadline) {
-            SshUtil.CommandResult r = runner.run(hostId,
+            CommandResult r = runner.run(hostId,
                     "(ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -q ':443 '", 10_000);
             if (r.isSuccess() && r.getExitCode() == 0) {
                 return;
@@ -355,14 +356,14 @@ public class Steam302ServiceImpl implements Steam302Service {
     }
 
     private boolean isCertTrusted(Long hostId) {
-        SshUtil.CommandResult check = runner.runPrivileged(hostId,
+        CommandResult check = runner.runPrivileged(hostId,
                 "test -f /usr/local/share/ca-certificates/steam302-steamcommunityCA.crt"
                         + " -o -f /etc/pki/ca-trust/source/anchors/steam302-steamcommunityCA.pem && echo YES", FAST_TIMEOUT_MS);
         return check.isSuccess() && check.getOutput().contains("YES");
     }
 
-    private SshUtil.CommandResult runDocker(Long hostId, String command, long timeoutMs) {
-        SshUtil.CommandResult direct = runner.run(hostId, command, timeoutMs);
+    private CommandResult runDocker(Long hostId, String command, long timeoutMs) {
+        CommandResult direct = runner.run(hostId, command, timeoutMs);
         if (direct.isSuccess()) {
             return direct;
         }

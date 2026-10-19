@@ -1,10 +1,9 @@
 package com.gameplatform.plugin.service;
 
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +35,7 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ContainerIdResolverTest {
 
-    @Mock private SshUtil sshUtil;
+    @Mock private RemoteHost remoteHost;
     @Mock private HostMapper hostMapper;
 
     private ContainerIdResolver resolver;
@@ -45,9 +44,7 @@ class ContainerIdResolverTest {
 
     @BeforeEach
     void setUp() {
-        // 凭据解析走真实 DeploymentAccess（host 表 mock 返回测试主机）
-        DeploymentAccess deployAccess = new DeploymentAccess(hostMapper);
-        resolver = new ContainerIdResolver(deployAccess, sshUtil);
+        resolver = new ContainerIdResolver(remoteHost);
 
         Host host = new Host();
         host.setId(10L);
@@ -72,12 +69,10 @@ class ContainerIdResolverTest {
     @Test
     @DisplayName("compose 前缀查询无匹配时回退容器名（显式 container_name=l4d2）")
     void resolve_composePrefixQueryEmpty_fallsBackToContainerName() {
-        SshUtil.CommandResult empty = mock(SshUtil.CommandResult.class);
+        CommandResult empty = mock(CommandResult.class);
         when(empty.getExitCode()).thenReturn(0);
         when(empty.getOutput()).thenReturn("");
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                any(), any(), contains("name=game56_")))
-            .thenReturn(empty);
+        when(remoteHost.exec(eq(10L), contains("name=game56_"))).thenReturn(empty);
 
         String result = resolver.resolve(composeInstance, composeInstance.getConfigInfo());
 
@@ -87,12 +82,10 @@ class ContainerIdResolverTest {
     @Test
     @DisplayName("compose 前缀查询命中时返回动态查询结果")
     void resolve_composePrefixQueryHit_returnsDynamicId() {
-        SshUtil.CommandResult hit = mock(SshUtil.CommandResult.class);
+        CommandResult hit = mock(CommandResult.class);
         when(hit.getExitCode()).thenReturn(0);
         when(hit.getOutput()).thenReturn("9f3c21be77d5e4a8b02c6d91e4fa8b31");
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                any(), any(), contains("name=game56_")))
-            .thenReturn(hit);
+        when(remoteHost.exec(eq(10L), contains("name=game56_"))).thenReturn(hit);
 
         String result = resolver.resolve(composeInstance, composeInstance.getConfigInfo());
 
@@ -102,11 +95,9 @@ class ContainerIdResolverTest {
     @Test
     @DisplayName("compose 无容器名且查询失败时抛 IllegalStateException")
     void resolve_composeNoNameAndQueryFails_throws() {
-        SshUtil.CommandResult fail = mock(SshUtil.CommandResult.class);
+        CommandResult fail = mock(CommandResult.class);
         when(fail.getExitCode()).thenReturn(1);
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                any(), any(), anyString()))
-            .thenReturn(fail);
+        when(remoteHost.exec(eq(10L), anyString())).thenReturn(fail);
         InstanceVO noName = new InstanceVO();
         noName.setId(57L);
         noName.setHostId(10L);

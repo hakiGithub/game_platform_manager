@@ -1,9 +1,10 @@
 package com.gameplatform.service;
 
+import com.gameplatform.hostaccess.PortCheckResult;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.*;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
 import com.gameplatform.vo.LoginVO;
@@ -114,6 +115,6 @@ public interface HostService {
      * @param port 端口号
      * @return 端口检查结果
      */
-    SshUtil.PortCheckResult checkPort(Long id, int port);
+    PortCheckResult checkPort(Long id, int port);
 
 }

@@ -1,11 +1,11 @@
 package com.gameplatform.service;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import cn.hutool.core.util.StrUtil;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostsRefreshPreview;
 import com.gameplatform.vo.HostsRefreshResult;
 import com.gameplatform.vo.Steam302StatusVO;
@@ -41,8 +41,7 @@ import java.util.stream.Collectors;
 public class HostsFileRefresher {
 
     private final HostMapper hostMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
+    private final RemoteHost remoteHost;
     private final Steam302Service steam302Service;
 
     /**
@@ -71,26 +70,22 @@ public class HostsFileRefresher {
     public HostsRefreshPreview previewRefresh(Long hostId) {
         ensureNotSteam302Managed(hostId);
         Host host = loadHost(hostId);
-        HostCredentials creds = deployAccess.credentials(host);
 
         // 1. 读取 /etc/hosts
-        String hostsContent = execCommand(host, creds, "cat /etc/hosts");
+        String hostsContent = execCommand(host, "cat /etc/hosts");
         if (StrUtil.isBlank(hostsContent)) {
             throw new RuntimeException("读取 /etc/hosts 失败：内容为空");
         }
 
         // 2. 读取 hostname
-        String hostname = execCommand(host, creds, "hostname").trim();
+        String hostname = execCommand(host, "hostname").trim();
 
         // 3. 解析并过滤域名
         String hostLanIp = host.getIpAddress();
         List<String> domainsToRefresh = extractDomainsToRefresh(hostsContent, hostname, hostLanIp);
 
         // 4. 检测免密 sudo
-        SshUtil.CommandResult sudoCheck = sshUtil.executeCommand(
-                host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                creds.privateKey(), creds.password(),
-                "sudo -n true 2>/dev/null", 5000L);
+        CommandResult sudoCheck = remoteHost.exec(host, "sudo -n true 2>/dev/null", 5000L);
         boolean sudoAvailable = sudoCheck.isSuccess();
 
         HostsRefreshPreview preview = new HostsRefreshPreview();
@@ -137,7 +132,6 @@ public class HostsFileRefresher {
     public HostsRefreshResult refreshHosts(Long hostId, String sudoPassword, List<String> selectedDomains) {
         ensureNotSteam302Managed(hostId);
         Host host = loadHost(hostId);
-        HostCredentials creds = deployAccess.credentials(host);
         String hostLanIp = host.getIpAddress();
 
         HostsRefreshResult result = new HostsRefreshResult();
@@ -145,13 +139,13 @@ public class HostsFileRefresher {
 
         try {
             // 1. 读取 /etc/hosts 和 hostname
-            String hostsContent = execCommand(host, creds, "cat /etc/hosts");
+            String hostsContent = execCommand(host, "cat /etc/hosts");
             if (StrUtil.isBlank(hostsContent)) {
                 result.setSuccess(false);
                 result.setErrorMessage("读取 /etc/hosts 失败：内容为空");
                 return result;
             }
-            String hostname = execCommand(host, creds, "hostname").trim();
+            String hostname = execCommand(host, "hostname").trim();
 
             // 2. 提取候选域名，按 selectedDomains 过滤
             List<String> allCandidates = extractDomainsToRefresh(hostsContent, hostname, hostLanIp);
@@ -180,10 +174,7 @@ public class HostsFileRefresher {
 
             // 4. 检测免密 sudo（如果未提供密码）—— 提前检测，避免无谓的 SFTP 上传
             if (StrUtil.isBlank(sudoPassword)) {
-                SshUtil.CommandResult sudoCheck = sshUtil.executeCommand(
-                        host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        creds.privateKey(), creds.password(),
-                        "sudo -n true 2>/dev/null", 5000L);
+                CommandResult sudoCheck = remoteHost.exec(host, "sudo -n true 2>/dev/null", 5000L);
                 if (!sudoCheck.isSuccess()) {
                     result.setSuccess(false);
                     result.setErrorMessage("免密 sudo 不可用，请输入 sudo 密码后重试");
@@ -203,10 +194,7 @@ public class HostsFileRefresher {
             String tmpFilePath = "/tmp/hosts-refresh-" + timestamp + ".tmp";
             String localTmpPath = writeLocalTempFile(newContent);
 
-            boolean uploaded = sshUtil.uploadFile(
-                    host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey(), creds.password(),
-                    localTmpPath, tmpFilePath);
+            boolean uploaded = remoteHost.upload(host, localTmpPath, tmpFilePath);
             if (!uploaded) {
                 result.setSuccess(false);
                 result.setErrorMessage("SFTP 上传临时文件失败: " + tmpFilePath);
@@ -222,25 +210,19 @@ public class HostsFileRefresher {
 
             // 8. 备份原 /etc/hosts
             String backupPath = "/etc/hosts.bak." + timestamp;
-            SshUtil.CommandResult backupResult = sshUtil.executeCommand(
-                    host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey(), creds.password(),
-                    sudoPrefix + "cp /etc/hosts " + backupPath, 10000L);
+            CommandResult backupResult = remoteHost.exec(
+                    host, sudoPrefix + "cp /etc/hosts " + backupPath, 10000L);
             if (!backupResult.isSuccess()) {
                 result.setSuccess(false);
                 result.setErrorMessage("备份 /etc/hosts 失败，已中止刷新: "
                         + backupResult.getError());
-                sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                        creds.privateKey(), creds.password(),
-                        "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
+                remoteHost.exec(host, "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
                 return result;
             }
 
             // 9. 覆盖 /etc/hosts
-            SshUtil.CommandResult overwriteResult = sshUtil.executeCommand(
-                    host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey(), creds.password(),
-                    sudoPrefix + "cp " + tmpFilePath + " /etc/hosts", 10000L);
+            CommandResult overwriteResult = remoteHost.exec(
+                    host, sudoPrefix + "cp " + tmpFilePath + " /etc/hosts", 10000L);
             if (!overwriteResult.isSuccess()) {
                 result.setSuccess(false);
                 result.setErrorMessage("写入 /etc/hosts 失败: "
@@ -250,12 +232,10 @@ public class HostsFileRefresher {
             }
 
             // 10. 清理临时文件
-            sshUtil.executeCommand(host.getIpAddress(), host.getSshPort(), host.getSshUser(),
-                    creds.privateKey(), creds.password(),
-                    "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
+            remoteHost.exec(host, "rm -f " + tmpFilePath, SSH_DEFAULT_TIMEOUT_MS);
 
             // 11. 刷新 DNS 缓存（非阻塞，失败只记录日志）
-            flushDnsCache(host, creds, sudoPrefix);
+            flushDnsCache(host, sudoPrefix);
 
             // 12. 返回成功结果
             result.setSuccess(true);
@@ -285,7 +265,7 @@ public class HostsFileRefresher {
      * </ul>
      * <p>所有命令均需要 sudo。失败不阻塞主流程，仅记录日志（DNS 缓存会自然过期）。</p>
      */
-    private void flushDnsCache(Host host, HostCredentials creds, String sudoPrefix) {
+    private void flushDnsCache(Host host, String sudoPrefix) {
         String[] commands = {
                 "resolvectl flush-caches",
                 "systemd-resolve --flush-caches",
@@ -293,10 +273,8 @@ public class HostsFileRefresher {
         };
         for (String cmd : commands) {
             try {
-                SshUtil.CommandResult r = sshUtil.executeCommand(
-                        creds.host(), creds.port(), creds.username(),
-                        creds.privateKey(), creds.password(),
-                        sudoPrefix + cmd + " 2>/dev/null", 5000L);
+                CommandResult r = remoteHost.exec(
+                        host, sudoPrefix + cmd + " 2>/dev/null", 5000L);
                 if (r != null && r.isSuccess()) {
                     log.info("主机 {} DNS 缓存刷新成功: {}", host.getHostName(), cmd);
                     return;
@@ -527,13 +505,10 @@ public class HostsFileRefresher {
     /**
      * 执行 SSH 命令并校验成功
      *
-     * <p>使用 7 参数重载（显式传入超时），与 SshUtil.executeCommand(..., long) 一致，
-     * 便于单元测试通过 anyLong() 匹配器统一 stub。</p>
+     * <p>使用 RemoteHost 的显式超时重载，便于测试统一 stub。</p>
      */
-    private String execCommand(Host host, HostCredentials creds, String command) {
-        SshUtil.CommandResult result = sshUtil.executeCommand(
-                creds.host(), creds.port(), creds.username(),
-                creds.privateKey(), creds.password(), command, SSH_DEFAULT_TIMEOUT_MS);
+    private String execCommand(Host host, String command) {
+        CommandResult result = remoteHost.exec(host, command, SSH_DEFAULT_TIMEOUT_MS);
         if (!result.isSuccess()) {
             throw new RuntimeException("SSH 命令执行失败: " + command
                     + "，错误: " + result.getError());

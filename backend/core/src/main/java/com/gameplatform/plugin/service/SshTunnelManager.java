@@ -1,10 +1,9 @@
 package com.gameplatform.plugin.service;
 
 import com.gameplatform.common.exception.BusinessException;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
+import com.gameplatform.hostaccess.HostTunnelLifecycle;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.plugin.service.SshTunnelService.TunnelHandle;
-import com.gameplatform.util.SshUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.sshd.client.SshClient;
@@ -42,13 +41,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SshTunnelManager {
+public class SshTunnelManager implements HostTunnelLifecycle {
 
     /** 专用会话连接/认证超时（毫秒） */
     private static final long CONNECT_TIMEOUT_MS = 10_000;
 
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deploymentAccess;
+    private final RemoteHost remoteHost;
 
     /** 隧道 ID → 隧道条目 */
     private final Map<String, TunnelEntry> tunnelsById = new ConcurrentHashMap<>();
@@ -69,9 +67,9 @@ public class SshTunnelManager {
     /**
      * 用平台已登记主机的凭据开隧道（复用 SshUtil 会话池，会话被钉住）。
      */
-    TunnelHandle openByHost(String ownerPluginId, Long hostId, String remoteHost, int remotePort) {
-        validateTarget(remoteHost, remotePort);
-        String key = dedupKey(ownerPluginId, "host:" + hostId, remoteHost, remotePort);
+    TunnelHandle openByHost(String ownerPluginId, Long hostId, String targetHost, int remotePort) {
+        validateTarget(targetHost, remotePort);
+        String key = dedupKey(ownerPluginId, "host:" + hostId, targetHost, remotePort);
 
         synchronized (tunnelLock) {
             TunnelEntry existing = reuseOrEvict(key);
@@ -79,20 +77,18 @@ public class SshTunnelManager {
                 return existing.toHandle();
             }
 
-            HostCredentials cred = deploymentAccess.credentials(hostId);
             ClientSession session;
             try {
-                session = sshUtil.acquirePinnedSession(
-                        cred.host(), cred.port(), cred.username(), cred.privateKey(), cred.password());
+                session = remoteHost.acquirePinnedSession(hostId);
             } catch (Exception e) {
                 throw new BusinessException("SSH 隧道建立失败（hostId=" + hostId + "）: " + e.getMessage());
             }
             try {
                 TunnelEntry entry = createEntry(ownerPluginId, hostId, null,
-                        remoteHost, remotePort, session, null, key);
+                        targetHost, remotePort, session, null, key);
                 return entry.toHandle();
             } catch (Exception e) {
-                sshUtil.releasePinnedSession(session);
+                remoteHost.releasePinnedSession(session);
                 throw new BusinessException("SSH 本地端口转发创建失败: " + e.getMessage());
             }
         }
@@ -102,13 +98,13 @@ public class SshTunnelManager {
      * 用插件自带凭据开隧道（专用 SshClient+Session，不入共享池，宿主不落库不写日志）。
      */
     TunnelHandle openWithCredentials(String ownerPluginId, SshTunnelService.SshEndpoint ssh,
-                                     String remoteHost, int remotePort) {
+                                     String targetHost, int remotePort) {
         if (ssh == null) {
             throw new BusinessException("SSH 端点凭据不能为空");
         }
-        validateTarget(remoteHost, remotePort);
+        validateTarget(targetHost, remotePort);
         String fingerprint = credentialFingerprint(ssh);
-        String key = dedupKey(ownerPluginId, "cred:" + fingerprint, remoteHost, remotePort);
+        String key = dedupKey(ownerPluginId, "cred:" + fingerprint, targetHost, remotePort);
 
         synchronized (tunnelLock) {
             TunnelEntry existing = reuseOrEvict(key);
@@ -124,7 +120,7 @@ public class SshTunnelManager {
                         .verify(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                         .getSession();
                 if (ssh.privateKey() != null && !ssh.privateKey().isBlank()) {
-                    java.security.KeyPair keyPair = SshUtil.parsePrivateKey(ssh.privateKey());
+                    java.security.KeyPair keyPair = remoteHost.parsePrivateKey(ssh.privateKey());
                     if (keyPair != null) {
                         session.addPublicKeyIdentity(keyPair);
                     }
@@ -136,7 +132,7 @@ public class SshTunnelManager {
                     throw new BusinessException("SSH 认证失败: " + ssh.user() + "@" + ssh.host() + ":" + ssh.port());
                 }
                 TunnelEntry entry = createEntry(ownerPluginId, null, fingerprint,
-                        remoteHost, remotePort, session, client, key);
+                        targetHost, remotePort, session, client, key);
                 return entry.toHandle();
             } catch (BusinessException e) {
                 closeDedicatedSessionQuietly(session, client);
@@ -201,6 +197,7 @@ public class SshTunnelManager {
      *
      * @return 关闭的隧道数
      */
+    @Override
     public int closeAllForHost(Long hostId) {
         List<TunnelEntry> toClose = tunnelsById.values().stream()
                 .filter(e -> hostId.equals(e.hostId) && !e.closed)
@@ -276,7 +273,7 @@ public class SshTunnelManager {
         if (entry.dedicatedClient != null) {
             closeDedicatedSessionQuietly(entry.session, entry.dedicatedClient);
         } else {
-            sshUtil.releasePinnedSession(entry.session);
+            remoteHost.releasePinnedSession(entry.session);
         }
         log.info("[SshTunnel] 已关闭: plugin={}, target={}:{}, localPort={}",
                 entry.ownerPluginId, entry.remoteHost, entry.remotePort, entry.localPort);

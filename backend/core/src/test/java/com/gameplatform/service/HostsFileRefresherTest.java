@@ -1,10 +1,10 @@
 package com.gameplatform.service;
 
-import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.util.AesUtil;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostsRefreshPreview;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +36,7 @@ class HostsFileRefresherTest {
     private HostMapper hostMapper;
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     private HostsFileRefresher refresher;
 
@@ -62,8 +62,7 @@ class HostsFileRefresherTest {
         aesUtilMockedStatic.when(() -> AesUtil.decrypt("enc-key")).thenReturn("decrypted-key");
         when(hostMapper.selectById(1L)).thenReturn(testHost);
 
-        // 凭据解析走真实 DeploymentAccess（其内部调用被 mock 的静态 AesUtil.decrypt）
-        refresher = new HostsFileRefresher(hostMapper, sshUtil, new DeploymentAccess(hostMapper),
+        refresher = new HostsFileRefresher(hostMapper, remoteHost,
                 mock(com.gameplatform.service.Steam302Service.class));
     }
 
@@ -82,22 +81,13 @@ class HostsFileRefresherTest {
                 "127.0.0.1 raw.githubusercontent.com github.com\n" +
                 "::1 localhost ip6-localhost\n";
 
-        when(sshUtil.executeCommand(
-                eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
 
-        when(sshUtil.executeCommand(
-                eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
 
-        when(sshUtil.executeCommand(
-                eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
         // When
@@ -118,17 +108,11 @@ class HostsFileRefresherTest {
         String hostsContent = "127.0.0.1 localhost haki-pc\n" +
                 "127.0.0.1 github.com\n";
 
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
         HostsRefreshPreview preview = refresher.previewRefresh(1L);
@@ -145,17 +129,11 @@ class HostsFileRefresherTest {
                 "192.168.111.253 github.com\n" +  // 已是目标 IP
                 "127.0.0.1 raw.githubusercontent.com\n";
 
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
         HostsRefreshPreview preview = refresher.previewRefresh(1L);
@@ -174,17 +152,11 @@ class HostsFileRefresherTest {
                 "127.0.0.1 raw.githubusercontent.com #S302\n" +
                 "127.0.0.1 ad.example.com #adblock\n";
 
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", true));
 
         // When: 预检
@@ -201,25 +173,17 @@ class HostsFileRefresherTest {
 
         // === 验证 refreshHosts 生成的新内容：注释保留 + 域名不混入注释 ===
         java.util.concurrent.atomic.AtomicReference<String> uploadedContent = new java.util.concurrent.atomic.AtomicReference<>();
-        when(sshUtil.uploadFile(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
+        when(remoteHost.upload(eq(testHost), contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
                 .thenAnswer(invocation -> {
-                    String localPath = invocation.getArgument(5);
+                    String localPath = invocation.getArgument(1);
                     uploadedContent.set(java.nio.file.Files.readString(java.nio.file.Paths.get(localPath)));
                     return true;
                 });
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("sudo cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("sudo cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), eq(30_000L)))
                 .thenReturn(mockResult("", true));
 
         // 执行：只刷新 github.com 和 raw.githubusercontent.com
@@ -265,17 +229,11 @@ class HostsFileRefresherTest {
         String hostsContent = "127.0.0.1 localhost\n" +
                 "192.168.111.253 github.com raw.githubusercontent.com\n";
 
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
         HostsRefreshPreview preview = refresher.previewRefresh(1L);
@@ -288,9 +246,7 @@ class HostsFileRefresherTest {
     @Test
     @DisplayName("读取 /etc/hosts 失败时应抛出业务异常")
     void shouldThrowWhenReadHostsFails() {
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult("", false));
 
         assertThrows(RuntimeException.class, () -> refresher.previewRefresh(1L));
@@ -302,41 +258,27 @@ class HostsFileRefresherTest {
         // Given: hosts 文件包含 1 个待改域名
         String hostsContent = "127.0.0.1 localhost\n" +
                 "127.0.0.1 github.com\n";
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
 
         // 免密 sudo 可用
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", true));
 
         // SFTP 上传成功（localPath 是 Java 临时文件路径，remotePath 是 /tmp/hosts-refresh-xxx.tmp）
-        when(sshUtil.uploadFile(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
+        when(remoteHost.upload(eq(testHost), contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
                 .thenReturn(true);
 
         // sudo cp 备份 + 覆盖 都成功
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("sudo cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("sudo cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
 
         // 临时文件清理
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), eq(30_000L)))
                 .thenReturn(mockResult("", true));
 
         // When: sudoPassword 为 null（免密 sudo）
@@ -354,17 +296,11 @@ class HostsFileRefresherTest {
     @DisplayName("免密 sudo 不可用且未提供密码时，应返回失败并提示需要密码")
     void shouldFailWhenSudoPasswordMissing() {
         String hostsContent = "127.0.0.1 localhost\n127.0.0.1 github.com\n";
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
         com.gameplatform.vo.HostsRefreshResult result = refresher.refreshHosts(1L, null);
@@ -380,40 +316,24 @@ class HostsFileRefresherTest {
     @DisplayName("提供 sudo 密码时，应使用 echo 'pwd' | sudo -S cp 命令")
     void shouldUseSudoWithPasswordWhenProvided() {
         String hostsContent = "127.0.0.1 localhost\n127.0.0.1 github.com\n";
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
 
         // 免密 sudo 不可用（但提供了密码，所以应该跳过 sudo -n true 检测直接用密码）
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", false));
 
-        when(sshUtil.uploadFile(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
+        when(remoteHost.upload(eq(testHost), contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
                 .thenReturn(true);
 
         // 关键断言：使用 echo 'pwd' | sudo -S cp 命令
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("echo 'mypassword' \\| sudo -S cp /etc/hosts /etc/hosts\\.bak\\..+"),
-                anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("echo 'mypassword' \\| sudo -S cp /etc/hosts /etc/hosts\\.bak\\..+"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("echo 'mypassword' \\| sudo -S cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"),
-                anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("echo 'mypassword' \\| sudo -S cp /tmp/hosts-refresh-.+\\.tmp /etc/hosts"), eq(10_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("rm -f /tmp/hosts-refresh-.+\\.tmp"), eq(30_000L)))
                 .thenReturn(mockResult("", true));
 
         com.gameplatform.vo.HostsRefreshResult result = refresher.refreshHosts(1L, "mypassword");
@@ -427,13 +347,9 @@ class HostsFileRefresherTest {
     void shouldReturnSuccessWithoutSudoWhenNoDomainToRefresh() {
         String hostsContent = "127.0.0.1 localhost\n" +
                 "192.168.111.253 github.com\n"; // 已是目标 IP
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
 
         com.gameplatform.vo.HostsRefreshResult result = refresher.refreshHosts(1L, null);
@@ -441,36 +357,24 @@ class HostsFileRefresherTest {
         assertTrue(result.isSuccess());
         assertTrue(result.getRefreshedDomains().isEmpty());
         // 不应调用 sudo 相关命令
-        verify(sshUtil, never()).executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong());
+        verify(remoteHost, never()).exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L));
     }
 
     @Test
     @DisplayName("sudo 命令失败时应返回失败并保留临时文件路径")
     void shouldReturnFailureWhenSudoCommandFails() {
         String hostsContent = "127.0.0.1 localhost\n127.0.0.1 github.com\n";
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("cat /etc/hosts"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("cat /etc/hosts"), eq(30_000L)))
                 .thenReturn(mockResult(hostsContent, true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("hostname"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("hostname"), eq(30_000L)))
                 .thenReturn(mockResult("haki-pc\n", true));
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                eq("sudo -n true 2>/dev/null"), anyLong()))
+        when(remoteHost.exec(eq(testHost), eq("sudo -n true 2>/dev/null"), eq(5_000L)))
                 .thenReturn(mockResult("", true));
-        when(sshUtil.uploadFile(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
+        when(remoteHost.upload(eq(testHost), contains("hosts-refresh-"), startsWith("/tmp/hosts-refresh-")))
                 .thenReturn(true);
 
         // sudo cp 备份命令失败
-        when(sshUtil.executeCommand(eq("192.168.111.253"), eq(22), eq("haki"),
-                eq("decrypted-key"), eq("decrypted-pwd"),
-                matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), anyLong()))
+        when(remoteHost.exec(eq(testHost), matches("sudo cp /etc/hosts /etc/hosts\\.bak\\..+"), eq(10_000L)))
                 .thenReturn(mockResult("sudo: error", false));
 
         com.gameplatform.vo.HostsRefreshResult result = refresher.refreshHosts(1L, null);
@@ -482,8 +386,8 @@ class HostsFileRefresherTest {
     /**
      * 构造 mock CommandResult
      */
-    private SshUtil.CommandResult mockResult(String output, boolean success) {
-        SshUtil.CommandResult r = new SshUtil.CommandResult();
+    private CommandResult mockResult(String output, boolean success) {
+        CommandResult r = new CommandResult();
         r.setOutput(output);
         r.setSuccess(success);
         r.setExitCode(success ? 0 : 1);

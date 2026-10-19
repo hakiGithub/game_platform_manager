@@ -1,9 +1,8 @@
 package com.gameplatform.adapter;
 
-import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +26,7 @@ import static org.mockito.Mockito.*;
 class LinuxGsmAdapterTest {
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private HostMapper hostMapper;
@@ -35,19 +34,15 @@ class LinuxGsmAdapterTest {
     @Mock
     private GameInstanceMapper instanceMapper;
 
-    @Mock
-    private DeploymentAccess deployAccess;
-
     private LinuxGsmAdapter linuxGsmAdapter;
 
     @BeforeEach
     void setUp() {
         linuxGsmAdapter = new LinuxGsmAdapter();
         // 手动注入依赖
-        injectField(linuxGsmAdapter, "sshUtil", sshUtil);
+        injectField(linuxGsmAdapter, "remoteHost", remoteHost);
         injectField(linuxGsmAdapter, "hostMapper", hostMapper);
         injectField(linuxGsmAdapter, "instanceMapper", instanceMapper);
-        injectField(linuxGsmAdapter, "deployAccess", deployAccess);
     }
 
     /**

@@ -1,11 +1,12 @@
 package com.gameplatform.plugin.service;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +33,7 @@ import java.util.function.Consumer;
  * <p>路由策略：
  * <ul>
  *   <li>Native（linuxgsm）→ 委托 {@link FileAccessService}（SFTP）</li>
- *   <li>Docker（docker / docker-compose / linuxgsm-docker）→ 委托 {@link SshUtil} + docker exec/cp</li>
+ *   <li>Docker（docker / docker-compose / linuxgsm-docker）→ 委托 {@link RemoteHost} + docker exec/cp</li>
  * </ul>
  *
  * <p>SSH 凭据：统一经 {@link DeploymentAccess#credentials} 解析（解密私钥/密码、端口默认 22）。
@@ -47,7 +48,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
 
     private final InstanceQueryService instanceQueryService;
     private final FileAccessService fileAccessService;
-    private final SshUtil sshUtil;
+    private final RemoteHost remoteHost;
     private final DeploymentAccess deployAccess;
     private final ContainerIdResolver containerIdResolver;
     private final GameMetadataMapper gameMetadataMapper;
@@ -198,17 +199,16 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         // Docker: docker cp 到宿主临时路径（docker cp 的目标必须在宿主机，
         // 传本地 Windows 路径会被解析成容器引用报 "copying between containers"），
         // 再经 SFTP 读回内存
-        HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-download-" + UUID.randomUUID();
         try {
-            SshUtil.CommandResult r = executeOnHost(route.hostId,
+            CommandResult r = executeOnHost(route.hostId,
                 "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + tempHostPath);
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 失败: " + r.getError());
             }
             return fileAccessService.downloadFileToMemory(route.hostId, tempHostPath);
         } finally {
-            cleanupRemoteTemp(conn, tempHostPath);
+            cleanupRemoteTemp(route.hostId, tempHostPath);
         }
     }
 
@@ -223,7 +223,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         String innerCmd = String.format(
             "tail -c +%d %s 2>/dev/null | dd bs=1 count=%d 2>/dev/null | base64 -w0",
             start, shellQuote(route.resolvedPath), length);
-        SshUtil.CommandResult r = execDocker(route, innerCmd);
+        CommandResult r = execDocker(route, innerCmd);
         if (r.getExitCode() != 0) {
             throw new RuntimeException("读取容器文件字节失败: " + r.getError());
         }
@@ -241,12 +241,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             return;
         }
         // Docker: 先 SFTP 上传到主机 temp（进度覆盖此段），再 docker cp 进容器（无进度）
-        HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-upload-" + UUID.randomUUID();
         try {
-            boolean uploaded = sshUtil.uploadFile(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                localPath, tempHostPath, callback);
+            boolean uploaded = remoteHost.upload(
+                route.hostId, localPath, tempHostPath, callback);
             if (!uploaded) {
                 throw new RuntimeException("SFTP 上传到主机临时路径失败: " + tempHostPath);
             }
@@ -255,18 +253,16 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             int lastSlash = parentDir.lastIndexOf('/');
             if (lastSlash > 0) {
                 parentDir = parentDir.substring(0, lastSlash);
-                sshUtil.executeCommand(
-                    conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                    "docker exec " + route.containerId + " mkdir -p " + shellQuote(parentDir));
+                remoteHost.exec(
+                    route.hostId, "docker exec " + route.containerId + " mkdir -p " + shellQuote(parentDir));
             }
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                "docker cp " + shellQuote(tempHostPath) + " " + route.containerId + ":" + shellQuote(route.resolvedPath));
+            CommandResult r = remoteHost.exec(
+                route.hostId, "docker cp " + shellQuote(tempHostPath) + " " + route.containerId + ":" + shellQuote(route.resolvedPath));
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 进容器失败: " + r.getError());
             }
         } finally {
-            cleanupRemoteTemp(conn, tempHostPath);
+            cleanupRemoteTemp(route.hostId, tempHostPath);
         }
     }
 
@@ -279,23 +275,20 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             return;
         }
         // Docker: docker cp 到主机 temp（无进度），再 SFTP 下载到本地（进度覆盖此段）
-        HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-download-" + UUID.randomUUID();
         try {
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + shellQuote(tempHostPath));
+            CommandResult r = remoteHost.exec(
+                route.hostId, "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + shellQuote(tempHostPath));
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 失败: " + r.getError());
             }
-            boolean downloaded = sshUtil.downloadFile(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                tempHostPath, localPath, callback);
+            boolean downloaded = remoteHost.download(
+                route.hostId, tempHostPath, localPath, callback);
             if (!downloaded) {
                 throw new RuntimeException("SFTP 下载主机临时文件失败: " + tempHostPath);
             }
         } finally {
-            cleanupRemoteTemp(conn, tempHostPath);
+            cleanupRemoteTemp(route.hostId, tempHostPath);
         }
     }
 
@@ -357,7 +350,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         if (route.isNative()) {
             return fileAccessService.exists(route.hostId, route.resolvedPath);
         }
-        SshUtil.CommandResult r = execDocker(route,
+        CommandResult r = execDocker(route,
             "test -e " + shellQuote(route.resolvedPath) + " && echo yes || echo no");
         return r.getOutput().trim().equals("yes");
     }
@@ -369,7 +362,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             return fileAccessService.getFileInfo(route.hostId, route.resolvedPath);
         }
         // Docker: docker exec stat
-        SshUtil.CommandResult r = execDocker(route,
+        CommandResult r = execDocker(route,
             "stat -c '%n|%s|%Y' " + shellQuote(route.resolvedPath));
         if (r.getExitCode() != 0) {
             return null;
@@ -396,7 +389,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         // Docker: 优先用 GNU find 输出明确字段（尤其权限），BusyBox find 不支持
         // -printf 时回退 ls -la；解析失败不能伪装成空目录。
         String path = shellQuote(route.resolvedPath);
-        SshUtil.CommandResult r = execDocker(route,
+        CommandResult r = execDocker(route,
                 "find " + path + " -mindepth 1 -maxdepth 1 "
                         + "-printf '%y\\t%m\\t%s\\t%T@\\t%f\\n'");
         if (r.getExitCode() == 0) {
@@ -405,7 +398,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
                 return parsed;
             }
         }
-        SshUtil.CommandResult fallback = execDocker(route,
+        CommandResult fallback = execDocker(route,
                 "ls -la " + path);
         if (fallback.getExitCode() != 0) {
             return List.of();
@@ -445,12 +438,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         // 注意：此处不删除目标目录本身，仅合并/覆盖内容，避免误删游戏根目录。
         // 调用方（如插件启用）如需清理应先自行处理。
         if (srcRoute.isNative()) {
-            HostCredentials conn = deployAccess.credentials(srcRoute.hostId);
             String cmd = "mkdir -p " + shellQuote(dstRoute.resolvedPath)
                     + " && cp -rT " + shellQuote(srcRoute.resolvedPath)
                     + " " + shellQuote(dstRoute.resolvedPath);
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                    conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(), cmd);
+            CommandResult r = remoteHost.exec(srcRoute.hostId, cmd);
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("Native 目录复制失败: " + r.getError());
             }
@@ -484,7 +475,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         }
         String innerCmd = String.format(
             "tail -c +%d %s 2>/dev/null | base64 -w0", offset + 1, shellQuote(route.resolvedPath));
-        SshUtil.CommandResult r = execDocker(route, innerCmd);
+        CommandResult r = execDocker(route, innerCmd);
         if (r.getExitCode() != 0) {
             throw new RuntimeException("tail 容器文件失败: " + r.getError());
         }
@@ -509,12 +500,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             throw new IllegalArgumentException("不支持的摘要算法: " + algorithm, e);
         }
         FileRoute route = resolveRoute(instanceId, relativePath);
-        HostCredentials conn = deployAccess.credentials(route.hostId);
         String sumCmd = algorithm.toLowerCase() + "sum";
         if (route.isNative()) {
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                sumCmd + " " + route.resolvedPath);
+            CommandResult r = remoteHost.exec(
+                route.hostId, sumCmd + " " + route.resolvedPath);
             if (r.getExitCode() == 127) {
                 throw new UnsupportedOperationException("主机不支持 " + sumCmd + " 命令");
             }
@@ -526,15 +515,13 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         // Docker: docker cp 到主机 temp + *sum + 清理
         String tempHostPath = "/tmp/.gp-digest-" + UUID.randomUUID();
         try {
-            SshUtil.CommandResult cp = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + shellQuote(tempHostPath));
+            CommandResult cp = remoteHost.exec(
+                route.hostId, "docker cp " + route.containerId + ":" + shellQuote(route.resolvedPath) + " " + shellQuote(tempHostPath));
             if (cp.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 失败: " + cp.getError());
             }
-            SshUtil.CommandResult sum = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                sumCmd + " " + tempHostPath);
+            CommandResult sum = remoteHost.exec(
+                route.hostId, sumCmd + " " + tempHostPath);
             if (sum.getExitCode() == 127) {
                 throw new UnsupportedOperationException("主机不支持 " + sumCmd + " 命令");
             }
@@ -543,7 +530,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             }
             return sum.getOutput().trim().split("\\s+")[0];
         } finally {
-            cleanupRemoteTemp(conn, tempHostPath);
+            cleanupRemoteTemp(route.hostId, tempHostPath);
         }
     }
 
@@ -553,10 +540,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
      * 在容器内执行命令（docker exec sh -c '...'）。
      * 单引号转义遵循 POSIX 规则：' → '\''
      */
-    private SshUtil.CommandResult execDocker(FileRoute route, String innerCmd) {
+    private CommandResult execDocker(FileRoute route, String innerCmd) {
         String escaped = innerCmd.replace("'", "'\\''");
         String cmd = "docker exec " + route.containerId + " sh -c '" + escaped + "'";
-        SshUtil.CommandResult r = executeOnHost(route.hostId, cmd);
+        CommandResult r = executeOnHost(route.hostId, cmd);
         if (r.getExitCode() != 0 && !innerCmd.startsWith("test -e")) {
             log.warn("docker exec 失败: cmd={}, exit={}, stderr={}",
                 innerCmd, r.getExitCode(), r.getError());
@@ -568,7 +555,7 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
      * 读取容器内文本文件：用 base64 编码避免字符集在传输中损坏。
      */
     private String dockerReadTextFile(FileRoute route, Charset charset) {
-        SshUtil.CommandResult r = execDocker(route, "base64 -w0 " + shellQuote(route.resolvedPath));
+        CommandResult r = execDocker(route, "base64 -w0 " + shellQuote(route.resolvedPath));
         if (r.getExitCode() != 0) {
             throw new RuntimeException("读取容器文件失败: " + r.getError());
         }
@@ -582,7 +569,6 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     private void dockerWriteTextFile(FileRoute route, String content) {
         // 内容经 SFTP 流式写宿主临时文件，再 docker cp 进容器：
         // 避免把大内容内联进 docker exec 命令参数（大清单触发 Argument list too long）
-        HostCredentials conn = deployAccess.credentials(route.hostId);
         String tempHostPath = "/tmp/.gp-write-" + UUID.randomUUID();
         try {
             fileAccessService.writeTextFile(route.hostId, tempHostPath, content);
@@ -590,19 +576,17 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
             int lastSlash = parentDir.lastIndexOf('/');
             if (lastSlash > 0) {
                 parentDir = parentDir.substring(0, lastSlash);
-                sshUtil.executeCommand(
-                    conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                    "docker exec " + route.containerId + " mkdir -p " + shellQuote(parentDir));
+                remoteHost.exec(
+                    route.hostId, "docker exec " + route.containerId + " mkdir -p " + shellQuote(parentDir));
             }
-            SshUtil.CommandResult r = sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                "docker cp " + shellQuote(tempHostPath) + " " + route.containerId + ":"
+            CommandResult r = remoteHost.exec(
+                route.hostId, "docker cp " + shellQuote(tempHostPath) + " " + route.containerId + ":"
                         + shellQuote(route.resolvedPath));
             if (r.getExitCode() != 0) {
                 throw new RuntimeException("docker cp 进容器失败: " + r.getError());
             }
         } finally {
-            cleanupRemoteTemp(conn, tempHostPath);
+            cleanupRemoteTemp(route.hostId, tempHostPath);
         }
     }
 
@@ -686,12 +670,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     // ===== SSH 连接辅助 =====
 
     /**
-     * 在指定主机上执行 SSH 命令（凭据解析统一走 DeploymentAccess，SSH 传输委托 SshUtil）。
+     * 在指定主机上执行 SSH 命令。
      */
-    private SshUtil.CommandResult executeOnHost(long hostId, String command) {
-        HostCredentials conn = deployAccess.credentials(hostId);
-        return sshUtil.executeCommand(
-            conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(), command);
+    private CommandResult executeOnHost(long hostId, String command) {
+        return remoteHost.exec(hostId, command);
     }
 
     /**
@@ -707,11 +689,9 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     /**
      * 清理远程主机临时文件（best-effort，失败仅告警）。
      */
-    private void cleanupRemoteTemp(HostCredentials conn, String tempHostPath) {
+    private void cleanupRemoteTemp(long hostId, String tempHostPath) {
         try {
-            sshUtil.executeCommand(
-                conn.host(), conn.port(), conn.username(), conn.privateKey(), conn.password(),
-                "rm -f " + tempHostPath);
+            remoteHost.exec(hostId, "rm -f " + tempHostPath);
         } catch (Exception e) {
             log.warn("清理远程临时文件失败: {}", tempHostPath, e);
         }

@@ -15,7 +15,6 @@ import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.listener.PluginLifecycleHook;
 import com.gameplatform.service.impl.InstanceServiceImpl;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import com.gameplatform.vo.InstanceDeleteResultVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,9 +55,6 @@ class InstanceServiceImplTest {
 
     @Mock
     private DeployAdapterFactory adapterFactory;
-
-    @Mock
-    private SshUtil sshUtil;
 
     @Mock
     private DeployAdapter deployAdapter;

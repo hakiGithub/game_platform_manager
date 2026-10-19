@@ -24,7 +24,8 @@ import java.util.function.Supplier;
  *   <li>Host → SSH 凭据解析：私钥/密码解密、端口默认 22、建连认证（私钥优先密码回退）。</li>
  * </ol>
  *
- * <p>SSH 传输能力仍由 {@link com.gameplatform.util.SshUtil} 承担，本模块只做「接入准备」。
+ * <p>本模块只负责部署类型分类与 Host 凭据解析；SSH 传输由
+ * {@link com.gameplatform.hostaccess.RemoteHost} 深模块统一承担。
  */
 @Slf4j
 @Component

@@ -7,7 +7,7 @@ import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.service.AbstractInstanceFileService;
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -104,15 +104,29 @@ class PatchInstallHeaderDownloadTest {
                 .hasMessageContaining(PatchInstallExecutor.ERR_UNSUPPORTED_HEADER_FILE);
     }
 
-    private static SshUtil.CommandResult executeShell(String command, Path destination, String url) {
+    private static CommandResult executeShell(String command, Path destination, String url) {
         if (command.startsWith("curl --version")) {
             return result(true, "curl 8.5.0 (Windows)");
         }
         if (command.startsWith("curl ")) {
             try {
+                String cookie = "session=abc";
+                int headerAt = command.indexOf("--header @");
+                if (headerAt >= 0) {
+                    String headerPath = command.substring(headerAt + "--header @".length()).trim();
+                    if (headerPath.startsWith("'") && headerPath.endsWith("'")) {
+                        headerPath = headerPath.substring(1, headerPath.length() - 1);
+                    }
+                    int urlStart = headerPath.lastIndexOf(" http");
+                    if (urlStart > 0) {
+                        headerPath = headerPath.substring(0, urlStart);
+                    }
+                    // 测试中 FileService 的 SFTP 上传是 mock，直接读取平台侧已上传内容不可行；
+                    // 由调用方提供的测试语义固定为 session=abc。
+                }
                 java.net.http.HttpClient.newHttpClient().send(
                         java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
-                                .header("Cookie", "session=abc")
+                                .header("Cookie", cookie)
                                 .GET()
                                 .build(),
                         java.net.http.HttpResponse.BodyHandlers.ofFile(destination));
@@ -140,8 +154,8 @@ class PatchInstallHeaderDownloadTest {
         return host;
     }
 
-    private static SshUtil.CommandResult result(boolean success, String output) {
-        SshUtil.CommandResult result = new SshUtil.CommandResult();
+    private static CommandResult result(boolean success, String output) {
+        CommandResult result = new CommandResult();
         result.setSuccess(success);
         result.setExitCode(success ? 0 : 1);
         result.setOutput(output);

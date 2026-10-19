@@ -4,7 +4,6 @@ import com.gameplatform.config.GamePlatformConfig;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.service.HostService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostVO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,8 +31,6 @@ class HostControllerCredentialTest {
     private HostService hostService;
     @Mock
     private GamePlatformConfig gamePlatformConfig;
-    @Mock
-    private SshUtil sshUtil;
     @Mock
     private com.gameplatform.service.HostsFileRefresher hostsFileRefresher;
 

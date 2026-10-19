@@ -3,10 +3,11 @@ package com.gameplatform.plugin.service;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.service.FileAccessService.FileInfo;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,7 +30,7 @@ import static org.mockito.Mockito.*;
 /**
  * {@link InstanceFileServiceImpl} 单元测试。
  *
- * <p>通过 Mockito mock 四个依赖（InstanceQueryService、FileAccessService、SshUtil、HostMapper），
+ * <p>通过 Mockito mock 依赖（InstanceQueryService、FileAccessService、RemoteHost、HostMapper），
  * 验证 Native（linuxgsm）路由委托、路径校验、摘要计算等行为。
  *
  * <p>说明：测试中 Host 的 sshPassword/sshPrivateKey 均设为 null，避免触发 AesUtil.decrypt。
@@ -44,7 +45,7 @@ class InstanceFileServiceImplTest {
 
     @Mock private InstanceQueryService instanceQueryService;
     @Mock private FileAccessService fileAccessService;
-    @Mock private SshUtil sshUtil;
+    @Mock private RemoteHost remoteHost;
     @Mock private HostMapper hostMapper;
     @Mock private GameMetadataMapper gameMetadataMapper;
 
@@ -70,8 +71,8 @@ class InstanceFileServiceImplTest {
         host.setSshPrivateKey(null);
 
         // 凭据解析/分类走真实 DeploymentAccess（真实语义由 DeploymentAccessTest 锁定）
-        service = new InstanceFileServiceImpl(instanceQueryService, fileAccessService, sshUtil,
-                new DeploymentAccess(hostMapper), new ContainerIdResolver(new DeploymentAccess(hostMapper), sshUtil),
+        service = new InstanceFileServiceImpl(instanceQueryService, fileAccessService, remoteHost,
+                new DeploymentAccess(hostMapper), new ContainerIdResolver(remoteHost),
                 gameMetadataMapper);
     }
 
@@ -206,19 +207,18 @@ class InstanceFileServiceImplTest {
     void computeDigest_native_executesMd5sum() {
         when(instanceQueryService.getInstanceById(1L)).thenReturn(nativeInstance);
         when(hostMapper.selectById(10L)).thenReturn(host);
-        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        CommandResult result = mock(CommandResult.class);
         when(result.getExitCode()).thenReturn(0);
         when(result.getOutput()).thenReturn(
             "d41d8cd98f00b204e9800998ecf8427e  /path/file\n");
-        when(sshUtil.executeCommand(eq("192.168.1.100"), eq(22), eq("gameserver"),
-                isNull(), isNull(), anyString()))
+        when(remoteHost.exec(eq(10L), anyString()))
             .thenReturn(result);
 
         String digest = service.computeDigest(1L, "cfg/server.cfg", "MD5");
 
         assertEquals("d41d8cd98f00b204e9800998ecf8427e", digest);
-        verify(sshUtil).executeCommand(eq("192.168.1.100"), eq(22), eq("gameserver"),
-            isNull(), isNull(), eq("md5sum /home/gameserver/instance_1/cfg/server.cfg"));
+        verify(remoteHost).exec(eq(10L),
+                eq("md5sum /home/gameserver/instance_1/cfg/server.cfg"));
     }
 
     @Test
@@ -233,10 +233,9 @@ class InstanceFileServiceImplTest {
     void computeDigest_native_throwsWhenCommandNotFound() {
         when(instanceQueryService.getInstanceById(1L)).thenReturn(nativeInstance);
         when(hostMapper.selectById(10L)).thenReturn(host);
-        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        CommandResult result = mock(CommandResult.class);
         when(result.getExitCode()).thenReturn(127);
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), anyString()))
+        when(remoteHost.exec(eq(10L), anyString()))
             .thenReturn(result);
 
         assertThrows(UnsupportedOperationException.class, () ->
@@ -254,10 +253,9 @@ class InstanceFileServiceImplTest {
         when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
         when(hostMapper.selectById(10L)).thenReturn(host);
 
-        SshUtil.CommandResult ok = mock(SshUtil.CommandResult.class);
+        CommandResult ok = mock(CommandResult.class);
         when(ok.getExitCode()).thenReturn(0);
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), anyString()))
+        when(remoteHost.exec(eq(10L), anyString()))
             .thenReturn(ok);
 
         String big = "x".repeat(200_000);
@@ -265,8 +263,7 @@ class InstanceFileServiceImplTest {
 
         // 大内容必须经 SFTP 流式写入宿主临时文件，绝不内联进 docker exec 命令参数
         verify(fileAccessService).writeTextFile(eq(10L), contains("/tmp/.gp-write-"), eq(big));
-        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("docker cp "));
+        verify(remoteHost, atLeastOnce()).exec(eq(10L), contains("docker cp "));
     }
 
     @Test
@@ -280,13 +277,12 @@ class InstanceFileServiceImplTest {
         when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
         when(hostMapper.selectById(10L)).thenReturn(host);
 
-        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        CommandResult result = mock(CommandResult.class);
         when(result.getExitCode()).thenReturn(0);
         when(result.getOutput()).thenReturn(
                 "f\t755\t4096\t1700000000.125\te2e-large-plugin.smx\n"
                         + "d\t750\t4096\t1700000001.000\tplugins\n");
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), contains("-printf")))
+        when(remoteHost.exec(eq(10L), contains("-printf")))
                 .thenReturn(result);
 
         List<FileInfo> files = service.listFiles(3L, "plugins");
@@ -314,18 +310,16 @@ class InstanceFileServiceImplTest {
         when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
         when(hostMapper.selectById(10L)).thenReturn(host);
 
-        SshUtil.CommandResult result = mock(SshUtil.CommandResult.class);
+        CommandResult result = mock(CommandResult.class);
         when(result.getExitCode()).thenReturn(0);
         when(result.getOutput()).thenReturn(
                 "d\t755\t4096\t1700000001.000\tplugins_store\n");
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(),
-                isNull(), isNull(), anyString()))
+        when(remoteHost.exec(eq(10L), anyString()))
                 .thenReturn(result);
 
         List<FileInfo> files = service.listFiles(3L, "left4dead2/addons/sourcemod");
 
         assertEquals(1, files.size());
-        verify(sshUtil).executeCommand(eq("192.168.1.100"), eq(22), eq("gameserver"),
-                isNull(), isNull(), contains("docker exec adopted-container-id"));
+        verify(remoteHost).exec(eq(10L), contains("docker exec adopted-container-id"));
     }
 }

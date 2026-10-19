@@ -13,7 +13,7 @@ import com.gameplatform.plugin.service.InstanceArchiveImportListener;
 import com.gameplatform.plugin.service.InstanceArchiveImportRequest;
 import com.gameplatform.plugin.service.InstanceArchiveImportService;
 import com.gameplatform.service.FileService;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -685,8 +685,8 @@ class RemoteInstanceArchiveImportExecutorTest {
         };
     }
 
-    private static SshUtil.CommandResult result(int exitCode, String output) {
-        SshUtil.CommandResult result = new SshUtil.CommandResult();
+    private static CommandResult result(int exitCode, String output) {
+        CommandResult result = new CommandResult();
         result.setExitCode(exitCode);
         result.setSuccess(exitCode == 0);
         result.setOutput(output);
@@ -698,11 +698,11 @@ class RemoteInstanceArchiveImportExecutorTest {
         private final List<CommandRule> rules = new ArrayList<>();
         private final List<String> executed = new ArrayList<>();
 
-        void add(String contains, SshUtil.CommandResult result) {
+        void add(String contains, CommandResult result) {
             rules.add(new CommandRule(contains, result));
         }
 
-        SshUtil.CommandResult execute(String command) {
+        CommandResult execute(String command) {
             executed.add(command);
             CommandRule match = rules.stream()
                     .filter(rule -> command.contains(rule.needle()))
@@ -724,6 +724,6 @@ class RemoteInstanceArchiveImportExecutorTest {
         }
     }
 
-    private record CommandRule(String needle, SshUtil.CommandResult result) {
+    private record CommandRule(String needle, CommandResult result) {
     }
 }

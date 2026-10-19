@@ -1,11 +1,10 @@
 package com.gameplatform.adapter;
 
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,16 +34,13 @@ import static org.mockito.Mockito.*;
 class DeployResourceLimitTest {
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private HostMapper hostMapper;
 
     @Mock
     private GameInstanceMapper instanceMapper;
-
-    @Mock
-    private DeploymentAccess deployAccess;
 
     private DockerComposeAdapter composeAdapter;
     private DockerAdapter dockerAdapter;
@@ -70,18 +66,15 @@ class DeployResourceLimitTest {
         composeAdapter = new DockerComposeAdapter();
         dockerAdapter = new DockerAdapter();
         for (Object adapter : List.of(composeAdapter, dockerAdapter)) {
-            injectField(adapter, "sshUtil", sshUtil);
+            injectField(adapter, "remoteHost", remoteHost);
             injectField(adapter, "hostMapper", hostMapper);
             injectField(adapter, "instanceMapper", instanceMapper);
-            injectField(adapter, "deployAccess", deployAccess);
         }
         host = new Host();
         host.setId(1L);
         host.setIpAddress("127.0.0.1");
         host.setSshPort(22);
         host.setSshUser("root");
-        lenient().when(deployAccess.credentials(host))
-                .thenReturn(new HostCredentials("127.0.0.1", 22, "root", null, null));
     }
 
     private void injectField(Object target, String fieldName, Object value) {
@@ -94,8 +87,8 @@ class DeployResourceLimitTest {
         }
     }
 
-    private SshUtil.CommandResult okResult() {
-        SshUtil.CommandResult r = new SshUtil.CommandResult();
+    private CommandResult okResult() {
+        CommandResult r = new CommandResult();
         r.setSuccess(true);
         r.setOutput("");
         return r;
@@ -148,10 +141,9 @@ class DeployResourceLimitTest {
     @Test
     void testSyncOverrideUploadsFileWithLimits() throws Exception {
         AtomicReference<String> uploadedContent = new AtomicReference<>();
-        when(sshUtil.uploadFile(anyString(), anyInt(), anyString(), any(), any(),
-                anyString(), anyString())).thenAnswer(inv -> {
+        when(remoteHost.upload(eq(host), anyString(), anyString())).thenAnswer(inv -> {
             // 在临时文件被删除前读取内容（显式 String 转型，避免泛型推断到 URI 重载）
-            Path local = Path.of(inv.getArgument(5, String.class));
+            Path local = Path.of(inv.getArgument(1, String.class));
             uploadedContent.set(Files.readString(local, StandardCharsets.UTF_8));
             return true;
         });
@@ -166,22 +158,20 @@ class DeployResourceLimitTest {
         assertTrue(content.contains("mem_limit: 2g"), "用户 2GB 应覆盖模板硬编码 1g");
         assertTrue(content.contains("cpus: '1.5'"), "用户 1.5 核应覆盖模板硬编码 1.0");
         assertTrue(content.startsWith("# 平台自动生成"), "文件头应有平台生成声明");
-        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(), any(), any(), anyString(), anyLong());
+        verify(remoteHost, never()).exec(eq(host), anyString(), anyLong());
     }
 
     @Test
     void testSyncOverrideRemovesFileWhenResourcesCleared() {
-        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), any(), any(),
-                anyString(), anyLong())).thenReturn(okResult());
+        when(remoteHost.exec(eq(host), anyString(), anyLong())).thenReturn(okResult());
 
         // resources 均未设置（用户取消限制后更新）
         boolean ok = composeAdapter.syncResourceOverride(host, "/opt/game",
                 new HashMap<>(), DNF_LIKE_TEMPLATE);
 
         assertTrue(ok);
-        verify(sshUtil).executeCommand(anyString(), anyInt(), anyString(), any(), any(),
-                eq("rm -f /opt/game/docker-compose.override.yml"), anyLong());
-        verify(sshUtil, never()).uploadFile(anyString(), anyInt(), anyString(), any(), any(), anyString(), anyString());
+        verify(remoteHost).exec(host, "rm -f /opt/game/docker-compose.override.yml", 10000L);
+        verify(remoteHost, never()).upload(eq(host), anyString(), anyString());
     }
 
     @Test
@@ -191,8 +181,8 @@ class DeployResourceLimitTest {
 
         // fail-open：不生成 override 也不报错
         assertTrue(ok);
-        verify(sshUtil, never()).uploadFile(anyString(), anyInt(), anyString(), any(), any(), anyString(), anyString());
-        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(), any(), any(), anyString(), anyLong());
+        verify(remoteHost, never()).upload(eq(host), anyString(), anyString());
+        verify(remoteHost, never()).exec(eq(host), anyString(), anyLong());
     }
 
     @Test
@@ -201,7 +191,7 @@ class DeployResourceLimitTest {
                 resources(2.0, 4.0), null);
 
         assertTrue(ok);
-        verify(sshUtil, never()).uploadFile(anyString(), anyInt(), anyString(), any(), any(), anyString(), anyString());
+        verify(remoteHost, never()).upload(eq(host), anyString(), anyString());
     }
 
     @Test

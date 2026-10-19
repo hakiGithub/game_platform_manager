@@ -1,5 +1,7 @@
 package com.gameplatform.controller;
 
+import com.gameplatform.hostaccess.PortCheckResult;
+
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.config.GamePlatformConfig;
@@ -8,7 +10,6 @@ import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.service.HostService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,7 +43,6 @@ public class HostController {
 
     private final HostService hostService;
     private final GamePlatformConfig gamePlatformConfig;
-    private final SshUtil sshUtil;
     private final com.gameplatform.service.HostsFileRefresher hostsFileRefresher;
 
     /**
@@ -208,7 +208,7 @@ public class HostController {
     @GetMapping("/{id}/check-port")
     public Result<CheckPortResult> checkPort(@Parameter(description = "主机ID") @PathVariable Long id,
                                               @Parameter(description = "端口号") @RequestParam int port) {
-        SshUtil.PortCheckResult result = hostService.checkPort(id, port);
+        PortCheckResult result = hostService.checkPort(id, port);
 
         CheckPortResult vo = new CheckPortResult();
         vo.setAvailable(result.isAvailable());

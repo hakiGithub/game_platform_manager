@@ -2,7 +2,7 @@ package com.gameplatform.adapter;
 
 import com.gameplatform.entity.GameInstance;
 import com.gameplatform.entity.Host;
-import com.gameplatform.util.SshUtil;
+import com.gameplatform.hostaccess.CommandResult;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageResultCallback;
@@ -53,7 +53,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         }
 
         // 检查Docker服务是否运行
-        SshUtil.CommandResult result = executeCommand(host, "docker info");
+        CommandResult result = executeCommand(host, "docker info");
         if (!result.isSuccess()) {
             log.error("主机 {} Docker服务未运行", hostId);
             return false;
@@ -100,7 +100,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         try {
             notifyProgress(callback, 30, "PRE_DEPLOY", "检查Docker镜像");
             // 检查镜像是否已存在
-            SshUtil.CommandResult checkResult = executeCommand(host,
+            CommandResult checkResult = executeCommand(host,
                     String.format("docker images -q %s", image));
 
             if (!checkResult.isSuccess()) {
@@ -111,7 +111,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
             if (checkResult.getOutput().trim().isEmpty()) {
                 notifyProgress(callback, 60, "PRE_DEPLOY", "拉取Docker镜像: " + image);
                 // 拉取镜像
-                SshUtil.CommandResult pullResult = executeCommand(host,
+                CommandResult pullResult = executeCommand(host,
                         String.format("docker pull %s", image), 600000);
 
                 if (!pullResult.isSuccess()) {
@@ -159,7 +159,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "DEPLOY", "创建并启动容器");
             // 创建并启动容器
-            SshUtil.CommandResult result = executeCommand(host, dockerRunCmd, 120000);
+            CommandResult result = executeCommand(host, dockerRunCmd, 120000);
 
             if (!result.isSuccess()) {
                 notifyError(callback, "创建容器失败: " + result.getError(), "DEPLOY", false);
@@ -180,7 +180,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
             // 验证容器状态
             if (!isContainerRunning(host, containerName)) {
                 // 获取容器日志
-                SshUtil.CommandResult logResult = executeCommand(host,
+                CommandResult logResult = executeCommand(host,
                         String.format("docker logs %s 2>&1 | tail -20", containerName), 10000);
                 notifyError(callback, "容器启动失败，日志: " + logResult.getOutput(), "DEPLOY", false);
                 return false;
@@ -223,7 +223,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         Host host = info.host();
         String containerName = getContainerName(instanceId, config);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker start %s", containerName), 30000);
 
         return result.isSuccess();
@@ -239,7 +239,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         Host host = info.host();
         String containerName = getContainerName(instanceId, config);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker stop %s", containerName), 60000);
 
         return result.isSuccess();
@@ -255,7 +255,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         Host host = info.host();
         String containerName = getContainerName(instanceId, config);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker restart %s", containerName), 60000);
 
         return result.isSuccess();
@@ -279,7 +279,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         // 检查健康检查配置
         String healthCmd = getConfigString(config, "healthCheck.command", "");
         if (!healthCmd.isEmpty()) {
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("docker exec %s %s", containerName, healthCmd), 10000);
             return result.isSuccess();
         }
@@ -309,7 +309,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 40, "UPDATE", "拉取最新镜像");
             // 拉取最新镜像
-            SshUtil.CommandResult pullResult = executeCommand(host,
+            CommandResult pullResult = executeCommand(host,
                     String.format("docker pull %s", image), 600000);
 
             if (!pullResult.isSuccess()) {
@@ -355,7 +355,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
 
             notifyProgress(callback, 60, "UNINSTALL", "删除容器");
             // 删除容器
-            SshUtil.CommandResult result = executeCommand(host,
+            CommandResult result = executeCommand(host,
                     String.format("docker rm %s", containerName), 30000);
 
             if (!result.isSuccess()) {
@@ -393,7 +393,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         Host host = info.host();
         String containerName = getContainerName(instanceId, config);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker logs --tail %d %s 2>&1", lines, containerName), 10000);
 
         return result.getOutput();
@@ -410,7 +410,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         String containerName = getContainerName(instanceId, config);
 
         // 获取容器状态
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker inspect -f '{{.State.Status}}' %s 2>/dev/null", containerName));
 
         String status = result.getOutput().trim();
@@ -437,7 +437,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         String containerName = getContainerName(instanceId, config);
 
         // 获取容器详细信息
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker inspect %s 2>/dev/null", containerName));
 
         if (result.isSuccess()) {
@@ -472,7 +472,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
         Host host = info.host();
         String containerName = getContainerName(instanceId, config);
 
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker exec %s %s", containerName, command), 60000);
 
         return result.getOutput() + (result.getError().isEmpty() ? "" : "\n错误: " + result.getError());
@@ -500,7 +500,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
 
             if (volumes.isEmpty()) {
                 // 如果没有卷，导出整个容器
-                SshUtil.CommandResult result = executeCommand(host,
+                CommandResult result = executeCommand(host,
                         String.format("docker export %s | gzip > %s", containerName, backupPath), 300000);
 
                 if (!result.isSuccess()) {
@@ -513,7 +513,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
                         .map(v -> String.format("-v %s:%s", v, v))
                         .collect(Collectors.joining(" "));
 
-                SshUtil.CommandResult result = executeCommand(host,
+                CommandResult result = executeCommand(host,
                         String.format("docker run --rm %s -v /backup:/backup alpine tar czf /backup/backup.tar.gz %s",
                                 volumePaths, String.join(" ", volumes)), 300000);
 
@@ -565,7 +565,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
                         .map(v -> String.format("-v %s:%s", v, v))
                         .collect(Collectors.joining(" "));
 
-                SshUtil.CommandResult result = executeCommand(host,
+                CommandResult result = executeCommand(host,
                         String.format("docker run --rm %s -v %s:/backup alpine sh -c 'cd / && tar xzf /backup'",
                                 volumePaths, backupPath), 300000);
 
@@ -638,7 +638,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
      * 获取容器ID
      */
     private String getContainerId(Host host, String containerName) {
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker ps -aq -f name=%s", containerName));
         String id = result.getOutput().trim();
         return id.isEmpty() ? null : id;
@@ -648,7 +648,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
      * 检查容器是否运行
      */
     private boolean isContainerRunning(Host host, String containerName) {
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker ps -q -f name=%s -f status=running", containerName));
         return !result.getOutput().trim().isEmpty();
     }
@@ -850,7 +850,7 @@ public class DockerAdapter extends AbstractDeployAdapter {
      */
     private List<String> getContainerVolumes(Host host, String containerName) {
         List<String> volumes = new ArrayList<>();
-        SshUtil.CommandResult result = executeCommand(host,
+        CommandResult result = executeCommand(host,
                 String.format("docker inspect -f '{{range .Mounts}}{{.Source}} {{end}}' %s 2>/dev/null", containerName));
 
         String output = result.getOutput().trim();

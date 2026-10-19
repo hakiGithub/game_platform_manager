@@ -5,11 +5,12 @@ import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.entity.Host;
+import com.gameplatform.hostaccess.HostSession;
+import com.gameplatform.hostaccess.HostTunnelLifecycle;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.plugin.service.SshTunnelManager;
 import com.gameplatform.service.impl.HostServiceImpl;
 import com.gameplatform.util.AesUtil;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -51,9 +52,9 @@ class HostCredentialEncryptionTest {
     @Mock
     private HostMapper hostMapper;
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
     @Mock
-    private SshTunnelManager sshTunnelManager;
+    private HostTunnelLifecycle hostTunnelLifecycle;
     @Mock
     private JdbcTemplate jdbcTemplate;
 
@@ -71,8 +72,9 @@ class HostCredentialEncryptionTest {
     void setUp() {
         // 读侧使用真实 DeploymentAccess，锁定跨层对称性
         deploymentAccess = new DeploymentAccess(hostMapper);
-        hostService = new HostServiceImpl(hostMapper, sshUtil, deploymentAccess,
-                sshTunnelManager, jdbcTemplate);
+        HostSession hostSession = new HostSession(hostMapper, remoteHost);
+        hostService = new HostServiceImpl(hostMapper, remoteHost, hostSession,
+                hostTunnelLifecycle, jdbcTemplate);
         when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(0);
     }
 

@@ -1,9 +1,8 @@
 package com.gameplatform.adapter;
 
-import com.gameplatform.deploy.DeploymentAccess;
+import com.gameplatform.hostaccess.RemoteHost;
 import com.gameplatform.mapper.GameInstanceMapper;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.util.SshUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,7 +25,7 @@ import static org.mockito.Mockito.*;
 class DockerAdapterTest {
 
     @Mock
-    private SshUtil sshUtil;
+    private RemoteHost remoteHost;
 
     @Mock
     private HostMapper hostMapper;
@@ -34,19 +33,15 @@ class DockerAdapterTest {
     @Mock
     private GameInstanceMapper instanceMapper;
 
-    @Mock
-    private DeploymentAccess deployAccess;
-
     private DockerAdapter dockerAdapter;
 
     @BeforeEach
     void setUp() {
         dockerAdapter = new DockerAdapter();
         // 手动注入依赖
-        injectField(dockerAdapter, "sshUtil", sshUtil);
+        injectField(dockerAdapter, "remoteHost", remoteHost);
         injectField(dockerAdapter, "hostMapper", hostMapper);
         injectField(dockerAdapter, "instanceMapper", instanceMapper);
-        injectField(dockerAdapter, "deployAccess", deployAccess);
     }
 
     /**

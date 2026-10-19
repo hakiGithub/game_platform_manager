@@ -1,5 +1,12 @@
 package com.gameplatform.service.impl;
 
+import com.gameplatform.hostaccess.HostAccessException;
+import com.gameplatform.hostaccess.HostSession;
+import com.gameplatform.hostaccess.HostTunnelLifecycle;
+import com.gameplatform.hostaccess.PortCheckResult;
+import com.gameplatform.hostaccess.RemoteHost;
+import com.gameplatform.hostaccess.ResourceInfo;
+
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -7,17 +14,13 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
-import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.dto.HostCreateDTO;
 import com.gameplatform.dto.HostUpdateDTO;
 import com.gameplatform.dto.PageQueryDTO;
 import com.gameplatform.entity.Host;
 import com.gameplatform.mapper.HostMapper;
-import com.gameplatform.plugin.service.SshTunnelManager;
 import com.gameplatform.service.HostService;
 import com.gameplatform.util.AesUtil;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostResourceVO;
 import com.gameplatform.vo.HostVO;
 import lombok.RequiredArgsConstructor;
@@ -42,9 +45,9 @@ import java.util.stream.Collectors;
 public class HostServiceImpl implements HostService {
 
     private final HostMapper hostMapper;
-    private final SshUtil sshUtil;
-    private final DeploymentAccess deployAccess;
-    private final SshTunnelManager sshTunnelManager;
+    private final RemoteHost remoteHost;
+    private final HostSession hostSession;
+    private final HostTunnelLifecycle hostTunnelLifecycle;
     private final JdbcTemplate jdbcTemplate;
 
     /**
@@ -177,7 +180,7 @@ public class HostServiceImpl implements HostService {
 
         // 联动关闭该主机开出的全部（平台凭据）SSH 隧道（ADR-0009）
         try {
-            sshTunnelManager.closeAllForHost(id);
+            hostTunnelLifecycle.closeAllForHost(id);
         } catch (Exception e) {
             log.warn("删除主机时关闭 SSH 隧道异常，不影响主机删除: hostId={}", id, e);
         }
@@ -224,7 +227,7 @@ public class HostServiceImpl implements HostService {
                                           String password, String privateKey) {
         log.info("测试SSH连接(表单参数): {}@{}:{}", username, ip, sshPort);
         try {
-            return sshUtil.testConnection(ip, sshPort == null ? 22 : sshPort,
+            return remoteHost.testConnection(ip, sshPort == null ? 22 : sshPort,
                     username, privateKey, password, SSH_TIMEOUT);
         } catch (Exception e) {
             log.error("SSH连接测试异常: {} - {}", ip, e.getMessage());
@@ -240,67 +243,25 @@ public class HostServiceImpl implements HostService {
 
     @Override
     public boolean testConnection(Long id) {
-        Host host = hostMapper.selectById(id);
-        if (host == null) {
-            throw new BusinessException("主机不存在");
-        }
-
-        log.info("测试SSH连接: {}@{}:{}", host.getSshUser(), host.getIpAddress(), host.getSshPort());
-
         try {
-            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
-            HostCredentials conn = deployAccess.credentials(host);
-
-            // 测试SSH连接
-            boolean connected = sshUtil.testConnection(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    conn.password(),
-                    SSH_TIMEOUT
-            );
-
-            // 更新在线状态
-            hostMapper.updateOnlineStatus(id, connected ? 1 : 0);
-
-            log.info("SSH连接测试结果: {} - {}", host.getHostName(), connected ? "成功" : "失败");
-
+            boolean connected = hostSession.probe(id, (host, remoteHost) -> {
+                log.info("测试SSH连接: {}@{}:{}", host.getSshUser(), host.getIpAddress(), host.getSshPort());
+                return remoteHost.testConnection(host);
+            });
+            log.info("SSH连接测试结果: {} - {}", connected ? "成功" : "失败");
             return connected;
-        } catch (Exception e) {
-            log.error("SSH连接测试异常: {} - {}", host.getHostName(), e.getMessage());
-            // 连接异常时更新为离线状态
-            hostMapper.updateOnlineStatus(id, 0);
+        } catch (HostAccessException e) {
+            log.error("SSH连接测试异常: hostId={} - {}", id, e.getMessage());
             return false;
         }
     }
 
     @Override
     public void refreshStatus(Long id) {
-        Host host = hostMapper.selectById(id);
-        if (host == null) {
-            throw new BusinessException("主机不存在");
-        }
-
-        log.info("刷新主机状态: {}", host.getHostName());
-
         try {
-            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
-            HostCredentials conn = deployAccess.credentials(host);
-
-            // 获取主机资源信息
-            SshUtil.ResourceInfo resourceInfo = sshUtil.getResourceInfo(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    conn.password()
-            );
-
-            if (resourceInfo.isSuccess()) {
-                // 更新资源使用率和在线状态
-                hostMapper.updateOnlineStatus(id, 1);
-                // 防御性处理：部分命令可能失败导致字段为 null，此时使用 0 避免拆箱 NPE
+            hostSession.run(id, (host, remoteHost) -> {
+                log.info("刷新主机状态: {}", host.getHostName());
+                ResourceInfo resourceInfo = remoteHost.getResourceInfo(host);
                 Double cpuUsage = resourceInfo.getCpuUsage();
                 Double memoryUsage = resourceInfo.getMemoryUsage();
                 Double diskUsage = resourceInfo.getDiskUsage();
@@ -311,21 +272,12 @@ public class HostServiceImpl implements HostService {
                         BigDecimal.valueOf(diskUsage != null ? diskUsage : 0.0),
                         java.time.LocalDateTime.now()
                 );
-
                 log.info("主机状态刷新成功: {} - CPU: {}%, 内存: {}%, 磁盘: {}%",
-                        host.getHostName(),
-                        cpuUsage != null ? cpuUsage : 0.0,
-                        memoryUsage != null ? memoryUsage : 0.0,
-                        diskUsage != null ? diskUsage : 0.0);
-            } else {
-                // 获取资源信息失败，更新为离线状态
-                hostMapper.updateOnlineStatus(id, 0);
-                log.warn("主机状态刷新失败: {} - {}", host.getHostName(), resourceInfo.getError());
-            }
-        } catch (Exception e) {
-            log.error("主机状态刷新异常: {} - {}", host.getHostName(), e.getMessage());
-            // 异常时更新为离线状态
-            hostMapper.updateOnlineStatus(id, 0);
+                        host.getHostName(), cpuUsage, memoryUsage, diskUsage);
+                return resourceInfo;
+            });
+        } catch (HostAccessException e) {
+            log.error("主机状态刷新异常: hostId={} - {}", id, e.getMessage());
         }
     }
 
@@ -402,35 +354,18 @@ public class HostServiceImpl implements HostService {
     }
 
     @Override
-    public SshUtil.PortCheckResult checkPort(Long id, int port) {
-        Host host = hostMapper.selectById(id);
-        if (host == null) {
-            throw new BusinessException("主机不存在");
-        }
-
-        log.info("检查主机端口占用: {} - port={}", host.getHostName(), port);
-
+    public PortCheckResult checkPort(Long id, int port) {
         try {
-            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
-            HostCredentials conn = deployAccess.credentials(host);
-
-            // 通过SSH检查端口占用
-            SshUtil.PortCheckResult result = sshUtil.checkPort(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    conn.password(),
-                    port
-            );
-
-            log.info("端口检查结果: {} - port={} - available={} - usedBy={}",
-                    host.getHostName(), port, result.isAvailable(), result.getUsedBy());
-
-            return result;
-        } catch (Exception e) {
-            log.error("检查端口占用异常: {} - port={} - {}", host.getHostName(), port, e.getMessage());
-            SshUtil.PortCheckResult result = new SshUtil.PortCheckResult();
+            return hostSession.run(id, (host, remoteHost) -> {
+                log.info("检查主机端口占用: {} - port={}", host.getHostName(), port);
+                PortCheckResult result = remoteHost.checkPort(id, port);
+                log.info("端口检查结果: {} - port={} - available={} - usedBy={}",
+                        host.getHostName(), port, result.isAvailable(), result.getUsedBy());
+                return result;
+            });
+        } catch (HostAccessException e) {
+            log.error("检查端口占用异常: hostId={} - port={} - {}", id, port, e.getMessage());
+            PortCheckResult result = new PortCheckResult();
             result.setPort(port);
             result.setAvailable(false);
             result.setError(e.getMessage());
@@ -440,81 +375,42 @@ public class HostServiceImpl implements HostService {
 
     @Override
     public HostResourceVO getHostResourceInfo(Long id) {
-        Host host = hostMapper.selectById(id);
-        if (host == null) {
-            throw new BusinessException("主机不存在");
-        }
+        return hostSession.run(id, (host, remoteHost) -> {
+            log.info("获取主机详细资源信息: {}", host.getHostName());
+            ResourceInfo resourceInfo = remoteHost.getResourceInfo(host);
 
-        log.info("获取主机详细资源信息: {}", host.getHostName());
+            HostResourceVO resourceVO = new HostResourceVO();
 
-        try {
-            // 凭据解析统一走 DeploymentAccess（解密私钥/密码、端口默认 22）
-            HostCredentials conn = deployAccess.credentials(host);
+            HostResourceVO.CpuInfo cpuInfo = new HostResourceVO.CpuInfo();
+            cpuInfo.setCores(resourceInfo.getCpuCores());
+            cpuInfo.setUsage(resourceInfo.getCpuUsage());
+            cpuInfo.setModel(resourceInfo.getCpuModel());
+            resourceVO.setCpu(cpuInfo);
 
-            // 获取主机详细资源信息
-            SshUtil.ResourceInfo resourceInfo = sshUtil.getResourceInfo(
-                    conn.host(),
-                    conn.port(),
-                    conn.username(),
-                    conn.privateKey(),
-                    conn.password()
-            );
+            HostResourceVO.MemoryInfo memoryInfo = new HostResourceVO.MemoryInfo();
+            memoryInfo.setTotal(resourceInfo.getMemoryTotal());
+            memoryInfo.setUsed(resourceInfo.getMemoryUsed());
+            memoryInfo.setFree(resourceInfo.getMemoryFree());
+            memoryInfo.setUsage(resourceInfo.getMemoryUsage());
+            resourceVO.setMemory(memoryInfo);
 
-            if (resourceInfo.isSuccess()) {
-                // 更新在线状态
-                hostMapper.updateOnlineStatus(id, 1);
+            HostResourceVO.DiskInfo diskInfo = new HostResourceVO.DiskInfo();
+            diskInfo.setTotal(resourceInfo.getDiskTotal());
+            diskInfo.setUsed(resourceInfo.getDiskUsed());
+            diskInfo.setFree(resourceInfo.getDiskFree());
+            diskInfo.setUsage(resourceInfo.getDiskUsage());
+            resourceVO.setDisk(diskInfo);
 
-                // 构建HostResourceVO
-                HostResourceVO resourceVO = new HostResourceVO();
+            HostResourceVO.NetworkInfo networkInfo = new HostResourceVO.NetworkInfo();
+            networkInfo.setRxBytes(resourceInfo.getNetworkRxBytes());
+            networkInfo.setTxBytes(resourceInfo.getNetworkTxBytes());
+            resourceVO.setNetwork(networkInfo);
 
-                // CPU信息
-                HostResourceVO.CpuInfo cpuInfo = new HostResourceVO.CpuInfo();
-                cpuInfo.setCores(resourceInfo.getCpuCores());
-                cpuInfo.setUsage(resourceInfo.getCpuUsage());
-                cpuInfo.setModel(resourceInfo.getCpuModel());
-                resourceVO.setCpu(cpuInfo);
-
-                // 内存信息
-                HostResourceVO.MemoryInfo memoryInfo = new HostResourceVO.MemoryInfo();
-                memoryInfo.setTotal(resourceInfo.getMemoryTotal());
-                memoryInfo.setUsed(resourceInfo.getMemoryUsed());
-                memoryInfo.setFree(resourceInfo.getMemoryFree());
-                memoryInfo.setUsage(resourceInfo.getMemoryUsage());
-                resourceVO.setMemory(memoryInfo);
-
-                // 磁盘信息
-                HostResourceVO.DiskInfo diskInfo = new HostResourceVO.DiskInfo();
-                diskInfo.setTotal(resourceInfo.getDiskTotal());
-                diskInfo.setUsed(resourceInfo.getDiskUsed());
-                diskInfo.setFree(resourceInfo.getDiskFree());
-                diskInfo.setUsage(resourceInfo.getDiskUsage());
-                resourceVO.setDisk(diskInfo);
-
-                // 网络信息
-                HostResourceVO.NetworkInfo networkInfo = new HostResourceVO.NetworkInfo();
-                networkInfo.setRxBytes(resourceInfo.getNetworkRxBytes());
-                networkInfo.setTxBytes(resourceInfo.getNetworkTxBytes());
-                resourceVO.setNetwork(networkInfo);
-
-                log.info("获取主机资源信息成功: {} - CPU: {}%, 内存: {}%, 磁盘: {}%",
-                        host.getHostName(),
-                        resourceInfo.getCpuUsage(),
-                        resourceInfo.getMemoryUsage(),
-                        resourceInfo.getDiskUsage());
-
-                return resourceVO;
-            } else {
-                // 获取资源信息失败，更新为离线状态
-                hostMapper.updateOnlineStatus(id, 0);
-                log.warn("获取主机资源信息失败: {} - {}", host.getHostName(), resourceInfo.getError());
-                return null;
-            }
-        } catch (Exception e) {
-            log.error("获取主机资源信息异常: {} - {}", host.getHostName(), e.getMessage());
-            // 异常时更新为离线状态
-            hostMapper.updateOnlineStatus(id, 0);
-            return null;
-        }
+            log.info("获取主机资源信息成功: {} - CPU: {}%, 内存: {}%, 磁盘: {}%",
+                    host.getHostName(), resourceInfo.getCpuUsage(),
+                    resourceInfo.getMemoryUsage(), resourceInfo.getDiskUsage());
+            return resourceVO;
+        });
     }
 
 }

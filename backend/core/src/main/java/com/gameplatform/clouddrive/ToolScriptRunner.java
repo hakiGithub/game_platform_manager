@@ -1,16 +1,17 @@
 package com.gameplatform.clouddrive;
 
+import com.gameplatform.hostaccess.CommandResult;
+import com.gameplatform.hostaccess.RemoteHost;
+
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.service.ContainerIdResolver;
 import com.gameplatform.deploy.DeploymentAccess;
-import com.gameplatform.deploy.HostCredentials;
 import com.gameplatform.entity.Host;
 import com.gameplatform.entity.GameMetadata;
 import com.gameplatform.mapper.GameMetadataMapper;
 import com.gameplatform.mapper.HostMapper;
 import com.gameplatform.plugin.patch.HostCapabilities;
 import com.gameplatform.plugin.service.InstanceQueryService;
-import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +44,7 @@ public class ToolScriptRunner {
     private static final String TOOLING_TARGET_ROOT = "/gp-target";
 
     private final DeploymentAccess deployAccess;
-    private final SshUtil sshUtil;
+    private final RemoteHost remoteHost;
     private final HostMapper hostMapper;
     private final GameMetadataMapper gameMetadataMapper;
     private final InstanceQueryService instanceQueryService;
@@ -186,24 +187,23 @@ public class ToolScriptRunner {
 
     private String fileDigest(Host host, HostCapabilities caps, String remotePath,
                               String containerId, String containerPath) {
-        HostCredentials conn = deployAccess.credentials(host);
-        SshUtil.CommandResult r;
+        CommandResult r;
         boolean docker = containerId != null && !containerId.isBlank();
         if (docker) {
-            if (hasContainerCommand(conn, containerId, "sha256sum")) {
-                r = exec(conn, dockerExec(containerId, "sha256sum " + shellQuote(containerPath)
+            if (hasContainerCommand(host, containerId, "sha256sum")) {
+                r = exec(host, dockerExec(containerId, "sha256sum " + shellQuote(containerPath)
                         + " | awk '{print $1}'"));
             } else if (caps.hasDocker()) {
-                r = exec(conn, containerDigestCommand(containerId, containerPath));
+                r = exec(host, containerDigestCommand(containerId, containerPath));
             } else {
                 throw new BusinessException("容器内无 sha256sum 且主机无 Docker，无法计算摘要");
             }
         } else if (caps.hasTool("sha256sum")) {
-            r = exec(conn, "sha256sum " + shellQuote(remotePath) + " | awk '{print $1}'");
+            r = exec(host, "sha256sum " + shellQuote(remotePath) + " | awk '{print $1}'");
         } else if (caps.hasTool("shasum")) {
-            r = exec(conn, "shasum -a 256 " + shellQuote(remotePath) + " | awk '{print $1}'");
+            r = exec(host, "shasum -a 256 " + shellQuote(remotePath) + " | awk '{print $1}'");
         } else if (caps.hasDocker()) {
-            r = exec(conn, "docker run --rm -v " + shellQuote(parentOf(remotePath)) + ":/w "
+            r = exec(host, "docker run --rm -v " + shellQuote(parentOf(remotePath)) + ":/w "
                     + "--entrypoint sha256sum " + toolingImage
                     + " " + shellQuote("/w/" + basename(remotePath))
                     + " | awk '{print $1}'");
@@ -223,13 +223,12 @@ public class ToolScriptRunner {
     /** 在实例内运行脚本：Native 原生 python3 优先，Docker 容器内 python3 优先，工具容器兜底 */
     public String runToolScript(Host host, HostCapabilities caps, String remotePath,
                                 String scriptId) {
-        HostCredentials conn = deployAccess.credentials(host);
         String remoteScript = String.format("/tmp/gp_tool_%d.py", System.currentTimeMillis());
-        uploadScript(conn, remoteScript, scriptId);
+        uploadScript(host, remoteScript, scriptId);
         try {
             String inner = "python3 " + shellQuote(remoteScript) + " " + shellQuote(remotePath);
-            if (hasCommand(conn, "python3")) {
-                return execScript(conn, inner, remotePath, ScriptChannel.NATIVE);
+            if (hasCommand(host, "python3")) {
+                return execScript(host, inner, remotePath, ScriptChannel.NATIVE);
             }
             if (caps.hasDocker()) {
                 String cmd = "docker run --rm --entrypoint " + TOOLING_PYTHON + " -v "
@@ -237,13 +236,12 @@ public class ToolScriptRunner {
                         + shellQuote(parentOf(remotePath)) + ":/w " + toolingImage
                         + " " + shellQuote("/s/" + basename(remoteScript))
                         + " " + shellQuote("/w/" + basename(remotePath));
-                return execScript(conn, cmd, remotePath, ScriptChannel.TOOL_CONTAINER);
+                return execScript(host, cmd, remotePath, ScriptChannel.TOOL_CONTAINER);
             }
             throw new BusinessException("主机无 python3 且无 Docker：无法执行插件工具脚本"
                     + "（可为主机安装 python3，或使用含 python3 的 platform-tools 镜像）");
         } finally {
-            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                    conn.privateKey(), conn.password(), "rm -f " + shellQuote(remoteScript));
+            remoteHost.exec(host, "rm -f " + shellQuote(remoteScript));
         }
     }
 
@@ -251,14 +249,13 @@ public class ToolScriptRunner {
         if (!ctx.isDocker()) {
             return runToolScript(ctx.host(), ctx.caps(), ctx.hostPath(), scriptId);
         }
-        HostCredentials conn = deployAccess.credentials(ctx.host());
         String remoteScript = String.format("/tmp/gp_tool_%d.py", System.currentTimeMillis());
-        uploadScript(conn, remoteScript, scriptId);
-        boolean usesContainerPython = hasContainerCommand(conn, ctx.containerId(), "python3");
+        uploadScript(ctx.host(), remoteScript, scriptId);
+        boolean usesContainerPython = hasContainerCommand(ctx.host(), ctx.containerId(), "python3");
         String containerScript = usesContainerPython ? "/tmp/" + basename(remoteScript) : null;
         try {
             if (usesContainerPython) {
-                SshUtil.CommandResult copy = exec(conn,
+                CommandResult copy = exec(ctx.host(),
                         "docker cp " + shellQuote(remoteScript) + " "
                                 + shellQuote(ctx.containerId() + ":" + containerScript));
                 if (copy == null || !copy.isSuccess()) {
@@ -267,11 +264,11 @@ public class ToolScriptRunner {
                 }
                 String inner = "python3 " + shellQuote(containerScript) + " "
                         + shellQuote(ctx.containerPath());
-                return execScript(conn, dockerExec(ctx.containerId(), inner),
+                return execScript(ctx.host(), dockerExec(ctx.containerId(), inner),
                         ctx.containerPath(), ScriptChannel.TARGET_CONTAINER);
             }
             if (ctx.caps().hasDocker()) {
-                ContainerVolume volume = resolveContainerVolume(conn, ctx.containerId(), ctx.containerPath());
+                ContainerVolume volume = resolveContainerVolume(ctx.host(), ctx.containerId(), ctx.containerPath());
                 String mountedRoot = volume.destination().equals("/")
                         ? TOOLING_TARGET_ROOT
                         : TOOLING_TARGET_ROOT + volume.destination();
@@ -282,29 +279,28 @@ public class ToolScriptRunner {
                         + " -v " + shellQuote(parentOf(remoteScript)) + ":/s "
                         + toolingImage + " " + shellQuote("/s/" + basename(remoteScript)) + " "
                         + shellQuote(ctx.containerPath());
-                return execScript(conn, cmd, ctx.containerPath(), ScriptChannel.TOOL_CONTAINER);
+                return execScript(ctx.host(), cmd, ctx.containerPath(), ScriptChannel.TOOL_CONTAINER);
             }
             throw new BusinessException("容器内无 python3 且主机无 Docker：无法执行插件工具脚本"
                     + "（可使用含 python3 的 platform-tools 镜像）");
         } finally {
             if (containerScript != null) {
-                exec(conn, "docker exec " + shellQuote(ctx.containerId())
+                exec(ctx.host(), "docker exec " + shellQuote(ctx.containerId())
                         + " rm -f " + shellQuote(containerScript));
             }
-            sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                    conn.privateKey(), conn.password(), "rm -f " + shellQuote(remoteScript));
+            remoteHost.exec(ctx.host(), "rm -f " + shellQuote(remoteScript));
         }
     }
 
     private record ContainerVolume(String type, String destination, String source) {
     }
 
-    private ContainerVolume resolveContainerVolume(HostCredentials conn, String containerId,
+    private ContainerVolume resolveContainerVolume(Host host, String containerId,
                                                    String containerPath) {
         if (containerPath == null || !containerPath.startsWith("/") || isDangerousRoot(containerPath)) {
             throw new BusinessException("目标容器内文件路径不是可安全挂载的绝对路径");
         }
-        SshUtil.CommandResult r = exec(conn,
+        CommandResult r = exec(host,
                 "docker inspect " + shellQuote(containerId)
                         + " --format '{{range .Mounts}}{{.Type}}|{{.Destination}}|{{.Source}}|{{.Name}}"
                         + "{{println}}{{end}}'");
@@ -367,10 +363,10 @@ public class ToolScriptRunner {
     }
 
     /** 执行脚本并返回原始 stdout；非零退出码一律作为执行失败。 */
-    private String execScript(HostCredentials conn, String command, String targetPath,
+    private String execScript(Host host, String command, String targetPath,
                               ScriptChannel channel) {
         String errFile = "/tmp/gp_tool_" + System.nanoTime() + ".err";
-        SshUtil.CommandResult r = exec(conn, command + " 2>" + shellQuote(errFile)
+        CommandResult r = exec(host, command + " 2>" + shellQuote(errFile)
                 + "; __rc=$?; cat " + shellQuote(errFile) + " >&2; rm -f " + shellQuote(errFile)
                 + "; exit $__rc");
         if (r == null) {
@@ -441,14 +437,14 @@ public class ToolScriptRunner {
     }
 
     /** 已登记脚本 → 本地临时文件 → SFTP 上传主机 */
-    private void uploadScript(HostCredentials conn, String remoteScript, String scriptId) {
+    private void uploadScript(Host host, String remoteScript, String scriptId) {
         java.nio.file.Path local = null;
         try {
             local = java.nio.file.Files.createTempFile("gp_tool_", ".py");
             String script = toolScriptRegistry.read(scriptId);
             java.nio.file.Files.writeString(local, script, java.nio.charset.StandardCharsets.UTF_8);
-            boolean ok = sshUtil.uploadFile(conn.host(), conn.port(), conn.username(),
-                    conn.privateKey(), conn.password(), local.toAbsolutePath().toString(), remoteScript, null);
+            boolean ok = remoteHost.upload(
+                    host, local.toAbsolutePath().toString(), remoteScript);
             if (!ok) {
                 throw new BusinessException("分发工具脚本到主机失败");
             }
@@ -467,13 +463,13 @@ public class ToolScriptRunner {
         }
     }
 
-    private boolean hasCommand(HostCredentials conn, String command) {
-        SshUtil.CommandResult r = exec(conn, "command -v " + command + " >/dev/null 2>&1 && echo __ok__");
+    private boolean hasCommand(Host host, String command) {
+        CommandResult r = exec(host, "command -v " + command + " >/dev/null 2>&1 && echo __ok__");
         return r != null && r.isSuccess() && r.getOutput() != null && r.getOutput().contains("__ok__");
     }
 
-    private boolean hasContainerCommand(HostCredentials conn, String containerId, String command) {
-        SshUtil.CommandResult r = exec(conn, dockerExec(containerId,
+    private boolean hasContainerCommand(Host host, String containerId, String command) {
+        CommandResult r = exec(host, dockerExec(containerId,
                 "command -v " + command + " >/dev/null 2>&1 && echo __ok__"));
         return r != null && r.isSuccess() && r.getOutput() != null && r.getOutput().contains("__ok__");
     }
@@ -488,9 +484,8 @@ public class ToolScriptRunner {
                 + " sha256sum " + shellQuote(containerPath) + " | awk '{print $1}'";
     }
 
-    private SshUtil.CommandResult exec(HostCredentials conn, String command) {
-        return sshUtil.executeCommand(conn.host(), conn.port(), conn.username(),
-                conn.privateKey(), conn.password(), command);
+    private CommandResult exec(Host host, String command) {
+        return remoteHost.exec(host, command);
     }
 
     private static String shellQuote(String value) {
