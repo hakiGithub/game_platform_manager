@@ -16,11 +16,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
- * FileService 同主机连接复用回归测试（性能缺陷：每次远程操作重建 SSH 连接，
- * 握手 ~0.4s/次，list 5 次操作 → ~2.3s）。
+ * FileService 远程文件访问回归测试。
  *
- * <p>锁定 FileService 只通过 RemoteHost.withSftp 访问文件系统；连接复用由
- * hostaccess/SshUtil 内部接缝承担，避免业务层再次感知 SSH 会话生命周期。</p>
+ * <p>锁定 FileService 只通过 RemoteHost.withSftp 访问文件系统；会话生命周期由
+ * hostaccess/SshUtil 内部接缝承担，避免业务层再次感知 SSH 连接管理。</p>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FileService 连接复用测试")
