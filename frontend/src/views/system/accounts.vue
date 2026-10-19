@@ -25,10 +25,22 @@
         </el-table-column>
         <el-table-column prop="credentialHint" label="凭证" width="110" />
         <el-table-column prop="mountPath" label="挂载点" min-width="160" show-overflow-tooltip />
+        <el-table-column label="配额" min-width="170">
+          <template #default="{ row }">
+            <span v-if="row._quotaLoading">查询中...</span>
+            <span v-else-if="row._quotaError" class="quota-error">{{ row._quotaError }}</span>
+            <span v-else-if="row._quota">
+              {{ formatBytes(row._quota.usedBytes) }} / {{ formatBytes(row._quota.totalBytes) }}
+            </span>
+            <span v-else class="quota-empty">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="340" fixed="right">
+        <el-table-column label="操作" width="380" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleVerify(row)" :loading="row._verifying">探活</el-button>
+            <el-button size="small" @click="openQuota(row)" :loading="row._quotaLoading">配额</el-button>
+            <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" @click="openRootDir(row)">起始目录</el-button>
             <el-button size="small" @click="openCredential(row)">重贴凭证</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
@@ -86,6 +98,24 @@
       </template>
     </el-dialog>
 
+    <!-- 通用编辑（仅展示信息，不动凭证） -->
+    <el-dialog v-model="editVisible" title="编辑云盘账号" width="520px">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px"
+                :title="`账号 ${editTarget?.name}（${editTarget?.providerType}）凭证不会在此处回显或修改`" />
+      <el-form label-width="90px">
+        <el-form-item label="展示名">
+          <el-input v-model="editForm.displayName" placeholder="可空，缺省用账号标识" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.remark" placeholder="可空" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 起始目录（懒加载目录树，ADR-0024 增补） -->
     <el-dialog v-model="rootDirVisible" title="选择起始目录" width="560px">
       <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 12px"
@@ -116,9 +146,11 @@ import {
   replaceCloudCredential,
   deleteCloudAccount,
   verifyCloudAccount,
+  getCloudQuota,
   listCloudProviders,
   listAccountFolders,
   setAccountRootDir,
+  updateCloudAccount,
 } from "@/api/cloud";
 
 const loading = ref(false);
@@ -137,6 +169,10 @@ const createRules = {
 const credentialVisible = ref(false);
 const credentialTarget = ref(null);
 const credentialForm = reactive({});
+
+const editVisible = ref(false);
+const editTarget = ref(null);
+const editForm = reactive({ displayName: "", remark: "" });
 
 const currentFields = computed(
   () => providers.value.find((p) => p.type === createForm.providerType)?.fields || []
@@ -212,12 +248,72 @@ async function load() {
   try {
     const [accRes, provRes] = await Promise.all([listCloudAccounts(), listCloudProviders()]);
     // 主前端 request 拦截器已解包 Result.data，直接就是数组
-    accounts.value = accRes || [];
+    accounts.value = (accRes || []).map((row) => ({
+      ...row,
+      _quota: null,
+      _quotaLoading: false,
+      _quotaError: "",
+    }));
     providers.value = provRes || [];
+    loadQuotas(accounts.value);
   } catch (e) {
     ElMessage.error(e.message || "加载失败");
   } finally {
     loading.value = false;
+  }
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+async function loadQuota(row) {
+  row._quotaLoading = true;
+  row._quotaError = "";
+  try {
+    row._quota = await getCloudQuota(row.name);
+  } catch (e) {
+    row._quotaError = e.message || "查询失败";
+  } finally {
+    row._quotaLoading = false;
+  }
+}
+
+function loadQuotas(rows) {
+  rows.forEach((row) => {
+    void loadQuota(row);
+  });
+}
+
+function openQuota(row) {
+  return loadQuota(row);
+}
+
+function openEdit(row) {
+  editTarget.value = row;
+  editForm.displayName = row.displayName || "";
+  editForm.remark = row.remark || "";
+  editVisible.value = true;
+}
+
+async function handleEdit() {
+  submitting.value = true;
+  try {
+    await updateCloudAccount(editTarget.value.name, {
+      displayName: editForm.displayName,
+      remark: editForm.remark,
+    });
+    ElMessage.success("账号信息已更新");
+    editVisible.value = false;
+    await load();
+  } catch (e) {
+    ElMessage.error(e.message || "更新失败");
+  } finally {
+    submitting.value = false;
   }
 }
 
@@ -317,5 +413,14 @@ onMounted(load);
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.quota-empty {
+  color: var(--el-text-color-placeholder);
+}
+
+.quota-error {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 </style>

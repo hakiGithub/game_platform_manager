@@ -107,6 +107,16 @@ describe("user store", () => {
 
       expect(userStore.email).toBe("admin@example.com");
     });
+
+    it("isAdmin 只在角色包含 ROLE_ADMIN 时为 true", () => {
+      expect(userStore.isAdmin).toBe(false);
+
+      userStore.userInfo = { username: "operator", roles: ["ROLE_USER"] };
+      expect(userStore.isAdmin).toBe(false);
+
+      userStore.userInfo = { username: "admin", roles: ["ROLE_USER", "ROLE_ADMIN"] };
+      expect(userStore.isAdmin).toBe(true);
+    });
   });
 
   describe("Actions", () => {

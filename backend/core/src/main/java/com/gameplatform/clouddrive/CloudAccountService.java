@@ -151,6 +151,12 @@ public class CloudAccountService {
         hostExtensionClient.delete(CloudAccountResource.class, name);
     }
 
+    /** 更新展示信息（展示名/备注，不动凭证）；必须持久化，不能只改内存对象。 */
+    public CloudAccountResource updateDisplay(CloudAccountResource res) {
+        hostExtensionClient.update(res);
+        return require(res.getName());
+    }
+
     /** 手动探活并回写状态 */
     public CloudAccountResource verify(String name) {
         CloudAccountResource res = require(name);

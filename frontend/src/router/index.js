@@ -200,7 +200,7 @@ const routes = [
             path: 'accounts',
             name: 'CloudAccounts',
             component: () => import('@/views/system/accounts.vue'),
-            meta: { title: '云盘账号', navPath: '/system/accounts', requiresAuth: true }
+            meta: { title: '云盘账号', navPath: '/system/accounts', requiresAuth: true, requiresAdmin: true }
           }
         ]
       },
@@ -261,7 +261,7 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 开始进度条
   NProgress.start()
   
@@ -274,7 +274,21 @@ router.beforeEach((to, from, next) => {
   // 需要认证的页面
   if (to.meta.requiresAuth) {
     if (token) {
-      next()
+      if (!userStore.userInfo) {
+        await userStore.initUserState()
+      }
+      if (!userStore.token) {
+        next({
+          path: '/login',
+          query: { redirect: to.fullPath }
+        })
+        return
+      }
+      if (to.meta.requiresAdmin && !userStore.isAdmin) {
+        next({ path: '/workspace/overview' })
+      } else {
+        next()
+      }
     } else {
       next({
         path: '/login',

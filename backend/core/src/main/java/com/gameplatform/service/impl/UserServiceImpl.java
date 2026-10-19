@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 用户服务实现类
@@ -132,6 +133,9 @@ public class UserServiceImpl implements UserService {
     private UserVO convertToVO(User user) {
         UserVO vo = new UserVO();
         BeanUtil.copyProperties(user, vo);
+        vo.setRoles("admin".equals(user.getUsername())
+                ? List.of("ROLE_USER", "ROLE_ADMIN")
+                : List.of("ROLE_USER"));
         return vo;
     }
 

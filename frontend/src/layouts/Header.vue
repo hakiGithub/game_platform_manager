@@ -194,7 +194,7 @@ function handleQuickAction(command) {
               <el-icon><User /></el-icon>
               账号与安全
             </el-dropdown-item>
-            <el-dropdown-item command="cloudAccounts">
+            <el-dropdown-item v-if="userStore.isAdmin" command="cloudAccounts">
               <el-icon><CreditCard /></el-icon>
               云盘账号
             </el-dropdown-item>
