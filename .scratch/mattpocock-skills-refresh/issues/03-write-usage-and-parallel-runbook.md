@@ -1,6 +1,6 @@
 # 03: 编写中文使用指南与并行执行 runbook
 
-Status: claimed
+Status: resolved
 Type: task
 Blocked by: None
 
