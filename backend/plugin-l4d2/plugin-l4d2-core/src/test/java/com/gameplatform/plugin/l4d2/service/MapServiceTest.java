@@ -9,6 +9,7 @@ import com.gameplatform.plugin.service.HostToolingService;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.plugin.service.VpkAnalyzeResult;
+import com.gameplatform.plugin.service.FileAccessService;
 import com.gameplatform.vo.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -267,6 +268,12 @@ class MapServiceTest {
     void getMission_success() {
         String remoteVpkPath = "left4dead2/addons/test.vpk";
 
+        FileAccessService.FileInfo file = new FileAccessService.FileInfo();
+        file.setName("test.vpk");
+        file.setDirectory(false);
+        when(instanceFileService.listFiles(1L, "left4dead2/addons"))
+                .thenReturn(List.of(file));
+
         VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
         analyzed.setDigest("a".repeat(64));
         analyzed.setTitle("Test Campaign");
@@ -286,9 +293,74 @@ class MapServiceTest {
         assertEquals(List.of("coop", "versus"), result.getChapters().get(0).getModes());
 
         verify(hostToolingService).inspectVpk(1L, remoteVpkPath);
-        // 验收：详情不再全量下载 VPK 到平台
-        org.mockito.Mockito.verifyNoInteractions(instanceFileService);
+        // 验收：详情不下载 VPK，只按实例目录确认目标文件
+        verify(instanceFileService).listFiles(1L, "left4dead2/addons");
+        verify(instanceFileService, org.mockito.Mockito.never())
+                .downloadFile(anyLong(), anyString(), anyString());
         verify(vpkTrimService, times(0)).parseMission(any());
+    }
+
+    @Test
+    void getMission_usesRequestedFileWhenDirectoryHasMultipleVpks() {
+        FileAccessService.FileInfo other = new FileAccessService.FileInfo();
+        other.setName("l4d2_mission_6429457440640959025.vpk");
+        other.setDirectory(false);
+        FileAccessService.FileInfo requested = new FileAccessService.FileInfo();
+        requested.setName("red_square.vpk");
+        requested.setDirectory(false);
+        when(instanceFileService.listFiles(1L, "left4dead2/addons"))
+                .thenReturn(List.of(other, requested));
+
+        VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
+        analyzed.setTitle("Red Square Campaign");
+        analyzed.setChapters(List.of());
+        when(hostToolingService.inspectVpk(1L, "left4dead2/addons/red_square.vpk"))
+                .thenReturn(analyzed);
+
+        MissionInfoVO result = mapService.getMission(1L, "red_square.vpk");
+
+        assertEquals("red_square.vpk", result.getVpkName());
+        assertEquals("Red Square Campaign", result.getTitle());
+        verify(hostToolingService).inspectVpk(1L, "left4dead2/addons/red_square.vpk");
+        verify(hostToolingService, org.mockito.Mockito.never())
+                .inspectVpk(1L, "left4dead2/addons/l4d2_mission_6429457440640959025.vpk");
+    }
+
+    @Test
+    void getMission_rejectsFileNotPresentInInstanceDirectory() {
+        FileAccessService.FileInfo other = new FileAccessService.FileInfo();
+        other.setName("other.vpk");
+        other.setDirectory(false);
+        when(instanceFileService.listFiles(1L, "left4dead2/addons"))
+                .thenReturn(List.of(other));
+
+        L4D2PluginException ex = assertThrows(L4D2PluginException.class,
+                () -> mapService.getMission(1L, "red_square.vpk"));
+
+        assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+        verify(hostToolingService, org.mockito.Mockito.never())
+                .inspectVpk(anyLong(), anyString());
+    }
+
+    @Test
+    void getMission_rejectsEmptyCampaignMetadata() {
+        FileAccessService.FileInfo requested = new FileAccessService.FileInfo();
+        requested.setName("empty.vpk");
+        requested.setDirectory(false);
+        when(instanceFileService.listFiles(1L, "left4dead2/addons"))
+                .thenReturn(List.of(requested));
+
+        VpkAnalyzeResult analyzed = new VpkAnalyzeResult();
+        analyzed.setTitle(null);
+        analyzed.setChapters(List.of());
+        when(hostToolingService.inspectVpk(1L, "left4dead2/addons/empty.vpk"))
+                .thenReturn(analyzed);
+
+        L4D2PluginException ex = assertThrows(L4D2PluginException.class,
+                () -> mapService.getMission(1L, "empty.vpk"));
+
+        assertEquals(L4D2PluginException.FILE, ex.getCode());
+        assertTrue(ex.getMessage().contains("empty.vpk"));
     }
 
     @Test

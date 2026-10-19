@@ -274,6 +274,25 @@ class DownloadServiceTest {
         assertEquals("task-1", result.get(0).getTaskId());
     }
 
+    @Test
+    void get_task_shouldExposeCloudFields() {
+        DownloadTaskResource task = buildResource("cloud-task", "COMPLETED");
+        task.getSpec().setTaskType("CLOUD");
+        task.getSpec().setAccountName("live-189");
+        task.getSpec().setCloudPath("/maps/share-80f0499c");
+        task.getSpec().setTransferMode("RELAY");
+        when(extensionClient.list(eq(DownloadTaskResource.class), any(ListOptions.class)))
+                .thenReturn(List.of(task));
+        when(extensionClient.getById(eq(DownloadTaskResource.class), eq("cloud-task")))
+                .thenReturn(Optional.of(task));
+
+        DownloadTaskVO result = service.getTask("cloud-task");
+
+        assertEquals("live-189", result.getAccountName());
+        assertEquals("/maps/share-80f0499c", result.getCloudPath());
+        assertEquals("RELAY", result.getTransferMode());
+    }
+
     // ============================================================
     // list_tasks_filter_by_status：过滤 COMPLETED 任务
     // ============================================================

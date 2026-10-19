@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,8 +16,8 @@ import java.util.regex.Pattern;
  * <p>解析形如 {@code "key" "value" // comment} 的行，支持从注释提取元数据：
  * <ul>
  *   <li>{@code // Default: xxx} 默认值</li>
- *   <li>{@code // Min: xxx} 最小值</li>
- *   <li>{@code // Max: xxx} 最大值</li>
+ *   <li>{@code // Min: xxx} / {@code // Minimum: xxx} 最小值</li>
+ *   <li>{@code // Max: xxx} / {@code // Maximum: xxx} 最大值</li>
  *   <li>其他注释作为描述</li>
  * </ul>
  *
@@ -34,9 +35,12 @@ public class SourceModCfgParser {
     private static final Pattern KV_PATTERN =
             Pattern.compile("\"?([^\"\\s]+)\"?\\s+\"([^\"]*)\"\\s*(?://\\s*(.*))?");
 
-    private static final Pattern DEFAULT_PATTERN = Pattern.compile("Default:\\s*(\\S+)");
-    private static final Pattern MIN_PATTERN = Pattern.compile("Min:\\s*(\\S+)");
-    private static final Pattern MAX_PATTERN = Pattern.compile("Max:\\s*(\\S+)");
+    private static final Pattern DEFAULT_PATTERN = Pattern.compile(
+            "Default:\\s*(?:\"([^\"]*)\"|'([^']*)'|(\\S+))",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern RANGE_PATTERN = Pattern.compile(
+            "\\b(Min(?:imum)?|Max(?:imum)?):\\s*(?:\"([^\"]*)\"|'([^']*)'|(\\S+))",
+            Pattern.CASE_INSENSITIVE);
 
     /**
      * 控制台命令黑名单：以这些关键字开头的行（独立单词，非前缀）不视为 CVAR。
@@ -76,39 +80,13 @@ public class SourceModCfgParser {
                 if (!prev.startsWith("//")) break;
                 String meta = prev.substring(2).trim();
                 if (meta.isEmpty() || meta.equals("-")) break;
-                if (item.getDefaultValue() == null) {
-                    Matcher dm = DEFAULT_PATTERN.matcher(meta);
-                    if (dm.find()) {
-                        String dv = dm.group(1);
-                        if (dv.length() >= 2 && dv.startsWith("\"") && dv.endsWith("\"")) {
-                            dv = dv.substring(1, dv.length() - 1);
-                        }
-                        item.setDefaultValue(dv);
-                    }
-                }
-                if (item.getMin() == null) {
-                    Matcher mn = MIN_PATTERN.matcher(meta);
-                    if (mn.find()) {
-                        try { item.setMin(Double.parseDouble(mn.group(1))); }
-                        catch (NumberFormatException ignored) {}
-                    }
-                }
-                if (item.getMax() == null) {
-                    Matcher mx = MAX_PATTERN.matcher(meta);
-                    if (mx.find()) {
-                        try { item.setMax(Double.parseDouble(mx.group(1))); }
-                        catch (NumberFormatException ignored) {}
-                    }
-                }
+                parseDefaultMetadata(meta, item);
+                parseRangeMetadata(meta, item);
                 blockDesc.insert(0, meta + "\n");
                 j--;
             }
             if (item.getDescription() == null && blockDesc.length() > 0) {
-                String desc = blockDesc.toString()
-                        .replaceAll("Default:\\s*\\S+", "")
-                        .replaceAll("Min:\\s*\\S+", "")
-                        .replaceAll("Max:\\s*\\S+", "")
-                        .trim();
+                String desc = cleanDescription(blockDesc.toString());
                 if (!desc.isEmpty()) item.setDescription(desc);
             }
             items.add(item);
@@ -167,23 +145,50 @@ public class SourceModCfgParser {
     }
 
     private void parseMetadata(String comment, ConfigItem item) {
-        Matcher dm = DEFAULT_PATTERN.matcher(comment);
-        if (dm.find()) item.setDefaultValue(dm.group(1));
-        Matcher mn = MIN_PATTERN.matcher(comment);
-        if (mn.find()) {
-            try { item.setMin(Double.parseDouble(mn.group(1))); }
-            catch (NumberFormatException ignored) {}
-        }
-        Matcher mx = MAX_PATTERN.matcher(comment);
-        if (mx.find()) {
-            try { item.setMax(Double.parseDouble(mx.group(1))); }
-            catch (NumberFormatException ignored) {}
-        }
-        String desc = comment
-                .replaceAll("Default:\\s*\\S+", "")
-                .replaceAll("Min:\\s*\\S+", "")
-                .replaceAll("Max:\\s*\\S+", "")
-                .trim();
+        parseDefaultMetadata(comment, item);
+        parseRangeMetadata(comment, item);
+        String desc = cleanDescription(comment);
         if (!desc.isEmpty()) item.setDescription(desc);
+    }
+
+    private void parseDefaultMetadata(String comment, ConfigItem item) {
+        if (item.getDefaultValue() != null) return;
+        Matcher matcher = DEFAULT_PATTERN.matcher(comment);
+        if (matcher.find()) {
+            item.setDefaultValue(firstNonNull(matcher.group(1), matcher.group(2), matcher.group(3)));
+        }
+    }
+
+    private void parseRangeMetadata(String comment, ConfigItem item) {
+        Matcher matcher = RANGE_PATTERN.matcher(comment);
+        while (matcher.find()) {
+            String rawValue = firstNonNull(matcher.group(2), matcher.group(3), matcher.group(4));
+            Double value;
+            try {
+                value = Double.parseDouble(rawValue);
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (matcher.group(1).toLowerCase(Locale.ROOT).startsWith("min")) {
+                if (item.getMin() == null) item.setMin(value);
+            } else if (item.getMax() == null) {
+                item.setMax(value);
+            }
+        }
+    }
+
+    private String cleanDescription(String comment) {
+        String withoutDefault = DEFAULT_PATTERN.matcher(comment).replaceAll("");
+        String withoutRange = RANGE_PATTERN.matcher(withoutDefault).replaceAll("");
+        return withoutRange
+                .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
+                .replaceAll(" *(\\n+) *", "$1")
+                .trim();
+    }
+
+    private String firstNonNull(String first, String second, String third) {
+        if (first != null) return first;
+        if (second != null) return second;
+        return third;
     }
 }

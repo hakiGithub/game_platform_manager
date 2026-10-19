@@ -168,6 +168,7 @@ import type { MapListVO, VpkTrimResultVO, MissionInfoVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
 import ChunkUploader from '@/components/ChunkUploader.vue'
 import MapSelectorModal from '@/components/MapSelectorModal.vue'
+import { describeChangeMapResult } from '@/utils/changeMapResult'
 
 const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
@@ -251,8 +252,9 @@ async function launchMap(mapCode: string) {
       '开图确认',
       { type: 'warning' }
     )
-    await rconApi.changeMap(instanceId.value, mapCode)
-    ElMessage.success('开图命令已发送')
+    const result = await rconApi.changeMap(instanceId.value, mapCode)
+    const notice = describeChangeMapResult(result, mapCode)
+    ElMessage[notice.level](notice.message)
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error('开图失败：' + (e?.message || e))

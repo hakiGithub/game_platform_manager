@@ -10,20 +10,22 @@ import java.util.List;
  * SourceMod 插件配置响应 VO。
  *
  * @author GamePlatform
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Data
 public class PluginConfigVO {
     /** 插件名称 */
     private String pluginName;
-    /** cfg 文件名 */
+    /** 兼容字段：首个可编辑 cfg 文件名 */
     private String configName;
-    /** 相对 left4dead2 目录的路径 */
+    /** 兼容字段：首个可编辑 cfg 路径 */
     private String configPath;
-    /** 解析后的配置项 */
+    /** 兼容字段：首个可编辑 cfg 的配置项 */
     private List<ConfigItem> items;
-    /** 原始文件内容（GBK 解码后） */
+    /** 兼容字段：首个可编辑 cfg 的原始内容 */
     private String rawContent;
-    /** 最后同步时间 */
+    /** 兼容字段：首个可编辑 cfg 的最后同步时间 */
     private LocalDateTime lastSyncedAt;
+    /** 插件的全部可编辑 cfg 文件 */
+    private List<PluginConfigFileVO> configFiles;
 }

@@ -496,6 +496,14 @@ onMounted(loadPluginMenus);
 
 :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
   color: var(--platform-cyan) !important;
+  background: transparent !important;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:deep(.el-sub-menu.is-active > .el-sub-menu__title:hover) {
+  background: rgba(39, 181, 243, 0.08) !important;
+  border-color: rgba(39, 181, 243, 0.14);
 }
 
 :deep(.el-sub-menu .el-menu) {
@@ -557,11 +565,22 @@ onMounted(loadPluginMenus);
     overflow: hidden;
   }
 
-  :deep(.el-menu--collapse .el-menu-item.is-active),
-  :deep(.el-menu--collapse .el-sub-menu.is-active > .el-sub-menu__title) {
+  :deep(.el-menu--collapse .el-menu-item.is-active) {
     background: linear-gradient(135deg, rgba(39, 181, 243, 0.22), rgba(39, 181, 243, 0.08)) !important;
     border-color: rgba(39, 181, 243, 0.42);
     box-shadow: inset 2px 0 0 var(--platform-cyan), 0 4px 12px rgba(0, 0, 0, 0.16);
+  }
+
+  :deep(.el-menu--collapse .el-sub-menu.is-active > .el-sub-menu__title) {
+    color: var(--platform-cyan) !important;
+    background: transparent !important;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  :deep(.el-menu--collapse .el-sub-menu.is-active > .el-sub-menu__title:hover) {
+    background: rgba(39, 181, 243, 0.08) !important;
+    border-color: rgba(39, 181, 243, 0.14);
   }
 }
 

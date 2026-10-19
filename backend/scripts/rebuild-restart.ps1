@@ -59,6 +59,9 @@ $script:APP_LOG_FILE = Join-Path $LOG_DIR "application.log"
 $script:APP_ERR_LOG_FILE = Join-Path $LOG_DIR "application.err.log"
 $script:STARTUP_LOG_FILE = Join-Path $LOG_DIR "startup.log"
 $script:PID_FILE = Join-Path $LOG_DIR "$APP_NAME.pid"
+$script:LAUNCHER_PID_FILE = Join-Path $LOG_DIR "$APP_NAME.launcher.pid"
+
+. (Join-Path $PSScriptRoot "backend-process.ps1")
 
 # 插件目录
 $script:PLUGINS_DIR = Join-Path $BACKEND_DIR "plugins"
@@ -118,39 +121,41 @@ function Stop-BackendProcess {
 
     # 方式 1：通过 PID 文件停止
     if (Test-Path $PID_FILE) {
-        $savedPid = Get-Content $PID_FILE -ErrorAction SilentlyContinue
-        if ($savedPid) {
-            $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
+        $savedPidText = (Get-Content $PID_FILE -ErrorAction SilentlyContinue | Select-Object -First 1)
+        $savedPid = 0
+        if ([int]::TryParse($savedPidText, [ref]$savedPid)) {
+            $proc = Get-BackendProcessByPid -ProcessId $savedPid -MainClass $MAIN_CLASS
             if ($proc) {
-                Write-LogInfo "通过 PID 文件停止进程: $savedPid"
+                Write-LogInfo "通过 PID 文件停止后端 Java 进程: $savedPid"
                 Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 2
                 $stopped = $true
+            } elseif (Get-Process -Id $savedPid -ErrorAction SilentlyContinue) {
+                Write-LogWarn "PID 文件中的进程 $savedPid 不是当前后端 Java 进程，已忽略"
             }
+        } else {
+            Write-LogWarn "PID 文件内容无效，已忽略: $savedPidText"
         }
         Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
     }
+    Remove-Item $LAUNCHER_PID_FILE -Force -ErrorAction SilentlyContinue
 
     # 方式 2：通过端口查找
     $conn = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue
     if ($conn) {
-        $portPid = $conn.OwningProcess
-        Write-LogInfo "通过端口 $SERVER_PORT 查找到进程: $portPid"
-        Stop-Process -Id $portPid -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        $stopped = $true
-    }
-
-    # 方式 3：通过命令行查找 GamePlatformApplication 进程
-    $wmiProcesses = Get-WmiObject Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*GamePlatformApplication*" }
-    if ($wmiProcesses) {
-        foreach ($p in $wmiProcesses) {
-            Write-LogInfo "通过命令行查找到进程: $($p.ProcessId)"
-            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-            $stopped = $true
+        foreach ($portPid in ($conn.OwningProcess | Select-Object -Unique)) {
+            $proc = Get-BackendProcessByPid -ProcessId $portPid -MainClass $MAIN_CLASS
+            if ($proc) {
+                Write-LogInfo "通过端口 $SERVER_PORT 停止后端 Java 进程: $portPid"
+                Stop-Process -Id $portPid -Force -ErrorAction SilentlyContinue
+                $stopped = $true
+            } else {
+                Write-LogWarn "端口 $SERVER_PORT 由非当前后端进程占用，未停止 PID $portPid"
+            }
         }
-        Start-Sleep -Seconds 2
+        if ($stopped) {
+            Start-Sleep -Seconds 2
+        }
     }
 
     if (-not $stopped) {
@@ -178,7 +183,7 @@ function Compile-Backend {
     $mvnCmd = Get-Command mvn -ErrorAction SilentlyContinue
     if (-not $mvnCmd) {
         Write-LogError "未找到 Maven，请确保已安装并配置 PATH"
-        exit 1
+        throw "未找到 Maven"
     }
 
     # 编译并安装所有模块到本地仓库（-am 同时构建依赖模块）。
@@ -192,7 +197,7 @@ function Compile-Backend {
         Write-LogError "编译失败 (exit code: $mvnExitCode)"
         Write-LogError "编译输出:"
         $mvnResult | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
-        exit 1
+        throw "后端编译失败 (exit code: $mvnExitCode)"
     }
 
     Write-LogInfo "编译并安装成功"
@@ -204,7 +209,7 @@ function Compile-Backend {
 
     if (-not (Test-Path $cpFile)) {
         Write-LogError "生成 classpath 失败"
-        exit 1
+        throw "生成 classpath 失败"
     }
 
     Write-LogInfo "Classpath 已生成: $cpFile"
@@ -240,7 +245,7 @@ function Build-Plugins {
         Write-LogError "插件打包失败 (exit code: $mvnExitCode)"
         Write-LogError "打包输出:"
         $mvnResult | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
-        exit 1
+        throw "插件打包失败 (exit code: $mvnExitCode)"
     }
 
     # 检查 JAR 是否生成（动态匹配版本文件名）
@@ -249,7 +254,7 @@ function Build-Plugins {
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $builtJar) {
         Write-LogError "插件 JAR 未生成: $PLUGIN_L4D2_JAR_GLOB"
-        exit 1
+        throw "插件 JAR 未生成"
     }
     $PLUGIN_L4D2_JAR = $builtJar.FullName
 
@@ -264,7 +269,7 @@ function Build-Plugins {
         $manifestEntry = $jarArchive.GetEntry("META-INF/MANIFEST.MF")
         if (-not $manifestEntry) {
             Write-LogError "插件 JAR 缺少 META-INF/MANIFEST.MF: $PLUGIN_L4D2_JAR"
-            exit 1
+            throw "插件 JAR 缺少 MANIFEST.MF"
         }
         $manifestReader = New-Object System.IO.StreamReader($manifestEntry.Open())
         try {
@@ -275,7 +280,7 @@ function Build-Plugins {
         if ($manifestText -notmatch "(?m)^Plugin-Id:\s*\S+") {
             Write-LogError "插件 JAR 清单缺少 Plugin-Id，不能部署: $PLUGIN_L4D2_JAR"
             Write-LogError "请检查 maven-jar-plugin 的 manifestEntries 配置与构建输出"
-            exit 1
+            throw "插件 JAR 清单缺少 Plugin-Id"
         }
     } finally {
         $jarArchive.Dispose()
@@ -313,7 +318,7 @@ function Start-Backend {
     if (-not (Test-Path $cpFile)) {
         Write-LogError "Classpath 文件不存在: $cpFile"
         Write-LogError "请先执行编译（去掉 -SkipCompile 参数）"
-        exit 1
+        throw "Classpath 文件不存在: $cpFile"
     }
 
     $depCp = (Get-Content $cpFile -Raw).Trim()
@@ -378,35 +383,31 @@ function Start-Backend {
         -WindowStyle Hidden `
         -PassThru
 
-    $processId = $process.Id
-    $processId | Out-File -FilePath $PID_FILE -Encoding utf8
-    Write-LogInfo "Java 进程已启动，PID: $processId"
+    $launcherPid = $process.Id
+    $launcherPid | Out-File -FilePath $LAUNCHER_PID_FILE -Encoding utf8
+    Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
+    Write-LogInfo "启动器 PID: $launcherPid（仅用于诊断，不作为 Java PID）"
 
     # 等待启动完成（最多 120 秒，给首次冷启动留出余量）
     Write-LogInfo "等待应用启动 (最多 120 秒)..."
     $startTime = Get-Date
     $timeout = 120
     $started = $false
+    $javaProcess = $null
+    $javaProcessAbsentSince = $null
 
     while (((Get-Date) - $startTime).TotalSeconds -lt $timeout) {
-        # 检查进程是否还在
-        $procExists = Get-Process -Id $processId -ErrorAction SilentlyContinue
-        if (-not $procExists) {
-            Write-LogError "进程已退出，启动失败"
-            Write-LogError "最近日志（最后 30 行）:"
-            if (Test-Path $APP_LOG_FILE) {
-                Get-Content $APP_LOG_FILE -Tail 30 | ForEach-Object { Write-Host $_ }
-            }
-            if (Test-Path $APP_ERR_LOG_FILE) {
-                Get-Content $APP_ERR_LOG_FILE -Tail 30 | ForEach-Object { Write-Host $_ }
-            }
-            Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
-            exit 1
+        # 包装器 cmd.exe 退出是正常现象；按 argfile 找到真正持有它的 Java 进程。
+        $javaProcess = Find-BackendJavaProcess -ArgFile $argFile -MainClass $MAIN_CLASS
+        if ($javaProcess) {
+            $javaProcessAbsentSince = $null
+        } elseif ($null -eq $javaProcessAbsentSince) {
+            $javaProcessAbsentSince = Get-Date
         }
 
         # 检查端口是否监听
-        $listening = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue
-        if ($listening) {
+        $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+        if ($javaProcess -and $listenerPid -eq $javaProcess.ProcessId) {
             # 端口已监听，再等 3 秒确保完全就绪
             Start-Sleep -Seconds 3
 
@@ -417,6 +418,7 @@ function Start-Backend {
                     -Method Post -ContentType 'application/json' -Body $testBody -TimeoutSec 5
                 if ($resp.code -eq 200) {
                     $started = $true
+                    $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
                     break
                 }
             } catch {
@@ -424,25 +426,34 @@ function Start-Backend {
             }
         }
 
+        # 给 Java 从 cmd.exe 包装器接管的短暂窗口，不因包装器先退出而误报。
+        if (-not $javaProcess -and -not $listenerPid -and $javaProcessAbsentSince -and
+            ((Get-Date) - $javaProcessAbsentSince).TotalSeconds -ge 15) {
+            Write-LogError "未找到启动参数对应的 Java 进程，且端口 $SERVER_PORT 未监听"
+            break
+        }
+
         Start-Sleep -Seconds 2
     }
 
     if ($started) {
         Write-LogInfo "========== 后端启动成功 =========="
+        Write-LogInfo "Java PID: $($javaProcess.ProcessId)"
         Write-LogInfo "访问地址: http://localhost:$SERVER_PORT"
         Write-LogInfo "API 文档: http://localhost:$SERVER_PORT/swagger-ui.html"
         Write-LogInfo "应用日志: $APP_LOG_FILE"
         Write-LogInfo "PID 文件: $PID_FILE"
     } else {
-        # 超时但未退出：进程可能仍在启动（如首次冷启动较慢），此时不应误杀，
-        # 改为警告并保留进程，交由调用方稍后通过健康检查确认就绪。
-        $procExists = Get-Process -Id $processId -ErrorAction SilentlyContinue
-        if ($procExists) {
-            Write-LogWarn "========== 后端未在 120 秒内通过登录健康检查，但进程仍在运行 (PID: $processId) =========="
+        $javaProcess = Find-BackendJavaProcess -ArgFile $argFile -MainClass $MAIN_CLASS
+        $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+        if ($javaProcess) {
+            # 进程仍在启动时保留它，避免拖慢首次冷启动。
+            $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
+            Write-LogWarn "========== 后端未在 120 秒内通过登录健康检查，但 Java 进程仍存在 (PID: $($javaProcess.ProcessId)) =========="
             Write-LogWarn "应用日志: $APP_LOG_FILE"
             Write-LogWarn "请稍后用 curl http://localhost:$SERVER_PORT/api/system/info 确认就绪"
         } else {
-            Write-LogError "========== 后端启动超时且进程已退出 =========="
+            Write-LogError "========== 后端启动失败：未确认到 Java 进程，端口 $SERVER_PORT 未监听 =========="
             Write-LogError "请检查日志: $APP_LOG_FILE"
             Write-LogError "最近日志（最后 30 行）:"
             if (Test-Path $APP_LOG_FILE) {
@@ -452,7 +463,7 @@ function Start-Backend {
                 Get-Content $APP_ERR_LOG_FILE -Tail 30 | ForEach-Object { Write-Host $_ }
             }
             Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
-            exit 1
+            throw "后端启动失败：未确认到 Java 进程，端口 $SERVER_PORT 未监听"
         }
     }
 }

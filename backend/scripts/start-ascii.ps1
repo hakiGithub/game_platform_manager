@@ -9,6 +9,8 @@ $CP_FILE = Join-Path $BACKEND_DIR "core\target\cp.txt"
 $ARG_FILE = Join-Path $env:TEMP "game-platform-jvm-args.txt"
 $WRAPPER_BAT = Join-Path $env:TEMP "game-platform-start-wrapper.bat"
 
+. (Join-Path $PSScriptRoot "backend-process.ps1")
+
 if (-not (Test-Path $LOG_DIR)) { New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null }
 $dbDir = Split-Path -Parent $DB_PATH
 if (-not (Test-Path $dbDir)) { New-Item -ItemType Directory -Path $dbDir -Force | Out-Null }
@@ -57,9 +59,10 @@ Write-Host "Arg file: $ARG_FILE"
 Write-Host "Wrapper: $WRAPPER_BAT"
 
 $process = Start-Process -FilePath $WRAPPER_BAT -WorkingDirectory $BACKEND_DIR -WindowStyle Hidden -PassThru
-$processId = $process.Id
-$processId | Out-File -FilePath $PID_FILE -Encoding utf8
-Write-Host "Java process started, PID: $processId"
+$launcherPid = $process.Id
+$launcherPid | Out-File -FilePath (Join-Path $LOG_DIR "game-platform-manager.launcher.pid") -Encoding utf8
+Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
+Write-Host "Launcher started, PID: $launcherPid (not the Java PID)"
 
 Write-Host "Waiting for port 8080..."
 $startTime = Get-Date
@@ -79,13 +82,16 @@ while (((Get-Date) - $startTime).TotalSeconds -lt $timeout) {
     }
 
     $listening = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-    if ($listening) {
+    $listenerPid = if ($listening) { [int]$listening[0].OwningProcess } else { 0 }
+    $javaProcess = Find-BackendJavaProcess -ArgFile $ARG_FILE -MainClass "com.gameplatform.GamePlatformApplication"
+    if ($javaProcess -and $listenerPid -eq [int]$javaProcess.ProcessId) {
         Start-Sleep -Seconds 3
         try {
             $testBody = @{username='admin';password='admin123'} | ConvertTo-Json
             $resp = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/login" -Method Post -ContentType 'application/json' -Body $testBody -TimeoutSec 5
             if ($resp.code -eq 200) {
                 $started = $true
+                $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
                 break
             }
         } catch {
@@ -98,10 +104,12 @@ while (((Get-Date) - $startTime).TotalSeconds -lt $timeout) {
 if ($started) {
     Write-Host "Backend started successfully on port 8080"
 } else {
-    $procExists = Get-Process -Id $processId -ErrorAction SilentlyContinue
-    if ($procExists) {
-        Write-Host "Backend process still running (PID: $processId) but not ready yet"
+    $javaProcess = Find-BackendJavaProcess -ArgFile $ARG_FILE -MainClass "com.gameplatform.GamePlatformApplication"
+    if ($javaProcess) {
+        $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
+        Write-Host "Backend Java is still starting (PID: $($javaProcess.ProcessId))"
     } else {
         Write-Host "Backend failed to start"
+        exit 1
     }
 }

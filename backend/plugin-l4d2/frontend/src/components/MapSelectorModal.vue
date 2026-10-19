@@ -98,6 +98,7 @@ import { ElMessage } from 'element-plus'
 import { mapApi, rconApi } from '@/api'
 import type { MapListVO } from '@/api'
 import { officialChapters, officialChapterCodes } from '@/data/officialChapters'
+import { describeChangeMapResult } from '@/utils/changeMapResult'
 
 interface SelectorChapter {
   code: string
@@ -210,8 +211,9 @@ async function handleChangeMap(chapter: SelectorChapter) {
   if (changingCode.value) return
   changingCode.value = chapter.code
   try {
-    await rconApi.changeMap(props.instanceId, chapter.code)
-    ElMessage.success(`地图切换指令已发送：${chapter.code}`)
+    const result = await rconApi.changeMap(props.instanceId, chapter.code)
+    const notice = describeChangeMapResult(result, chapter.code)
+    ElMessage[notice.level](notice.message)
     emit('success', chapter.code)
     emit('update:modelValue', false)
   } catch (e: any) {

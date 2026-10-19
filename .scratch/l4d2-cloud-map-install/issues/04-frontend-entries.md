@@ -1,6 +1,6 @@
 # 04: 前端入口（MapCenter 转存并安装 + Download 云盘链接页）
 
-Status: ready-for-human
+Status: needs-info
 
 ## 任务
 
@@ -21,3 +21,15 @@ Blocked by: 03
 - MapCenter 行展开：三条链接各带「转存并安装」；弹窗自动带地图名/分享链接/转存目录 /maps/orange-810/自带提取码 ✅
 - 真实提交走通到天翼转存引擎；爬虫库全部分享链接已过期（天翼个人分享 30 天），clp-web 对照同一链接同样 resource-gone，非集成问题。有效分享的成功路径待真实链接联调。
 - 修复部署问题：plugins/ 目录同时存在旧 SNAPSHOT 与新 1.0.0 jar，PF4J 加载旧的同 id jar 导致 UI 未更新（已删除旧 jar）。
+
+2026-10-20 跟进验证：
+
+- 插件前端生产构建通过；`Download.vue` 云盘 tab、`MapCenter.vue` 转存弹窗、CLOUD tag 与详情字段均已存在。
+- 由于 `03` 的真实账号/分享链接联调仍被凭证失效阻塞，本票的两个入口“提交并在下载页看到任务进度与结果”尚未重新做成功路径验收；当前保持 `needs-info`。
+
+2026-10-20 真实成功路径补充：
+
+- 使用 Download 云盘分享入口（API 等价路径）提交真实天翼链接成功：转存、平台中转下载、解压、安装、地图识别全部完成。
+- 下载任务列表可见 `taskType=CLOUD`，进度从 40% 到 100%，状态 `COMPLETED`。
+- 但任务详情 API 未返回 `transferMode` / `accountName` / `cloudPath`，因此“详情含三个字段”不能判定通过；同时 RAR 任务被错误标记为 `DIRECT`。
+- 待 `03` 修复后重新用页面验证 MapCenter 与 Download 两个入口的展示结果。

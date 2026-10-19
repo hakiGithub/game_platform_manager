@@ -25,4 +25,13 @@ public class PluginConfigUpdateDTO {
     /** 配置项列表 */
     @NotEmpty
     private List<ConfigItem> items;
+    /** 目标 cfg 的稳定文件 ID（优先于 configPath）。 */
+    private String fileId;
+    /**
+     * 目标 cfg 路径或文件名。
+     *
+     * <p>可选；为空时保留旧行为，写第一个存在的候选文件。非空时必须属于该插件
+     * 声明的候选文件集合，且不能通过路径穿越逃逸。
+     */
+    private String configPath;
 }

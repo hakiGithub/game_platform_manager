@@ -1,9 +1,11 @@
 package com.gameplatform.plugin.l4d2.service;
 
+import com.gameplatform.plugin.l4d2.util.RconFailureDetector;
 import com.gameplatform.plugin.service.RconService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -94,10 +96,56 @@ public class L4D2RconService {
     }
 
     /**
-     * 切换地图
+     * 切换地图，并等待服务器状态确认地图变化。
+     *
+     * <p>只确认服务器接受了 changelevel 不够：命令可能排队或被后续状态覆盖。
+     * 失败回显必须返回 accepted=false；超时则 confirmed=false 并带回最后观测地图。
      */
-    public void changeMap(long instanceId, String mapName) {
-        executeCommand(instanceId, "changelevel " + mapName);
+    public ChangeMapResult changeMap(long instanceId, String mapName) {
+        return changeMap(instanceId, mapName, Duration.ofSeconds(20), Duration.ofMillis(1000));
+    }
+
+    public ChangeMapResult changeMap(long instanceId, String mapName,
+                                     Duration timeout, Duration pollInterval) {
+        String output = executeCommand(instanceId, "changelevel " + mapName);
+        ChangeMapResult result = new ChangeMapResult(mapName, output);
+        if (isChangeMapFailure(output)) {
+            result.setError("服务器拒绝换图: " + firstNonBlankLine(output));
+            return result;
+        }
+        result.setAccepted(true);
+
+        long deadline = System.nanoTime() + timeout.toNanos();
+        do {
+            try {
+                String currentMap = readCurrentMap(instanceId);
+                result.setCurrentMap(currentMap);
+                if (mapMatches(mapName, currentMap)) {
+                    result.setConfirmed(true);
+                    result.setError(null);
+                    return result;
+                }
+                result.setError(null);
+            } catch (Exception e) {
+                result.setError("换图后读取服务器状态失败: " + e.getMessage());
+            }
+            if (System.nanoTime() + pollInterval.toNanos() > deadline) {
+                break;
+            }
+            try {
+                Thread.sleep(pollInterval.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                result.setError("等待换图结果被中断");
+                return result;
+            }
+        } while (System.nanoTime() < deadline);
+
+        if (result.getError() == null || result.getError().isBlank()) {
+            result.setError("换图命令已发送，但未在 " + timeout.toSeconds()
+                    + " 秒内确认地图切换");
+        }
+        return result;
     }
 
     /**
@@ -282,6 +330,37 @@ public class L4D2RconService {
         return m.find() ? m.group(1).trim() : "未知";
     }
 
+    private boolean isChangeMapFailure(String output) {
+        return RconFailureDetector.isChangeMapFailed(output);
+    }
+
+    private String readCurrentMap(long instanceId) {
+        String statusText = rcon.executeCommand(instanceId, "status");
+        return parseStatus(statusText).getMap();
+    }
+
+    private boolean mapMatches(String requested, String current) {
+        if (requested == null || current == null) {
+            return false;
+        }
+        String normalizedCurrent = current.trim().toLowerCase();
+        String normalizedRequested = requested.trim().toLowerCase();
+        return normalizedCurrent.equals(normalizedRequested)
+                || normalizedCurrent.equals(normalizedRequested + ".bsp")
+                || normalizedCurrent.replace(".bsp", "").equals(normalizedRequested);
+    }
+
+    private String firstNonBlankLine(String output) {
+        if (output == null) {
+            return "无 RCON 回显";
+        }
+        return output.lines()
+                .map(String::trim)
+                .filter(line -> !line.isEmpty())
+                .findFirst()
+                .orElse("无 RCON 回显");
+    }
+
     /**
      * 难度英文转中文
      */
@@ -427,5 +506,23 @@ public class L4D2RconService {
         private int loss;
         private String duration;
         private int linkRate;
+    }
+
+    /**
+     * 换图操作结果。
+     */
+    @lombok.Data
+    public static class ChangeMapResult {
+        private final String mapName;
+        private final String output;
+        private Boolean accepted = false;
+        private Boolean confirmed = false;
+        private String error;
+        private String currentMap;
+
+        public ChangeMapResult(String mapName, String output) {
+            this.mapName = mapName;
+            this.output = output;
+        }
     }
 }

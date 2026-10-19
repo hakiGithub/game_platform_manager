@@ -39,9 +39,11 @@
 
     <el-card shadow="never" class="page-card">
       <el-table
+        ref="tableRef"
         :data="plugins"
         style="width: 100%"
         v-loading="loading"
+        :empty-text="loadError || '暂无已安装插件'"
         @selection-change="onSelectionChange"
       >
         <el-table-column type="selection" width="50" />
@@ -106,6 +108,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-row">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="onPageChange"
+          @size-change="onPageSizeChange"
+        />
+      </div>
     </el-card>
 
     <!-- 已安装插件详情抽屉（ADR-0022 决策 5） -->
@@ -268,16 +281,44 @@ import { usePluginStore } from '@/stores/plugin'
 const props = defineProps<{
   plugins: PluginListVO[]
   loading: boolean
+  total: number
+  page: number
+  pageSize: number
+  loadError?: string
 }>()
 void props
 
 const emit = defineEmits<{
   (e: 'refresh'): void
+  (e: 'page-change', page: number): void
+  (e: 'size-change', size: number): void
+  (e: 'plugins-changed'): void
 }>()
 
 const store = usePluginStore()
 const router = useRouter()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
+
+const page = computed({
+  get: () => props.page,
+  set: (value: number) => emit('page-change', value)
+})
+
+const pageSize = computed({
+  get: () => props.pageSize,
+  set: (value: number) => emit('size-change', value)
+})
+
+function onPageChange() {
+  clearSelection()
+  emit('refresh')
+}
+
+function onPageSizeChange(size: number) {
+  clearSelection()
+  emit('size-change', size)
+}
 
 const showUploadDialog = ref(false)
 const uploadFile = ref<File | null>(null)
@@ -315,6 +356,16 @@ function onSelectionChange(rows: PluginListVO[]) {
   selectedNames.value = rows.map(r => r.name)
 }
 
+function clearSelection() {
+  selectedNames.value = []
+  tableRef.value?.clearSelection()
+}
+
+function emitPluginsChanged() {
+  emit('plugins-changed')
+  emit('refresh')
+}
+
 function handleFileChange(file: any) {
   uploadFile.value = file.raw
   uploadPercent.value = 0
@@ -335,7 +386,7 @@ async function uploadPlugin() {
     showUploadDialog.value = false
     uploadFile.value = null
     uploadPercent.value = 0
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     ElMessage.error('上传失败：' + (e?.message || e))
   } finally {
@@ -348,7 +399,7 @@ async function onEnable(row: PluginListVO) {
   try {
     await pluginManageApi.enableLoad(instanceId.value, row.name)
     ElMessage.success(`插件 "${row.name}" 已启用并加载`)
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     ElMessage.error('启用失败：' + (e?.message || e))
   }
@@ -379,7 +430,7 @@ async function onInstallPlatform() {
   try {
     const msg = await pluginManageApi.installPlatform(instanceId.value)
     ElMessage.success(msg || '平台插件安装成功')
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     ElMessage.error('平台插件安装失败：' + (e?.message || e))
   } finally {
@@ -398,7 +449,7 @@ async function onDisable(row: PluginListVO) {
     await pluginManageApi.disableUnload(instanceId.value, row.name)
     ElMessage.success(`插件 "${row.name}" 已禁用`)
     showDetail.value = false
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error('禁用失败：' + (e?.message || e))
   }
@@ -419,7 +470,7 @@ async function onDelete(row: PluginListVO) {
     await pluginManageApi.delete(instanceId.value, row.name)
     ElMessage.success('已删除')
     showDetail.value = false
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error('删除失败：' + (e?.message || e))
   }
@@ -439,7 +490,7 @@ async function onBatchEnable() {
       pluginNames: selectedNames.value
     })
     ElMessage.success('批量启用已完成')
-    emit('refresh')
+    emitPluginsChanged()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error('批量启用失败：' + (e?.message || e))
   } finally {
@@ -552,6 +603,12 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .status-cell {

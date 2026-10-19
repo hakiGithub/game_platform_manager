@@ -1,5 +1,6 @@
 package com.gameplatform.plugin.l4d2.controller;
 
+import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.service.BuiltinPluginInstaller;
@@ -121,5 +122,62 @@ class PluginManageControllerTest {
         Map<String, Object> payload = captor.getValue().getPayload();
         assertEquals(Boolean.TRUE, payload.get("enableAfterInstall"));
         assertEquals(List.of("plugin-a", "plugin-b"), payload.get("pluginIds"));
+    }
+
+    @Test
+    void list_filters_complete_dataset_before_paginating() {
+        PluginListVO enabledA = new PluginListVO();
+        enabledA.setName("Enabled A");
+        enabledA.setStatus("enabled");
+        PluginListVO disabled = new PluginListVO();
+        disabled.setName("Other");
+        disabled.setStatus("disabled");
+        when(pluginInstallService.listPlugins(9L)).thenReturn(List.of(enabledA, disabled));
+
+        Result<PageResult<PluginListVO>> result =
+                controller.list(9L, "enabled", "enabled", 1, 1);
+
+        assertEquals(200, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("Enabled A", result.getData().getRecords().get(0).getName());
+    }
+
+    @Test
+    void listBuiltin_filters_before_paginating_and_clamps_page() {
+        BuiltinPluginVO installed = new BuiltinPluginVO();
+        installed.setId("a");
+        installed.setName("A");
+        installed.setCategory("required");
+        installed.setPlatform("all");
+        installed.setInstalled(true);
+        BuiltinPluginVO uninstalled = new BuiltinPluginVO();
+        uninstalled.setId("b");
+        uninstalled.setName("B");
+        uninstalled.setCategory("optional");
+        uninstalled.setPlatform("all");
+        uninstalled.setInstalled(false);
+        when(builtinPluginInstaller.list(9L)).thenReturn(List.of(installed, uninstalled));
+
+        Result<PageResult<BuiltinPluginVO>> result =
+                controller.listBuiltin(9L, null, "required", "installed", "all", 99, 10);
+
+        assertEquals(200, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals(1L, result.getData().getCurrent());
+        assertEquals("a", result.getData().getRecords().get(0).getId());
+    }
+
+    @Test
+    void list_returns_empty_page_for_zero_records() {
+        when(pluginInstallService.listPlugins(9L)).thenReturn(List.of());
+
+        Result<PageResult<PluginListVO>> result =
+                controller.list(9L, null, null, 3, 20);
+
+        assertEquals(200, result.getCode());
+        assertEquals(0L, result.getData().getTotal());
+        assertEquals(1L, result.getData().getCurrent());
+        assertEquals(0L, result.getData().getPages());
+        assertTrue(result.getData().getRecords().isEmpty());
     }
 }

@@ -51,7 +51,7 @@ class PluginConfigControllerTest {
 
         assertDoesNotThrow(() -> controller.restoreDefaults(dto));
 
-        verify(sourceModCfgService).restoreDefaults(1L, "l4d2_multi_slot");
+        verify(sourceModCfgService).restoreDefaults(1L, "l4d2_multi_slot", null, null);
     }
 
     @Test

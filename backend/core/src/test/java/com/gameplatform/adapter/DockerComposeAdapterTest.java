@@ -63,6 +63,55 @@ class DockerComposeAdapterTest {
         }
     }
 
+    private String generateEnvFileContent(Map<String, Object> config) {
+        try {
+            var method = DockerComposeAdapter.class.getDeclaredMethod(
+                    "generateEnvFileContent", Map.class);
+            method.setAccessible(true);
+            return (String) method.invoke(dockerComposeAdapter, config);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            if (e.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException("Failed to generate env file content", e.getCause());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate env file content", e);
+        }
+    }
+
+    @Test
+    void generateEnvFileContent_usesUserValuesAndKeepsHiddenVariable() {
+        Map<String, Object> config = new HashMap<>();
+        config.put("variables", List.of(
+                Map.of("name", "MYSQL_PORT", "defaultValue", "3000", "required", false),
+                Map.of("name", "DNF_DB_ROOT_PASSWORD", "defaultValue", "88888888", "required", true),
+                Map.of("name", "PUBLIC_IP", "defaultValue", "127.0.0.1", "required", true),
+                Map.of("name", "GATE_AES_KEY", "defaultValue", "hidden-default", "required", false)
+        ));
+        config.put("MYSQL_PORT", 3010);
+        config.put("DNF_DB_ROOT_PASSWORD", "custom-root-password");
+        config.put("PUBLIC_IP", "192.168.111.253");
+
+        String env = generateEnvFileContent(config);
+
+        assertTrue(env.contains("MYSQL_PORT=3010\n"));
+        assertTrue(env.contains("DNF_DB_ROOT_PASSWORD=custom-root-password\n"));
+        assertTrue(env.contains("PUBLIC_IP=192.168.111.253\n"));
+        assertTrue(env.contains("GATE_AES_KEY=hidden-default\n"));
+    }
+
+    @Test
+    void generateEnvFileContent_rejectsEmptyRequiredVariable() {
+        Map<String, Object> config = new HashMap<>();
+        config.put("variables", List.of(
+                Map.of("name", "PUBLIC_IP", "defaultValue", "", "required", true)
+        ));
+
+        RuntimeException error = assertThrows(RuntimeException.class,
+                () -> generateEnvFileContent(config));
+        assertTrue(error.getMessage().contains("PUBLIC_IP"));
+    }
+
     @Test
     void testGetDeployType() {
         assertEquals(DeployAdapter.DeployType.DOCKER_COMPOSE, dockerComposeAdapter.getDeployType());
@@ -276,5 +325,117 @@ class DockerComposeAdapterTest {
         // 测试从代码获取枚举
         DeployAdapter.DeployType type = DeployAdapter.DeployType.fromCode("docker-compose");
         assertEquals(DeployAdapter.DeployType.DOCKER_COMPOSE, type);
+    }
+
+    @Test
+    void uninstall_existingPath_whenCleanupFails_returnsPartialSuccessAndKeepsResidualPath() {
+        com.gameplatform.entity.GameInstance instance = new com.gameplatform.entity.GameInstance();
+        instance.setId(1L);
+        instance.setHostId(1L);
+        instance.setDeployType("docker-compose");
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+
+        com.gameplatform.entity.Host host = new com.gameplatform.entity.Host();
+        host.setId(1L);
+        host.setIpAddress("192.168.1.10");
+        host.setSshPort(22);
+        host.setSshUser("u");
+        when(hostMapper.selectById(1L)).thenReturn(host);
+        when(deployAccess.credentials(host)).thenReturn(
+                new com.gameplatform.deploy.HostCredentials("192.168.1.10", 22, "u", null, null));
+
+        SshUtil.CommandResult down = okResult("");
+        SshUtil.CommandResult cleanup = failedResult(1, "rm: cannot remove root-owned data");
+        lenient().when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
+                contains("printf %s"), eq(10000L))).thenReturn(okResult("/home/u"));
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
+                contains("docker compose version"), eq(10000L))).thenReturn(okResult("Docker Compose version v2"));
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
+                contains("COMPOSE_HTTP_TIMEOUT=300"), eq(120000L))).thenReturn(down);
+        when(sshUtil.executeCommand(anyString(), anyInt(), anyString(), isNull(), isNull(),
+                contains("rm -rf"), eq(60000L))).thenReturn(cleanup);
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("workDir", "/home/u/games/dnf tw's");
+
+        UninstallResult result = dockerComposeAdapter.uninstallWithResult(
+                1L, config, DeployProgressCallback.NO_OP);
+
+        assertEquals(UninstallResult.Status.PARTIAL_SUCCESS, result.status());
+        assertEquals("/home/u/games/dnf tw's", result.residualPath());
+        assertTrue(result.message().contains("cannot remove root-owned data"));
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("rm -rf '/home/u/games/dnf tw'\\''s'"), anyLong());
+        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("sudo"), anyLong());
+    }
+
+    @Test
+    void uninstall_rootPath_isRejectedWithoutExecutingDelete() {
+        com.gameplatform.entity.GameInstance instance = new com.gameplatform.entity.GameInstance();
+        instance.setId(1L);
+        instance.setHostId(1L);
+        instance.setDeployType("docker-compose");
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+
+        com.gameplatform.entity.Host host = new com.gameplatform.entity.Host();
+        host.setId(1L);
+        host.setIpAddress("192.168.1.10");
+        host.setSshPort(22);
+        host.setSshUser("u");
+        lenient().when(hostMapper.selectById(1L)).thenReturn(host);
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("workDir", "/");
+
+        UninstallResult result = dockerComposeAdapter.uninstallWithResult(
+                1L, config, DeployProgressCallback.NO_OP);
+
+        assertEquals(UninstallResult.Status.FAILED, result.status());
+        assertTrue(result.message().contains("删除根目录"));
+        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("rm -rf"), anyLong());
+    }
+
+    @Test
+    void uninstall_parentTraversal_isRejectedWithoutExecutingDelete() {
+        com.gameplatform.entity.GameInstance instance = new com.gameplatform.entity.GameInstance();
+        instance.setId(1L);
+        instance.setHostId(1L);
+        instance.setDeployType("docker-compose");
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+
+        com.gameplatform.entity.Host host = new com.gameplatform.entity.Host();
+        host.setId(1L);
+        host.setIpAddress("192.168.1.10");
+        host.setSshPort(22);
+        host.setSshUser("u");
+        lenient().when(hostMapper.selectById(1L)).thenReturn(host);
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("workDir", "/home/u/games/../");
+
+        UninstallResult result = dockerComposeAdapter.uninstallWithResult(
+                1L, config, DeployProgressCallback.NO_OP);
+
+        assertEquals(UninstallResult.Status.FAILED, result.status());
+        verify(sshUtil, never()).executeCommand(anyString(), anyInt(), anyString(),
+                isNull(), isNull(), contains("rm -rf"), anyLong());
+    }
+
+    private SshUtil.CommandResult okResult(String output) {
+        SshUtil.CommandResult result = new SshUtil.CommandResult();
+        result.setSuccess(true);
+        result.setExitCode(0);
+        result.setOutput(output);
+        return result;
+    }
+
+    private SshUtil.CommandResult failedResult(int exitCode, String error) {
+        SshUtil.CommandResult result = new SshUtil.CommandResult();
+        result.setSuccess(false);
+        result.setExitCode(exitCode);
+        result.setError(error);
+        return result;
     }
 }

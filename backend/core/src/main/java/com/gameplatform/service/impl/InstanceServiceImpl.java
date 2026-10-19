@@ -7,6 +7,7 @@ import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
 import com.gameplatform.adapter.DeployProgressCallback;
 import com.gameplatform.adapter.DockerComposeAdapter;
+import com.gameplatform.adapter.UninstallResult;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.*;
@@ -25,6 +26,7 @@ import com.gameplatform.service.InstanceService;
 import com.gameplatform.service.docker.ContainerAdoptionService;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
+import com.gameplatform.vo.InstanceDeleteResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -32,6 +34,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -208,17 +211,21 @@ public class InstanceServiceImpl implements InstanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteInstance(Long id) {
-        deleteInstance(id, true);
+    public InstanceDeleteResultVO deleteInstance(Long id) {
+        return deleteInstance(id, true);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteInstance(Long id, boolean deleteContainer) {
+    public InstanceDeleteResultVO deleteInstance(Long id, boolean deleteContainer) {
         GameInstance instance = instanceMapper.selectById(id);
         if (instance == null) {
             throw new BusinessException("实例不存在");
         }
+
+        String cleanupStatus = "not_attempted";
+        String cleanupMessage = "已删除实例记录，未执行远端资源清理";
+        List<String> residualPaths = new ArrayList<>();
 
         // 认领实例默认记录级删除（ADR-0023）：不动容器，仅显式 deleteContainer=true 才卸载
         boolean adopted = ContainerAdoptionService.isAdopted(instance);
@@ -231,11 +238,25 @@ public class InstanceServiceImpl implements InstanceService {
                 DeployAdapter adapter = adapterFactory.getAdapter(
                         deployAccess.classify(instance.getDeployType()));
                 Map<String, Object> config = buildDeployConfig(instance);
-                boolean uninstalled = adapter.uninstall(id, config, DeployProgressCallback.NO_OP);
-                if (!uninstalled) {
-                    log.warn("实例远程资源卸载未完全成功，继续删除数据库记录: instanceId={}", id);
+                UninstallResult uninstallResult = adapter.uninstallWithResult(
+                        id, config, DeployProgressCallback.NO_OP);
+                if (uninstallResult == null) {
+                    throw new IllegalStateException("适配器未返回卸载结果");
+                }
+                cleanupStatus = uninstallResult.status().getWireKey();
+                cleanupMessage = uninstallResult.message();
+                if (uninstallResult.residualPath() != null && !uninstallResult.residualPath().isBlank()) {
+                    residualPaths.add(uninstallResult.residualPath());
+                }
+                if (uninstallResult.isFullySuccessful()) {
+                    log.info("实例远程资源卸载成功: instanceId={}", id);
+                } else {
+                    log.warn("实例远程资源卸载未完全成功，继续删除数据库记录: instanceId={}, status={}, residualPaths={}, message={}",
+                            id, cleanupStatus, residualPaths, cleanupMessage);
                 }
             } catch (Exception e) {
+                cleanupStatus = "failed";
+                cleanupMessage = "远端资源卸载异常: " + e.getMessage();
                 log.warn("实例远程资源卸载异常，继续删除数据库记录: instanceId={}", id, e);
             }
         }
@@ -255,6 +276,21 @@ public class InstanceServiceImpl implements InstanceService {
         // 实例信息缓存失效（ADR-0017）
         instanceInfoService.invalidate(id);
 
+        String message;
+        if ("success".equals(cleanupStatus)) {
+            message = "实例及其远端资源已删除";
+        } else if ("not_attempted".equals(cleanupStatus)) {
+            message = cleanupMessage;
+        } else {
+            message = "实例记录已删除，但远端资源清理未完全完成: " + cleanupMessage;
+        }
+        return InstanceDeleteResultVO.builder()
+                .instanceId(id)
+                .deleted(true)
+                .remoteCleanupStatus(cleanupStatus)
+                .message(message)
+                .residualPaths(residualPaths)
+                .build();
     }
 
     @Override

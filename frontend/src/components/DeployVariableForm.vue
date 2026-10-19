@@ -1,10 +1,10 @@
 <script setup>
-import { computed, watch, reactive } from "vue";
+import { computed, reactive, watch } from "vue";
 
 /**
  * 部署变量表单组件
  * 根据变量元信息（来自 GET /games/{id}/deploy-config/{deployType}）动态渲染表单
- * 用于 docker-compose 类型部署，将变量值收集后写入实例 configInfo.variables
+ * 用于 docker-compose 类型部署，将变量值收集后交给父组件写入 configInfo
  */
 const props = defineProps({
   // 变量定义列表：[{ name, label, type, defaultValue, required, description, hidden }]
@@ -31,16 +31,12 @@ const visibleVariables = computed(() => {
   return (props.variables || []).filter((v) => !v.hidden);
 });
 
-// 本地表单数据（响应式）
-const formData = reactive({ ...props.modelValue });
-
-// 当 modelValue 外部变化时同步到本地
+// 本地输入状态。父级 modelValue 变化时整体替换，表单变化时整体回传。
+const formData = reactive({});
 watch(
   () => props.modelValue,
   (val) => {
-    Object.keys(formData).forEach((k) => {
-      if (!(k in (val || {}))) delete formData[k];
-    });
+    Object.keys(formData).forEach((k) => delete formData[k]);
     Object.assign(formData, val || {});
   },
   { deep: true },
@@ -52,13 +48,25 @@ watch(
   (vars) => {
     (vars || []).forEach((v) => {
       if (!(v.name in formData)) {
-        formData[v.name] = v.defaultValue ?? defaultByType(v.type);
+        formData[v.name] = normalizeDefaultValue(v.defaultValue, v.type);
       }
     });
     emitUpdate();
   },
   { immediate: true },
 );
+
+// Element Plus 的数字输入只接受 number | null；yml 的 defaultValue 统一是字符串。
+function normalizeDefaultValue(value, type) {
+  if (value === undefined || value === null) {
+    return defaultByType(type);
+  }
+  if (type === "integer") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : defaultByType(type);
+  }
+  return value;
+}
 
 // 根据类型返回默认值
 function defaultByType(type) {

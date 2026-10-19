@@ -32,6 +32,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -430,6 +431,7 @@ public class MapService {
         validateMapName(mapName);
 
         requireInstance(instanceId);
+        requireVpkInInstance(instanceId, mapName);
         String addonsPath = pathResolver.getAddonsPath();
         String remoteVpkPath = addonsPath + "/" + mapName;
 
@@ -450,6 +452,11 @@ public class MapService {
                 }
             }
             mission.setChapters(chapters);
+            if ((analyzed.getTitle() == null || analyzed.getTitle().isBlank())
+                    && chapters.isEmpty()) {
+                throw new L4D2PluginException(L4D2PluginException.FILE,
+                        "VPK 中未解析到有效的战役信息: " + mapName);
+            }
             return mission;
         } catch (L4D2PluginException e) {
             throw e;
@@ -468,6 +475,30 @@ public class MapService {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "实例不存在: " + instanceId);
         }
         return instance;
+    }
+
+    /**
+     * 详情读取必须绑定请求的 VPK，而不是依赖分析工具的候选路径或默认文件。
+     * 同时只使用 addons 目录的直接子项，避免文件名大小写、URL 解码或相似文件
+     * 造成读取到另一个 VPK。
+     */
+    private void requireVpkInInstance(Long instanceId, String mapName) {
+        String addonsPath = pathResolver.getAddonsPath();
+        List<FileAccessService.FileInfo> files;
+        try {
+            files = instanceFileService.listFiles(instanceId, addonsPath);
+        } catch (Exception e) {
+            throw new L4D2PluginException(L4D2PluginException.FILE,
+                    "读取地图目录失败: " + e.getMessage(), e);
+        }
+        boolean found = files.stream()
+                .anyMatch(file -> !file.isDirectory()
+                        && mapName.equals(file.getName())
+                        && file.getName().toLowerCase(Locale.ROOT).endsWith(".vpk"));
+        if (!found) {
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "地图不存在: " + mapName);
+        }
     }
 
     /**

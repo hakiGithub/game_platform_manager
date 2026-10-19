@@ -32,6 +32,43 @@ class SourceModCfgParserTest {
     }
 
     @Test
+    void parse_shouldExtractMinimumAndMaximumFromInlineComment() {
+        String content = "\"sm_special_spawn_interval\" \"8.0\" "
+                + "// Minimum: \"0.000000\" Maximum: \"32.000000\" 特感重生间隔\n";
+
+        ConfigItem item = parser.parse(content).get(0);
+
+        assertEquals(0.0, item.getMin());
+        assertEquals(32.0, item.getMax());
+        assertEquals("特感重生间隔", item.getDescription());
+    }
+
+    @Test
+    void parse_shouldExtractMinimumAndMaximumFromBlockCommentCaseInsensitively() {
+        String content = "// minimum: '1.5' maximum: 9.5 允许范围\n"
+                + "// Spawn limit\n"
+                + "\"sm_spawn_limit\" \"4\"\n";
+
+        ConfigItem item = parser.parse(content).get(0);
+
+        assertEquals(1.5, item.getMin());
+        assertEquals(9.5, item.getMax());
+        assertEquals("允许范围\nSpawn limit", item.getDescription());
+    }
+
+    @Test
+    void parse_shouldStripRangeMetadataWhenValueIsNotNumeric() {
+        String content = "\"sm_range\" \"1\" "
+                + "// Minimum: unknown Maximum: \"32.000000\" 有效说明\n";
+
+        ConfigItem item = parser.parse(content).get(0);
+
+        assertNull(item.getMin());
+        assertEquals(32.0, item.getMax());
+        assertEquals("有效说明", item.getDescription());
+    }
+
+    @Test
     void parse_shouldSkipCommentsAndEmptyLines() {
         String content = "// header comment\n\"key\" \"value\"\n// trailing\n";
         List<ConfigItem> items = parser.parse(content);

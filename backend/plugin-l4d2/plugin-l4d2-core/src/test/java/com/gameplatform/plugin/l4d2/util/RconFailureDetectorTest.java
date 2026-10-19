@@ -39,4 +39,16 @@ class RconFailureDetectorTest {
         assertTrue(RconFailureDetector.isFailed("FAILED TO LOAD"));
         assertTrue(RconFailureDetector.isFailed("ERROR"));
     }
+
+    @Test
+    void shouldDetectOnlyExplicitChangeMapFailures() {
+        assertTrue(RconFailureDetector.isChangeMapFailed(
+                "CModelLoader::Map_IsValid: No such map 'maps/missing.bsp'"));
+        assertTrue(RconFailureDetector.isChangeMapFailed(
+                "changelevel failed: missing not found"));
+        assertFalse(RconFailureDetector.isChangeMapFailed(
+                "Server logging error counter reset"));
+        assertFalse(RconFailureDetector.isChangeMapFailed(
+                "changelevel c1m1_hotel"));
+    }
 }

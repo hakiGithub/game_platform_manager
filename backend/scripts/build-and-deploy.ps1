@@ -29,8 +29,22 @@ $PLUGIN_L4D2_DIR = Join-Path $BACKEND_DIR "plugin-l4d2"
 $PLUGIN_FRONTEND_DIR = Join-Path $PLUGIN_L4D2_DIR "frontend"
 $PLUGIN_CORE_DIR = Join-Path $PLUGIN_L4D2_DIR "plugin-l4d2-core"
 $PLUGINS_DIR = Join-Path $BACKEND_DIR "plugins"
-$PLUGIN_JAR = Join-Path $PLUGIN_CORE_DIR "target\plugin-l4d2-core-1.0.0.jar"
 $PLUGIN_DEST_JAR = Join-Path $PLUGINS_DIR "plugin-l4d2-core-1.0.0.jar"
+
+function Resolve-PluginJar {
+    $targetDir = Join-Path $PLUGIN_CORE_DIR "target"
+    $preferred = Join-Path $targetDir "plugin-l4d2-core-1.0.0.jar"
+    if (Test-Path -LiteralPath $preferred -PathType Leaf) {
+        $preferredInfo = Get-Item -LiteralPath $preferred
+        if ($preferredInfo.Length -gt 0) { return $preferredInfo.FullName }
+    }
+
+    $candidates = Get-ChildItem -LiteralPath $targetDir -Filter "plugin-l4d2-core-*.jar" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '-(sources|javadoc)\.jar$' -and $_.Length -gt 0 } |
+        Sort-Object LastWriteTime, Name
+    if ($candidates) { return $candidates[-1].FullName }
+    return $null
+}
 
 # === 日志函数 ===
 function Write-LogInfo($Msg) { Write-Host "[INFO] $Msg" -ForegroundColor Gray }
@@ -109,12 +123,13 @@ function Build-And-Deploy-Plugin {
         exit 1
     }
 
-    if (-not (Test-Path $PLUGIN_JAR)) {
-        Write-LogError "插件 JAR 未生成: $PLUGIN_JAR"
+    $pluginJar = Resolve-PluginJar
+    if (-not $pluginJar) {
+        Write-LogError "插件 JAR 未生成或为空: $(Join-Path $PLUGIN_CORE_DIR 'target')"
         exit 1
     }
 
-    $jarInfo = Get-Item $PLUGIN_JAR
+    $jarInfo = Get-Item -LiteralPath $pluginJar
     Write-LogSuccess "插件 JAR 已生成: $($jarInfo.Name), $([math]::Round($jarInfo.Length / 1MB, 2)) MB"
 
     # 部署到 plugins 目录
@@ -129,7 +144,7 @@ function Build-And-Deploy-Plugin {
     Get-ChildItem $PLUGINS_DIR -Filter "plugin-l4d2-core*.jar" -ErrorAction SilentlyContinue |
         ForEach-Object { Remove-Item $_.FullName -Force }
 
-    Copy-Item -Path $PLUGIN_JAR -Destination $PLUGIN_DEST_JAR -Force
+    Copy-Item -LiteralPath $pluginJar -Destination $PLUGIN_DEST_JAR -Force
     Write-LogSuccess "插件 JAR 已部署: $PLUGIN_DEST_JAR"
 }
 
@@ -183,7 +198,16 @@ function Start-Backend {
     # 调用现有 rebuild-restart.ps1 跳过编译和插件打包
     $rebuildScript = Join-Path $SCRIPT_DIR "rebuild-restart.ps1"
     if (Test-Path $rebuildScript) {
-        & $rebuildScript -SkipCompile -SkipPlugins
+        try {
+            & $rebuildScript -SkipCompile -SkipPlugins
+            if ($LASTEXITCODE -ne 0) {
+                Write-LogError "后端启动失败 (exit code: $LASTEXITCODE)"
+                exit 1
+            }
+        } catch {
+            Write-LogError "后端启动失败: $($_.Exception.Message)"
+            exit 1
+        }
     } else {
         Write-LogError "未找到 rebuild-restart.ps1: $rebuildScript"
         exit 1

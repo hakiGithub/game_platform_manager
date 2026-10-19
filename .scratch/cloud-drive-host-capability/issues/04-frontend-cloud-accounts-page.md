@@ -1,6 +1,6 @@
 # 04: 主前端"云盘账号"页面
 
-Status: ready-for-human
+Status: needs-info
 
 ## 任务
 
@@ -15,3 +15,23 @@ Status: ready-for-human
 - 非该权限用户不见菜单/路由拒绝。
 
 Blocked by: 03
+
+2026-10-20 跟进备注：当前 `accounts.vue` 的「重贴凭证」只提交 `secret` 字段；如果起始目录不是默认根目录，`mergeMissingRootFields` 会保留旧值，所以重贴凭证路径可保留起始目录。但新增账号时没有单独的起始目录入口（可保存后通过「起始目录」调整），ticket 的“编辑”仍指通用编辑能力，当前未实现，待确认是否接受现有替代路径。
+
+## Triage Notes
+
+2026-10-20 跟进验证发现页面与 ticket 验收存在功能缺口：
+
+- `frontend/src/views/system/accounts.vue` 当前没有调用 `getCloudQuota` 的入口，也没有配额展示；`frontend/src/api/cloud.js` 虽定义了 quota API，但页面未使用。故“列表展示 quota、quota 展示/可用”不能确认通过。
+- 页面没有“编辑”入口，只有“重贴凭证”“起始目录”等定向操作；ticket 要求的“新增/编辑”中的通用编辑能力未落地。
+- 权限仍有前后端落差：`/cloud/**` 已在后端收紧为 `hasRole("ADMIN")`，但前端 `/system/accounts` 路由只要求登录，`Sidebar.vue` 也无条件展示“云盘账号”。非 admin 用户当前仍可看到菜单并进入页面，随后 API 才返回 403，不满足“路由拒绝/菜单隐藏”。
+- 仍需构造真实非 admin 用户及有效网盘账号，完成 CRUD/verify/quota 实机验证。
+- 已确认：主前端 `npm run build` 通过；账号列表接口不回显明文凭证；管理员可访问 `/cloud/accounts`。
+- 有效账号现已可用（`live-189` 为 `HEALTHY`，quota 返回 200）；仍未完成管理员页面上的 quota 展示、通用编辑和非 admin 实机验证。
+- 目录浏览存在 ID/路径寻址缺陷：子目录使用 `-11/<ID>` 查询会报 `folder not found`，起始目录级联只能稳定浏览根目录。应与 cloud-drive `03` 一并修复。
+
+### 待确认
+
+- 是否接受用“重贴凭证 + 起始目录”替代通用编辑？
+- 是否把 quota 展示列为本票必须项，还是另拆到后续改进票？
+- 是否接受把当前非 admin 用户在前端可见入口、进入后由 API 403 的行为作为权限降级方案？按 ticket 原文不接受，应补前端 admin 守卫和菜单过滤。

@@ -1,5 +1,6 @@
 package com.gameplatform.plugin.l4d2.controller;
 
+import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.PluginStoreConfigDTO;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
@@ -60,7 +61,8 @@ class PluginStoreControllerTest {
                 .thenThrow(new L4D2PluginException(L4D2PluginException.STORE_NOT_CONFIGURED,
                         "远端插件仓库未配置，请先在插件管理 → 远端仓库中完成配置"));
 
-        Result<List<PluginStoreItemVO>> result = controller.list(null, null, 1, 20);
+        Result<PageResult<PluginStoreItemVO>> result =
+                controller.list(null, null, "all", null, 1, 20);
 
         assertNotNull(result);
         assertEquals(L4D2PluginException.CODE_STORE_NOT_CONFIGURED, result.getCode());
@@ -74,7 +76,8 @@ class PluginStoreControllerTest {
                         HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found",
                                 new HttpHeaders(), new byte[0], StandardCharsets.UTF_8)));
 
-        Result<List<PluginStoreItemVO>> result = controller.list(null, null, 1, 20);
+        Result<PageResult<PluginStoreItemVO>> result =
+                controller.list(null, null, "all", null, 1, 20);
 
         assertEquals(400, result.getCode(), "业务错误应 HTTP 200 + Result.fail(400)");
         assertTrue(result.getMessage().contains("仓库不存在或分支错误"), "实际文案: " + result.getMessage());
@@ -86,10 +89,12 @@ class PluginStoreControllerTest {
         item.setPluginId("demo");
         when(pluginStoreService.list(any(), any())).thenReturn(List.of(item));
 
-        Result<List<PluginStoreItemVO>> result = controller.list(null, null, 1, 20);
+        Result<PageResult<PluginStoreItemVO>> result =
+                controller.list(null, null, "all", null, 1, 20);
 
         assertEquals(200, result.getCode());
-        assertEquals(1, result.getData().size());
+        assertEquals(1, result.getData().getRecords().size());
+        assertEquals(1L, result.getData().getTotal());
     }
 
     @Test
@@ -138,5 +143,47 @@ class PluginStoreControllerTest {
 
         assertEquals(200, controller.getConfig().getCode());
         verify(storeConfigService).get();
+    }
+
+    @Test
+    void list_returns_pagination_metadata_and_clamps_out_of_range_page() {
+        PluginStoreItemVO first = new PluginStoreItemVO();
+        first.setPluginId("a");
+        first.setName("a");
+        PluginStoreItemVO second = new PluginStoreItemVO();
+        second.setPluginId("b");
+        second.setName("b");
+        when(pluginStoreService.list(any(), any())).thenReturn(List.of(first, second));
+
+        Result<PageResult<PluginStoreItemVO>> result =
+                controller.list(null, null, "all", null, 99, 1);
+
+        assertEquals(200, result.getCode());
+        assertEquals(2L, result.getData().getTotal());
+        assertEquals(2L, result.getData().getCurrent());
+        assertEquals(1L, result.getData().getSize());
+        assertEquals(2L, result.getData().getPages());
+        assertEquals("b", result.getData().getRecords().get(0).getPluginId());
+    }
+
+    @Test
+    void list_filters_installed_state_before_paginating() {
+        PluginStoreItemVO installed = new PluginStoreItemVO();
+        installed.setPluginId("installed");
+        installed.setName("Admin Suite");
+        PluginStoreItemVO uninstalled = new PluginStoreItemVO();
+        uninstalled.setPluginId("uninstalled");
+        uninstalled.setName("Other Plugin");
+        when(pluginStoreService.list(any(), any()))
+                .thenReturn(List.of(installed, uninstalled));
+        when(pluginStoreService.listInstalledPluginNames(9L))
+                .thenReturn(java.util.Set.of("admin_suite.smx"));
+
+        Result<PageResult<PluginStoreItemVO>> result =
+                controller.list(null, null, "installed", 9L, 1, 10);
+
+        assertEquals(200, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("installed", result.getData().getRecords().get(0).getPluginId());
     }
 }

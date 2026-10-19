@@ -2,6 +2,7 @@ package com.gameplatform.service;
 
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
+import com.gameplatform.adapter.UninstallResult;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.deploy.DeploymentAccess;
 import com.gameplatform.dto.InstanceCreateDTO;
@@ -16,6 +17,7 @@ import com.gameplatform.plugin.listener.PluginLifecycleHook;
 import com.gameplatform.service.impl.InstanceServiceImpl;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.InstanceVO;
+import com.gameplatform.vo.InstanceDeleteResultVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -287,12 +289,56 @@ class InstanceServiceImplTest {
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
-        when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
+        when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
+                .thenReturn(UninstallResult.success("卸载成功"));
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
-        instanceService.deleteInstance(1L);
+        InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
 
-        verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
+        assertEquals("success", result.getRemoteCleanupStatus());
+        verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
+        verify(instanceMapper).physicalDeleteById(1L);
+    }
+
+    @Test
+    void testDeleteInstance_partialCleanupStillDeletesRecordAndReturnsResidualPath() {
+        GameInstance instance = createInstance(1L, "test-instance", 0);
+        instance.setConfigInfo(new HashMap<>());
+
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
+                .thenReturn(UninstallResult.partialSuccess(
+                        "清理工作目录失败: Permission denied", "/home/u/games/dnf-tw"));
+        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
+
+        InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
+
+        assertEquals("partial_success", result.getRemoteCleanupStatus());
+        assertTrue(result.isDeleted());
+        assertEquals(1, result.getResidualPaths().size());
+        assertEquals("/home/u/games/dnf-tw", result.getResidualPaths().get(0));
+        verify(instanceMapper).physicalDeleteById(1L);
+        verify(rconConnectionManager).invalidate(1L);
+        verify(instanceInfoService).invalidate(1L);
+    }
+
+    @Test
+    void testDeleteInstance_uninstallExceptionStillDeletesRecordAndReturnsFailure() {
+        GameInstance instance = createInstance(1L, "test-instance", 0);
+        instance.setConfigInfo(new HashMap<>());
+
+        when(instanceMapper.selectById(1L)).thenReturn(instance);
+        when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
+        when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
+                .thenThrow(new IllegalStateException("ssh unavailable"));
+        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
+
+        InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
+
+        assertEquals("failed", result.getRemoteCleanupStatus());
+        assertTrue(result.isDeleted());
+        assertTrue(result.getMessage().contains("ssh unavailable"));
         verify(instanceMapper).physicalDeleteById(1L);
     }
 

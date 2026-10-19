@@ -107,6 +107,26 @@ public class PluginStoreService {
     }
 
     /**
+     * 当前实例已安装插件名称，用于远端商店安装状态筛选。
+     */
+    public java.util.Set<String> listInstalledPluginNames(Long instanceId) {
+        return pluginInstallService.listInstalledPluginNames(instanceId);
+    }
+
+    /**
+     * 远端商店全部插件分类，避免前端只从当前页推导而丢失分类。
+     */
+    public List<String> listCategories() {
+        storeConfigService.requireConfigured();
+        return getCachedItems().stream()
+                .map(PluginStoreItemVO::getCategory)
+                .filter(category -> category != null && !category.isBlank())
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    /**
      * 商店详情（含 README Markdown 与文件列表）。
      *
      * @param pluginId 插件 ID（目录名）

@@ -137,6 +137,25 @@ const deployVariables = ref([]);
 const deployVariablesValues = reactive({});
 const loadingDeployConfig = ref(false);
 const variableFormRef = ref(null);
+let deployConfigRequestId = 0;
+
+function updateDeployVariablesValues(values) {
+  if (values && values !== deployVariablesValues) {
+    Object.keys(deployVariablesValues).forEach((key) => delete deployVariablesValues[key]);
+    Object.assign(deployVariablesValues, values);
+  }
+}
+
+function resetDeployVariables() {
+  deployVariables.value = [];
+  Object.keys(deployVariablesValues).forEach((key) => delete deployVariablesValues[key]);
+}
+
+function normalizeDeployVariableValue(value, type) {
+  if (type !== "integer") return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 // 部署方式选项
 const deployMethodOptions = [
@@ -227,33 +246,45 @@ function isComposeVariableDeploy() {
 }
 
 async function loadDeployConfig() {
+  const requestId = ++deployConfigRequestId;
   if (!isComposeVariableDeploy() || !selectedGame.value) {
-    deployVariables.value = [];
+    resetDeployVariables();
+    loadingDeployConfig.value = false;
     return;
   }
+
+  const gameId = selectedGame.value.id;
+  const deployMethod = selectedDeployMethod.value;
+  resetDeployVariables();
   loadingDeployConfig.value = true;
   try {
-    const data = await getDeployConfig(
-      selectedGame.value.id,
-      selectedDeployMethod.value,
-    );
-    deployVariables.value = data.variables || [];
-    // 重置变量值，并回填每个变量的默认值
-    // 之前未回填默认值，导致提交时变量值为空，后端 .env 生成缺失关键变量
-    Object.keys(deployVariablesValues).forEach(
-      (k) => delete deployVariablesValues[k],
-    );
-    deployVariables.value.forEach((v) => {
+    const data = await getDeployConfig(gameId, deployMethod);
+    if (
+      requestId !== deployConfigRequestId ||
+      selectedGame.value?.id !== gameId ||
+      selectedDeployMethod.value !== deployMethod
+    ) {
+      return;
+    }
+    const variables = data.variables || [];
+    variables.forEach((v) => {
       if (v.defaultValue !== undefined && v.defaultValue !== null) {
-        deployVariablesValues[v.name] = v.defaultValue;
+        deployVariablesValues[v.name] = normalizeDeployVariableValue(
+          v.defaultValue,
+          v.type,
+        );
       }
     });
+    deployVariables.value = variables;
   } catch (error) {
+    if (requestId !== deployConfigRequestId) return;
     console.error("Failed to load deploy config:", error);
     ElMessage.error("加载部署配置失败: " + (error.message || "未知错误"));
-    deployVariables.value = [];
+    resetDeployVariables();
   } finally {
-    loadingDeployConfig.value = false;
+    if (requestId === deployConfigRequestId) {
+      loadingDeployConfig.value = false;
+    }
   }
 }
 
@@ -426,16 +457,10 @@ watch(
   },
 );
 
-// 监听部署方式变化：docker-compose / linuxgsm-docker 时加载变量配置
+// 游戏或部署方式变化时重新加载变量配置，避免相同部署方式切换游戏时沿用上一组值。
 watch(
-  () => selectedDeployMethod.value,
-  (method) => {
-    if (isComposeVariableDeploy() && selectedGame.value) {
-      loadDeployConfig();
-    } else {
-      deployVariables.value = [];
-    }
-  },
+  [selectedGame, selectedDeployMethod],
+  loadDeployConfig,
 );
 
 // 添加环境变量
@@ -466,14 +491,17 @@ async function nextStep() {
     if (!valid) return;
 
     // docker-compose / linuxgsm-docker 变量必填校验
-    if (
-      isComposeVariableDeploy() &&
-      variableFormRef.value
-    ) {
-      const result = variableFormRef.value.validate();
-      if (!result.valid) {
-        ElMessage.warning(result.message);
+    if (isComposeVariableDeploy()) {
+      if (loadingDeployConfig.value) {
+        ElMessage.warning("Compose 变量配置加载中，请稍候");
         return;
+      }
+      if (variableFormRef.value) {
+        const result = variableFormRef.value.validate();
+        if (!result.valid) {
+          ElMessage.warning(result.message);
+          return;
+        }
       }
     }
 
@@ -1467,8 +1495,9 @@ onMounted(() => {
               <div v-loading="loadingDeployConfig">
                 <DeployVariableForm
                   ref="variableFormRef"
-                  v-model="deployVariablesValues"
                   :variables="deployVariables"
+                  :model-value="deployVariablesValues"
+                  @update:model-value="updateDeployVariablesValues"
                 />
               </div>
             </div>

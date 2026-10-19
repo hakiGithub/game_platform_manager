@@ -8,6 +8,8 @@ $APP_LOG_FILE = Join-Path $LOG_DIR "application.log"
 $APP_ERR_LOG_FILE = Join-Path $LOG_DIR "application.err.log"
 $PID_FILE = Join-Path $LOG_DIR "game-platform-manager.pid"
 
+. (Join-Path $PSScriptRoot "backend-process.ps1")
+
 Clear-Content $APP_LOG_FILE -ErrorAction SilentlyContinue
 Clear-Content $APP_ERR_LOG_FILE -ErrorAction SilentlyContinue
 
@@ -32,32 +34,43 @@ if ($result.ReturnValue -ne 0) {
 }
 
 $procId = $result.ProcessId
-Write-Host "Java started via CIM, PID: $procId"
-$procId | Out-File -FilePath $PID_FILE -Encoding utf8
+Write-Host "Launcher started via CIM, PID: $procId (not the Java PID)"
+$procId | Out-File -FilePath (Join-Path $LOG_DIR "game-platform-manager.launcher.pid") -Encoding utf8
+Remove-Item $PID_FILE -Force -ErrorAction SilentlyContinue
 
 $start = Get-Date
 $ok = $false
 while (((Get-Date) - $start).TotalSeconds -lt 60) {
-    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    if (-not $proc) {
-        Write-Host "Process exited"
-        break
-    }
+    $javaProcess = Find-BackendJavaProcess -ArgFile $argFile -MainClass "com.gameplatform.GamePlatformApplication"
     $listening = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-    if ($listening) {
+    $listenerPid = if ($listening) { [int]$listening[0].OwningProcess } else { 0 }
+    if ($javaProcess -and $listenerPid -eq [int]$javaProcess.ProcessId) {
         Start-Sleep -Seconds 3
         try {
             $resp = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/login" -Method Post -ContentType 'application/json' -Body '{"username":"admin","password":"admin123"}' -TimeoutSec 5
-            if ($resp.code -eq 200) { $ok = $true; break }
+            if ($resp.code -eq 200) {
+                $ok = $true
+                $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
+                break
+            }
         } catch {}
     }
     Start-Sleep -Seconds 2
 }
 
 if ($ok) {
-    Write-Host "Backend started OK, PID: $procId"
+    Write-Host "Backend started OK, PID: $javaProcess.ProcessId"
     Write-Host "URL: http://localhost:8080"
 } else {
-    Write-Host "Backend not ready in 60s, alive: $([bool](Get-Process -Id $procId -ErrorAction SilentlyContinue))"
+    $javaProcess = Find-BackendJavaProcess -ArgFile $argFile -MainClass "com.gameplatform.GamePlatformApplication"
+    if ($javaProcess) {
+        $javaProcess.ProcessId | Out-File -FilePath $PID_FILE -Encoding utf8
+        Write-Host "Backend Java is still starting, PID: $($javaProcess.ProcessId)"
+    } else {
+        Write-Host "Backend failed to start"
+    }
     Write-Host "Log: $APP_LOG_FILE"
+    if (-not $javaProcess) {
+        exit 1
+    }
 }

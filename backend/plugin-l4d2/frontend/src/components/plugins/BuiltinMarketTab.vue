@@ -7,21 +7,21 @@
         placeholder="搜索插件名/描述"
         clearable
         style="width: 220px"
+        @keyup.enter="onFilterChange"
+        @clear="onFilterChange"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
 
-      <el-radio-group v-model="categoryFilter" size="small">
+      <el-radio-group v-model="categoryFilter" size="small" @change="onFilterChange">
         <el-radio-button
           v-for="opt in categoryOptions"
           :key="opt.value"
           :value="opt.value"
-        >
-          {{ opt.label }}（{{ opt.count }}）
-        </el-radio-button>
+        >{{ opt.label }}</el-radio-button>
       </el-radio-group>
 
-      <el-radio-group v-model="installedFilter" size="small">
+      <el-radio-group v-model="installedFilter" size="small" @change="onFilterChange">
         <el-radio-button value="all">全部</el-radio-button>
         <el-radio-button value="uninstalled">未安装</el-radio-button>
         <el-radio-button value="installed">已安装</el-radio-button>
@@ -48,12 +48,14 @@
 
     <el-card shadow="never" class="page-card">
       <el-table
+        ref="tableRef"
         :data="filteredRows"
         v-loading="loading"
         size="default"
         :row-key="rowKey"
         @selection-change="onSelectionChange"
         :row-class-name="rowClass"
+        :empty-text="loadError || '暂无内置插件'"
       >
         <el-table-column type="selection" width="44" :selectable="selectable" />
         <el-table-column label="插件" min-width="300">
@@ -103,6 +105,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-row">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="onPageChange"
+          @size-change="onPageSizeChange"
+        />
+      </div>
     </el-card>
 
     <!-- 批量安装结果 -->
@@ -160,6 +173,7 @@ import type { BuiltinPluginVO, BuiltinInstallResultVO } from '@/api'
 import TaskProgressDialog from '@/components/TaskProgressDialog.vue'
 import type { TaskPollStatus } from '@/components/TaskProgressDialog.vue'
 import { usePluginStore } from '@/stores/plugin'
+import { usePluginPagination } from '@/composables/usePluginPagination'
 
 const emit = defineEmits<{
   (e: 'plugins-changed'): void
@@ -171,12 +185,24 @@ const instanceId = computed(() => store.instanceInfo?.instanceId)
 const instanceDeployType = computed(() => store.instanceInfo?.deployType || '')
 
 const loading = ref(false)
-const list = ref<BuiltinPluginVO[]>([])
+const {
+  page,
+  pageSize,
+  total,
+  records: list,
+  apply: applyPage,
+  resetForFilter,
+  changePage,
+  changeSize
+} = usePluginPagination<BuiltinPluginVO>()
+const loadError = ref('')
+let listRequestId = 0
 const keyword = ref('')
 const categoryFilter = ref<'all' | 'platform' | 'required' | 'optional' | 'custom'>('all')
 const installedFilter = ref<'all' | 'uninstalled' | 'installed'>('all')
 
 const selectedRows = ref<BuiltinPluginVO[]>([])
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const selectedIds = computed(() => selectedRows.value.map(r => r.id))
 const selectedSize = computed(() => selectedRows.value.reduce((sum, r) => sum + (r.size || 0), 0))
 
@@ -209,43 +235,14 @@ const instancePlatform = computed<'linux' | 'windows' | 'all'>(() => {
   return 'all'
 })
 
-const categoryOptions = computed(() => {
-  const defs: Array<{ value: typeof categoryFilter.value; label: string }> = [
+const categoryOptions = [
     { value: 'all', label: '全部' },
     { value: 'platform', label: '平台框架' },
     { value: 'required', label: '必选' },
     { value: 'optional', label: '可选' },
     { value: 'custom', label: '自选' },
-  ]
-  return defs.map(d => ({
-    ...d,
-    count: d.value === 'all'
-      ? platformFiltered.value.length
-      : platformFiltered.value.filter(p => p.category === d.value).length
-  }))
-})
-
-/** 平台兼容过滤（docker 实例隐藏 windows-only，反之亦然） */
-const platformFiltered = computed(() =>
-  list.value.filter(p =>
-    !(instancePlatform.value === 'linux' && p.platform === 'windows') &&
-    !(instancePlatform.value === 'windows' && p.platform === 'linux')
-  )
-)
-
-/** 关键词 + 分类 chip + 安装状态 chip 三重过滤后的行 */
-const filteredRows = computed(() => {
-  const kw = keyword.value.trim().toLowerCase()
-  return platformFiltered.value.filter(p => {
-    if (categoryFilter.value !== 'all' && p.category !== categoryFilter.value) return false
-    if (installedFilter.value === 'installed' && !p.installed) return false
-    if (installedFilter.value === 'uninstalled' && p.installed) return false
-    if (!kw) return true
-    return p.name.toLowerCase().includes(kw) ||
-      p.id.toLowerCase().includes(kw) ||
-      (p.description || '').toLowerCase().includes(kw)
-  })
-})
+] as const
+const filteredRows = computed(() => list.value)
 
 function formatSize(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B'
@@ -293,15 +290,53 @@ function rowClass({ row }: { row: BuiltinPluginVO }): string {
 async function loadList() {
   if (!instanceId.value) return
   loading.value = true
+  loadError.value = ''
+  const requestId = ++listRequestId
   try {
-    const data = await pluginManageApi.listBuiltin(instanceId.value)
-    list.value = Array.isArray(data) ? data : []
+    const requestedPage = page.value
+    const data = await pluginManageApi.listBuiltin(instanceId.value, {
+      keyword: keyword.value.trim() || undefined,
+      category: categoryFilter.value === 'all' ? undefined : categoryFilter.value,
+      installed: installedFilter.value,
+      platform: instancePlatform.value,
+      page: requestedPage,
+      size: pageSize.value
+    })
+    if (requestId !== listRequestId) return
+    const effectivePage = applyPage(data)
+    if (effectivePage !== requestedPage) {
+      return loadList()
+    }
+    clearSelection()
   } catch (e: any) {
-    ElMessage.error('加载内置插件列表失败：' + (e?.message || e))
+    if (requestId !== listRequestId) return
+    loadError.value = e?.message || String(e)
+    ElMessage.error('加载内置插件列表失败：' + loadError.value)
     list.value = []
+    total.value = 0
   } finally {
-    loading.value = false
+    if (requestId === listRequestId) {
+      loading.value = false
+    }
   }
+}
+
+function onFilterChange() {
+  resetForFilter()
+  clearSelection()
+  loadList()
+}
+
+function onPageChange(nextPage: number) {
+  changePage(nextPage)
+  clearSelection()
+  loadList()
+}
+
+function onPageSizeChange(nextSize: number) {
+  changeSize(nextSize)
+  clearSelection()
+  loadList()
 }
 
 function onSelectionChange(rows: BuiltinPluginVO[]) {
@@ -315,7 +350,12 @@ function onSelectAllUninstalled() {
 }
 
 function onClearSelection() {
+  clearSelection()
+}
+
+function clearSelection() {
   selectedRows.value = []
+  tableRef.value?.clearSelection()
 }
 
 async function onInstallSingle(row: BuiltinPluginVO) {
@@ -381,11 +421,11 @@ function onInstallTaskFailed(st: TaskPollStatus) {
   }
 }
 
-function onSingleInstallDone(row: BuiltinPluginVO, msg: string) {
+async function onSingleInstallDone(row: BuiltinPluginVO, msg: string) {
   ElMessage.success(msg)
   installingSingle.value = ''
-  row.installed = true
   selectedRows.value = selectedRows.value.filter(r => r.id !== row.id)
+  await loadList()
   emit('plugins-changed')
 }
 
@@ -496,6 +536,12 @@ watch(instanceId, () => {
 
 .toolbar-spacer {
   flex: 1;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .builtin-summary {

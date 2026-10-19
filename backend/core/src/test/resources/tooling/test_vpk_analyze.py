@@ -3,12 +3,14 @@
 
 import importlib.util
 import json
+import os
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / "main" / "resources" / "tooling" / "vpk_analyze.py"
@@ -32,7 +34,8 @@ def mission_text() -> bytes:
 '''
 
 
-def make_vpk(path: Path, version: int, preload: bool, tail_bytes: int = 0) -> None:
+def make_vpk(path: Path, version: int, preload: bool, tail_bytes: int = 0,
+             archive_index: int = 0xFFFF) -> None:
     text = mission_text()
     inline = text if preload else b""
     tree_size = len(b"txt\0missions\0test\0") + 18 + len(inline) + 3
@@ -42,7 +45,7 @@ def make_vpk(path: Path, version: int, preload: bool, tail_bytes: int = 0) -> No
         if version >= 2:
             f.write(struct.pack("<IIII", 0, 0, 0, 0))
         f.write(b"txt\0missions\0test\0")
-        f.write(struct.pack("<IHHIIH", 0, len(inline), 0xFFFF, 0,
+        f.write(struct.pack("<IHHIIH", 0, len(inline), archive_index, 0,
                            0 if preload else len(text), 0))
         f.write(inline)
         f.write(b"\0\0\0")
@@ -102,6 +105,46 @@ class VpkAnalyzeTest(unittest.TestCase):
             parsed = VPK.parse_mission(VPK.read_data_section(path, 12, tree_size, refs)[0])
             self.assertEqual("Test Campaign", parsed["title"])
             self.assertGreater(path.stat().st_size, 512 * 1024 * 1024)
+
+    def test_data_section_uses_mounted_target_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target_root = Path(tmp) / "target-root"
+            vpk_path = target_root / "l4d2" / "left4dead2" / "addons" / "data.vpk"
+            vpk_path.parent.mkdir(parents=True)
+            make_vpk(vpk_path, 1, False)
+            with vpk_path.open("rb") as f:
+                _, _, tree_size = struct.unpack("<III", f.read(12))
+                f.seek(12)
+                tree = f.read(tree_size)
+            _, refs = VPK.parse_tree(tree, 0, len(tree))
+
+            with patch.dict(os.environ, {VPK.TARGET_ROOT_ENV: str(target_root)}):
+                parsed = VPK.parse_mission(
+                    VPK.read_data_section(
+                        "/l4d2/left4dead2/addons/data.vpk",
+                        12,
+                        tree_size,
+                        refs,
+                    )[0]
+                )
+
+            self.assertEqual("Test Campaign", parsed["title"])
+            self.assertEqual(["test_map_1"], [c["code"] for c in parsed["chapters"]])
+
+    def test_data_section_accepts_0x7fff_self_archive_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "data-7fff.vpk"
+            make_vpk(path, 1, False, archive_index=0x7FFF)
+            with path.open("rb") as f:
+                _, _, tree_size = struct.unpack("<III", f.read(12))
+                f.seek(12)
+                tree = f.read(tree_size)
+            _, refs = VPK.parse_tree(tree, 0, len(tree))
+            self.assertEqual([(0x7FFF, 0, len(mission_text()))], refs)
+            parsed = VPK.parse_mission(
+                VPK.read_data_section(path, 12, tree_size, refs)[0]
+            )
+            self.assertEqual("Test Campaign", parsed["title"])
 
 
 if __name__ == "__main__":

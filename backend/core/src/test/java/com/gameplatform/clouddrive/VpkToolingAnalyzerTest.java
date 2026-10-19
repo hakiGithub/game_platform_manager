@@ -34,6 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -87,6 +88,13 @@ class VpkToolingAnalyzerTest {
                 new com.gameplatform.deploy.HostCredentials("127.0.0.1", 22, "steam", null, "pw"));
         when(containerIdResolver.resolve(eq(dockerInstance), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn("container-1");
+        SshUtil.CommandResult inspect = command(0,
+                "volume|/l4d2|/var/lib/docker/volumes/test/_data|test-data\n", "");
+        org.mockito.Mockito.lenient().doReturn(inspect).when(sshUtil).executeCommand(
+                anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                org.mockito.ArgumentMatchers.argThat(cmd -> cmd != null
+                        && cmd.contains("docker inspect ")));
     }
 
     @Test
@@ -99,8 +107,7 @@ class VpkToolingAnalyzerTest {
                 anyString(), contains("python3 "))).thenReturn(analyzed);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), org.mockito.ArgumentMatchers.argThat(cmd ->
-                        cmd != null && !cmd.contains("python3 ")))).thenReturn(ok);
+                anyString(), contains("sha256sum"))).thenReturn(ok);
 
         analyzer.fileDigest(1L, "left4dead2/addons/map.vpk");
 
@@ -122,9 +129,7 @@ class VpkToolingAnalyzerTest {
                 anyString(), contains("python3 "))).thenReturn(analyzed);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), org.mockito.ArgumentMatchers.argThat(cmd ->
-                        cmd != null && !cmd.contains("python3 ")))).thenReturn(
-                digest);
+                anyString(), contains("sha256sum"))).thenReturn(digest);
         when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
                 anyString(), anyString(),
@@ -144,11 +149,16 @@ class VpkToolingAnalyzerTest {
     @Test
     @DisplayName("容器工作目录缺失时从游戏元数据回退")
     void analyzeVpk_usesGameMetadataWorkingDirFallback() {
-        dockerInstance.getConfigInfo().remove("containerWorkDir");
+        dockerInstance.setConfigInfo(new HashMap<>());
         dockerInstance.setGameCode("l4d2");
         GameMetadata metadata = new GameMetadata();
         metadata.setDeployConfig(Map.of("docker", Map.of("workingDir", "/metadata-l4d2")));
         when(gameMetadataMapper.selectByGameCode("l4d2")).thenReturn(metadata);
+        SshUtil.CommandResult inspect = command(0,
+                "volume|/metadata-l4d2|/var/lib/docker/volumes/test/_data|test-data\n", "");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("docker inspect "))).thenReturn(inspect);
         SshUtil.CommandResult analyzed = command(0, "{\"title\":\"Test Campaign\",\"chapters\":[]}", "");
         SshUtil.CommandResult digest = command(0, "a".repeat(64), "");
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
@@ -156,9 +166,7 @@ class VpkToolingAnalyzerTest {
                 anyString(), contains("python3 "))).thenReturn(analyzed);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), org.mockito.ArgumentMatchers.argThat(cmd ->
-                        cmd != null && !cmd.contains("python3 ")))).thenReturn(
-                digest);
+                anyString(), contains("sha256sum"))).thenReturn(digest);
         when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
                 anyString(), anyString(),
@@ -177,13 +185,13 @@ class VpkToolingAnalyzerTest {
     void inspectVpk_dockerSkipsDigest() {
         SshUtil.CommandResult analyzed = command(0, "{\"title\":\"Test Campaign\",\"chapters\":[]}", "");
         SshUtil.CommandResult ignored = command(0, "", "");
+        SshUtil.CommandResult missingPython = command(1, "", "");
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
                 anyString(), contains("python3 "))).thenReturn(analyzed);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), org.mockito.ArgumentMatchers.argThat(cmd ->
-                        cmd != null && !cmd.contains("python3 ")))).thenReturn(ignored);
+                anyString(), contains("command -v python3"))).thenReturn(missingPython);
         when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
                 anyString(), anyString(),
@@ -199,7 +207,16 @@ class VpkToolingAnalyzerTest {
         verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
                 org.mockito.ArgumentMatchers.anyInt(), anyString(),
                 org.mockito.ArgumentMatchers.isNull(), anyString(),
-                contains("--volumes-from 'container-1'"));
+                contains("type=volume,source=test-data"
+                        + ",destination=/gp-target/l4d2,readonly"));
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), anyString(),
+                org.mockito.ArgumentMatchers.isNull(), anyString(),
+                contains("GP_VPK_TARGET_ROOT=/gp-target"));
+        verify(sshUtil, never()).executeCommand(anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), anyString(),
+                org.mockito.ArgumentMatchers.isNull(), anyString(),
+                contains("--volumes-from"));
     }
 
     @Test
@@ -207,13 +224,13 @@ class VpkToolingAnalyzerTest {
     void inspectVpk_quotesContainerPathWithSpaces() {
         SshUtil.CommandResult analyzed = command(0, "{\"title\":\"Test Campaign\",\"chapters\":[]}", "");
         SshUtil.CommandResult ignored = command(0, "", "");
+        SshUtil.CommandResult missingPython = command(1, "", "");
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
                 anyString(), contains("python3 "))).thenReturn(analyzed);
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
-                anyString(), org.mockito.ArgumentMatchers.argThat(cmd ->
-                        cmd != null && !cmd.contains("python3 ")))).thenReturn(ignored);
+                anyString(), contains("command -v python3"))).thenReturn(missingPython);
         when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
                 anyString(), anyString(),
@@ -232,6 +249,11 @@ class VpkToolingAnalyzerTest {
     void inspectVpk_targetContainerPython() {
         SshUtil.CommandResult analyzed = command(0, "{\"title\":\"Test Campaign\",\"chapters\":[]}", "");
         SshUtil.CommandResult ignored = command(0, "", "");
+        SshUtil.CommandResult inspect = command(0,
+                "volume|/metadata-l4d2|/var/lib/docker/volumes/test/_data|test-data\n", "");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("docker inspect "))).thenReturn(inspect);
         SshUtil.CommandResult probe = command(0, "__ok__\n", "");
         when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(),
@@ -254,7 +276,145 @@ class VpkToolingAnalyzerTest {
 
         verify(sshUtil, never()).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
-                contains("--entrypoint python3"));
+                contains("--entrypoint /usr/bin/python3"));
+    }
+
+    @Test
+    @DisplayName("目标根挂载映射到独立工具目录而不覆盖镜像根")
+    void inspectVpk_rootMountUsesIsolatedToolingRoot() {
+        SshUtil.CommandResult missingPython = command(1, "", "");
+        SshUtil.CommandResult inspect = command(0,
+                "bind|/|/var/lib/docker/volumes/test/_data|\n", "");
+        SshUtil.CommandResult analyzed = command(0,
+                "{\"title\":\"Test Campaign\",\"chapters\":[]}", "");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("command -v python3"))).thenReturn(missingPython);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("docker inspect "))).thenReturn(inspect);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--entrypoint /usr/bin/python3"))).thenReturn(analyzed);
+        when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                anyString(), anyString(),
+                org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
+
+        analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk");
+
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), anyString(),
+                org.mockito.ArgumentMatchers.isNull(), anyString(),
+                contains("type=bind,source=/var/lib/docker/volumes/test/_data"
+                        + ",destination=/gp-target,readonly"));
+        verify(sshUtil, never()).executeCommand(anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), anyString(),
+                org.mockito.ArgumentMatchers.isNull(), anyString(),
+                contains("destination=/,readonly"));
+    }
+
+    @Test
+    @DisplayName("工具镜像缺少 python3 时返回可操作错误且隐藏 Docker 内部回显")
+    void inspectVpk_toolingImageMissingPython_returnsActionableError() {
+        SshUtil.CommandResult probeMissing = command(1, "", "");
+        SshUtil.CommandResult dockerNoise = command(125, "",
+                "docker: Error response from daemon: failed to create task for container: "
+                        + "exec: \"/usr/bin/python3\": executable file not found in $PATH");
+        SshUtil.CommandResult cleanup = command(0, "", "");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("command -v python3"))).thenReturn(probeMissing);
+        org.mockito.Mockito.lenient().doReturn(command(0,
+                        "volume|/l4d2|/var/lib/docker/volumes/test/_data|test-data\n", ""))
+                .when(sshUtil).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                        anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                        contains("docker inspect "));
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--entrypoint /usr/bin/python3")))
+                .thenReturn(dockerNoise);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--mount 'type=volume")))
+                .thenReturn(dockerNoise);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("rm -f '/tmp/gp_vpk_analyze_"))).thenReturn(cleanup);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("docker cp "))).thenReturn(cleanup);
+        when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                anyString(), anyString(),
+                org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
+
+        com.gameplatform.common.exception.BusinessException error = assertThrows(
+                com.gameplatform.common.exception.BusinessException.class,
+                () -> analyzer.inspectVpk(1L, "left4dead2/addons/red_square.vpk"));
+
+        assertTrue(error.getMessage().contains("red_square.vpk"));
+        assertTrue(error.getMessage().contains("工具容器"), error.getMessage());
+        assertTrue(error.getMessage().contains("重新拉取")
+                || error.getMessage().contains("检查 platform-tools"), error.getMessage());
+        assertTrue(error.getMessage().contains("platform-tools"), error.getMessage());
+        assertTrue(!error.getMessage().contains("failed to create task"));
+        verify(sshUtil, atLeastOnce()).executeCommand(anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), anyString(),
+                org.mockito.ArgumentMatchers.isNull(), anyString(),
+                contains("rm -f '/tmp/gp_vpk_analyze_"));
+    }
+
+    @Test
+    @DisplayName("工具镜像拉取失败与文件不可读能区分")
+    void inspectVpk_toolingPullFailure_andFileReadFailureAreDistinct() {
+        SshUtil.CommandResult probeMissing = command(1, "", "");
+        SshUtil.CommandResult pullFailure = command(125, "",
+                "Error response from daemon: manifest unknown: manifest unknown");
+        SshUtil.CommandResult cleanup = command(0, "", "");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("command -v python3"))).thenReturn(probeMissing);
+        org.mockito.Mockito.lenient().doReturn(command(0,
+                        "volume|/l4d2|/var/lib/docker/volumes/test/_data|test-data\n", ""))
+                .when(sshUtil).executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                        anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                        contains("docker inspect "));
+        when(sshUtil.uploadFile(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(), anyString(),
+                anyString(), anyString(),
+                org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--entrypoint /usr/bin/python3")))
+                .thenReturn(pullFailure);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--mount 'type=volume")))
+                .thenReturn(pullFailure);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("rm -f '/tmp/gp_vpk_analyze_"))).thenReturn(cleanup);
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("docker cp "))).thenReturn(cleanup);
+
+        com.gameplatform.common.exception.BusinessException pullError = assertThrows(
+                com.gameplatform.common.exception.BusinessException.class,
+                () -> analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk"));
+        assertTrue(pullError.getMessage().contains("工具容器"), pullError.getMessage());
+
+        SshUtil.CommandResult readFailure = command(1, "",
+                "No such file or directory: /l4d2/left4dead2/addons/map.vpk");
+        when(sshUtil.executeCommand(anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString(), org.mockito.ArgumentMatchers.isNull(),
+                anyString(), contains("--entrypoint /usr/bin/python3")))
+                .thenReturn(readFailure);
+
+        com.gameplatform.common.exception.BusinessException fileError = assertThrows(
+                com.gameplatform.common.exception.BusinessException.class,
+                () -> analyzer.inspectVpk(1L, "left4dead2/addons/map.vpk"));
+        assertTrue(fileError.getMessage().contains("VPK 文件不可读"), fileError.getMessage());
     }
 
     private SshUtil.CommandResult command(int exit, String output, String error) {

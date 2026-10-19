@@ -22,4 +22,12 @@ public class PluginRestoreDefaultsDTO {
     @NotBlank(message = "pluginName 不能为空")
     @Schema(description = "插件名称", requiredMode = Schema.RequiredMode.REQUIRED)
     private String pluginName;
+
+    /** 可选目标 cfg 稳定文件 ID（优先于 configPath）。 */
+    @Schema(description = "目标 cfg 稳定文件 ID")
+    private String fileId;
+
+    /** 可选目标 cfg 路径或文件名；为空时保留旧行为恢复第一个存在文件。 */
+    @Schema(description = "目标 cfg 路径或文件名")
+    private String configPath;
 }

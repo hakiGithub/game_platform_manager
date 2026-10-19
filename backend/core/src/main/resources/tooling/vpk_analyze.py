@@ -12,14 +12,25 @@
 解析逻辑与插件侧 Java VpkParser 保持一致（v2 头部额外跳过 16 字节扩展字段）。
 """
 import json
+import os
 import re
 import struct
 import sys
 
 VPK_SIGNATURE = 0x55AA1234
 HEADER_SIZE = 12
+TARGET_ROOT_ENV = "GP_VPK_TARGET_ROOT"
+SELF_ARCHIVE_INDEXES = {0x7FFF, 0xFFFF}
 KV_PATTERN = re.compile(r'"([^"]+)"\s+"([^"]+)"')
 GAME_MODES = {"coop", "survival", "halftank", "brawler", "versus", "scavenge", "realism"}
+
+
+def target_path(path):
+    """Map a target-container absolute path into the tool container's mounted root."""
+    root = os.environ.get(TARGET_ROOT_ENV)
+    if not root or not path.startswith("/"):
+        return path
+    return os.path.join(root, path.lstrip("/"))
 
 
 def read_null_terminated(buf, pos):
@@ -64,7 +75,7 @@ def parse_tree(buf, pos, end):
                     if is_mission:
                         missions.append(preload.decode("utf-8", errors="replace"))
                 elif is_mission and size > 0:
-                    # 0xFFFF = 数据在本文件内；其他 index 指向 archive_NNN.vpk。
+                    # 0x7FFF/0xFFFF = 数据在本文件内；其他 index 指向 archive_NNN.vpk。
                     mission_refs.append((archive_index, offset, size))
                 pos += preload_bytes
     return missions, mission_refs
@@ -75,11 +86,11 @@ def read_data_section(path, tree_start, tree_size, mission_refs):
     out = []
     if not mission_refs:
         return out
-    with open(path, "rb") as f:
+    with open(target_path(path), "rb") as f:
         f.seek(0, 2)
         file_len = f.tell()
         for archive_index, offset, size in mission_refs:
-            if archive_index != 0xFFFF:
+            if archive_index not in SELF_ARCHIVE_INDEXES:
                 continue  # 多卷归档的数据在 archive_NNN.vpk，暂不支持
             start = tree_start + tree_size + offset
             if start + size > file_len:
@@ -189,7 +200,7 @@ def main():
         sys.exit(3)
     path = sys.argv[1]
     try:
-        with open(path, "rb") as f:
+        with open(target_path(path), "rb") as f:
             head = f.read(HEADER_SIZE)
             if len(head) < HEADER_SIZE:
                 print("file too small", file=sys.stderr)

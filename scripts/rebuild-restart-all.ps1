@@ -117,23 +117,45 @@ if ($SkipPlugins) { $backendArgs['SkipPlugins'] = $true }
 
 $argDisplay = ($backendArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' '
 Write-LogInfo "调用: $backendScript $argDisplay"
-& $backendScript @backendArgs
-# rebuild-restart.ps1 通过 start-backend.bat 启动后台 Java 进程，$LASTEXITCODE 可能是 null，
-# 不能依赖它判断后端是否启动成功。改为检查 8080 端口是否监听。
 $backendOk = $false
-if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-    # 等待最多 10 秒确认 8080 端口监听
-    for ($i = 0; $i -lt 10; $i++) {
-        Start-Sleep -Seconds 1
-        $listening = netstat -ano | Select-String ":8080\s+.*LISTENING"
-        if ($listening) { $backendOk = $true; break }
+try {
+    & $backendScript @backendArgs
+    $backendExitCode = $LASTEXITCODE
+} catch {
+    Write-LogError "后端脚本执行失败: $($_.Exception.Message)"
+    $backendExitCode = 1
+}
+
+# 后台启动器的退出码不可靠；以 PID 文件、8080 监听和登录接口共同确认。
+$backendPidFile = Join-Path $BACKEND_DIR "logs\game-platform-manager.pid"
+for ($i = 0; $i -lt 10; $i++) {
+    $savedPid = 0
+    $pidText = if (Test-Path $backendPidFile) {
+        (Get-Content $backendPidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    } else {
+        $null
     }
-} else {
-    $backendOk = $false
+    $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($listener -and [int]::TryParse($pidText, [ref]$savedPid) -and
+        $savedPid -eq [int]$listener.OwningProcess) {
+        try {
+            $loginBody = @{username='admin';password='admin123'} | ConvertTo-Json
+            $login = Invoke-RestMethod -Uri 'http://localhost:8080/api/auth/login' `
+                -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 5
+            if ($login.code -eq 200) {
+                $backendOk = $true
+                break
+            }
+        } catch {
+            # 应用可能仍在完成登录接口初始化。
+        }
+    }
+    Start-Sleep -Seconds 1
 }
 
 if (-not $backendOk) {
-    Write-LogError "后端重启失败 (exit code: $LASTEXITCODE, 8080 端口未监听)"
+    Write-LogError "后端重启失败 (exit code: $backendExitCode, PID 文件与 8080 监听未通过健康检查)"
     exit 1
 }
 

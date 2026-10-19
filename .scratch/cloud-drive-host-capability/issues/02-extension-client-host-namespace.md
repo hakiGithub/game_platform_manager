@@ -1,6 +1,6 @@
 # 02: ExtensionClient 宿主化（保留命名空间 platform）
 
-Status: ready-for-human
+Status: resolved
 
 ## 任务
 
@@ -17,3 +17,10 @@ Status: ready-for-human
 - spec 中 credential 为密文。
 
 Blocked by: （无）
+
+## Answer
+
+- `CloudDriveConfiguration.hostExtensionClient()` 以保留命名空间 `platform` 构造主容器 `ExtensionClient`；`CloudAccountResource` 使用 `@ExtensionModel(strategy = SHARED, group = "platform", kind = "cloud_account")`，落既有 `extensions` 表。
+- `CloudAccountService` 通过 `AesUtil.encrypt` 保存 `settingsCipher`，列表 VO 只暴露 `credentialHint`；2026-10-20 管理员实机 `GET /api/cloud/accounts` 确认无 `settingsCipher`。
+- `CloudAccountServiceTest.createStoresCipherAndHintAndMountsDefaultPath` 覆盖密文不等于明文、脱敏尾号与 `/{providerType}/{name}` 挂载；`CloudAccountServiceInitializationOrderTest` 覆盖启动顺序，14 项相关核心测试全部通过。
+- 插件侧隔离由 `ExtensionClientImpl` 的 pluginId 绑定保证；本轮未构造独立测试插件做双向 CRUD，保留为后续回归项。

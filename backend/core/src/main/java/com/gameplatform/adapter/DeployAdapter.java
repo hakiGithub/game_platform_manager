@@ -202,9 +202,28 @@ public interface DeployAdapter {
      * @param instanceId 实例ID
      * @param config     部署配置
      * @param callback   进度回调
-     * @return 是否卸载成功
+     * @return 是否完全卸载成功
      */
     boolean uninstall(Long instanceId, Map<String, Object> config, DeployProgressCallback callback);
+
+    /**
+     * 卸载实例并返回结构化结果。
+     *
+     * <p>默认实现向后兼容只返回 boolean 的适配器；需要区分部分成功的适配器
+     * 应覆盖此方法。</p>
+     *
+     * @param instanceId 实例ID
+     * @param config     部署配置
+     * @param callback   进度回调
+     * @return 卸载结果
+     */
+    default UninstallResult uninstallWithResult(
+            Long instanceId, Map<String, Object> config, DeployProgressCallback callback) {
+        boolean success = uninstall(instanceId, config, callback);
+        return success
+                ? UninstallResult.success("卸载成功")
+                : UninstallResult.failed("卸载失败", null);
+    }
 
     /**
      * 获取日志

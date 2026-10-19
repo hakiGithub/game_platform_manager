@@ -509,12 +509,18 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
 
     @Override
     public boolean uninstall(Long instanceId, Map<String, Object> config, DeployProgressCallback callback) {
+        return uninstallWithResult(instanceId, config, callback).isFullySuccessful();
+    }
+
+    @Override
+    public UninstallResult uninstallWithResult(
+            Long instanceId, Map<String, Object> config, DeployProgressCallback callback) {
         notifyStageStart(callback, "UNINSTALL", "开始卸载 LinuxGSM Docker 服务");
 
         InstanceHostInfo info = getInstanceHostInfo(instanceId);
         if (info == null) {
             notifyError(callback, "实例或主机不存在", "UNINSTALL", false);
-            return false;
+            return UninstallResult.failed("实例或主机不存在", null);
         }
 
         Host host = info.host();
@@ -522,33 +528,80 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
 
         try {
+            workDir = resolveRemovableWorkDir(host, workDir);
+        } catch (IllegalArgumentException e) {
+            String message = "工作目录不安全，已取消卸载: " + e.getMessage();
+            notifyError(callback, message, "UNINSTALL", false);
+            return UninstallResult.failed(message, null);
+        }
+
+        try {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "UNINSTALL", "停止并删除容器");
             SshUtil.CommandResult downResult = executeCommand(host,
-                    String.format("cd %s && %s -p %s down", workDir, composeCmd, projectName), 120000);
+                    String.format("cd %s && %s -p %s down",
+                            shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
             if (!downResult.isSuccess()) {
                 notifyError(callback, "停止容器失败: " + downResult.getError(), "UNINSTALL", true);
             }
 
             notifyProgress(callback, 60, "UNINSTALL", "清理数据卷");
             boolean removeVolumes = getConfigBoolean(config, "removeVolumes", false);
+            SshUtil.CommandResult volumeResult = null;
             if (removeVolumes) {
-                executeCommand(host,
-                        String.format("cd %s && %s -p %s down -v", workDir, composeCmd, projectName), 120000);
+                volumeResult = executeCommand(host,
+                        String.format("cd %s && %s -p %s down -v",
+                                shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
+                if (!volumeResult.isSuccess()) {
+                    notifyError(callback, "清理数据卷失败: " + volumeResult.getError(), "UNINSTALL", true);
+                }
             }
 
             notifyProgress(callback, 80, "UNINSTALL", "删除工作目录");
-            executeCommand(host, "rm -rf " + workDir);
+            UninstallResult workDirResult = removeResolvedWorkDir(host, workDir);
+
+            boolean allSucceeded = downResult.isSuccess()
+                    && (volumeResult == null || volumeResult.isSuccess())
+                    && workDirResult.isFullySuccessful();
+            if (!allSucceeded) {
+                StringBuilder message = new StringBuilder("卸载未完全完成");
+                if (!downResult.isSuccess()) {
+                    message.append("；停止/删除容器失败: ").append(summarizeSshError(downResult));
+                }
+                if (volumeResult != null && !volumeResult.isSuccess()) {
+                    message.append("；清理数据卷失败: ").append(summarizeSshError(volumeResult));
+                }
+                if (!workDirResult.isFullySuccessful()) {
+                    message.append("；").append(workDirResult.message());
+                }
+                UninstallResult result = downResult.isSuccess() || workDirResult.isFullySuccessful()
+                        ? UninstallResult.partialSuccess(message.toString(), workDirResult.residualPath())
+                        : UninstallResult.failed(message.toString(), workDirResult.residualPath());
+                notifyStageComplete(callback, "UNINSTALL", false, result.message());
+                return result;
+            }
 
             notifyProgress(callback, 100, "UNINSTALL", "卸载完成");
             notifyStageComplete(callback, "UNINSTALL", true, "LinuxGSM Docker 服务卸载成功");
-            return true;
+            return UninstallResult.success("LinuxGSM Docker 服务卸载成功");
 
         } catch (Exception e) {
             log.error("LinuxGSM Docker 卸载失败", e);
             notifyError(callback, "卸载异常: " + e.getMessage(), "UNINSTALL", false);
-            return false;
+            return UninstallResult.failed("卸载异常: " + e.getMessage(), workDir);
         }
+    }
+
+    private String summarizeSshError(SshUtil.CommandResult result) {
+        String error = result.getError();
+        if (error == null || error.isBlank()) {
+            error = result.getOutput();
+        }
+        if (error == null || error.isBlank()) {
+            return "exit code " + result.getExitCode();
+        }
+        String firstLine = error.strip().split("\\R", 2)[0].replaceAll("\\s+", " ");
+        return firstLine.length() > 300 ? firstLine.substring(0, 300) + "..." : firstLine;
     }
 
     @Override
@@ -791,11 +844,24 @@ public class LinuxGsmDockerAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
 
         try {
+            workDir = resolveRemovableWorkDir(host, workDir);
+        } catch (IllegalArgumentException e) {
+            String message = "工作目录不安全，已取消清理: " + e.getMessage();
+            notifyError(callback, message, "CLEANUP", false);
+            return false;
+        }
+
+        try {
             String composeCmd = getComposeCommand(host);
             executeCommand(host,
                     String.format("cd %s && %s -p %s down --remove-orphans 2>/dev/null || true",
-                            workDir, composeCmd, projectName), 120000);
-            executeCommand(host, "rm -rf " + workDir);
+                            shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
+            UninstallResult workDirResult = removeResolvedWorkDir(host, workDir);
+            if (!workDirResult.isFullySuccessful()) {
+                notifyError(callback, workDirResult.message(), "CLEANUP", true);
+                notifyStageComplete(callback, "CLEANUP", false, workDirResult.message());
+                return false;
+            }
             executeCommand(host, "docker volume prune -f 2>/dev/null || true", 30000);
             executeCommand(host, "docker network prune -f 2>/dev/null || true", 30000);
 

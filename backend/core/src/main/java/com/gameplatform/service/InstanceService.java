@@ -3,6 +3,7 @@ package com.gameplatform.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.*;
+import com.gameplatform.vo.InstanceDeleteResultVO;
 import com.gameplatform.vo.InstanceVO;
 
 import java.util.List;
@@ -37,8 +38,9 @@ public interface InstanceService {
      * <p>兼容旧语义：等价于 deleteInstance(id, true)（卸载远程资源）。
      *
      * @param id 实例ID
+     * @return 实例删除与远端清理结果
      */
-    void deleteInstance(Long id);
+    InstanceDeleteResultVO deleteInstance(Long id);
 
     /**
      * 删除游戏实例（ADR-0023 认领实例删除语义）
@@ -48,8 +50,9 @@ public interface InstanceService {
      *
      * @param id              实例ID
      * @param deleteContainer 是否同时删除容器等远程资源
+     * @return 实例删除与远端清理结果
      */
-    void deleteInstance(Long id, boolean deleteContainer);
+    InstanceDeleteResultVO deleteInstance(Long id, boolean deleteContainer);
 
     /**
      * 根据ID查询实例

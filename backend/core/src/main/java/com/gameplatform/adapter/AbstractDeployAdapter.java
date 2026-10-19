@@ -324,6 +324,130 @@ public abstract class AbstractDeployAdapter implements DeployAdapter {
     }
 
     /**
+     * 安全删除实例工作目录。
+     *
+     * <p>路径必须是绝对路径，且不能是根目录、家目录、相对路径或包含
+     * {@code .}/{@code ..} 段。删除前统一规范化并用单引号引用，避免空格、
+     * 引号和 shell 元字符改变命令语义。</p>
+     */
+    protected UninstallResult removeInstanceWorkDir(Host host, String workDir) {
+        String resolvedPath;
+        try {
+            resolvedPath = resolveRemovableWorkDir(host, workDir);
+        } catch (IllegalArgumentException e) {
+            log.warn("拒绝清理实例工作目录: host={}, workDir={}, reason={}",
+                    host != null ? host.getId() : null, workDir, e.getMessage());
+            return UninstallResult.failed("拒绝清理工作目录: " + e.getMessage(), null);
+        }
+        return removeResolvedWorkDir(host, resolvedPath);
+    }
+
+    /**
+     * 删除已经过 {@link #resolveRemovableWorkDir(Host, String)} 校验的工作目录。
+     */
+    protected UninstallResult removeResolvedWorkDir(Host host, String resolvedPath) {
+        SshUtil.CommandResult result = executeCommand(host, "rm -rf " + shellQuote(resolvedPath), 60000);
+        if (result == null) {
+            log.error("清理实例工作目录无响应: host={}, workDir={}",
+                    host != null ? host.getId() : null, resolvedPath);
+            return UninstallResult.failed("清理工作目录无响应", resolvedPath);
+        }
+        if (!result.isSuccess()) {
+            String error = summarizeCommandError(result);
+            log.warn("清理实例工作目录失败: host={}, workDir={}, exitCode={}, error={}",
+                    host != null ? host.getId() : null, resolvedPath, result.getExitCode(), error);
+            return UninstallResult.failed("清理工作目录失败: " + error, resolvedPath);
+        }
+        log.info("实例工作目录已清理: host={}, workDir={}",
+                host != null ? host.getId() : null, resolvedPath);
+        return UninstallResult.success("工作目录已清理");
+    }
+
+    /**
+     * 将 ~ 简写展开为绝对路径，并做删除边界校验。
+     */
+    protected String resolveRemovableWorkDir(Host host, String workDir) {
+        if (host == null) {
+            throw new IllegalArgumentException("主机不存在");
+        }
+        if (workDir == null || workDir.isBlank()) {
+            throw new IllegalArgumentException("路径为空");
+        }
+        String candidate = workDir.trim();
+        if (candidate.indexOf('\n') >= 0 || candidate.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("路径包含换行符");
+        }
+        if (candidate.equals("~") || candidate.startsWith("~/")) {
+            SshUtil.CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
+            String home = homeResult != null && homeResult.isSuccess() ? homeResult.getOutput().trim() : "";
+            if (home.isEmpty() || !home.startsWith("/")) {
+                throw new IllegalArgumentException("无法解析家目录");
+            }
+            candidate = home + candidate.substring(1);
+        }
+        if (candidate.startsWith("~")) {
+            throw new IllegalArgumentException("不支持其他用户的家目录简写");
+        }
+        if (!candidate.startsWith("/")) {
+            throw new IllegalArgumentException("只允许绝对路径");
+        }
+
+        String normalized = normalizeRemotePath(candidate);
+        if (normalized == null) {
+            throw new IllegalArgumentException("路径包含越界的 .. 段");
+        }
+        if ("/".equals(normalized)) {
+            throw new IllegalArgumentException("不允许删除根目录");
+        }
+
+        SshUtil.CommandResult homeResult = executeCommand(host, "printf %s \"$HOME\"", 10000);
+        String home = homeResult != null && homeResult.isSuccess() ? homeResult.getOutput().trim() : "";
+        if (!home.isEmpty() && normalized.equals(normalizeRemotePath(home))) {
+            throw new IllegalArgumentException("不允许删除家目录");
+        }
+        return normalized;
+    }
+
+    /**
+     * 规范化 POSIX 绝对路径；遇到 .. 段时返回 null。
+     */
+    protected String normalizeRemotePath(String path) {
+        if (path == null || path.isBlank() || !path.startsWith("/")) {
+            return null;
+        }
+        List<String> segments = new ArrayList<>();
+        for (String segment : path.split("/")) {
+            if (segment.isEmpty() || ".".equals(segment)) {
+                continue;
+            }
+            if ("..".equals(segment)) {
+                return null;
+            }
+            segments.add(segment);
+        }
+        return segments.isEmpty() ? "/" : "/" + String.join("/", segments);
+    }
+
+    /**
+     * POSIX shell 单引号转义。
+     */
+    protected String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private String summarizeCommandError(SshUtil.CommandResult result) {
+        String error = result.getError();
+        if (error == null || error.isBlank()) {
+            error = result.getOutput();
+        }
+        if (error == null || error.isBlank()) {
+            return "exit code " + result.getExitCode();
+        }
+        String firstLine = error.strip().split("\\R", 2)[0].replaceAll("\\s+", " ");
+        return firstLine.length() > 500 ? firstLine.substring(0, 500) + "..." : firstLine;
+    }
+
+    /**
      * 从配置中获取字符串值
      *
      * @param config       配置

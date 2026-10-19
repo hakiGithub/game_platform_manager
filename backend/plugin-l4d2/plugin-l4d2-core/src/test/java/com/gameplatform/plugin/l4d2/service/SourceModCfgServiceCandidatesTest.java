@@ -82,14 +82,12 @@ class SourceModCfgServiceCandidatesTest {
     }
 
     @Test
-    void 候选路径_meta声明的config_files应排在最前() {
+    void 候选路径_存在meta声明时不再混入名称推导候选() {
         when(pluginMetaService.load(9L, PLUGIN_NAME)).thenReturn(metaWithCfg());
 
         List<String> paths = service.getCandidatePaths(9L, PLUGIN_NAME);
 
-        // 主候选 = meta 声明的真实 cfg 路径；次候选 = 按显示名推导的兜底
-        assertThat(paths).contains(REAL_CFG, "cfg/sourcemod/" + PLUGIN_NAME + ".cfg");
-        assertThat(paths.indexOf(REAL_CFG)).isZero();
+        assertThat(paths).containsExactly(REAL_CFG);
     }
 
     @Test
@@ -100,6 +98,34 @@ class SourceModCfgServiceCandidatesTest {
 
         assertThat(paths).contains("cfg/sourcemod/" + PLUGIN_NAME + ".cfg");
         assertThat(paths).allMatch(p -> p.endsWith(".cfg"));
+    }
+
+    @Test
+    void 候选路径_meta声明为空时回退按插件名推导() {
+        PluginMeta meta = new PluginMeta();
+        meta.setName(PLUGIN_NAME);
+        meta.setConfigFiles(List.of());
+        when(pluginMetaService.load(9L, PLUGIN_NAME)).thenReturn(meta);
+
+        List<String> paths = service.getCandidatePaths(9L, PLUGIN_NAME);
+
+        assertThat(paths).contains("cfg/sourcemod/" + PLUGIN_NAME + ".cfg");
+    }
+
+    @Test
+    void 候选路径_同名不同目录声明应分别保留() {
+        PluginMeta meta = new PluginMeta();
+        meta.setName(PLUGIN_NAME);
+        meta.setConfigFiles(List.of(
+                "cfg/sourcemod/shared.cfg",
+                "addons/sourcemod/plugins/shared.cfg"));
+        when(pluginMetaService.load(9L, PLUGIN_NAME)).thenReturn(meta);
+
+        List<String> paths = service.getCandidatePaths(9L, PLUGIN_NAME);
+
+        assertThat(paths).containsExactly(
+                "cfg/sourcemod/shared.cfg",
+                "addons/sourcemod/plugins/shared.cfg");
     }
 
     @Test

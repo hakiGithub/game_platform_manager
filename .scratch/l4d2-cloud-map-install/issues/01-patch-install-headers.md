@@ -1,6 +1,6 @@
 # 01: 主应用 PatchInstall 支持 headers（主机直连下载）
 
-Status: ready-for-human
+Status: resolved
 
 ## 任务
 
@@ -13,3 +13,10 @@ Status: ready-for-human
 - 单测：headers 拼装、临时文件清理、不支持的 curl 版本报错。
 
 Blocked by: （无）
+
+## Answer
+
+- `PatchInstallRequest` 已增加可选 `headers`；平台下载路径携带 headers 时会以 `UNSUPPORTED_HEADER_FILE` 明确失败，不静默丢失请求头。
+- 物理机和 Docker 工具镜像均通过临时 header 文件配合 `curl --header @file` 下载；上传后执行 `chmod 600`，下载结束清理远端与平台侧临时文件。主机 curl 低于 7.55 或不支持 `@file` 时返回 `UNSUPPORTED_HEADER_FILE`，由插件回退 RELAY。
+- 2026-10-20 定向测试通过：`PatchInstallHeaderDownloadTest` 2/2、`PatchInstallExecutorCommandShapeTest` 3/3；headers 下载与相关 cloud-drive 用例合计 18/18 通过。
+- 新增测试验证本地 HTTP 服务收到 header 内容、上传的临时文件在下载结束后删除、`chmod 600` 命令实际发出、旧 curl 版本被拒绝。Docker 路径的现有命令形状测试通过；本轮没有连接真实 Docker 主机做端到端下载。

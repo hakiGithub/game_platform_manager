@@ -4,6 +4,8 @@ import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.*;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.service.L4D2RconService;
+import com.gameplatform.plugin.l4d2.util.RconFailureDetector;
+import com.gameplatform.plugin.l4d2.vo.ChangeMapResultVO;
 import com.gameplatform.plugin.l4d2.vo.PlayerInfoVO;
 import com.gameplatform.plugin.l4d2.vo.RconResultVO;
 import com.gameplatform.plugin.l4d2.vo.ServerStatusVO;
@@ -77,8 +79,13 @@ public class RconController {
         RconResultVO result = new RconResultVO();
         try {
             String output = rconService.executeCommand(dto.getInstanceId(), dto.getCommand());
-            result.setSuccess(true);
             result.setOutput(output);
+            if (RconFailureDetector.isFailed(output)) {
+                result.setSuccess(false);
+                result.setError(output);
+            } else {
+                result.setSuccess(true);
+            }
         } catch (Exception e) {
             log.error("执行 RCON 命令失败", e);
             result.setSuccess(false);
@@ -94,10 +101,27 @@ public class RconController {
      */
     @Operation(summary = "切换地图", description = "切换服务器地图")
     @PostMapping("/change-map")
-    public Result<Void> changeMap(@Valid @RequestBody ChangeMapDTO dto) {
+    public Result<ChangeMapResultVO> changeMap(@Valid @RequestBody ChangeMapDTO dto) {
         log.info("切换地图, instanceId: {}, mapName: {}", dto.getInstanceId(), dto.getMapName());
-        rconService.changeMap(dto.getInstanceId(), dto.getMapName());
-        return Result.success();
+        try {
+            L4D2RconService.ChangeMapResult outcome =
+                    rconService.changeMap(dto.getInstanceId(), dto.getMapName());
+            ChangeMapResultVO vo = convertToChangeMapResultVO(outcome);
+            if (!Boolean.TRUE.equals(vo.getAccepted())) {
+                String message = vo.getError() != null ? vo.getError() : "服务器拒绝换图";
+                return new Result<>(400, message, vo);
+            }
+            return Result.success(vo);
+        } catch (Exception e) {
+            log.warn("切换地图失败, instanceId: {}, mapName: {}, msg={}",
+                    dto.getInstanceId(), dto.getMapName(), e.getMessage());
+            ChangeMapResultVO vo = new ChangeMapResultVO();
+            vo.setMapName(dto.getMapName());
+            vo.setAccepted(false);
+            vo.setConfirmed(false);
+            vo.setError(e.getMessage());
+            return new Result<>(400, e.getMessage(), vo);
+        }
     }
 
     /**
@@ -223,6 +247,17 @@ public class RconController {
         }
         vo.setUsers(players);
 
+        return vo;
+    }
+
+    private ChangeMapResultVO convertToChangeMapResultVO(L4D2RconService.ChangeMapResult outcome) {
+        ChangeMapResultVO vo = new ChangeMapResultVO();
+        vo.setMapName(outcome.getMapName());
+        vo.setAccepted(outcome.getAccepted());
+        vo.setConfirmed(outcome.getConfirmed());
+        vo.setOutput(outcome.getOutput());
+        vo.setError(outcome.getError());
+        vo.setCurrentMap(outcome.getCurrentMap());
         return vo;
     }
 

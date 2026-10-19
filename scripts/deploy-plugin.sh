@@ -32,6 +32,22 @@ JAR_NAME="${JAR_NAME:-plugin-l4d2-core-1.0.0.jar}"
 SERVER_PORT="${SERVER_PORT:-8080}"
 GPM_USER="${GPM_USER:-admin}"
 GPM_PWD="${GPM_PWD:-admin123}"
+PLUGIN_JAR_STEM="${JAR_NAME%.jar}"
+
+# Git Bash 运行在 Windows 主机，直接访问 localhost；WSL 中运行的后端在 Windows
+# 主机时，WSL 的 localhost 不会自动映射到 Windows 监听端口，使用 WSL 主机地址。
+SERVER_HOST="${GPM_SERVER_HOST:-}"
+if [[ -z "${SERVER_HOST}" ]]; then
+  if grep -qi microsoft /proc/version 2>/dev/null; then
+    SERVER_HOST="$(ip route show default 2>/dev/null | awk 'NR==1 {print $3}')"
+    SERVER_HOST="${SERVER_HOST:-host.docker.internal}"
+  else
+    SERVER_HOST="localhost"
+  fi
+fi
+BASE_URL="http://${SERVER_HOST}:${SERVER_PORT}"
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+[[ -n "${PYTHON_BIN}" ]] || { echo "错误: 需要 python3 或 python 解析接口响应"; exit 1; }
 
 SKIP_FRONTEND=0
 SKIP_BUILD=0
@@ -48,10 +64,36 @@ done
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
+find_plugin_jar() {
+  local target_dir="${BACKEND_DIR}/${PLUGIN_MODULE}/target"
+  local preferred="${target_dir}/${PLUGIN_JAR_STEM}.jar"
+
+  if [[ -f "${preferred}" && -s "${preferred}" ]]; then
+    printf '%s\n' "${preferred}"
+    return 0
+  fi
+
+  local candidates=()
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -n "${candidate}" ]] && candidates+=("${candidate}")
+  done < <(
+    find "${target_dir}" -maxdepth 1 -type f \
+      \( -name "${PLUGIN_JAR_STEM}-*.jar" -o -name "${PLUGIN_JAR_STEM}.jar" \) \
+      ! -name '*-sources.jar' ! -name '*-javadoc.jar' 2>/dev/null | sort -V
+  )
+
+  if [[ ${#candidates[@]} -gt 0 ]]; then
+    printf '%s\n' "${candidates[-1]}"
+    return 0
+  fi
+  return 1
+}
+
 # ---------- 1. 构建 ----------
 if [[ -n "${JAR_OVERRIDE}" ]]; then
   JAR_SRC="${JAR_OVERRIDE}"
-  [[ -f "${JAR_SRC}" ]] || { echo "错误: JAR 不存在 ${JAR_SRC}"; exit 1; }
+  [[ -f "${JAR_SRC}" && -s "${JAR_SRC}" ]] || { echo "错误: JAR 不存在或为空 ${JAR_SRC}"; exit 1; }
 else
   if [[ ${SKIP_BUILD} -eq 0 && ${SKIP_FRONTEND} -eq 0 ]]; then
     log "构建插件前端..."
@@ -64,32 +106,60 @@ else
     cd "${BACKEND_DIR}"
     mvn -pl "${PLUGIN_MODULE}" -am install -DskipTests -q
   fi
-  JAR_SRC="${BACKEND_DIR}/${PLUGIN_MODULE}/target/${JAR_NAME}"
-  [[ -f "${JAR_SRC}" ]] || { echo "错误: 目标 JAR 不存在 ${JAR_SRC}（先去掉 --skip-build）"; exit 1; }
+  JAR_SRC="$(find_plugin_jar || true)"
+  [[ -n "${JAR_SRC}" && -f "${JAR_SRC}" && -s "${JAR_SRC}" ]] \
+    || { echo "错误: 未找到有效的插件 JAR（先去掉 --skip-build 或检查 target）"; exit 1; }
 fi
+log "使用构建产物: ${JAR_SRC}"
+
+# 在触碰运行中插件之前暂存产物，确保来源可读且不会在卸载后才暴露路径错误。
+PLUGIN_DIR="${BACKEND_DIR}/plugins"
+mkdir -p "${PLUGIN_DIR}"
+STAGED_JAR="$(mktemp "${PLUGIN_DIR}/.${JAR_NAME}.staged.XXXXXX")"
+BACKUP_JAR=""
+UNLOADED=0
+restore_plugin() {
+  [[ "${UNLOADED}" -eq 1 ]] || return 0
+  if [[ -n "${BACKUP_JAR}" && -f "${BACKUP_JAR}" ]]; then
+    cp "${BACKUP_JAR}" "${PLUGIN_DIR}/${JAR_NAME}" || true
+    curl -s -X POST "${BASE_URL}/api/pf4j/plugins/load?jarName=${JAR_NAME}" "${AUTH[@]}" >/dev/null || true
+  fi
+}
+cleanup() {
+  local exit_code=$?
+  rm -f "${STAGED_JAR}"
+  if [[ ${exit_code} -ne 0 ]]; then
+    restore_plugin
+  fi
+  exit "${exit_code}"
+}
+trap cleanup EXIT
+cp "${JAR_SRC}" "${STAGED_JAR}"
+[[ -s "${STAGED_JAR}" ]] || { echo "错误: 暂存 JAR 为空"; exit 1; }
 
 # ---------- 2. 后端未运行时：仅落盘，下次启动自动加载 ----------
 cd "${ROOT_DIR}"
-mkdir -p "${BACKEND_DIR}/plugins"
-HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:${SERVER_PORT}/api/auth/login" || true)"
+HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+  "${BASE_URL}/api/auth/login" || true)"
+# 登录端点只接受 POST；任何 HTTP 响应都说明服务已监听。仅 000 表示连接失败/超时。
 if [[ "${HTTP_CODE}" == "000" ]]; then
-  cp "${JAR_SRC}" "${BACKEND_DIR}/plugins/${JAR_NAME}"
+  mv "${STAGED_JAR}" "${PLUGIN_DIR}/${JAR_NAME}"
   log "后端未运行：JAR 已放入 plugins/，下次 start-all.sh 启动时自动加载"
   exit 0
 fi
 
 # ---------- 3. 登录取 token ----------
 log "登录后端..."
-TOKEN="$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/auth/login" \
+TOKEN="$(curl -s -X POST "${BASE_URL}/api/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"${GPM_USER}\",\"password\":\"${GPM_PWD}\"}" \
-  | python -c "import sys,json;d=json.load(sys.stdin);print(d['data']['token'] if d.get('code')==200 else '')")"
+  | "${PYTHON_BIN}" -c "import sys,json;d=json.load(sys.stdin);print(d['data']['token'] if d.get('code')==200 else '')")"
 [[ -n "${TOKEN}" ]] || { echo "错误: 登录失败（检查 GPM_USER/GPM_PWD）"; exit 1; }
 AUTH=(-H "Authorization: Bearer ${TOKEN}")
 
 plugin_state() {
-  curl -s --max-time 3 "http://localhost:${SERVER_PORT}/api/pf4j/plugins" "${AUTH[@]}" \
-    | python -c "import sys,json
+  curl -s --max-time 3 "${BASE_URL}/api/pf4j/plugins" "${AUTH[@]}" \
+    | "${PYTHON_BIN}" -c "import sys,json
 try:
     plugins=[p for p in json.load(sys.stdin)['data'] if p['pluginId']=='${PLUGIN_ID}']
     print(plugins[0]['state'] if plugins else 'ABSENT')
@@ -109,14 +179,19 @@ done
 # ---------- 4. 卸载（释放 jar 文件锁）→ 覆盖 → 加载启动 ----------
 if [[ "${STATE}" != "ABSENT" ]]; then
   log "卸载插件 ${PLUGIN_ID}（当前状态 ${STATE}）..."
-  [[ "${STATE}" == "STARTED" ]] && curl -sf -X POST "http://localhost:${SERVER_PORT}/api/pf4j/plugins/${PLUGIN_ID}/stop" "${AUTH[@]}" >/dev/null
+  BACKUP_JAR="$(mktemp "${PLUGIN_DIR}/.${JAR_NAME}.backup.XXXXXX")"
+  if [[ -f "${PLUGIN_DIR}/${JAR_NAME}" ]]; then
+    cp "${PLUGIN_DIR}/${JAR_NAME}" "${BACKUP_JAR}"
+  fi
+  [[ "${STATE}" == "STARTED" ]] && curl -sf -X POST "${BASE_URL}/api/pf4j/plugins/${PLUGIN_ID}/stop" "${AUTH[@]}" >/dev/null
   # purgeTasks=false：热部署保留任务历史（取消运行中任务与注销 Handler 仍执行）
-  curl -sf -X DELETE "http://localhost:${SERVER_PORT}/api/pf4j/plugins/${PLUGIN_ID}?purgeTasks=false" "${AUTH[@]}" >/dev/null \
+  curl -sf -X DELETE "${BASE_URL}/api/pf4j/plugins/${PLUGIN_ID}?purgeTasks=false" "${AUTH[@]}" >/dev/null \
     || { echo "错误: 卸载失败，jar 文件锁可能未释放"; exit 1; }
+  UNLOADED=1
 fi
 
 log "覆盖 plugins/${JAR_NAME}..."
-cp "${JAR_SRC}" "${BACKEND_DIR}/plugins/${JAR_NAME}" \
+mv "${STAGED_JAR}" "${PLUGIN_DIR}/${JAR_NAME}" \
   || { echo "错误: 覆盖 JAR 失败（文件被占用？确认插件已卸载）"; exit 1; }
 
 # 清理同插件其他命名的 jar（如 SNAPSHOT 与标准名并存会导致 PF4J 重复加载只认旧包）
@@ -130,8 +205,8 @@ for other in "${BACKEND_DIR}/plugins/${plugin_stem}"*.jar; do
 done
 
 log "加载并启动插件..."
-LOAD_RESULT="$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/pf4j/plugins/load?jarName=${JAR_NAME}" "${AUTH[@]}")"
-echo "${LOAD_RESULT}" | python -c "import sys,json;d=json.load(sys.stdin);exit(0 if d.get('code')==200 else (print('错误: '+d.get('message','加载失败')),1)[1])" \
+LOAD_RESULT="$(curl -s -X POST "${BASE_URL}/api/pf4j/plugins/load?jarName=${JAR_NAME}" "${AUTH[@]}")"
+echo "${LOAD_RESULT}" | "${PYTHON_BIN}" -c "import sys,json;d=json.load(sys.stdin);exit(0 if d.get('code')==200 else (print('错误: '+d.get('message','加载失败')),1)[1])" \
   || exit 1
 
 # ---------- 5. 验证 ----------
@@ -139,6 +214,8 @@ sleep 2
 STATUS="$(plugin_state)"
 
 if [[ "${STATUS}" == "STARTED" ]]; then
+  rm -f "${BACKUP_JAR}"
+  UNLOADED=0
   log "热部署完成：${PLUGIN_ID} 已启动（后端未重启）"
 else
   echo "警告: 插件状态为 ${STATUS}，请查看后端日志 logs/backend.log"

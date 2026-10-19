@@ -37,6 +37,19 @@ public final class RconFailureDetector {
         "no matching plugin"
     );
 
+    /**
+     * changelevel 的失败标记。地图命令单独匹配，避免把正常 status 日志中的
+     * "error" 等通用词误判成换图失败。
+     */
+    private static final List<String> CHANGE_MAP_FAILURE_MARKERS = List.of(
+        "no such map",
+        "changelevel failed",
+        "failed to load map",
+        "couldn't find map",
+        "could not find map",
+        "map not found"
+    );
+
     private RconFailureDetector() {
     }
 
@@ -52,5 +65,19 @@ public final class RconFailureDetector {
         }
         String lower = output.toLowerCase().trim();
         return FAILURE_MARKERS.stream().anyMatch(lower::contains);
+    }
+
+    /**
+     * 检测地图切换命令是否被服务器明确拒绝。
+     *
+     * @param output changelevel 的 RCON 回显
+     * @return true 表示服务器明确拒绝或无法加载目标地图
+     */
+    public static boolean isChangeMapFailed(String output) {
+        if (output == null || output.isEmpty()) {
+            return false;
+        }
+        String lower = output.toLowerCase().trim();
+        return CHANGE_MAP_FAILURE_MARKERS.stream().anyMatch(lower::contains);
     }
 }

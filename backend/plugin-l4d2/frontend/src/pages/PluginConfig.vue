@@ -38,56 +38,109 @@
       </div>
 
       <div v-else>
-        <!-- 插件无候选 cfg 文件：configPath 为空的空配置结构 -->
-        <div v-if="config && !config.configPath" class="empty-tip">
+        <!-- 插件无候选 cfg 文件 -->
+        <div v-if="config && !configFiles.length" class="empty-tip">
           <el-empty
             description="未找到该插件的 cfg 配置文件——插件可能没有可编辑的配置项，或尚未安装/启用"
           />
         </div>
 
-        <div v-if="config?.configPath" class="config-path">
-          <span class="label">配置文件路径:</span>
-          <code>{{ config.configPath }}</code>
-          <span v-if="config.lastSyncedAt" class="synced">
-            最后同步: {{ formatTime(config.lastSyncedAt) }}
-          </span>
-        </div>
+        <el-collapse
+          v-if="configFiles.length"
+          v-model="expandedFiles"
+          class="config-file-groups"
+        >
+          <el-collapse-item
+            v-for="file in configFiles"
+            :key="file.fileId"
+            :name="file.fileId"
+          >
+            <template #title>
+              <div class="config-file-title">
+                <span class="file-name">{{ file.configName }}</span>
+                <el-tag :type="fileStatusType(file.status)" size="small">
+                  {{ fileStatusLabel(file.status) }}
+                </el-tag>
+                <span class="file-path">{{ file.configPath }}</span>
+                <span v-if="file.lastSyncedAt" class="synced">
+                  最后同步: {{ formatTime(file.lastSyncedAt) }}
+                </span>
+              </div>
+            </template>
 
-        <el-table :data="tableItems" stripe>
-          <el-table-column prop="key" label="配置项 Key" min-width="180" />
-          <el-table-column label="Value" min-width="220">
-            <template #default="{ row }">
-              <el-input v-model="row.value" size="small" />
-            </template>
-          </el-table-column>
-          <el-table-column label="默认值" min-width="160">
-            <template #default="{ row }">
-              <span class="muted">{{ row.defaultValue || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="范围" width="140">
-            <template #default="{ row }">
-              <span v-if="row.min !== undefined || row.max !== undefined" class="muted">
-                {{ row.min ?? '-' }} ~ {{ row.max ?? '-' }}
-              </span>
-              <span v-else class="muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="描述" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">
-              <span class="muted">{{ row.description || '-' }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
+            <el-alert
+              v-if="file.error"
+              :title="file.error"
+              :type="file.status === 'ERROR' ? 'error' : 'info'"
+              :closable="false"
+              show-icon
+              class="file-status-alert"
+            />
 
-        <div class="footer-actions">
-          <el-button @click="onResetDefaults" :disabled="!tableItems.length">
-            还原默认值
-          </el-button>
-          <el-button type="primary" @click="onSave" :loading="saving" :disabled="!tableItems.length">
-            保存
-          </el-button>
-        </div>
+            <el-table :data="file.items" stripe size="small">
+              <el-table-column prop="key" label="配置项 Key" min-width="180" />
+              <el-table-column label="当前值" min-width="220">
+                <template #default="{ row }">
+                  <el-input
+                    v-model="row.value"
+                    size="small"
+                    :disabled="!canEditFile(file)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="默认值" min-width="160">
+                <template #default="{ row }">
+                  <span class="muted">{{ row.defaultValue || '-' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="范围" width="140">
+                <template #default="{ row }">
+                  <span v-if="row.min !== undefined || row.max !== undefined" class="muted">
+                    {{ row.min ?? '-' }} ~ {{ row.max ?? '-' }}
+                  </span>
+                  <span v-else class="muted">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="描述" min-width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="muted">{{ row.description || '-' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button
+                    link
+                    type="primary"
+                    size="small"
+                    :loading="applyingTempKey === `${file.fileId}:${row.key}`"
+                    :disabled="!canApplyTemp(file, row)"
+                    :title="tempDisabledReason(file, row)"
+                    @click="onApplyTemp(file, row)"
+                  >
+                    临时设置
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div class="footer-actions">
+              <el-button
+                @click="onResetDefaults(file)"
+                :disabled="!canEditFile(file)"
+              >
+                还原默认值
+              </el-button>
+              <el-button
+                type="primary"
+                @click="onSave(file)"
+                :loading="savingFileId === file.fileId"
+                :disabled="!canEditFile(file)"
+              >
+                保存
+              </el-button>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </div>
     </el-card>
 
@@ -118,25 +171,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { pluginConfigApi, pluginManageApi } from '@/api'
 import type { PluginListVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
-
-interface ConfigItem {
-  key: string
-  value: string
-  defaultValue?: string
-  min?: number
-  max?: number
-  description?: string
-  lineNumber: number
-}
-
-interface PluginConfigData {
-  pluginName: string
-  configName?: string
-  configPath?: string
-  items: ConfigItem[]
-  rawContent?: string
-  lastSyncedAt?: string
-}
+import {
+  normalizeConfigFiles,
+  fileStatusLabel,
+  fileStatusType,
+  resetFileDefaults,
+  canEditConfigFile,
+  tempConfigDisabledReason
+} from '@/utils/pluginConfigFiles'
+import type { PluginConfigFile, PluginConfigItem, PluginConfigPayload } from '@/utils/pluginConfigFiles'
 
 const route = useRoute()
 const store = usePluginStore()
@@ -146,10 +189,13 @@ const plugins = ref<PluginListVO[]>([])
 const pluginsLoading = ref(false)
 const selectedPlugin = ref('')
 const loading = ref(false)
-const saving = ref(false)
+const savingFileId = ref('')
+const applyingTempKey = ref('')
+let configRequestId = 0
 
-const config = ref<PluginConfigData | null>(null)
-const tableItems = ref<ConfigItem[]>([])
+const config = ref<PluginConfigPayload | null>(null)
+const configFiles = ref<PluginConfigFile[]>([])
+const expandedFiles = ref<string[]>([])
 
 const showCandidates = ref(false)
 const candidatesLoading = ref(false)
@@ -166,8 +212,8 @@ async function loadPlugins() {
   }
   pluginsLoading.value = true
   try {
-    const data = await pluginManageApi.list(instanceId.value)
-    plugins.value = Array.isArray(data) ? data : []
+    const data = await pluginManageApi.list(instanceId.value, { page: 1, size: 100 })
+    plugins.value = Array.isArray(data?.records) ? data.records : []
     const fromQuery = route.query.pluginName
     if (fromQuery && typeof fromQuery === 'string') {
       selectedPlugin.value = fromQuery
@@ -181,24 +227,30 @@ async function loadPlugins() {
 }
 
 async function onPluginChange(name: string) {
+  const requestId = ++configRequestId
   if (!name || !instanceId.value) {
     config.value = null
-    tableItems.value = []
+    configFiles.value = []
+    expandedFiles.value = []
     return
   }
   loading.value = true
   try {
     const data = await pluginConfigApi.get(instanceId.value, name)
-    // 后端对"无候选 cfg 文件"的插件返回空配置结构（items 为空数组）；
-    // 兼容旧后端可能的 null，避免 data.items 抛 TypeError 被误报为加载失败
+    if (requestId !== configRequestId || selectedPlugin.value !== name) return
     config.value = data || null
-    tableItems.value = (data?.items || []).map(it => ({ ...it }))
+    configFiles.value = normalizeConfigFiles(data)
+    expandedFiles.value = configFiles.value
+      .filter(file => file.status === 'OK' || file.status === 'EMPTY')
+      .map(file => file.fileId)
   } catch (e: any) {
+    if (requestId !== configRequestId || selectedPlugin.value !== name) return
     ElMessage.error('加载配置失败：' + (e?.message || e))
     config.value = null
-    tableItems.value = []
+    configFiles.value = []
+    expandedFiles.value = []
   } finally {
-    loading.value = false
+    if (requestId === configRequestId) loading.value = false
   }
 }
 
@@ -220,40 +272,67 @@ watch(showCandidates, (val) => {
   if (val) loadCandidates()
 })
 
-function onResetDefaults() {
-  if (!tableItems.value.length) return
-  tableItems.value.forEach(it => {
-    if (it.defaultValue !== undefined) {
-      it.value = it.defaultValue
-    }
-  })
+function canEditFile(file: PluginConfigFile): boolean {
+  return canEditConfigFile(file)
+}
+
+function tempDisabledReason(file: PluginConfigFile, item: PluginConfigItem): string {
+  return tempConfigDisabledReason(file, item)
+}
+
+function canApplyTemp(file: PluginConfigFile, item: PluginConfigItem): boolean {
+  return !tempDisabledReason(file, item)
+}
+
+function onResetDefaults(file: PluginConfigFile) {
+  if (!file.items.length) return
+  resetFileDefaults(file)
   ElMessage.success('已还原为默认值（请点击保存以生效）')
 }
 
-async function onSave() {
+async function onApplyTemp(file: PluginConfigFile, item: PluginConfigItem) {
+  if (!selectedPlugin.value || !instanceId.value || !canApplyTemp(file, item)) return
+  applyingTempKey.value = `${file.fileId}:${item.key}`
+  try {
+    await pluginConfigApi.applyTemp({
+      instanceId: instanceId.value,
+      cvarName: item.key,
+      cvarValue: item.value
+    })
+    ElMessage.success(`${item.key} 已临时设置，服务器重启后失效`)
+  } catch (e: any) {
+    ElMessage.error('临时设置失败：' + (e?.message || e))
+  } finally {
+    applyingTempKey.value = ''
+  }
+}
+
+async function onSave(file: PluginConfigFile) {
   if (!selectedPlugin.value || !instanceId.value) return
   try {
     await ElMessageBox.confirm(
-      `确认保存插件 "${selectedPlugin.value}" 的配置？`,
+      `确认保存配置文件 "${file.configName}" 的配置？`,
       '确认保存',
       { type: 'warning', confirmButtonText: '保存', cancelButtonText: '取消' }
     )
-    saving.value = true
+    savingFileId.value = file.fileId
     await pluginConfigApi.update({
       instanceId: instanceId.value,
       pluginName: selectedPlugin.value,
-      items: tableItems.value.map(it => ({
+      fileId: file.fileId,
+      configPath: file.configPath,
+      items: file.items.map(it => ({
         key: it.key,
         value: it.value,
         lineNumber: it.lineNumber
       }))
     })
-    ElMessage.success('保存成功')
+    ElMessage.success(`${file.configName} 保存成功`)
     onPluginChange(selectedPlugin.value)
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error('保存失败：' + (e?.message || e))
   } finally {
-    saving.value = false
+    savingFileId.value = ''
   }
 }
 
@@ -272,7 +351,10 @@ function formatTime(t?: string): string {
  */
 async function onRestoreDefaults() {
   if (!selectedPlugin.value || !instanceId.value) return
-  const count = tableItems.value.filter(
+  const editableFiles = configFiles.value.filter(
+    file => file.status !== 'ERROR' && file.status !== 'MISSING'
+  )
+  const count = editableFiles.flatMap(file => file.items).filter(
     it => it.defaultValue !== undefined && it.defaultValue !== ''
   ).length
   if (!count) {
@@ -281,7 +363,7 @@ async function onRestoreDefaults() {
   }
   try {
     await ElMessageBox.confirm(
-      `将把 ${count} 个配置项恢复为默认值，并立即写回配置文件（其余项保持不变）。确认恢复？`,
+      `将把 ${count} 个配置项恢复为默认值，并立即写回各自的配置文件（其余项保持不变）。确认恢复？`,
       '恢复默认配置',
       { type: 'warning', confirmButtonText: '恢复默认', cancelButtonText: '取消' }
     )
@@ -289,7 +371,19 @@ async function onRestoreDefaults() {
     return
   }
   try {
-    await pluginConfigApi.restoreDefaults(instanceId.value, selectedPlugin.value)
+    for (const file of editableFiles) {
+      const fileHasDefaults = file.items.some(
+        it => it.defaultValue !== undefined && it.defaultValue !== ''
+      )
+      if (fileHasDefaults) {
+        await pluginConfigApi.restoreDefaults(
+          instanceId.value,
+          selectedPlugin.value,
+          file.fileId,
+          file.configPath
+        )
+      }
+    }
     ElMessage.success('已恢复默认配置')
     onPluginChange(selectedPlugin.value)
   } catch (e: any) {
@@ -345,6 +439,41 @@ onMounted(() => {
 .config-path .synced {
   color: var(--platform-text-muted);
   font-size: 12px;
+}
+.config-file-groups {
+  border-top: 1px solid var(--platform-line);
+}
+.config-file-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  padding-right: 16px;
+}
+.config-file-title .file-name {
+  flex-shrink: 0;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.config-file-title .file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--platform-text-secondary);
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+}
+.config-file-title .synced {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--platform-text-muted);
+  font-size: 12px;
+}
+.file-status-alert {
+  margin: 8px 0 12px;
 }
 .muted {
   color: var(--platform-text-secondary);

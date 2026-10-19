@@ -305,7 +305,16 @@ export const rconApi = {
 
   // 切换地图（RCON changelevel，对应后端 ChangeMapDTO）
   changeMap: (instanceId: number, mapName: string) =>
-    post<void>('/rcon/change-map', { instanceId, mapName }),
+    post<ChangeMapResult>('/rcon/change-map', { instanceId, mapName }),
+}
+
+export interface ChangeMapResult {
+  mapName: string
+  accepted: boolean
+  confirmed: boolean
+  output?: string
+  error?: string
+  currentMap?: string
 }
 
 /**
@@ -470,6 +479,15 @@ export interface PluginListVO {
   updateTime?: string
 }
 
+/** 通用分页响应（对齐后端 PageResult） */
+export interface PageResult<T> {
+  current: number
+  size: number
+  total: number
+  pages: number
+  records: T[]
+}
+
 // === Phase 2: Plugin Store ===
 
 /** 远端仓库配置（令牌只回传脱敏提示，不回传明文） */
@@ -491,7 +509,14 @@ export const STORE_TASK_RUNNING_STATUSES = ['PENDING', 'RUNNING', 'DOWNLOADING',
  * 插件商店 API（Phase 2.5）
  */
 export const pluginStoreApi = {
-  list: (params?: { keyword?: string; category?: string; page?: number; size?: number }) => get<Array<{
+  list: (params?: {
+    keyword?: string
+    category?: string
+    installed?: 'all' | 'installed' | 'uninstalled'
+    instanceId?: number
+    page?: number
+    size?: number
+  }) => get<PageResult<{
     pluginId: string
     name: string
     description?: string
@@ -499,6 +524,7 @@ export const pluginStoreApi = {
     size?: number
     updatedAt?: string
   }>>('/plugin-store/list', params),
+  categories: () => get<string[]>('/plugin-store/categories'),
   detail: (pluginId: string) => get<{
     pluginId: string
     name: string
@@ -554,17 +580,43 @@ export const pluginConfigApi = {
     }>
     rawContent?: string
     lastSyncedAt?: string
+    configFiles?: Array<{
+      fileId: string
+      configName: string
+      configPath: string
+      items: Array<{
+        key: string
+        value: string
+        defaultValue?: string
+        min?: number
+        max?: number
+        description?: string
+        lineNumber: number
+      }>
+      rawContent?: string
+      exists: boolean
+      status: 'OK' | 'EMPTY' | 'MISSING' | 'ERROR'
+      error?: string
+      lastSyncedAt?: string
+    }>
   }>('/plugin-config/get', { instanceId, pluginName }),
   update: (data: {
     instanceId: number
     pluginName: string
+    fileId?: string
+    configPath?: string
     items: Array<{ key: string; value: string; lineNumber: number }>
   }) => post<void>('/plugin-config/update', data),
+  applyTemp: (data: {
+    instanceId: number
+    cvarName: string
+    cvarValue: string
+  }) => post<void>('/plugin-config/apply-temp', data),
   candidates: (instanceId: number, pluginName: string) =>
     get<Array<{ path: string; exists: boolean }>>('/plugin-config/candidates', { instanceId, pluginName }),
   // 恢复默认配置：将带 Default 注释的配置项重置为默认值并写回
-  restoreDefaults: (instanceId: number, pluginName: string) =>
-    post<void>('/plugin-config/restore-defaults', { instanceId, pluginName }),
+  restoreDefaults: (instanceId: number, pluginName: string, fileId?: string, configPath?: string) =>
+    post<void>('/plugin-config/restore-defaults', { instanceId, pluginName, fileId, configPath }),
 }
 
 // === Phase 2: Preset ===
@@ -675,7 +727,14 @@ export interface BuiltinInstallStatusVO {
  * 插件管理 API（Phase 2.8）
  */
 export const pluginManageApi = {
-  list: (instanceId: number) => get<PluginListVO[]>('/plugins/list', { instanceId }),
+  list: (instanceId: number, params?: {
+    keyword?: string
+    status?: string
+    page?: number
+    size?: number
+  }) => get<PageResult<PluginListVO>>('/plugins/list', { instanceId, ...params }),
+  installedNames: (instanceId: number) =>
+    get<string[]>('/plugins/installed-names', { instanceId }),
   upload: (file: File, instanceId: number, onProgress?: (percent: number) => void) =>
     upload<PluginListVO>(`/plugins/upload?instanceId=${instanceId}`, file, onProgress),
   delete: (instanceId: number, pluginName: string) =>
@@ -709,8 +768,14 @@ export const pluginManageApi = {
   platformStatus: (instanceId: number) => get<boolean>('/plugins/platform/status', { instanceId }),
   installPlatform: (instanceId: number) => post<string>(`/plugins/platform/install?instanceId=${instanceId}`),
   // 内置插件市场（builtin-plugins.yaml + builtin-plugins/*.zip，共 62 个插件）
-  listBuiltin: (instanceId: number) =>
-    get<BuiltinPluginVO[]>('/plugins/builtin/list', { instanceId }),
+  listBuiltin: (instanceId: number, params?: {
+    keyword?: string
+    category?: string
+    installed?: 'all' | 'installed' | 'uninstalled'
+    platform?: 'linux' | 'windows' | 'all'
+    page?: number
+    size?: number
+  }) => get<PageResult<BuiltinPluginVO>>('/plugins/builtin/list', { instanceId, ...params }),
   installBuiltin: (instanceId: number, pluginId: string) =>
     post<BuiltinInstallSubmitVO>(`/plugins/builtin/${encodeURIComponent(pluginId)}/install?instanceId=${instanceId}`),
   // 查询内置插件安装任务状态（轮询用）

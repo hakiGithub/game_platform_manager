@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -44,16 +43,7 @@ public class PatchInstallServiceImpl implements PatchInstallService {
             throw new BusinessException("实例不存在: " + request.getInstanceId());
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("instanceId", request.getInstanceId());
-        payload.put("url", request.getUrl());
-        payload.put("targetPath", request.getTargetPath());
-        if (request.getFormat() != null) {
-            payload.put("format", request.getFormat());
-        }
-        if (request.getSha256() != null) {
-            payload.put("sha256", request.getSha256());
-        }
+        Map<String, Object> payload = PatchInstallContract.toPayload(request);
 
         TaskSubmitRequest submit = TaskSubmitRequest.builder()
                 .taskType("PATCH_INSTALL")

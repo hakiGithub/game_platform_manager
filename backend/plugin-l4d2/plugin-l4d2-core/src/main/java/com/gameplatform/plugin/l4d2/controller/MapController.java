@@ -177,6 +177,12 @@ public class MapController {
     public Result<MissionInfoVO> getMission(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
             @Parameter(description = "地图名称（VPK 文件名）") @PathVariable String mapName) {
-        return Result.success(mapService.getMission(instanceId, mapName));
+        try {
+            return Result.success(mapService.getMission(instanceId, mapName));
+        } catch (L4D2PluginException e) {
+            log.warn("解析 mission 失败: instanceId={}, mapName={}, code={}, message={}",
+                    instanceId, mapName, e.getCode(), e.getMessage());
+            throw new BusinessException(e.getMessage());
+        }
     }
 }

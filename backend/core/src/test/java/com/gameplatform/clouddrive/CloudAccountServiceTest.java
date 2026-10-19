@@ -210,4 +210,32 @@ class CloudAccountServiceTest {
     void mountPathDerivesFromProviderTypeAndName() {
         assertThat(service.mountPath(resource("main", "quark", null))).isEqualTo("/quark/main");
     }
+
+    @Test
+    void cloud189FolderChildUsesPathValueForNextBrowsingStep() throws Exception {
+        CloudAccountResource res = resource("live-189", "cloud189",
+                "{\"ssonCookie\":\"x\",\"rootFolderId\":\"-11\"}");
+        when(hostExtensionClient.get(CloudAccountResource.class, "live-189"))
+                .thenReturn(Optional.of(res));
+        when(client.settingsClass("cloud189")).thenReturn(
+                (Class) com.haki.clouddrive.provider.cloud189.Cloud189Settings.class);
+        when(client.listAccounts()).thenReturn(List.of(sdkAccount("a1", "live-189")));
+        when(client.replaceSettings(eq("a1"), any())).thenReturn(sdkAccount("a1", "live-189"));
+        when(client.getAccount("a1")).thenReturn(Optional.of(sdkAccount("a1", "live-189")));
+        when(client.describeProvider("cloud189")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("天翼", java.util.Set.of("cloud189"),
+                        null)));
+        when(client.listAccountFolders("a1", "/")).thenReturn(List.of(
+                com.haki.clouddrive.core.model.CloudObject.directory("-11", "maps", "/maps")));
+        when(client.listAccountFolders("a1", "/maps")).thenReturn(List.of(
+                com.haki.clouddrive.core.model.CloudObject.directory("123456", "coop", "/maps/coop")));
+
+        Map<String, Object> root = service.listFolders("live-189", "/");
+        assertThat(root.get("folders").toString()).contains("value=/maps");
+
+        Map<String, Object> child = service.listFolders("live-189", "/maps");
+        assertThat(child.get("path")).isEqualTo("/maps");
+        assertThat(child.get("folders").toString()).contains("coop");
+        verify(client).listAccountFolders("a1", "/maps");
+    }
 }

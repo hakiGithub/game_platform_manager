@@ -67,13 +67,7 @@ public class PatchInstallHandler implements TaskHandler {
 
     @Override
     public TaskResult execute(TaskContext context, TaskPayload payload) throws Exception {
-        PatchInstallRequest request = PatchInstallRequest.builder()
-                .instanceId(payload.getLong("instanceId"))
-                .url(payload.getString("url"))
-                .targetPath(payload.getString("targetPath"))
-                .format(payload.getString("format"))
-                .sha256(payload.getString("sha256"))
-                .build();
+        PatchInstallRequest request = PatchInstallContract.fromPayload(payload);
 
         PatchInstallExecutor.ProgressListener progress = new PatchInstallExecutor.ProgressListener() {
             @Override

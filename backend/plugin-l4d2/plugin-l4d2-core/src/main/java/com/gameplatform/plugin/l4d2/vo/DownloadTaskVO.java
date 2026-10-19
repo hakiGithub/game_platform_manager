@@ -28,7 +28,7 @@ public class DownloadTaskVO implements Serializable {
     @Schema(description = "实例ID")
     private Long instanceId;
 
-    /** 任务类型：URL / WORKSHOP */
+    /** 任务类型：URL / WORKSHOP / CLOUD */
     @Schema(description = "任务类型")
     private String taskType;
 
@@ -67,6 +67,18 @@ public class DownloadTaskVO implements Serializable {
     /** 目标路径 */
     @Schema(description = "目标路径")
     private String targetPath;
+
+    /** 云盘账号名称（仅 CLOUD 任务） */
+    @Schema(description = "云盘账号名称")
+    private String accountName;
+
+    /** 云盘转存目录（仅 CLOUD 任务） */
+    @Schema(description = "云盘转存目录")
+    private String cloudPath;
+
+    /** 云盘传输通道：DIRECT / RELAY（仅 CLOUD 任务） */
+    @Schema(description = "云盘传输通道")
+    private String transferMode;
 
     /** Workshop ID */
     @Schema(description = "Workshop ID")

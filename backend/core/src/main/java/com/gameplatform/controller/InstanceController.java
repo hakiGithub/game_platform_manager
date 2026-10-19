@@ -16,6 +16,7 @@ import com.gameplatform.service.InstanceService;
 import com.gameplatform.util.AesUtil;
 import com.gameplatform.util.SshUtil;
 import com.gameplatform.vo.HostVO;
+import com.gameplatform.vo.InstanceDeleteResultVO;
 import com.gameplatform.vo.InstanceVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -119,11 +120,11 @@ public class InstanceController {
      */
     @Operation(summary = "删除实例", description = "删除游戏实例；认领实例默认记录级删除（不动容器），deleteContainer=true 时同时删除容器")
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@Parameter(description = "实例ID") @PathVariable Long id,
-                               @Parameter(description = "是否同时删除容器等远程资源（对认领实例生效）")
-                               @RequestParam(required = false, defaultValue = "false") boolean deleteContainer) {
-        instanceService.deleteInstance(id, deleteContainer);
-        return Result.success();
+    public Result<InstanceDeleteResultVO> delete(
+            @Parameter(description = "实例ID") @PathVariable Long id,
+            @Parameter(description = "是否同时删除容器等远程资源（对认领实例生效）")
+            @RequestParam(required = false, defaultValue = "false") boolean deleteContainer) {
+        return Result.success(instanceService.deleteInstance(id, deleteContainer));
     }
 
     /**

@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
+import com.gameplatform.plugin.l4d2.extension.PluginConfigFileSpec;
 import com.gameplatform.plugin.l4d2.extension.PluginConfigResource;
 import com.gameplatform.plugin.l4d2.extension.PluginConfigSpec;
 import com.gameplatform.plugin.l4d2.parser.SourceModCfgParser;
@@ -21,8 +22,10 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.Charset;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * SourceMod cfg 配置服务：候选路径推导、读取、更新、扩展资源持久化。
@@ -50,6 +53,10 @@ public class SourceModCfgService {
 
     private static final String CFG_SOURCEMOD_PREFIX = "cfg/sourcemod/";
     private static final String PLUGINS_PREFIX = "addons/sourcemod/plugins/";
+    private static final String CONFIG_STATUS_OK = "OK";
+    private static final String CONFIG_STATUS_EMPTY = "EMPTY";
+    private static final String CONFIG_STATUS_MISSING = "MISSING";
+    private static final String CONFIG_STATUS_ERROR = "ERROR";
 
     private final InstanceQueryService instanceQueryService;
     private final InstanceFileService instanceFileService;
@@ -66,7 +73,7 @@ public class SourceModCfgService {
      *
      * <p>主候选：插件 meta（plugin.yaml）声明的 {@code config_files}——与实际安装的
      * 文件名一致（插件的 cfg 文件名通常取自 .smx 文件名，可能与中文显示名完全不同）。
-     * 次候选：按插件名推导（{@link #getNameBasedCandidates(String)}，兼容无 meta 的旧场景）。
+     * 声明存在时只使用声明项；无 meta 或声明为空时才按插件名推导，兼容旧场景。
      *
      * @param instanceId 实例 ID
      * @param pluginName 插件名
@@ -75,9 +82,7 @@ public class SourceModCfgService {
     public List<String> getCandidatePaths(Long instanceId, String pluginName) {
         List<String> paths = new ArrayList<>();
         // 主候选：插件 meta（plugin.yaml）声明的 config_files。
-        // 每条声明产生两个候选：游戏目录副本（已启用时存在，优先）与
-        // 插件库副本（安装即存在——未启用时游戏目录尚无 cfg，从库副本查看/编辑）
-        String storePrefix = pathResolver.getPluginStorePath(pluginName) + "/left4dead2/";
+        // 声明路径是唯一的逻辑文件；读取时再回退到插件库副本。
         try {
             PluginMeta meta = pluginMetaService.load(instanceId, pluginName);
             if (meta != null && meta.getConfigFiles() != null) {
@@ -89,20 +94,18 @@ public class SourceModCfgService {
                     if (!paths.contains(rel)) {
                         paths.add(rel);
                     }
-                    String storePath = storePrefix + rel;
-                    if (!paths.contains(storePath)) {
-                        paths.add(storePath);
-                    }
                 }
             }
         } catch (Exception e) {
             log.debug("读取插件 meta 的 config_files 失败 instanceId={}, pluginName={}, err={}",
                     instanceId, pluginName, e.getMessage());
         }
-        // 次候选：按插件名推导
-        for (String candidate : getNameBasedCandidates(pluginName)) {
-            if (!paths.contains(candidate)) {
-                paths.add(candidate);
+        // 无声明时才按插件名推导，避免真实多文件插件混入同名的缺失候选。
+        if (paths.isEmpty()) {
+            for (String candidate : getNameBasedCandidates(pluginName)) {
+                if (!paths.contains(candidate)) {
+                    paths.add(candidate);
+                }
             }
         }
         return paths;
@@ -158,39 +161,24 @@ public class SourceModCfgService {
     }
 
     /**
-     * 获取配置：读第一个存在的候选文件 → GBK 解码 → parse。
-     * <p>同时更新扩展资源（如存在则更新，不存在则创建）。
+     * 获取配置：分别读取插件声明的全部 cfg 文件 → GBK 解码 → parse。
      *
-     * @return 配置资源；不存在候选文件时返回 null
+     * <p>单个文件读取失败只标记该文件，不影响其他文件。兼容字段指向首个成功读取的文件。
+     *
+     * @return 配置资源；没有任何存在的候选文件时返回 null
      */
     public PluginConfigResource getConfig(Long instanceId, String pluginName) {
         InstanceVO instance = requireInstance(instanceId);
         Long hostId = instance.getHostId();
-
-        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
-            String relPath = toRelativePath(candidate);
-            if (!fileExistsSafe(instanceId, relPath)) {
-                continue;
-            }
-            String content;
-            try {
-                content = instanceFileService.readTextFile(instanceId, relPath, gbk);
-            } catch (Exception e) {
-                log.warn("读取 cfg 文件失败 instanceId={}, pluginName={}, path={}, err={}",
-                        instanceId, pluginName, relPath, e.getMessage());
-                throw new L4D2PluginException(L4D2PluginException.FILE,
-                        "读取配置文件失败: " + e.getMessage(), e);
-            }
-            List<ConfigItem> items = cfgParser.parse(content);
-            String configName = pluginName + ".cfg";
-            PluginConfigResource resource = upsertResource(
-                    instanceId, hostId, pluginName, configName, candidate, items, content);
-            log.info("加载插件配置成功 instanceId={}, pluginName={}, path={}, itemCount={}",
-                    instanceId, pluginName, relPath, items.size());
-            return resource;
+        List<PluginConfigFileSpec> files = readConfigFiles(instanceId, pluginName);
+        if (files.stream().noneMatch(PluginConfigFileSpec::isExists)) {
+            log.info("未找到候选 cfg 文件 instanceId={}, pluginName={}", instanceId, pluginName);
+            return null;
         }
-        log.info("未找到候选 cfg 文件 instanceId={}, pluginName={}", instanceId, pluginName);
-        return null;
+        PluginConfigResource resource = upsertResource(instanceId, hostId, pluginName, files);
+        log.info("加载插件配置完成 instanceId={}, pluginName={}, fileCount={}",
+                instanceId, pluginName, files.size());
+        return resource;
     }
 
     /**
@@ -214,19 +202,19 @@ public class SourceModCfgService {
      * @throws L4D2PluginException 没有候选 cfg 文件存在时抛出
      */
     public void updateConfig(Long instanceId, String pluginName, List<ConfigItem> items) {
+        updateConfig(instanceId, pluginName, items, null, null);
+    }
+
+    /**
+     * 更新指定 cfg 文件；targetConfigPath 为空时保持旧的“首个存在候选”行为。
+     */
+    public void updateConfig(Long instanceId, String pluginName, List<ConfigItem> items,
+                             String fileId, String targetConfigPath) {
         InstanceVO instance = requireInstance(instanceId);
         Long hostId = instance.getHostId();
-
-        String targetCandidate = null;
-        String targetRelPath = null;
-        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
-            String relPath = toRelativePath(candidate);
-            if (fileExistsSafe(instanceId, relPath)) {
-                targetCandidate = candidate;
-                targetRelPath = relPath;
-                break;
-            }
-        }
+        ResolvedConfigTarget target = resolveTarget(
+                instanceId, pluginName, fileId, targetConfigPath, true);
+        String targetRelPath = target.relativePath();
         if (targetRelPath == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
                     "无可更新的 cfg 文件，请先确认插件已生成配置: " + pluginName);
@@ -246,8 +234,7 @@ public class SourceModCfgService {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "写入配置文件失败: " + e.getMessage(), e);
         }
-        String configName = pluginName + ".cfg";
-        upsertResource(instanceId, hostId, pluginName, configName, targetCandidate, items, serialized);
+        refreshResource(instanceId, hostId, pluginName);
         log.info("更新插件配置成功 instanceId={}, pluginName={}, path={}", instanceId, pluginName, targetRelPath);
     }
 
@@ -363,22 +350,206 @@ public class SourceModCfgService {
         return instanceId + "-" + pluginName;
     }
 
+    // ===== 多文件读取、目标解析与快照 =====
+
+    private List<PluginConfigFileSpec> readConfigFiles(Long instanceId, String pluginName) {
+        List<PluginConfigFileSpec> files = new ArrayList<>();
+        String storePrefix = pathResolver.getPluginLeft4Dead2Path(pluginName) + "/";
+        Set<String> seenTargets = new LinkedHashSet<>();
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
+            String relPath = toRelativePath(candidate);
+            String targetKey = resolvedTargetKey(candidate, relPath);
+            if (!fileExistsSafe(instanceId, relPath)) {
+                String storeRelPath = storePrefix + normalizeDeclaredConfigPath(candidate, relPath);
+                if (fileExistsSafe(instanceId, storeRelPath)) {
+                    relPath = storeRelPath;
+                    targetKey = resolvedTargetKey(candidate, relPath);
+                }
+            }
+            if (!seenTargets.add(targetKey)) {
+                continue;
+            }
+            files.add(readConfigFile(instanceId, pluginName, candidate, relPath));
+        }
+        return files;
+    }
+
+    private PluginConfigFileSpec readConfigFile(Long instanceId, String pluginName,
+                                                String candidate, String relPath) {
+        PluginConfigFileSpec file = new PluginConfigFileSpec();
+        file.setFileId(fileIdOf(candidate, relPath));
+        file.setConfigName(configNameOf(relPath));
+        file.setConfigPath(candidate);
+        file.setItems(List.of());
+        file.setLastSyncedAt(LocalDateTime.now());
+        try {
+            if (!instanceFileService.exists(instanceId, relPath)) {
+                file.setExists(false);
+                file.setStatus(CONFIG_STATUS_MISSING);
+                file.setError("配置文件不存在");
+                return file;
+            }
+            file.setExists(true);
+            String content = instanceFileService.readTextFile(instanceId, relPath, gbk);
+            file.setRawContent(content);
+            List<ConfigItem> items = cfgParser.parse(content);
+            file.setItems(items);
+            file.setStatus(items.isEmpty() ? CONFIG_STATUS_EMPTY : CONFIG_STATUS_OK);
+            if (items.isEmpty()) {
+                file.setError("配置文件中没有可编辑的配置项");
+            }
+        } catch (Exception e) {
+            log.warn("读取 cfg 文件失败 instanceId={}, pluginName={}, path={}, err={}",
+                    instanceId, pluginName, relPath, e.getMessage());
+            file.setStatus(CONFIG_STATUS_ERROR);
+            file.setError("读取配置文件失败: " + e.getMessage());
+        }
+        return file;
+    }
+
+    private record ResolvedConfigTarget(String candidate, String relativePath) {
+    }
+
+    private ResolvedConfigTarget resolveTarget(Long instanceId, String pluginName,
+                                               String fileId, String requestedPath,
+                                               boolean requireExistingTarget) {
+        List<ResolvedConfigTarget> candidates = resolveAvailableTargets(instanceId, pluginName);
+        if (fileId != null && !fileId.isBlank()) {
+            for (ResolvedConfigTarget target : candidates) {
+                if (fileId.equals(fileIdOf(target.candidate(), target.relativePath()))) {
+                    if (requireExistingTarget && !fileExistsSafe(instanceId, target.relativePath())) {
+                        throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                                "目标配置文件不存在: " + fileId);
+                    }
+                    return target;
+                }
+            }
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "目标配置文件不属于该插件: " + fileId);
+        }
+        if (requestedPath != null && !requestedPath.isBlank()) {
+            List<ResolvedConfigTarget> matches = candidates.stream()
+                    .filter(target -> matchesConfigTarget(
+                            requestedPath, target.candidate(), target.relativePath()))
+                    .toList();
+            if (matches.size() == 1) {
+                ResolvedConfigTarget target = matches.get(0);
+                if (requireExistingTarget && !fileExistsSafe(instanceId, target.relativePath())) {
+                        throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                                "目标配置文件不存在: " + requestedPath);
+                }
+                return target;
+            }
+            if (matches.size() > 1) {
+                throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                        "目标配置文件名称不唯一，请使用完整路径: " + requestedPath);
+            }
+            throw new L4D2PluginException(L4D2PluginException.BUSINESS,
+                    "目标配置文件不属于该插件: " + requestedPath);
+        }
+        for (ResolvedConfigTarget target : candidates) {
+            if (fileExistsSafe(instanceId, target.relativePath())) {
+                return target;
+            }
+        }
+        return new ResolvedConfigTarget(null, null);
+    }
+
+    private boolean matchesConfigTarget(String requestedPath, String candidate, String relPath) {
+        String normalized = requestedPath.replace('\\', '/').trim();
+        if (normalized.contains("..")) {
+            return false;
+        }
+        return normalized.equals(candidate)
+                || normalized.equals(relPath)
+                || normalized.equals(configNameOf(relPath));
+    }
+
+    /**
+     * 枚举声明的逻辑目标，并在游戏目录缺失时映射到插件库副本。
+     * 这样 fileId 始终绑定声明目标，而不会在目录回退时漂移。
+     */
+    private List<ResolvedConfigTarget> resolveAvailableTargets(Long instanceId, String pluginName) {
+        List<ResolvedConfigTarget> targets = new ArrayList<>();
+        String storePrefix = pathResolver.getPluginLeft4Dead2Path(pluginName) + "/";
+        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
+            String gameRelPath = toRelativePath(candidate);
+            String relPath = gameRelPath;
+            if (!fileExistsSafe(instanceId, gameRelPath)) {
+                String storeRelPath = storePrefix + normalizeDeclaredConfigPath(candidate, gameRelPath);
+                if (fileExistsSafe(instanceId, storeRelPath)) {
+                    relPath = storeRelPath;
+                }
+            }
+            targets.add(new ResolvedConfigTarget(candidate, relPath));
+        }
+        return targets;
+    }
+
+    private String normalizeDeclaredConfigPath(String candidate, String relPath) {
+        String normalizedCandidate = candidate.replace('\\', '/');
+        String gamePrefix = pathResolver.getGamePath() + "/";
+        if (normalizedCandidate.startsWith(gamePrefix)) {
+            return normalizedCandidate.substring(gamePrefix.length());
+        }
+        if (normalizedCandidate.startsWith(CFG_SOURCEMOD_PREFIX)) {
+            return normalizedCandidate;
+        }
+        if (normalizedCandidate.startsWith(PLUGINS_PREFIX)) {
+            return normalizedCandidate;
+        }
+        String normalizedRel = relPath.replace('\\', '/');
+        return normalizedRel.startsWith(gamePrefix)
+                ? normalizedRel.substring(gamePrefix.length())
+                : normalizedRel;
+    }
+
+    private String resolvedTargetKey(String candidate, String relPath) {
+        String normalized = relPath.replace('\\', '/');
+        String gamePrefix = pathResolver.getGamePath() + "/";
+        return normalized.startsWith(gamePrefix) ? normalized.substring(gamePrefix.length()) : normalized;
+    }
+
+    private String configNameOf(String relPath) {
+        int slash = relPath.lastIndexOf('/');
+        return slash >= 0 ? relPath.substring(slash + 1) : relPath;
+    }
+
+    private String fileIdOf(String candidate, String relPath) {
+        String key = candidate == null || candidate.isBlank() ? relPath : candidate;
+        return Integer.toHexString((key + "|" + relPath).hashCode());
+    }
+
+    private void refreshResource(Long instanceId, Long hostId, String pluginName) {
+        List<PluginConfigFileSpec> files = readConfigFiles(instanceId, pluginName);
+        if (files.stream().anyMatch(PluginConfigFileSpec::isExists)) {
+            upsertResource(instanceId, hostId, pluginName, files);
+        }
+    }
+
     /**
      * Upsert 扩展资源：存在则更新 spec，不存在则创建。返回最新资源对象。
      */
     private PluginConfigResource upsertResource(Long instanceId, Long hostId, String pluginName,
-                                                String configName, String configPath,
-                                                List<ConfigItem> items, String rawContent) {
+                                                List<PluginConfigFileSpec> files) {
         String name = buildResourceName(instanceId, pluginName);
         Optional<PluginConfigResource> existing = getStoredResource(instanceId, pluginName);
         PluginConfigSpec spec = new PluginConfigSpec();
         spec.setInstanceId(instanceId);
         spec.setHostId(hostId);
         spec.setPluginName(pluginName);
-        spec.setConfigName(configName);
-        spec.setConfigPath(configPath);
-        spec.setItems(items);
-        spec.setRawContent(rawContent);
+        PluginConfigFileSpec primary = files.stream()
+                .filter(file -> CONFIG_STATUS_OK.equals(file.getStatus())
+                        || CONFIG_STATUS_EMPTY.equals(file.getStatus()))
+                .findFirst()
+                .orElse(files.stream().filter(PluginConfigFileSpec::isExists).findFirst().orElse(null));
+        if (primary != null) {
+            spec.setConfigName(primary.getConfigName());
+            spec.setConfigPath(primary.getConfigPath());
+            spec.setItems(primary.getItems());
+            spec.setRawContent(primary.getRawContent());
+        }
+        spec.setConfigFiles(files);
         spec.setLastSyncedAt(LocalDateTime.now());
 
         if (existing.isPresent()) {
@@ -455,22 +626,23 @@ public class SourceModCfgService {
      * @throws L4D2PluginException 无候选 cfg / 读写出错
      */
     public void restoreDefaults(Long instanceId, String pluginName) {
+        restoreDefaults(instanceId, pluginName, null, null);
+    }
+
+    /**
+     * 恢复指定 cfg 文件的默认值；targetConfigPath 为空时保持旧的首文件行为。
+     */
+    public void restoreDefaults(Long instanceId, String pluginName,
+                                String fileId, String targetConfigPath) {
         InstanceVO instance = requireInstance(instanceId);
         if (pluginName == null || pluginName.isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS, "pluginName 不能为空");
         }
 
         // 1. 找到候选 cfg 文件
-        String targetCandidate = null;
-        String targetRelPath = null;
-        for (String candidate : getCandidatePaths(instanceId, pluginName)) {
-            String relPath = toRelativePath(candidate);
-            if (fileExistsSafe(instanceId, relPath)) {
-                targetCandidate = candidate;
-                targetRelPath = relPath;
-                break;
-            }
-        }
+        ResolvedConfigTarget target = resolveTarget(
+                instanceId, pluginName, fileId, targetConfigPath, true);
+        String targetRelPath = target.relativePath();
         if (targetRelPath == null) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
                     "无可恢复的 cfg 文件，请先确认插件已生成配置: " + pluginName);
@@ -514,9 +686,7 @@ public class SourceModCfgService {
         }
 
         // 5. 更新扩展资源
-        String configName = pluginName + ".cfg";
-        upsertResource(instanceId, instance.getHostId(), pluginName, configName,
-                targetCandidate, items, serialized);
+        refreshResource(instanceId, instance.getHostId(), pluginName);
 
         log.info("已恢复默认配置: instanceId={}, plugin={}, changed={}", instanceId, pluginName, changed);
     }

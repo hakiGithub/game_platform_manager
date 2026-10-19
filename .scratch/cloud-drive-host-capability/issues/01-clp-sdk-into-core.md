@@ -1,6 +1,6 @@
 # 01: clp-sdk 及全 Provider 依赖进 core
 
-Status: ready-for-human
+Status: resolved
 
 ## 任务
 
@@ -15,3 +15,10 @@ Status: ready-for-human
 - 应用启动无 provider ServiceLoader 缺失告警，`client.getProviders()` 返回 6 个 providerType。
 
 Blocked by: （无）
+
+## Answer
+
+- `backend/core/pom.xml` 已引入 `clp-sdk` 与 aliyun / cloud189 / xunlei / openlist provider；`CloudDriveConfiguration` 提供 `@Bean(destroyMethod="close")` 的进程单例 `CloudDriveClient`，未配置 clp-storage-jdbc 或索引。
+- `backend/AGENTS.md` 已写明构建前置：在 `cloud_list_platform` 执行 `mvn -pl clp-sdk -am install -DskipTests`。
+- 2026-10-20 验证：`mvn -pl core -am '-Dtest=CloudAccountServiceInitializationOrderTest' '-Dsurefire.failIfNoSpecifiedTests=false' test` 通过；应用 `/api/cloud/accounts` 实机返回 200，本地 `live-189` 账号存在（说明 provider 装载与 SDK 启动无缺失告警）。
+- 2026-10-20 管理员实机 `GET /api/cloud/providers` 返回 8 个 providerType（`baidu-oauth`、`cloud189`、`bdpan`、`openlist`、`quark`、`uc`、`aliyun`、`xunlei`），满足“至少 6 个”的验收条件；运行实例未见 ServiceLoader 缺失告警。

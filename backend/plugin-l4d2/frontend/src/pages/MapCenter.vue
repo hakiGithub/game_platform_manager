@@ -479,6 +479,7 @@ import {
   getCrawlStatus,
 } from '@/api/mapCenter'
 import { downloadApi, cloudAccountApi, mainInstanceApi, rconApi, type CloudAccountVO, type MainInstanceVO } from '@/api'
+import { describeChangeMapResult } from '@/utils/changeMapResult'
 import { usePluginStore } from '@/stores/plugin'
 import type {
   MapCenterQuery,
@@ -671,8 +672,9 @@ async function submitLaunch() {
   const mapCode = launchForm.value.command.trim().replace(/^map\s+/i, '')
   launching.value = true
   try {
-    await rconApi.changeMap(launchForm.value.instanceId, mapCode)
-    ElMessage.success(`开图命令已发送到实例 ${launchForm.value.instanceId}`)
+    const result = await rconApi.changeMap(launchForm.value.instanceId, mapCode)
+    const notice = describeChangeMapResult(result, mapCode)
+    ElMessage[notice.level](notice.message)
     launchVisible.value = false
   } catch (e: any) {
     ElMessage.error('开图失败：' + (e?.message || e))

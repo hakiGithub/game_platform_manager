@@ -42,6 +42,9 @@ public class PluginConfigSpec implements Serializable {
     /** 最后同步时间 */
     private LocalDateTime lastSyncedAt;
 
+    /** 多文件快照；旧单文件字段继续保留以兼容历史数据 */
+    private List<PluginConfigFileSpec> configFiles;
+
     // ===== 旧字段（保留兼容，不再使用） =====
 
     /** 插件状态（enabled/disabled） */

@@ -9,6 +9,7 @@ import com.gameplatform.plugin.l4d2.extension.PluginConfigSpec;
 import com.gameplatform.plugin.l4d2.service.SourceModCfgService;
 import com.gameplatform.plugin.l4d2.vo.CandidatePathVO;
 import com.gameplatform.plugin.l4d2.vo.PluginConfigVO;
+import com.gameplatform.plugin.l4d2.vo.PluginConfigFileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,7 +45,7 @@ public class PluginConfigController {
     /**
      * 获取插件配置。
      */
-    @Operation(summary = "获取插件配置", description = "读取 SourceMod cfg 配置项列表；插件无候选 cfg 文件时返回空配置结构（items 为空数组、configPath 为空）")
+    @Operation(summary = "获取插件配置", description = "读取插件全部可编辑 cfg 文件；旧单文件字段保留兼容")
     @GetMapping("/get")
     public Result<PluginConfigVO> get(
             @Parameter(description = "实例ID") @RequestParam Long instanceId,
@@ -61,8 +62,11 @@ public class PluginConfigController {
     @Operation(summary = "更新插件配置", description = "更新 SourceMod cfg 配置项")
     @PostMapping("/update")
     public Result<Void> update(@Valid @RequestBody PluginConfigUpdateDTO dto) {
-        log.info("更新插件配置, instanceId: {}, pluginName: {}", dto.getInstanceId(), dto.getPluginName());
-        sourceModCfgService.updateConfig(dto.getInstanceId(), dto.getPluginName(), dto.getItems());
+        log.info("更新插件配置, instanceId: {}, pluginName: {}, fileId: {}, configPath: {}",
+                dto.getInstanceId(), dto.getPluginName(), dto.getFileId(), dto.getConfigPath());
+        sourceModCfgService.updateConfig(
+                dto.getInstanceId(), dto.getPluginName(), dto.getItems(),
+                dto.getFileId(), dto.getConfigPath());
         return Result.success();
     }
 
@@ -104,7 +108,8 @@ public class PluginConfigController {
     public Result<Void> restoreDefaults(@Valid @RequestBody PluginRestoreDefaultsDTO dto) {
         log.info("恢复默认配置, instanceId: {}, pluginName: {}",
                 dto.getInstanceId(), dto.getPluginName());
-        sourceModCfgService.restoreDefaults(dto.getInstanceId(), dto.getPluginName());
+        sourceModCfgService.restoreDefaults(
+                dto.getInstanceId(), dto.getPluginName(), dto.getFileId(), dto.getConfigPath());
         return Result.success();
     }
 
@@ -122,7 +127,24 @@ public class PluginConfigController {
         vo.setItems(spec.getItems());
         vo.setRawContent(spec.getRawContent());
         vo.setLastSyncedAt(spec.getLastSyncedAt());
+        if (spec.getConfigFiles() != null) {
+            vo.setConfigFiles(spec.getConfigFiles().stream().map(this::toFileVO).toList());
+        }
         return vo;
+    }
+
+    private PluginConfigFileVO toFileVO(com.gameplatform.plugin.l4d2.extension.PluginConfigFileSpec specFile) {
+        PluginConfigFileVO file = new PluginConfigFileVO();
+        file.setFileId(specFile.getFileId());
+        file.setConfigName(specFile.getConfigName());
+        file.setConfigPath(specFile.getConfigPath());
+        file.setItems(specFile.getItems());
+        file.setRawContent(specFile.getRawContent());
+        file.setExists(specFile.isExists());
+        file.setStatus(specFile.getStatus());
+        file.setError(specFile.getError());
+        file.setLastSyncedAt(specFile.getLastSyncedAt());
+        return file;
     }
 
     /**
@@ -135,6 +157,7 @@ public class PluginConfigController {
         vo.setPluginName(pluginName);
         vo.setConfigName(pluginName + ".cfg");
         vo.setItems(List.of());
+        vo.setConfigFiles(List.of());
         return vo;
     }
 }

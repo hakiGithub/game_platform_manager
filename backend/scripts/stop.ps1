@@ -61,6 +61,8 @@ $script:SERVER_PORT = 8080
 # 停止等待超时时间(秒)
 $script:STOP_TIMEOUT = 30
 
+. (Join-Path $SCRIPT_DIR "backend-process.ps1")
+
 # ============================================
 # 工具函数
 # ============================================
@@ -101,9 +103,10 @@ function Write-LogError {
 
 function Test-AppRunning {
     if (Test-Path $PID_FILE) {
-        $pid = Get-Content $PID_FILE -ErrorAction SilentlyContinue
-        if ($pid) {
-            $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $pidText = Get-Content $PID_FILE -ErrorAction SilentlyContinue | Select-Object -First 1
+        $savedPid = 0
+        if ([int]::TryParse($pidText, [ref]$savedPid)) {
+            $process = Get-BackendProcessByPid -ProcessId $savedPid -MainClass "com.gameplatform.GamePlatformApplication"
             if ($process) {
                 return $true
             }
@@ -114,32 +117,36 @@ function Test-AppRunning {
 
 function Get-AppPid {
     if (Test-Path $PID_FILE) {
-        return Get-Content $PID_FILE -ErrorAction SilentlyContinue
+        $pidText = Get-Content $PID_FILE -ErrorAction SilentlyContinue | Select-Object -First 1
+        $savedPid = 0
+        if ([int]::TryParse($pidText, [ref]$savedPid)) {
+            return $savedPid
+        }
     }
     return $null
 }
 
 function Find-JavaProcess {
-    # 通过端口查找
-    $conn = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue
-    if ($conn) {
-        return $conn.OwningProcess
+    $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+    if ($listenerPid) {
+        $listenerProcess = Get-BackendProcessByPid -ProcessId $listenerPid -MainClass "com.gameplatform.GamePlatformApplication"
+        if ($listenerProcess) {
+            return $listenerProcess.ProcessId
+        }
     }
-    
-    # 通过进程名查找
-    $processes = Get-Process -Name "java" -ErrorAction SilentlyContinue | 
-                 Where-Object { $_.MainWindowTitle -like "*game-platform-manager*" }
-    if ($processes) {
-        return $processes.Id
+
+    $argFile = $null
+    $argPointer = Join-Path $LOG_DIR "game-platform-jvm-args.path"
+    if (Test-Path $argPointer) {
+        $argFile = (Get-Content $argPointer -Raw -ErrorAction SilentlyContinue).Trim()
     }
-    
-    # 通过命令行查找
-    $wmiProcesses = Get-WmiObject Win32_Process -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.CommandLine -like "*GamePlatformApplication*" }
-    if ($wmiProcesses) {
-        return $wmiProcesses.ProcessId
+    if ($argFile) {
+        $process = Find-BackendJavaProcess -ArgFile $argFile -MainClass "com.gameplatform.GamePlatformApplication"
+        if ($process) {
+            return $process.ProcessId
+        }
     }
-    
+
     return $null
 }
 
@@ -204,15 +211,15 @@ function Stop-Graceful {
         return
     }
     
-    $pid = Get-AppPid
-    Write-LogInfo "应用正在运行，PID: $pid"
+    $appPid = Get-AppPid
+    Write-LogInfo "应用正在运行，PID: $appPid"
     
     # 发送停止信号
     Write-LogInfo "发送停止信号..."
-    Stop-Process -Id $pid -ErrorAction SilentlyContinue
+    Stop-Process -Id $appPid -ErrorAction SilentlyContinue
     
     # 等待进程停止
-    if (Wait-ForStop -ProcessId $pid) {
+    if (Wait-ForStop -ProcessId $appPid) {
         Remove-PidFile
         Write-LogInfo "========== 应用已停止 =========="
     }
@@ -230,30 +237,30 @@ function Stop-Force {
         New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
     }
     
-    $pid = $null
+    $appPid = $null
     
     if (Test-AppRunning) {
-        $pid = Get-AppPid
+        $appPid = Get-AppPid
     }
     else {
-        $pid = Find-JavaProcess
+        $appPid = Find-JavaProcess
     }
     
-    if (-not $pid) {
+    if (-not $appPid) {
         Write-LogWarn "未找到运行中的应用进程"
         Remove-PidFile
         return
     }
     
-    Write-LogInfo "应用进程PID: $pid"
+    Write-LogInfo "应用进程PID: $appPid"
     
     # 先尝试优雅停止
     Write-LogInfo "发送停止信号..."
-    Stop-Process -Id $pid -ErrorAction SilentlyContinue
+    Stop-Process -Id $appPid -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
     
     # 检查是否停止
-    $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $process = Get-Process -Id $appPid -ErrorAction SilentlyContinue
     if (-not $process) {
         Remove-PidFile
         Write-LogInfo "========== 应用已停止 =========="
@@ -262,11 +269,11 @@ function Stop-Force {
     
     # 强制停止
     Write-LogWarn "进程未响应，强制停止..."
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     
     # 最终检查
-    $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $process = Get-Process -Id $appPid -ErrorAction SilentlyContinue
     if (-not $process) {
         Remove-PidFile
         Write-LogInfo "========== 应用已强制停止 =========="
@@ -282,15 +289,15 @@ function Show-Status {
     Write-Host ""
     
     if (Test-AppRunning) {
-        $pid = Get-AppPid
+        $appPid = Get-AppPid
         Write-Host "状态: 运行中"
-        Write-Host "PID: $pid"
+        Write-Host "PID: $appPid"
         Write-Host "PID文件: $PID_FILE"
         Write-Host ""
         
         # 显示进程信息
         Write-Host "进程信息:"
-        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $process = Get-Process -Id $appPid -ErrorAction SilentlyContinue
         if ($process) {
             $process | Format-Table -Property Id, ProcessName, CPU, WorkingSet, StartTime -AutoSize
         }

@@ -276,8 +276,16 @@ async function confirmDelete() {
     const params = deleteTargetIsAdopted.value
       ? { deleteContainer: deleteContainerChecked.value }
       : undefined;
-    await deleteInstance(deleteTarget.value.id, params);
-    ElMessage.success("删除成功");
+    const result = await deleteInstance(deleteTarget.value.id, params);
+    const cleanupStatus = result?.remoteCleanupStatus;
+    if (cleanupStatus === "partial_success" || cleanupStatus === "failed") {
+      const residualPaths = result?.residualPaths?.length
+        ? `（残留路径：${result.residualPaths.join("、")}）`
+        : "";
+      ElMessage.warning(`${result.message || "实例记录已删除，但远端资源清理未完成"}${residualPaths}`);
+    } else {
+      ElMessage.success(result?.message || "删除成功");
+    }
     deleteDialogVisible.value = false;
     fetchData();
   } catch (error) {

@@ -36,7 +36,7 @@ import java.util.Map;
  * <ul>
  *   <li>Native 实例：直接定位 {@code installPath/<rel>}；</li>
  *   <li>Docker 实例：脚本送入容器，直接读取容器内原文件；缺 python3 时由
- *       platform-tools 以 {@code --volumes-from} 复用容器卷命名空间，不复制 VPK。</li>
+ *       platform-tools 将目标卷挂到独立路径，不复制 VPK。</li>
  * </ul>
  * 摘要走主机原生 sha256sum/shasum（Docker 实例在容器内计算，容器兜底）；
  * 分析脚本由平台维护（classpath {@code tooling/vpk_analyze.py}），调用时分发、用完即删；
@@ -49,6 +49,8 @@ import java.util.Map;
 public class VpkToolingAnalyzer {
 
     private static final String SCRIPT_RESOURCE = "tooling/vpk_analyze.py";
+    private static final String TOOLING_PYTHON = "/usr/bin/python3";
+    private static final String TOOLING_TARGET_ROOT = "/gp-target";
 
     private final DeploymentAccess deployAccess;
     private final SshUtil sshUtil;
@@ -125,7 +127,7 @@ public class VpkToolingAnalyzer {
             hostPath = joinPath(instance.getInstallPath(), relativePath);
         } else {
             // Docker：始终在容器内分析/计算摘要，不 docker cp 整个 VPK 到主机。
-            // 工具容器通过 --volumes-from 复用目标容器的卷命名空间，脚本用容器内路径读取。
+            // 工具容器把目标卷挂到独立根，避免覆盖工具镜像自身的 /usr/bin/python3。
             containerId = containerIdResolver.resolve(instance, metadataOf(instance));
             if (containerId == null || containerId.isBlank()) {
                 throw new BusinessException("实例容器 ID 未记录，无法分析容器内文件（可重启实例重建元数据）");
@@ -254,15 +256,15 @@ public class VpkToolingAnalyzer {
         try {
             String inner = "python3 " + shellQuote(remoteScript) + " " + shellQuote(remoteVpkPath);
             if (hasCommand(conn, "python3")) {
-                return execJson(conn, inner, remoteVpkPath);
+                return execJson(conn, inner, remoteVpkPath, AnalyzeChannel.NATIVE);
             }
             if (caps.hasDocker()) {
-                String cmd = "docker run --rm --entrypoint python3 -v "
+                String cmd = "docker run --rm --entrypoint " + TOOLING_PYTHON + " -v "
                         + shellQuote(parentOf(remoteScript)) + ":/s -v "
                         + shellQuote(parentOf(remoteVpkPath)) + ":/w " + toolingImage
                         + " " + shellQuote("/s/" + basename(remoteScript))
                         + " " + shellQuote("/w/" + basename(remoteVpkPath));
-                return execJson(conn, cmd, remoteVpkPath);
+                return execJson(conn, cmd, remoteVpkPath, AnalyzeChannel.TOOL_CONTAINER);
             }
             throw new BusinessException("主机无 python3 且无 Docker：无法执行 VPK 分析"
                     + "（可为主机安装 python3，或使用含 python3 的 platform-tools 镜像）");
@@ -292,14 +294,22 @@ public class VpkToolingAnalyzer {
                 }
                 String inner = "python3 " + shellQuote(containerScript) + " "
                         + shellQuote(ctx.containerPath());
-                return execJson(conn, dockerExec(ctx.containerId(), inner), ctx.containerPath());
+                return execJson(conn, dockerExec(ctx.containerId(), inner),
+                        ctx.containerPath(), AnalyzeChannel.TARGET_CONTAINER);
             }
             if (ctx.caps().hasDocker()) {
-                String cmd = "docker run --rm --entrypoint python3 --volumes-from " + shellQuote(ctx.containerId())
+                ContainerVolume volume = resolveContainerVolume(conn, ctx.containerId(), ctx.containerPath());
+                String mountedRoot = volume.destination().equals("/")
+                        ? TOOLING_TARGET_ROOT
+                        : TOOLING_TARGET_ROOT + volume.destination();
+                String cmd = "docker run --rm --entrypoint " + TOOLING_PYTHON
+                        + " -e " + shellQuote("GP_VPK_TARGET_ROOT=" + TOOLING_TARGET_ROOT)
+                        + " --mount " + shellQuote("type=" + volume.type() + ",source=" + volume.source()
+                        + ",destination=" + mountedRoot + ",readonly")
                         + " -v " + shellQuote(parentOf(remoteScript)) + ":/s "
                         + toolingImage + " " + shellQuote("/s/" + basename(remoteScript)) + " "
                         + shellQuote(ctx.containerPath());
-                return execJson(conn, cmd, ctx.containerPath());
+                return execJson(conn, cmd, ctx.containerPath(), AnalyzeChannel.TOOL_CONTAINER);
             }
             throw new BusinessException("容器内无 python3 且主机无 Docker：无法执行 VPK 分析"
                     + "（可使用含 python3 的 platform-tools 镜像）");
@@ -313,8 +323,79 @@ public class VpkToolingAnalyzer {
         }
     }
 
+    private record ContainerVolume(String type, String destination, String source) {
+    }
+
+    private ContainerVolume resolveContainerVolume(HostCredentials conn, String containerId,
+                                                   String containerPath) {
+        if (containerPath == null || !containerPath.startsWith("/") || isDangerousRoot(containerPath)) {
+            throw new BusinessException("目标容器内 VPK 路径不是可安全挂载的绝对文件路径");
+        }
+        SshUtil.CommandResult r = exec(conn,
+                "docker inspect " + shellQuote(containerId)
+                        + " --format '{{range .Mounts}}{{.Type}}|{{.Destination}}|{{.Source}}|{{.Name}}"
+                        + "{{println}}{{end}}'");
+        if (r == null || !r.isSuccess() || r.getOutput() == null) {
+            throw new BusinessException("读取目标容器挂载信息失败: "
+                    + (r != null ? r.getError() : "无响应"));
+        }
+        String bestDestination = null;
+        String bestSource = null;
+        String bestType = null;
+        for (String line : r.getOutput().split("\\R")) {
+            String[] parts = line.split("\\|", -1);
+            if (parts.length < 4) {
+                continue;
+            }
+            String type = parts[0].trim();
+            String destination = parts[1].trim();
+            String hostSource = parts[2].trim();
+            String volumeName = parts[3].trim();
+            String source = "volume".equals(type) && !volumeName.isBlank() ? volumeName : hostSource;
+            if (!isPathWithin(containerPath, destination)) {
+                continue;
+            }
+            if (bestDestination == null || destination.length() > bestDestination.length()) {
+                bestType = type;
+                bestDestination = destination;
+                bestSource = source;
+            }
+        }
+        if (bestDestination == null || bestSource == null || bestSource.isBlank()) {
+            throw new BusinessException("目标容器内 VPK 路径不在已挂载卷中，无法安全读取");
+        }
+        if (!"bind".equals(bestType) && !"volume".equals(bestType)) {
+            throw new BusinessException("目标容器内 VPK 路径所在挂载类型不受支持: " + bestType);
+        }
+        if ("bind".equals(bestType) && isDangerousRoot(bestSource)) {
+            throw new BusinessException("目标容器 VPK 所在 bind mount 的宿主路径过宽，拒绝挂载读取");
+        }
+        return new ContainerVolume(bestType, bestDestination, bestSource);
+    }
+
+    private static boolean isPathWithin(String path, String root) {
+        if (root == null || root.isBlank()) {
+            return false;
+        }
+        String normalizedRoot = root.equals("/") ? "/" : root.replaceAll("/+$", "");
+        return path.equals(normalizedRoot)
+                || path.startsWith(normalizedRoot.equals("/") ? "/" : normalizedRoot + "/");
+    }
+
+    private static boolean isDangerousRoot(String path) {
+        return path == null || path.isBlank() || "/".equals(path)
+                || ".".equals(path) || "..".equals(path) || path.matches("\\/+");
+    }
+
+    private enum AnalyzeChannel {
+        NATIVE,
+        TARGET_CONTAINER,
+        TOOL_CONTAINER
+    }
+
     /** 执行分析命令并校验退出码语义：0=成功；2=非 VPK/无 mission（INVALID）；其他=失败 */
-    private String execJson(HostCredentials conn, String command, String vpkPath) {
+    private String execJson(HostCredentials conn, String command, String vpkPath,
+                            AnalyzeChannel channel) {
         String errFile = "/tmp/gp_vpk_analyze_" + System.nanoTime() + ".err";
         SshUtil.CommandResult r = exec(conn, command + " 2>" + shellQuote(errFile)
                 + "; __rc=$?; cat " + shellQuote(errFile) + " >&2; rm -f " + shellQuote(errFile)
@@ -326,10 +407,67 @@ public class VpkToolingAnalyzer {
             throw new VpkInvalidException("文件不是有效的 L4D2 地图 VPK（无 mission 信息）: " + basename(vpkPath));
         }
         if (!r.isSuccess() || r.getOutput() == null || r.getOutput().isBlank()) {
-            throw new BusinessException("VPK 分析失败: " + (r.getError() != null && !r.getError().isBlank()
-                    ? r.getError() : "exit=" + r.getExitCode()));
+            String rawError = r.getError() != null && !r.getError().isBlank()
+                    ? r.getError() : "exit=" + r.getExitCode();
+            log.warn("VPK 分析失败: vpk={}, channel={}, image={}, exitCode={}, error={}",
+                    basename(vpkPath), channel, toolingImage, r.getExitCode(),
+                    sanitizeLogError(rawError));
+            throw new BusinessException(buildAnalyzeFailureMessage(vpkPath, channel, rawError));
         }
         return r.getOutput();
+    }
+
+    private String buildAnalyzeFailureMessage(String vpkPath, AnalyzeChannel channel, String rawError) {
+        String lower = rawError == null ? "" : rawError.toLowerCase(Locale.ROOT);
+        String vpkName = basename(vpkPath);
+        if (isFileReadFailure(lower)) {
+            return "VPK 文件不可读: " + vpkName
+                    + "。请确认文件仍在实例内且容器可访问，可刷新地图列表后重试";
+        }
+        if (channel == AnalyzeChannel.TOOL_CONTAINER) {
+            if (isToolContainerLaunchFailure(lower)) {
+                return "VPK 分析失败（工具容器不可用）: " + vpkName
+                        + "。请在目标主机重新拉取 platform-tools 镜像，并确认镜像包含 "
+                        + TOOLING_PYTHON + "，然后重试";
+            }
+            return "VPK 分析失败（工具容器执行失败）: " + vpkName
+                    + "。请检查 platform-tools 镜像与目标容器状态后重试";
+        }
+        if (channel == AnalyzeChannel.TARGET_CONTAINER) {
+            return "VPK 分析失败（目标容器执行不可用）: " + vpkName
+                    + "。请确认实例容器正在运行，并可执行容器内命令后重试";
+        }
+        return "VPK 分析失败（主机执行不可用）: " + vpkName
+                + "。请检查主机 python3 或 Docker 工具链后重试";
+    }
+
+    private boolean isFileReadFailure(String error) {
+        return error.contains("no such file")
+                || error.contains("cannot open")
+                || error.contains("permission denied")
+                || error.contains("read-only file system")
+                || error.contains("failed to read");
+    }
+
+    private boolean isToolContainerLaunchFailure(String error) {
+        return error.contains("failed to create task")
+                || error.contains("executable file not found")
+                || error.contains("no such image")
+                || error.contains("manifest unknown")
+                || error.contains("pull access denied")
+                || error.contains("failed to resolve reference")
+                || error.contains("failed to pull")
+                || error.contains("error response from daemon");
+    }
+
+    private String sanitizeLogError(String error) {
+        if (error == null || error.isBlank()) {
+            return "无错误输出";
+        }
+        String sanitized = error.replaceAll(
+                "(?i)(password|passwd|token|secret|passcode)=([^\\s&]+)", "$1=***");
+        String oneLine = sanitized.strip().replaceAll("\\s+", " ");
+        return oneLine.length() > 800 ? oneLine.substring(0, 800) + "..." : oneLine;
     }
 
     private VpkAnalyzeResult parseResult(String json) {

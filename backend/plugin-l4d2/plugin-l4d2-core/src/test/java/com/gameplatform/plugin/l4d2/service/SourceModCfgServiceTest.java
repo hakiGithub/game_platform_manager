@@ -3,10 +3,12 @@ package com.gameplatform.plugin.l4d2.service;
 import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.extension.PluginConfigResource;
+import com.gameplatform.plugin.l4d2.extension.PluginConfigFileSpec;
 import com.gameplatform.plugin.l4d2.extension.PluginConfigSpec;
 import com.gameplatform.plugin.l4d2.parser.SourceModCfgParser;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.CandidatePathVO;
+import com.gameplatform.plugin.l4d2.vo.PluginMeta;
 import com.gameplatform.plugin.l4d2.vo.config.ConfigItem;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
@@ -23,6 +25,7 @@ import java.nio.charset.Charset;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -244,6 +248,117 @@ class SourceModCfgServiceTest {
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
         verify(instanceFileService, never())
                 .writeTextFile(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void getConfig_multipleConfigFiles_shouldReturnAllAndIndependentlyReportErrors() {
+        PluginMeta meta = new PluginMeta();
+        meta.setConfigFiles(List.of(
+                "cfg/sourcemod/alpha.cfg",
+                "cfg/sourcemod/beta.cfg"));
+        when(pluginMetaService.load(eq(INSTANCE_ID), eq("multi_cfg_plugin"))).thenReturn(meta);
+
+        String alpha = CFG_SOURCEMOD_ABS + "/alpha.cfg";
+        String beta = CFG_SOURCEMOD_ABS + "/beta.cfg";
+        when(instanceFileService.exists(eq(INSTANCE_ID), contains("alpha.cfg"))).thenReturn(true);
+        when(instanceFileService.exists(eq(INSTANCE_ID), contains("beta.cfg"))).thenReturn(true);
+        when(instanceFileService.readTextFile(eq(INSTANCE_ID), contains("alpha.cfg"), any(Charset.class)))
+                .thenReturn("\"alpha_key\" \"1\" // alpha\n");
+        when(instanceFileService.readTextFile(eq(INSTANCE_ID), contains("beta.cfg"), any(Charset.class)))
+                .thenReturn("\"beta_key\" \"2\" // beta\n");
+
+        PluginConfigResource resource = service.getConfig(INSTANCE_ID, "multi_cfg_plugin");
+
+        assertNotNull(resource);
+        List<PluginConfigFileSpec> files = resource.getSpec().getConfigFiles();
+        assertThat(files).extracting(PluginConfigFileSpec::getConfigName)
+                .contains("alpha.cfg", "beta.cfg");
+        assertThat(files).extracting(PluginConfigFileSpec::getStatus)
+                .contains("OK", "OK");
+        assertThat(files).flatExtracting(f -> f.getItems())
+                .extracting("key")
+                .contains("alpha_key", "beta_key");
+    }
+
+    @Test
+    void updateConfig_withFileId_shouldOnlyWriteTargetFile() {
+        when(pluginMetaService.load(eq(INSTANCE_ID), eq("multi_cfg_plugin"))).thenReturn(metaWithTwoFiles());
+        String alpha = CFG_SOURCEMOD_ABS + "/alpha.cfg";
+        String beta = CFG_SOURCEMOD_ABS + "/beta.cfg";
+        when(instanceFileService.exists(eq(INSTANCE_ID), eq(alpha))).thenReturn(true);
+        when(instanceFileService.exists(eq(INSTANCE_ID), eq(beta))).thenReturn(true);
+        String betaOriginal = "\"beta_key\" \"2\" // beta\n";
+        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(beta), any(Charset.class)))
+                .thenReturn(betaOriginal);
+        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(alpha), any(Charset.class)))
+                .thenReturn("\"alpha_key\" \"1\" // alpha\n");
+        ConfigItem betaItem = cfgParser.parse(betaOriginal).get(0);
+        betaItem.setValue("9");
+        PluginConfigResource resource = service.getConfig(INSTANCE_ID, "multi_cfg_plugin");
+        String betaId = resource.getSpec().getConfigFiles().stream()
+                .filter(file -> "beta.cfg".equals(file.getConfigName()))
+                .findFirst().orElseThrow().getFileId();
+
+        service.updateConfig(
+                INSTANCE_ID, "multi_cfg_plugin", List.of(betaItem), betaId, beta);
+
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(instanceFileService).writeTextFile(eq(INSTANCE_ID), eq(beta), captor.capture());
+        assertThat(captor.getValue()).contains("\"beta_key\" \"9\"");
+        verify(instanceFileService, never()).writeTextFile(eq(INSTANCE_ID), eq(alpha), anyString());
+    }
+
+    @Test
+    void updateConfig_withUnknownTargetPath_shouldRejectBeforeWriting() {
+        when(pluginMetaService.load(eq(INSTANCE_ID), eq("multi_cfg_plugin"))).thenReturn(metaWithTwoFiles());
+        when(instanceFileService.exists(eq(INSTANCE_ID), anyString())).thenReturn(true);
+
+        L4D2PluginException ex = assertThrows(L4D2PluginException.class,
+                () -> service.updateConfig(
+                        INSTANCE_ID, "multi_cfg_plugin", List.of(),
+                        null, "cfg/sourcemod/not-declared.cfg"));
+
+        assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+        verify(instanceFileService, never()).writeTextFile(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void updateConfig_withAmbiguousBasename_shouldRejectBeforeWriting() {
+        PluginMeta meta = new PluginMeta();
+        meta.setConfigFiles(List.of(
+                "cfg/sourcemod/shared.cfg",
+                "addons/sourcemod/plugins/shared.cfg"));
+        when(pluginMetaService.load(eq(INSTANCE_ID), eq("multi_cfg_plugin"))).thenReturn(meta);
+
+        L4D2PluginException ex = assertThrows(L4D2PluginException.class,
+                () -> service.updateConfig(
+                        INSTANCE_ID, "multi_cfg_plugin", List.of(),
+                        null, "shared.cfg"));
+
+        assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+        assertTrue(ex.getMessage().contains("名称不唯一"));
+        verify(instanceFileService, never()).writeTextFile(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void updateConfig_withPathTraversal_shouldRejectBeforeWriting() {
+        when(pluginMetaService.load(eq(INSTANCE_ID), eq("multi_cfg_plugin"))).thenReturn(metaWithTwoFiles());
+
+        L4D2PluginException ex = assertThrows(L4D2PluginException.class,
+                () -> service.updateConfig(
+                        INSTANCE_ID, "multi_cfg_plugin", List.of(),
+                        null, "cfg/sourcemod/../../server.cfg"));
+
+        assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+        verify(instanceFileService, never()).writeTextFile(anyLong(), anyString(), anyString());
+    }
+
+    private PluginMeta metaWithTwoFiles() {
+        PluginMeta meta = new PluginMeta();
+        meta.setConfigFiles(List.of(
+                "cfg/sourcemod/alpha.cfg",
+                "cfg/sourcemod/beta.cfg"));
+        return meta;
     }
 
     // ===== 6. listCandidates：第一个存在，第二个不存在（含 l4d_ 别名候选）=====

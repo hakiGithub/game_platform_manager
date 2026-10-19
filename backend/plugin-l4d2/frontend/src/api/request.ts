@@ -34,11 +34,13 @@ function getAuthToken(): string | null {
  */
 export class ApiError extends Error {
   code: number
+  data?: unknown
 
-  constructor(message: string, code: number) {
+  constructor(message: string, code: number, data?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
+    this.data = data
   }
 }
 
@@ -46,12 +48,14 @@ export class ApiError extends Error {
 async function errorFromResponse(response: Response): Promise<ApiError> {
   let code = response.status
   let message = `HTTP error! status: ${response.status}`
+  let data: unknown
   try {
     const body = await response.json()
     if (typeof body?.code === 'number') code = body.code
     if (body?.message) message = body.message
+    data = body?.data
   } catch { /* 响应体非 JSON（如网关错误页），保留 HTTP 兜底文案 */ }
-  return new ApiError(message, code)
+  return new ApiError(message, code, data)
 }
 
 /**
@@ -87,7 +91,7 @@ async function request<T>(
   console.log('[request] parsed', fullUrl, result.code, result.message)
 
   if (result.code !== 200) {
-    throw new ApiError(result.message || 'Request failed', result.code)
+    throw new ApiError(result.message || 'Request failed', result.code, result.data)
   }
 
   return result.data

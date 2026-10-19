@@ -402,6 +402,7 @@ import {
   type WorkshopItemVO,
   type WorkshopParseResultVO
 } from '@/api'
+import { describeChangeMapResult } from '@/utils/changeMapResult'
 import { usePluginStore } from '@/stores/plugin'
 
 const store = usePluginStore()
@@ -521,8 +522,9 @@ async function launchFromTask(cmd: string) {
       '开图确认',
       { type: 'warning' }
     )
-    await rconApi.changeMap(detailTask.value.instanceId, mapCode)
-    ElMessage.success('开图命令已发送')
+    const result = await rconApi.changeMap(detailTask.value.instanceId, mapCode)
+    const notice = describeChangeMapResult(result, mapCode)
+    ElMessage[notice.level](notice.message)
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error('开图失败：' + (e?.message || e))

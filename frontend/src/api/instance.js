@@ -108,8 +108,8 @@ export function updateInstance(id, data) {
  * 删除实例
  * @param {number} id - 实例ID
  * @param {Object} [params] - 参数
- * @param {boolean} [params.deleteFiles=false] - 是否删除文件
- * @returns {Promise<null>}
+ * @param {boolean} [params.deleteContainer=false] - 认领实例是否同时删除容器
+ * @returns {Promise<{instanceId: number, deleted: boolean, remoteCleanupStatus: string, message: string, residualPaths: string[]}>}
  */
 export function deleteInstance(id, params) {
   return request({

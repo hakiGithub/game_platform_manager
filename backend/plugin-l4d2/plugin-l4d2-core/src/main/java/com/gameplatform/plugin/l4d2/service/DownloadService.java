@@ -1008,6 +1008,9 @@ public class DownloadService {
         vo.setStatus(spec.getTaskStatus());
         vo.setErrorMessage(spec.getErrorMessage());
         vo.setTargetPath(spec.getTargetPath());
+        vo.setAccountName(spec.getAccountName());
+        vo.setCloudPath(spec.getCloudPath());
+        vo.setTransferMode(spec.getTransferMode());
         vo.setWorkshopId(spec.getWorkshopId());
         vo.setWorkshopTitle(spec.getWorkshopTitle());
         vo.setPreviewUrl(spec.getPreviewUrl());
@@ -1034,6 +1037,9 @@ public class DownloadService {
         spec.setTaskStatus(vo.getStatus());
         spec.setErrorMessage(vo.getErrorMessage());
         spec.setTargetPath(vo.getTargetPath());
+        spec.setAccountName(vo.getAccountName());
+        spec.setCloudPath(vo.getCloudPath());
+        spec.setTransferMode(vo.getTransferMode());
         spec.setWorkshopId(vo.getWorkshopId());
         spec.setWorkshopTitle(vo.getWorkshopTitle());
         spec.setPreviewUrl(vo.getPreviewUrl());

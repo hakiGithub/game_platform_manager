@@ -2,6 +2,7 @@ package com.gameplatform.service;
 
 import com.gameplatform.adapter.DeployAdapter;
 import com.gameplatform.adapter.DeployAdapterFactory;
+import com.gameplatform.adapter.UninstallResult;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.common.result.PageResult;
 import com.gameplatform.dto.InstanceCreateDTO;
@@ -312,7 +313,8 @@ class InstanceServiceTest {
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
-        when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
+        when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
+                .thenReturn(UninstallResult.success("卸载成功"));
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         // When
@@ -320,7 +322,7 @@ class InstanceServiceTest {
 
         // Then
         verify(instanceMapper).selectById(1L);
-        verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
+        verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
         verify(instanceMapper).physicalDeleteById(1L);
     }
 
@@ -333,7 +335,8 @@ class InstanceServiceTest {
         when(instanceMapper.selectById(1L)).thenReturn(testInstance);
         when(gameMetadataMapper.selectById(1L)).thenReturn(testGame);
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
-        when(deployAdapter.uninstall(eq(1L), anyMap(), any())).thenReturn(true);
+        when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
+                .thenReturn(UninstallResult.success("卸载成功"));
         when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         // When
@@ -341,7 +344,7 @@ class InstanceServiceTest {
 
         // Then
         verify(instanceMapper, atLeast(1)).selectById(1L);
-        verify(deployAdapter).uninstall(eq(1L), anyMap(), any());
+        verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
         verify(instanceMapper).physicalDeleteById(1L);
     }
 

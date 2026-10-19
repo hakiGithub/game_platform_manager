@@ -1,5 +1,6 @@
 package com.gameplatform.plugin.l4d2.controller;
 
+import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.PluginStoreConfigDTO;
 import com.gameplatform.plugin.l4d2.dto.PluginStoreDownloadDTO;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -57,23 +59,66 @@ public class PluginStoreController {
      */
     @Operation(summary = "商店列表", description = "查询 GitHub 插件商店列表，支持关键词与分类过滤")
     @GetMapping("/list")
-    public Result<List<PluginStoreItemVO>> list(
+    public Result<PageResult<PluginStoreItemVO>> list(
             @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
             @Parameter(description = "分类") @RequestParam(required = false) String category,
+            @Parameter(description = "安装状态: all/installed/uninstalled")
+            @RequestParam(required = false, defaultValue = "all") String installed,
+            @Parameter(description = "当前实例ID；传值时按已安装状态过滤")
+            @RequestParam(required = false) Long instanceId,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "20") int size) {
-        log.info("查询插件商店列表: keyword={}, category={}, page={}, size={}",
-                keyword, category, page, size);
+        log.info("查询插件商店列表: keyword={}, category={}, installed={}, instanceId={}, page={}, size={}",
+                keyword, category, installed, instanceId, page, size);
         return guarded(() -> {
             List<PluginStoreItemVO> all = pluginStoreService.list(keyword, category);
+            if (instanceId != null && installed != null && !"all".equalsIgnoreCase(installed)) {
+                Set<String> installedNames = pluginStoreService.listInstalledPluginNames(instanceId);
+                all = all.stream()
+                        .filter(item -> "installed".equalsIgnoreCase(installed)
+                                ? isInstalled(item, installedNames)
+                                : !isInstalled(item, installedNames))
+                        .toList();
+            }
             long total = all.size();
-            int from = Math.max(0, (page - 1) * size);
-            int to = (int) Math.min(total, from + size);
+            int pageNum = Math.max(1, page);
+            int pageSize = Math.max(1, Math.min(size, 100));
+            long pages = (total + pageSize - 1) / pageSize;
+            int effectivePage = pages == 0 ? 1 : (int) Math.min(pageNum, pages);
+            int from = (effectivePage - 1) * pageSize;
+            int to = Math.min((int) total, from + pageSize);
             List<PluginStoreItemVO> pageList = from >= total
                     ? List.of()
                     : all.subList(from, to);
-            return Result.success(pageList);
+            return Result.success(new PageResult<>(pageList, total, effectivePage, pageSize));
         });
+    }
+
+    /**
+     * 商店分类全集（不受分页影响）。
+     */
+    @Operation(summary = "商店分类", description = "返回远端插件商店的全部分类")
+    @GetMapping("/categories")
+    public Result<List<String>> categories() {
+        return guarded(() -> Result.success(pluginStoreService.listCategories()));
+    }
+
+    private boolean isInstalled(PluginStoreItemVO item, Set<String> installedNames) {
+        String target = normalizePluginName(item.getName());
+        return installedNames.stream()
+                .map(this::normalizePluginName)
+                .anyMatch(target::equals);
+    }
+
+    private String normalizePluginName(String name) {
+        if (name == null) {
+            return "";
+        }
+        String normalized = name.trim().toLowerCase();
+        if (normalized.endsWith(".smx")) {
+            normalized = normalized.substring(0, normalized.length() - 4);
+        }
+        return normalized.replaceAll("[\\s_-]+", "");
     }
 
     /**

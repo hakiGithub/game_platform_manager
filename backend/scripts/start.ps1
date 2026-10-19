@@ -72,6 +72,8 @@ $script:HEALTH_CHECK_URL = "http://localhost:$SERVER_PORT/actuator/health"
 # 启动等待超时时间(秒)
 $script:STARTUP_TIMEOUT = 60
 
+. (Join-Path $SCRIPT_DIR "backend-process.ps1")
+
 # ============================================
 # JVM参数配置
 # ============================================
@@ -164,9 +166,10 @@ function Write-LogError {
 
 function Test-AppRunning {
     if (Test-Path $PID_FILE) {
-        $pid = Get-Content $PID_FILE -ErrorAction SilentlyContinue
-        if ($pid) {
-            $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $pidText = Get-Content $PID_FILE -ErrorAction SilentlyContinue | Select-Object -First 1
+        $savedPid = 0
+        if ([int]::TryParse($pidText, [ref]$savedPid)) {
+            $process = Get-BackendProcessByPid -ProcessId $savedPid -MainClass $MAIN_CLASS
             if ($process) {
                 return $true
             }
@@ -177,7 +180,11 @@ function Test-AppRunning {
 
 function Get-AppPid {
     if (Test-Path $PID_FILE) {
-        return Get-Content $PID_FILE -ErrorAction SilentlyContinue
+        $pidText = Get-Content $PID_FILE -ErrorAction SilentlyContinue | Select-Object -First 1
+        $savedPid = 0
+        if ([int]::TryParse($pidText, [ref]$savedPid)) {
+            return $savedPid
+        }
     }
     return $null
 }
@@ -247,22 +254,27 @@ function Wait-ForStartup {
     $endTime = $startTime.AddSeconds($STARTUP_TIMEOUT)
     
     while ((Get-Date) -lt $endTime) {
-        # 检查进程是否还存在
-        if (-not (Test-AppRunning)) {
-            Write-LogError "应用进程已退出，启动失败"
-            return $false
+        if (-not (Test-AppRunning) -and -not (Find-JavaProcess)) {
+            # The launcher may have exited before the listener is visible.
+            # Keep polling the listener for a short grace period.
+            if ($startTime.AddSeconds(15) -lt (Get-Date)) {
+                Write-LogError "无法确认 Java 进程，且端口 $SERVER_PORT 未监听"
+                return $false
+            }
         }
-        
-        # 检查端口是否被监听
-        $portListening = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue
-        if ($portListening) {
+
+        $listener = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($listener) {
             # 端口已监听，等待几秒确保应用完全启动
             Start-Sleep -Seconds 3
             
-            # 检查健康检查端点
+            # Check the actual login endpoint; actuator may not be enabled.
             try {
-                $response = Invoke-WebRequest -Uri $HEALTH_CHECK_URL -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-                if ($response.StatusCode -eq 200) {
+                $loginBody = @{username='admin';password='admin123'} | ConvertTo-Json
+                $response = Invoke-RestMethod -Uri "http://localhost:$SERVER_PORT/api/auth/login" `
+                    -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 5
+                if ($response.code -eq 200) {
                     Write-LogInfo "应用启动成功，健康检查通过"
                     return $true
                 }
@@ -282,26 +294,14 @@ function Wait-ForStartup {
 }
 
 function Find-JavaProcess {
-    # 通过端口查找
-    $conn = Get-NetTCPConnection -LocalPort $SERVER_PORT -State Listen -ErrorAction SilentlyContinue
-    if ($conn) {
-        return $conn.OwningProcess
+    $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+    if ($listenerPid) {
+        $listener = Get-BackendProcessByPid -ProcessId $listenerPid -MainClass $MAIN_CLASS
+        if ($listener) {
+            return $listener.ProcessId
+        }
     }
-    
-    # 通过进程名查找
-    $processes = Get-Process -Name "java" -ErrorAction SilentlyContinue | 
-                 Where-Object { $_.MainWindowTitle -like "*game-platform-manager*" }
-    if ($processes) {
-        return $processes.Id
-    }
-    
-    # 通过命令行查找
-    $wmiProcesses = Get-WmiObject Win32_Process -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.CommandLine -like "*GamePlatformApplication*" }
-    if ($wmiProcesses) {
-        return $wmiProcesses.ProcessId
-    }
-    
+
     return $null
 }
 
@@ -314,8 +314,8 @@ function Start-Prod {
     
     # 检查是否已运行
     if (Test-AppRunning) {
-        $pid = Get-AppPid
-        Write-LogWarn "应用已在运行中，PID: $pid"
+        $appPid = Get-AppPid
+        Write-LogWarn "应用已在运行中，PID: $appPid"
         return
     }
     
@@ -342,37 +342,28 @@ function Start-Prod {
     $jvmArgs = $JVM_OPTS -join " "
     $springArgs = $SPRING_OPTS -join " "
     
-    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $processInfo.FileName = "java"
-    $processInfo.Arguments = "$jvmArgs -jar `"$JAR_FILE`" $springArgs"
-    $processInfo.WorkingDirectory = $PROJECT_DIR
-    $processInfo.UseShellExecute = $false
-    $processInfo.RedirectStandardOutput = $true
-    $processInfo.RedirectStandardError = $true
-    $processInfo.CreateNoWindow = $true
-    
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $processInfo
-    
-    # 重定向输出到日志文件
-    $process.Start() | Out-Null
-    
-    # 异步读取输出
-    $outputJob = Start-Job -ScriptBlock {
-        param($pid, $logFile)
-        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
-        if ($process) {
-            $process.WaitForExit()
-        }
-    } -ArgumentList $process.Id, $APP_LOG_FILE
-    
-    # 保存PID
-    $process.Id | Out-File -FilePath $PID_FILE -Encoding utf8
-    
-    Write-LogInfo "应用进程已启动，PID: $($process.Id)"
+    $javaArguments = [System.Collections.Generic.List[string]]::new()
+    foreach ($option in $JVM_OPTS) { $javaArguments.Add([string]$option) }
+    $javaArguments.Add("-jar")
+    $javaArguments.Add($JAR_FILE)
+    foreach ($option in $SPRING_OPTS) { $javaArguments.Add([string]$option) }
+
+    $process = Start-Process -FilePath "java" `
+        -ArgumentList $javaArguments.ToArray() `
+        -WorkingDirectory $PROJECT_DIR `
+        -RedirectStandardOutput $APP_LOG_FILE `
+        -RedirectStandardError "$APP_LOG_FILE.err" `
+        -WindowStyle Hidden `
+        -PassThru
+
+    Write-LogInfo "Java 启动器已启动，PID: $($process.Id)，等待健康检查..."
     
     # 等待启动完成
     if (Wait-ForStartup) {
+        $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+        if ($listenerPid) {
+            $listenerPid | Out-File -FilePath $PID_FILE -Encoding utf8
+        }
         Write-LogInfo "========== 应用启动成功 =========="
         Write-LogInfo "访问地址: http://localhost:$SERVER_PORT"
         Write-LogInfo "API文档: http://localhost:$SERVER_PORT/swagger-ui.html"
@@ -391,8 +382,8 @@ function Start-Dev {
     
     # 检查是否已运行
     if (Test-AppRunning) {
-        $pid = Get-AppPid
-        Write-LogWarn "应用已在运行中，PID: $pid"
+        $appPid = Get-AppPid
+        Write-LogWarn "应用已在运行中，PID: $appPid"
         return
     }
     
@@ -408,26 +399,24 @@ function Start-Dev {
     # 启动应用 (使用Maven)
     Write-LogInfo "正在启动应用 (mvn spring-boot:run)..."
     
-    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $processInfo.FileName = "mvn"
-    $processInfo.Arguments = "spring-boot:run -D`"spring-boot.run.jvmArguments=-Xms256m -Xmx384m`" -D`"spring-boot.run.arguments=--server.port=$SERVER_PORT`""
-    $processInfo.WorkingDirectory = $PROJECT_DIR
-    $processInfo.UseShellExecute = $false
-    $processInfo.RedirectStandardOutput = $true
-    $processInfo.RedirectStandardError = $true
-    $processInfo.CreateNoWindow = $true
-    
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $processInfo
-    $process.Start() | Out-Null
-    
-    # 保存PID
-    $process.Id | Out-File -FilePath $PID_FILE -Encoding utf8
-    
-    Write-LogInfo "应用进程已启动，PID: $($process.Id)"
+    $process = Start-Process -FilePath "mvn" `
+        -ArgumentList @(
+            "spring-boot:run",
+            "-Dspring-boot.run.jvmArguments=-Xms256m -Xmx384m",
+            "-Dspring-boot.run.arguments=--server.port=$SERVER_PORT"
+        ) `
+        -WorkingDirectory $PROJECT_DIR `
+        -WindowStyle Hidden `
+        -PassThru
+
+    Write-LogInfo "Maven 启动器已启动，PID: $($process.Id)，等待健康检查..."
     
     # 等待启动完成
     if (Wait-ForStartup) {
+        $listenerPid = Get-PortListenerProcessId -Port $SERVER_PORT
+        if ($listenerPid) {
+            $listenerPid | Out-File -FilePath $PID_FILE -Encoding utf8
+        }
         Write-LogInfo "========== 应用启动成功 (开发模式) =========="
         Write-LogInfo "访问地址: http://localhost:$SERVER_PORT"
         Write-LogInfo "API文档: http://localhost:$SERVER_PORT/swagger-ui.html"

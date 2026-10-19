@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.l4d2.controller;
 
 import com.gameplatform.common.exception.BusinessException;
+import com.gameplatform.common.result.PageResult;
 import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.L4D2Constants;
 import com.gameplatform.plugin.l4d2.dto.BatchPluginOperationDTO;
@@ -77,9 +78,19 @@ public class PluginManageController {
      */
     @Operation(summary = "获取插件列表", description = "扫描 plugins 与 disabled 目录返回插件列表")
     @GetMapping("/list")
-    public Result<List<PluginListVO>> list(@Parameter(description = "实例ID") @RequestParam Long instanceId) {
-        log.info("获取插件列表, instanceId: {}", instanceId);
-        return Result.success(pluginInstallService.listPlugins(instanceId));
+    public Result<PageResult<PluginListVO>> list(
+            @Parameter(description = "实例ID") @RequestParam Long instanceId,
+            @Parameter(description = "关键词，匹配插件名/描述") @RequestParam(required = false) String keyword,
+            @Parameter(description = "状态: enabled/disabled") @RequestParam(required = false) String status,
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页大小") @RequestParam(defaultValue = "20") int size) {
+        log.info("获取插件列表, instanceId: {}, keyword: {}, status: {}, page: {}, size: {}",
+                instanceId, keyword, status, page, size);
+        List<PluginListVO> all = pluginInstallService.listPlugins(instanceId).stream()
+                .filter(plugin -> matchesKeyword(plugin, keyword))
+                .filter(plugin -> status == null || status.isBlank() || status.equals(plugin.getStatus()))
+                .toList();
+        return Result.success(toPage(all, page, size));
     }
 
     /**
@@ -121,9 +132,70 @@ public class PluginManageController {
     @Operation(summary = "列出内置插件",
             description = "返回 builtin-plugins.yaml 清单中全部插件，含当前实例的安装状态")
     @GetMapping("/builtin/list")
-    public Result<List<BuiltinPluginVO>> listBuiltin(
-            @Parameter(description = "实例ID，传 null 则不查询安装状态") @RequestParam(required = false) Long instanceId) {
-        return Result.success(builtinPluginInstaller.list(instanceId));
+    public Result<PageResult<BuiltinPluginVO>> listBuiltin(
+            @Parameter(description = "实例ID，传 null 则不查询安装状态") @RequestParam(required = false) Long instanceId,
+            @Parameter(description = "关键词，匹配插件名/ID/描述") @RequestParam(required = false) String keyword,
+            @Parameter(description = "分类: platform/required/optional/custom") @RequestParam(required = false) String category,
+            @Parameter(description = "安装状态: all/installed/uninstalled")
+            @RequestParam(required = false, defaultValue = "all") String installed,
+            @Parameter(description = "平台: linux/windows/all") @RequestParam(required = false) String platform,
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页大小") @RequestParam(defaultValue = "20") int size) {
+        List<BuiltinPluginVO> all = builtinPluginInstaller.list(instanceId).stream()
+                .filter(plugin -> matchesBuiltinKeyword(plugin, keyword))
+                .filter(plugin -> category == null || category.isBlank()
+                        || category.equals(plugin.getCategory()))
+                .filter(plugin -> installed == null || "all".equalsIgnoreCase(installed)
+                        || ("installed".equalsIgnoreCase(installed)
+                            && Boolean.TRUE.equals(plugin.getInstalled()))
+                        || ("uninstalled".equalsIgnoreCase(installed)
+                            && !Boolean.TRUE.equals(plugin.getInstalled())))
+                .filter(plugin -> platform == null || platform.isBlank() || "all".equals(platform)
+                        || "all".equals(plugin.getPlatform()) || platform.equals(plugin.getPlatform()))
+                .toList();
+        return Result.success(toPage(all, page, size));
+    }
+
+    /**
+     * 已安装插件名称全集，供内置/远端插件的已安装状态判断。
+     */
+    @Operation(summary = "已安装插件名称", description = "返回实例插件库中的插件名称全集")
+    @GetMapping("/installed-names")
+    public Result<List<String>> installedNames(
+            @Parameter(description = "实例ID") @RequestParam Long instanceId) {
+        return Result.success(new ArrayList<>(pluginInstallService.listInstalledPluginNames(instanceId)));
+    }
+
+    private boolean matchesKeyword(PluginListVO plugin, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String kw = keyword.toLowerCase();
+        return (plugin.getName() != null && plugin.getName().toLowerCase().contains(kw))
+                || (plugin.getDescription() != null
+                    && plugin.getDescription().toLowerCase().contains(kw));
+    }
+
+    private boolean matchesBuiltinKeyword(BuiltinPluginVO plugin, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String kw = keyword.toLowerCase();
+        return (plugin.getName() != null && plugin.getName().toLowerCase().contains(kw))
+                || (plugin.getId() != null && plugin.getId().toLowerCase().contains(kw))
+                || (plugin.getDescription() != null
+                    && plugin.getDescription().toLowerCase().contains(kw));
+    }
+
+    private <T> PageResult<T> toPage(List<T> all, int page, int size) {
+        int pageNum = Math.max(1, page);
+        int pageSize = Math.max(1, Math.min(size, 100));
+        long total = all.size();
+        long pages = (total + pageSize - 1) / pageSize;
+        int effectivePage = pages == 0 ? 1 : (int) Math.min(pageNum, pages);
+        int from = Math.min((effectivePage - 1) * pageSize, all.size());
+        int to = Math.min(from + pageSize, all.size());
+        return new PageResult<>(all.subList(from, to), total, effectivePage, pageSize);
     }
 
     /**

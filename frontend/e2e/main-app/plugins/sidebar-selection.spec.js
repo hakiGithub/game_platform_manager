@@ -1,0 +1,45 @@
+/**
+ * 页面: 插件工作区 / 主应用侧边栏
+ * 用例: L4D2 深链下仅一个叶子菜单呈现完整选中态，祖先只表达展开链路
+ * 前置: 平台前后端已运行；存在运行中的 l4d2 插件和可访问的实例
+ * 步骤:
+ *  - 注入管理员会话并打开 L4D2 服务器信息深链
+ *  - 等待侧边栏插件菜单树加载
+ *  - 断言完整选中叶子数量为 1，且祖先标题不属于叶子选中态
+ *  - 保存截图作为视觉回归证据
+ * 通过标准: 活跃叶子唯一，祖先节点仍表示展开链路，截图可复核。
+ */
+import { expect, test } from "@playwright/test";
+import { injectSession } from "../../support/session.js";
+
+test("L4D2 深链侧边栏只高亮唯一叶子", async ({ page }) => {
+  await injectSession(page);
+  const instancesResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response.url().includes("/api/instances") &&
+      response.url().includes("gameCode=l4d2"),
+  );
+
+  await page.goto("/extensions/app/l4d2/server-info");
+  const response = await instancesResponse;
+  expect(response.ok()).toBe(true);
+
+  const sidebar = page.locator(".sidebar");
+  await expect(sidebar.getByText("求生之路2", { exact: true })).toBeVisible();
+  await expect(sidebar.getByText("服务器信息", { exact: true })).toBeVisible();
+
+  const activeLeaves = sidebar.locator(".el-menu-item.is-active");
+  await expect(activeLeaves).toHaveCount(1);
+  await expect(activeLeaves.first()).toContainText("服务器信息");
+
+  const activeAncestorTitles = sidebar.locator(
+    ".el-sub-menu.is-active > .el-sub-menu__title",
+  );
+  await expect(activeAncestorTitles.first()).toBeVisible();
+
+  await page.screenshot({
+    path: "e2e/.artifacts/sidebar-selection/l4d2-single-active-leaf.png",
+    fullPage: true,
+  });
+});

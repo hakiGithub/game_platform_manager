@@ -242,6 +242,10 @@ public class CloudInstallService {
                     }
                 }
                 if (!preferDirect || lower.endsWith(".rar")) {
+                    if (!MODE_RELAY.equals(transferMode)) {
+                        transferMode = MODE_RELAY;
+                        updater.transferMode(MODE_RELAY);
+                    }
                     installed.addAll(installRelay(context, accountName, instanceId, item, base, slice, updater));
                 }
                 i++;
@@ -354,7 +358,15 @@ public class CloudInstallService {
             long bytes = cloudDriveService.download(accountName, item.path(),
                     new ProgressOutputStream(new FileOutputStream(tempFile.toFile()), item.size(),
                             pct -> context.reportProgress(base + (slice - base) * 2 / 3 * pct / 100,
-                                    "下载 " + name + " " + pct + "%")));
+                                    "下载 " + name + " " + pct + "%"),
+                            () -> {
+                                if (context.isCancelled()) {
+                                    throw new CancelledSignal("任务已取消");
+                                }
+                                if (context.isTimeout()) {
+                                    throw new CancelledSignal("任务已超时");
+                                }
+                            }));
             updater.downloaded(bytes);
             context.log("下载完成 " + name + "，" + bytes + " 字节，推送到实例");
 
@@ -380,6 +392,12 @@ public class CloudInstallService {
         } catch (CancelledSignal cs) {
             throw cs;
         } catch (Exception e) {
+            if (context.isCancelled()) {
+                throw new CancelledSignal("任务已取消");
+            }
+            if (context.isTimeout()) {
+                throw new CancelledSignal("任务已超时");
+            }
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
                     "中转安装失败 " + name + ": " + e.getMessage());
         } finally {
@@ -580,27 +598,33 @@ public class CloudInstallService {
     }
 
     /** 按字节数汇报下载进度的输出流 */
-    private static class ProgressOutputStream extends OutputStream {
+    static class ProgressOutputStream extends OutputStream {
         private final OutputStream delegate;
         private final long total;
         private final java.util.function.IntConsumer progressConsumer;
+        private final Runnable cancelChecker;
         private long written;
         private int lastReported = -1;
 
-        ProgressOutputStream(OutputStream delegate, long total, java.util.function.IntConsumer progressConsumer) {
+        ProgressOutputStream(OutputStream delegate, long total,
+                             java.util.function.IntConsumer progressConsumer,
+                             Runnable cancelChecker) {
             this.delegate = delegate;
             this.total = total;
             this.progressConsumer = progressConsumer;
+            this.cancelChecker = cancelChecker;
         }
 
         @Override
         public void write(int b) throws IOException {
+            cancelChecker.run();
             delegate.write(b);
             written++;
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
+            cancelChecker.run();
             delegate.write(b, off, len);
             written += len;
             if (total > 0) {

@@ -7,8 +7,8 @@
         placeholder="搜索插件名称/描述"
         clearable
         style="width: 220px"
-        @keyup.enter="loadList"
-        @clear="loadList"
+        @keyup.enter="onFilterChange"
+        @clear="onFilterChange"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
@@ -17,11 +17,11 @@
         placeholder="全部分类"
         clearable
         style="width: 160px"
-        @change="loadList"
+        @change="onFilterChange"
       >
         <el-option v-for="cat in categories" :key="cat" :label="cat" :value="cat" />
       </el-select>
-      <el-radio-group v-model="installedFilter" size="small">
+      <el-radio-group v-model="installedFilter" size="small" @change="onFilterChange">
         <el-radio-button value="all">全部</el-radio-button>
         <el-radio-button value="uninstalled">未安装</el-radio-button>
         <el-radio-button value="installed">已安装</el-radio-button>
@@ -45,12 +45,13 @@
         </el-empty>
       </div>
       <div v-else-if="!filteredPlugins.length && !loading" class="empty-tip">
-        <el-empty description="暂无插件" />
+        <el-empty :description="loadError || '暂无插件'" />
       </div>
       <el-table
         :data="filteredPlugins"
         v-loading="loading"
         row-key="pluginId"
+        :empty-text="loadError || '暂无插件'"
         @expand-change="onExpandChange"
       >
         <!-- 行内展开详情（ADR-0022 决策 6）：README + 文件列表 -->
@@ -133,6 +134,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-row">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="onPageChange"
+          @size-change="onPageSizeChange"
+        />
+      </div>
     </el-card>
 
     <!-- 远端仓库设置 -->
@@ -183,10 +195,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { pluginStoreApi, STORE_NOT_CONFIGURED_CODE, STORE_TASK_RUNNING_STATUSES } from '@/api'
-import type { StoreConfig } from '@/api'
+import type { PageResult, StoreConfig } from '@/api'
 import { ApiError } from '@/api/request'
 import { usePluginStore } from '@/stores/plugin'
 import { isPluginInstalled } from '@/utils/pluginMatch'
+import { usePluginPagination } from '@/composables/usePluginPagination'
 
 interface StorePlugin {
   pluginId: string
@@ -232,12 +245,23 @@ const store = usePluginStore()
 const instanceId = computed(() => store.instanceInfo?.instanceId)
 
 const loading = ref(false)
+const {
+  page,
+  pageSize,
+  total,
+  records: plugins,
+  apply: applyPage,
+  resetForFilter,
+  changePage,
+  changeSize
+} = usePluginPagination<StorePlugin>()
+const loadError = ref('')
+let listRequestId = 0
 const keyword = ref('')
 const category = ref('')
 const categories = ref<string[]>([])
 const installedFilter = ref<'all' | 'uninstalled' | 'installed'>('all')
 
-const plugins = ref<StorePlugin[]>([])
 const details = ref<Record<string, StoreDetail>>({})
 const detailLoadingId = ref('')
 const downloadingId = ref('')
@@ -263,13 +287,7 @@ function isInstalled(row: StorePlugin): boolean {
   return isPluginInstalled(row.name, props.installedNames)
 }
 
-const filteredPlugins = computed(() =>
-  plugins.value.filter(p => {
-    if (installedFilter.value === 'installed' && !isInstalled(p)) return false
-    if (installedFilter.value === 'uninstalled' && isInstalled(p)) return false
-    return true
-  })
-)
+const filteredPlugins = computed(() => plugins.value)
 
 /** 展开行时按需加载详情（已加载过的直接复用缓存） */
 async function onExpandChange(row: StorePlugin, expandedRows: StorePlugin[]) {
@@ -300,34 +318,85 @@ function renderedReadme(pluginId: string): string {
 
 onMounted(() => {
   loadList()
+  loadCategories()
   refreshTasks()
 })
 
+async function loadCategories() {
+  try {
+    const data = await pluginStoreApi.categories()
+    categories.value = Array.isArray(data) ? data : []
+  } catch {
+    // 分类仅用于筛选选项，失败时保留已有选项，不影响列表主流程
+  }
+}
+
 async function loadList() {
   loading.value = true
+  loadError.value = ''
+  const requestId = ++listRequestId
   try {
-    const params: { keyword?: string; category?: string } = {}
+    const requestedPage = page.value
+    const params: {
+      keyword?: string
+      category?: string
+      installed?: 'all' | 'installed' | 'uninstalled'
+      instanceId?: number
+      page: number
+      size: number
+    } = {
+      installed: installedFilter.value,
+      instanceId: instanceId.value,
+      page: requestedPage,
+      size: pageSize.value
+    }
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     if (category.value) params.category = category.value
     const data = await pluginStoreApi.list(params)
-    plugins.value = (Array.isArray(data) ? data : []) as StorePlugin[]
+    if (requestId !== listRequestId) return
+    const effectivePage = applyPage(data as PageResult<StorePlugin>)
+    if (effectivePage !== requestedPage) {
+      return loadList()
+    }
     unconfigured.value = false
-    const cats = new Set<string>()
-    plugins.value.forEach(p => {
-      if (p.category) cats.add(p.category)
-    })
-    categories.value = Array.from(cats)
+    if (categories.value.length === 0) {
+      categories.value = Array.from(new Set(
+        plugins.value.map(p => p.category).filter((c): c is string => Boolean(c))
+      ))
+    }
   } catch (e: any) {
+    if (requestId !== listRequestId) return
     if (e instanceof ApiError && e.code === STORE_NOT_CONFIGURED_CODE) {
       // 未配置仓库：展示引导空态，不弹错误
       plugins.value = []
+      total.value = 0
       unconfigured.value = true
     } else {
-      ElMessage.error('加载远端插件仓库失败：' + (e?.message || e))
+      loadError.value = e?.message || String(e)
+      ElMessage.error('加载远端插件仓库失败：' + loadError.value)
+      plugins.value = []
+      total.value = 0
     }
   } finally {
-    loading.value = false
+    if (requestId === listRequestId) {
+      loading.value = false
+    }
   }
+}
+
+function onFilterChange() {
+  resetForFilter()
+  loadList()
+}
+
+function onPageChange(nextPage: number) {
+  changePage(nextPage)
+  loadList()
+}
+
+function onPageSizeChange(nextSize: number) {
+  changeSize(nextSize)
+  loadList()
 }
 
 // ========== 仓库设置 ==========
@@ -488,6 +557,12 @@ onBeforeUnmount(() => {
 
 .toolbar-spacer {
   flex: 1;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .empty-tip {

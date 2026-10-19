@@ -536,12 +536,18 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
 
     @Override
     public boolean uninstall(Long instanceId, Map<String, Object> config, DeployProgressCallback callback) {
+        return uninstallWithResult(instanceId, config, callback).isFullySuccessful();
+    }
+
+    @Override
+    public UninstallResult uninstallWithResult(
+            Long instanceId, Map<String, Object> config, DeployProgressCallback callback) {
         notifyStageStart(callback, "UNINSTALL", "开始卸载Docker Compose服务");
 
         InstanceHostInfo info = getInstanceHostInfo(instanceId);
         if (info == null) {
             notifyError(callback, "实例或主机不存在", "UNINSTALL", false);
-            return false;
+            return UninstallResult.failed("实例或主机不存在", null);
         }
 
         Host host = info.host();
@@ -549,11 +555,20 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
 
         try {
+            workDir = resolveRemovableWorkDir(host, workDir);
+        } catch (IllegalArgumentException e) {
+            String message = "工作目录不安全，已取消卸载: " + e.getMessage();
+            notifyError(callback, message, "UNINSTALL", false);
+            return UninstallResult.failed(message, null);
+        }
+
+        try {
             String composeCmd = getComposeCommand(host);
             notifyProgress(callback, 30, "UNINSTALL", "停止并删除服务");
             // 停止并删除服务
             SshUtil.CommandResult downResult = executeCommand(host,
-                    String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down", workDir, composeCmd, projectName), 120000);
+                    String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down",
+                            shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
 
             if (!downResult.isSuccess()) {
                 notifyError(callback, "停止服务失败: " + downResult.getError(), "UNINSTALL", true);
@@ -562,24 +577,62 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
             notifyProgress(callback, 60, "UNINSTALL", "清理数据");
             // 是否删除卷
             boolean removeVolumes = getConfigBoolean(config, "removeVolumes", false);
+            SshUtil.CommandResult volumeResult = null;
             if (removeVolumes) {
-                executeCommand(host,
-                        String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down -v", workDir, composeCmd, projectName), 120000);
+                volumeResult = executeCommand(host,
+                        String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down -v",
+                                shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
+                if (!volumeResult.isSuccess()) {
+                    notifyError(callback, "清理数据卷失败: " + volumeResult.getError(), "UNINSTALL", true);
+                }
             }
 
             notifyProgress(callback, 80, "UNINSTALL", "删除工作目录");
             // 删除工作目录
-            executeCommand(host, "rm -rf " + workDir);
+            UninstallResult workDirResult = removeResolvedWorkDir(host, workDir);
+
+            boolean allSucceeded = downResult.isSuccess()
+                    && (volumeResult == null || volumeResult.isSuccess())
+                    && workDirResult.isFullySuccessful();
+            if (!allSucceeded) {
+                StringBuilder message = new StringBuilder("卸载未完全完成");
+                if (!downResult.isSuccess()) {
+                    message.append("；停止/删除服务失败: ").append(summarizeSshError(downResult));
+                }
+                if (volumeResult != null && !volumeResult.isSuccess()) {
+                    message.append("；清理数据卷失败: ").append(summarizeSshError(volumeResult));
+                }
+                if (!workDirResult.isFullySuccessful()) {
+                    message.append("；").append(workDirResult.message());
+                }
+                UninstallResult result = downResult.isSuccess() || workDirResult.isFullySuccessful()
+                        ? UninstallResult.partialSuccess(message.toString(), workDirResult.residualPath())
+                        : UninstallResult.failed(message.toString(), workDirResult.residualPath());
+                notifyStageComplete(callback, "UNINSTALL", false, result.message());
+                return result;
+            }
 
             notifyProgress(callback, 100, "UNINSTALL", "卸载完成");
             notifyStageComplete(callback, "UNINSTALL", true, "Docker Compose服务卸载成功");
-            return true;
+            return UninstallResult.success("Docker Compose服务卸载成功");
 
         } catch (Exception e) {
             log.error("Docker Compose卸载失败", e);
             notifyError(callback, "卸载异常: " + e.getMessage(), "UNINSTALL", false);
-            return false;
+            return UninstallResult.failed("卸载异常: " + e.getMessage(), workDir);
         }
+    }
+
+    private String summarizeSshError(SshUtil.CommandResult result) {
+        String error = result.getError();
+        if (error == null || error.isBlank()) {
+            error = result.getOutput();
+        }
+        if (error == null || error.isBlank()) {
+            return "exit code " + result.getExitCode();
+        }
+        String firstLine = error.strip().split("\\R", 2)[0].replaceAll("\\s+", " ");
+        return firstLine.length() > 300 ? firstLine.substring(0, 300) + "..." : firstLine;
     }
 
     @Override
@@ -847,14 +900,27 @@ public class DockerComposeAdapter extends AbstractDeployAdapter {
         String workDir = getWorkDir(instanceId, config);
 
         try {
+            workDir = resolveRemovableWorkDir(host, workDir);
+        } catch (IllegalArgumentException e) {
+            String message = "工作目录不安全，已取消清理: " + e.getMessage();
+            notifyError(callback, message, "CLEANUP", false);
+            return false;
+        }
+
+        try {
             // 停止并删除服务
             String composeCmd = getComposeCommand(host);
             executeCommand(host,
                     String.format("cd %s && COMPOSE_HTTP_TIMEOUT=300 %s -p %s down --remove-orphans 2>/dev/null || true",
-                            workDir, composeCmd, projectName), 120000);
+                            shellQuote(workDir), composeCmd, shellQuote(projectName)), 120000);
 
             // 删除工作目录
-            executeCommand(host, "rm -rf " + workDir);
+            UninstallResult workDirResult = removeResolvedWorkDir(host, workDir);
+            if (!workDirResult.isFullySuccessful()) {
+                notifyError(callback, workDirResult.message(), "CLEANUP", true);
+                notifyStageComplete(callback, "CLEANUP", false, workDirResult.message());
+                return false;
+            }
 
             // 清理未使用的卷和网络
             executeCommand(host, "docker volume prune -f 2>/dev/null || true", 30000);

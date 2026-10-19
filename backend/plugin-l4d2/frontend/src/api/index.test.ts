@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { serverApi } from './index'
+import { pluginManageApi, pluginStoreApi, serverApi } from './index'
 
 /**
  * 回归测试：仪表盘难度/游戏模式显示“未知”。
@@ -58,5 +58,57 @@ describe('serverApi.getStatus 难度/模式归一化', () => {
     const status = await serverApi.getStatus(64)
     expect(status.difficulty).toBe('')
     expect(status.gameMode).toBe('')
+  })
+})
+
+describe('插件列表分页 API 参数', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('已安装列表传递页码和页大小', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: 200,
+        message: 'ok',
+        data: { current: 2, size: 10, total: 11, pages: 2, records: [] }
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await pluginManageApi.list(9, { keyword: 'admin', status: 'enabled', page: 2, size: 10 })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/plugins/list')
+    expect(url).toContain('instanceId=9')
+    expect(url).toContain('keyword=admin')
+    expect(url).toContain('status=enabled')
+    expect(url).toContain('page=2')
+    expect(url).toContain('size=10')
+  })
+
+  it('远端商店传递安装状态筛选与分页参数', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: 200,
+        message: 'ok',
+        data: { current: 1, size: 20, total: 0, pages: 0, records: [] }
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await pluginStoreApi.list({
+      installed: 'uninstalled',
+      instanceId: 9,
+      page: 1,
+      size: 20
+    })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/plugin-store/list')
+    expect(url).toContain('installed=uninstalled')
+    expect(url).toContain('instanceId=9')
   })
 })
