@@ -23,7 +23,7 @@ LinuxGSM 容器首启需访问 GitHub 下载 serverlist.csv，本机 WSL 容器�
 
 - [x] 阻塞解除（容器内 `curl -m 8 -sI https://raw.githubusercontent.com` 返回 2xx/3xx）
 - [x] sdtd 腿完整启停绿
-- [ ] 整轮 PASS（本轮定向演练腿 4/4 通过；全套另有 2 张新拆出的 E2E 基础设施票，未在本票内宣称整轮）
+- [x] 整轮 PASS（2026-10-20 附着整轮：总数 80 = 通过 74 + 失败 0 + 显式 SKIP 6）
 
 ## Comments
 
@@ -87,3 +87,16 @@ npm run e2e -- e2e/main-app/instance/drill-legs.spec.js --reporter=list
 
 因此 sdtd 启停与两条演练腿验收已满足；剩余“整轮 PASS”需要在修复后的 runner 上重新执行
 完整 `npm run e2e:round` 才能宣称。
+
+### 2026-10-20 整轮 PASS
+
+在集成分支的附着模式上执行 `node e2e/runner.mjs --attach --round`：
+
+- 总数 80 = 通过 74 + 失败 0 + 跳过 6 + did not run 0。
+- 六组全部退出码 0，runner 判定整轮 PASS。
+- dst 腿：部署、LinuxGSM 就绪、卸载清理全部通过。
+- sdtd 腿：部署、LinuxGSM 就绪、卸载清理全部通过。
+- 容器内 hosts、CA bundle、GitHub HTTPS 301 与 `/app/<shortname>` 生成预检均通过。
+- 6 个 SKIP 均为 `rcon-live-ops.spec.js` 的显式环境能力门禁，不计为失败。
+
+因此本票三项验收均已满足，状态保持 `done`。
