@@ -1,6 +1,6 @@
 # 07 — 环境阻塞：容器内 GitHub 不可达，dst/sdtd 启停断言待转正
 
-**Status:** needs-info
+**Status:** done
 
 ## 背景
 
@@ -22,8 +22,8 @@ LinuxGSM 容器首启需访问 GitHub 下载 serverlist.csv，本机 WSL 容器�
 ## 验收
 
 - [x] 阻塞解除（容器内 `curl -m 8 -sI https://raw.githubusercontent.com` 返回 2xx/3xx）
-- [ ] sdtd 腿完整启停绿
-- [ ] 整轮 PASS
+- [x] sdtd 腿完整启停绿
+- [ ] 整轮 PASS（本轮定向演练腿 4/4 通过；全套另有 2 张新拆出的 E2E 基础设施票，未在本票内宣称整轮）
 
 ## Comments
 
@@ -71,3 +71,19 @@ npm run e2e -- e2e/main-app/instance/drill-legs.spec.js --reporter=list
 ```
 
 网络阻塞本身可视为已解除；在 sdtd 启停与整轮结果回报前，不勾选剩余验收项。
+
+### 2026-10-20 附着模式定向复核结果
+
+使用现有 `http://localhost:8080` 后端和 `http://localhost:3002` 前端，以附着模式执行
+`e2e/main-app/instance/drill-legs.spec.js`。本次运行证实：
+
+- dst 腿：部署完成（30.3s）、LinuxGSM 就绪（5.1m）、卸载清理（12.1s）全部通过。
+- sdtd 腿：部署完成（30.1s）、LinuxGSM 就绪（31.6s）、卸载清理（11.6s）全部通过。
+- 两条腿均通过容器内 hosts、CA、GitHub HTTPS 与 `/app/<shortname>` 生成预检。
+- 定向命令因 runner 参数解析缺陷曾意外执行整套用例；该基础设施缺陷已拆到
+  `.scratch/ui-e2e-automation/issues/10-attach-mode-drops-playwright-args.md` 并修复。
+- 整套运行同时暴露 `plugin-subapp.spec.js` 旧数组分页断言，已拆到
+  `.scratch/l4d2-plugin-list-pagination/issues/02-plugin-subapp-e2e-pagination-contract.md` 并修复。
+
+因此 sdtd 启停与两条演练腿验收已满足；剩余“整轮 PASS”需要在修复后的 runner 上重新执行
+完整 `npm run e2e:round` 才能宣称。
