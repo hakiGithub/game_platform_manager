@@ -1,19 +1,19 @@
-# 宿主服务面（Host Services）
+# 宿主服务面
 
-> 对齐版本：v3.7.0（ADR-0001/ADR-0006/ADR-0009）｜ 权威源：`backend/plugin/` 源码
+> 对齐版本：v3.12.0（2026-10-19）｜ 权威源：`backend/plugin/` 源码
 
-除持久化外，宿主还通过以下 SPI 向插件暴露主机/实例/文件能力。实现由宿主核心模块提供，通过插件 Spring 子容器注入。
+除持久化外，插件 SDK 还暴露主机、实例、文件、SSH 隧道、RCON、云盘和主机工具服务。实现由主应用提供，注入到插件的 Spring 子容器。每次调用自动携带调用方插件 ID 写审计日志，插件不能伪造来源。
 
-## 1. HostQueryService — 主机查询
+## 1. HostQueryService
 
 ```java
 public interface HostQueryService {
-    HostResourceVO getHostResourceInfo(Long hostId);  // CPU/内存/磁盘/网络监控
-    HostVO getHostById(Long hostId);                  // IP/端口/SSH 凭据等
+    HostResourceVO getHostResourceInfo(Long hostId); // CPU / 内存 / 磁盘 / 网络
+    HostVO getHostById(Long hostId);                 // 地址、SSH 凭据与主机元数据
 }
 ```
 
-## 2. InstanceQueryService — 实例查询与控制
+## 2. InstanceQueryService
 
 ```java
 public interface InstanceQueryService {
@@ -21,220 +21,234 @@ public interface InstanceQueryService {
     List<InstanceVO> getInstancesByHostId(Long hostId);
     List<InstanceVO> getInstancesByGameId(Long gameId);
     List<InstanceVO> listByGameCode(String gameCode);
-    InstanceVO getInstanceStatus(Long id);            // 刷新并返回最新状态
+    InstanceVO getInstanceStatus(Long id);           // 刷新并返回当前状态
     boolean startInstance(Long id);
     boolean stopInstance(Long id);
     boolean restartInstance(Long id);
-    String getInstanceLogs(Long id, int lines);       // 最近日志
-    String executeCommand(Long id, String command);   // 实例控制台执行命令
+    String getInstanceLogs(Long id, int lines);
+    String executeCommand(Long id, String command);  // 实例控制台命令
 }
 ```
 
-> 不含实例创建/更新/删除（属宿主核心职责）。
+实例的创建、更新和删除归宿主。插件消费实例数据，调用生命周期控制命令。
 
-## 3. InstanceFileService — 实例感知文件 SPI
+## 3. InstanceFileService
 
-调用方传 `(instanceId, relativePath)`，实现层根据实例 `deployType` **自动路由**到 SFTP（Native/LinuxGSM）或 `docker exec/cp`（Docker 类）。`relativePath` 相对于实例"游戏数据根目录"，使用正斜杠。
+`InstanceFileService` 以 `(instanceId, relativePath)` 寻址，按实例部署类型自动路由：
+
+| 部署类型 | 存储路径 |
+|---|---|
+| Native / LinuxGSM | 实例安装目录，走 SFTP |
+| Docker / Docker Compose / LinuxGSM Docker | 容器工作目录，走 `docker exec` 与 `docker cp` |
+
+`relativePath` 使用正斜杠，相对游戏数据根目录。包含 `..` 会抛 `IllegalArgumentException`。
 
 ```java
 public interface InstanceFileService {
-    // 文本读写
     String readTextFile(long instanceId, String relativePath);
     String readTextFile(long instanceId, String relativePath, Charset charset);
-    void   writeTextFile(long instanceId, String relativePath, String content);
+    void writeTextFile(long instanceId, String relativePath, String content);
+    void writeTextFile(long instanceId, String relativePath, String content, Charset charset);
 
-    // 二进制 / 范围
     byte[] downloadFileToMemory(long instanceId, String relativePath);
     byte[] getFileBytes(long instanceId, String relativePath, long offset, long length);
 
-    // 上传 / 下载（v3.10.0 新增进度回调重载；无回调签名保留为 default 方法）
-    void uploadLocalFile(long instanceId, String relativePath, String localPath);
-    void downloadFile(long instanceId, String relativePath, String localPath);
-    void uploadLocalFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);
-    void downloadFile(long instanceId, String relativePath, String localPath, FileTransferProgressCallback callback);
+    default void uploadLocalFile(long instanceId, String relativePath, String localPath);
+    default void downloadFile(long instanceId, String relativePath, String localPath);
+    void uploadLocalFile(long instanceId, String relativePath, String localPath,
+                         FileTransferProgressCallback callback);
+    void downloadFile(long instanceId, String relativePath, String localPath,
+                      FileTransferProgressCallback callback);
 
-    // 文件管理
     void deleteFile(long instanceId, String relativePath);
-    void moveFile(long instanceId, String oldRel, String newRel);
-    void copyFile(long instanceId, String srcRel, String dstRel);
+    void moveFile(long instanceId, String oldRelativePath, String newRelativePath);
+    void copyFile(long instanceId, String srcRelativePath, String dstRelativePath);
     boolean exists(long instanceId, String relativePath);
     FileInfo getFileInfo(long instanceId, String relativePath);
 
-    // 目录
     List<FileInfo> listFiles(long instanceId, String relativePath);
     void createDirectory(long instanceId, String relativePath);
     void deleteDirectory(long instanceId, String relativePath, boolean recursive);
-    void copyDirectory(long instanceId, String srcRel, String dstRel);  // 目标先清空
+    void copyDirectory(long instanceId, String srcRelativePath, String dstRelativePath);
 
-    // 流式增量（日志 tail）
-    long tailFile(long instanceId, String relativePath, long offset, Charset charset, Consumer<String> lineConsumer);
+    long tailFile(long instanceId, String relativePath, long offset,
+                  Charset charset, Consumer<String> lineConsumer);
 
-    // 摘要
-    String computeDigest(long instanceId, String relativePath, String algorithm); // MD5/SHA-1/SHA-256
-    default String md5(long instanceId, String relativePath) { return computeDigest(instanceId, relativePath, "MD5"); }
+    String computeDigest(long instanceId, String relativePath, String algorithm);
+    default String md5(long instanceId, String relativePath);
 }
 ```
 
-> ⚠️ **路径安全**：禁止 `..` 跳出根目录，越界抛 `IllegalArgumentException`。
-> **路径归一化**：`AbstractInstanceFileService.validateRelativePath` 必须剥离前导 `./` 与段内 `/./`，确保路径字符串归一化。
+### 3.1 Docker 路由与安全规则
 
-### 3.1 Docker 类部署的路由语义（docker / docker-compose / linuxgsm-docker）
+Docker 类部署的 `containerWorkDir` 解析顺序为：显式 `configInfo.containerWorkDir`、`configInfo.workDir`、部署类型默认值，最后回退游戏元数据中的工作目录。Compose 容器重建后，宿主对账逻辑会把新的 `containerId` 写回 `runtime_metadata`。
 
-Docker 类实例的文件操作在**容器内**执行（`docker exec` / `docker cp`），路由由 `InstanceFileServiceImpl.buildRoute` 解析（主应用文件管理端点与补丁安装 PatchInstallExecutor 均复用同一路由，见 ADR-0006 决策 4，避免第二套路径解析）：
+不要自己拼 `docker cp` 命令，尤其不要把 Windows 本地路径当容器路径使用。下载到内存时，宿主会先复制到主机临时路径；写文件时也会经主机临时文件进入容器，避免命令行参数过长。
 
-- **路径根目录（resolvedPath 基准）**：`containerWorkDir` 解析链为
-  1. `configInfo.containerWorkDir`（部署适配器写入）
-  2. `configInfo.workDir`
-  3. 部署类型默认值（docker → `/home/steam`、docker-compose → `/`、linuxgsm-docker → `/app`）
-  4. 回退读取游戏元数据 `deployConfig.<deployType>.workingDir`（如 l4d2 → `/l4d2`；老实例 configInfo 未记录 workingDir 时走此路径，避免路径解析到容器根）
-- **容器标识解析（ContainerIdResolver，compose 重建容错）**：
-  - `docker-compose`：**动态查询优先**（`docker ps -q -f name={projectName}_`，projectName 取 runtimeMetadata.projectName 或按实例 ID 推导 `game{id}`），查询失败回退显式容器名（compose `container_name` 模板变量，如 `l4d2`），再回退缓存 containerId。宿主机重启容器重建（ID 变更）后仍能解析到新容器
-  - `docker` / `linuxgsm-docker`：containerId 优先，缺失时容器名兜底（含 DockerAdapter 默认命名 `game-instance-{id}`）
-- **下载到内存（downloadFileToMemory）**：docker 分支先把 `docker cp` 到**宿主机临时路径**（`/tmp/.gp-download-*`）再经 SFTP 读回。⚠️ 不要直接把 `docker cp` 的目标/源设为本地（Windows）路径——docker CLI 会把 `D:\...` 解析成容器引用，报 `copying between containers is not supported`
-- **写文件（writeTextFile）**：内容先经 SFTP 流式写宿主临时文件再 `docker cp` 进容器（避免大内容内联进命令参数触发 `Argument list too long`）；`docker cp` 不会自动创建父目录，需先 `mkdir -p`
+## 4. FileAccessService
 
-### 3.2 容器重建后的对账写回（宿主机重启场景）
-
-`DockerInstanceSyncStrategy` 对账匹配三级：
-1. 容器 ID 精确匹配（runtime_metadata.containerId，支持 12 位短 ID 与 64 位完整 ID 互为前缀）
-2. 容器名精确匹配（runtime_metadata.containerName / configInfo CONTAINER_NAME 等）
-3. docker-compose 项目名前缀匹配（`{projectName}_`，compose 容器名规范）
-4. 多字段严格匹配（镜像 IMAGE_REPO+IMAGE_TAG / image + 容器名含 gameCode 关键字）
-
-匹配成功即把新 containerId **写回 runtime_metadata**（`writeBackContainerId`），供删除清理/控制台/文件路由直接使用——宿主机重启、容器重建后无需人工干预即自愈。
-
-## 4. FileAccessService — 主机级远程文件 + 命令执行
-
-基于 SFTP 的主机级文件操作（不绑定实例）：
+`FileAccessService` 绑定主机，不感知实例：
 
 ```java
 public interface FileAccessService {
     String readTextFile(Long hostId, String remotePath);
-    void   writeTextFile(Long hostId, String remotePath, String content);
     String readTextFile(Long hostId, String remotePath, Charset charset);
+    void writeTextFile(Long hostId, String remotePath, String content);
     byte[] downloadFileToMemory(Long hostId, String remotePath);
     byte[] getFileBytes(Long hostId, String remotePath, long offset, long length);
 
-    void uploadFile(Long hostId, String remotePath, MultipartFile file);  // Spring multipart
-    void uploadLocalFile(Long hostId, String remotePath, String localPath);
-    void downloadFile(Long hostId, String remotePath, String localPath);
-    // v3.10.0 进度回调重载（无回调签名保留为 default 方法）
-    void uploadLocalFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);
-    void downloadFile(Long hostId, String remotePath, String localPath, FileTransferProgressCallback callback);
+    void uploadFile(Long hostId, String remotePath, MultipartFile file);
+    default void uploadLocalFile(Long hostId, String remotePath, String localPath);
+    default void downloadFile(Long hostId, String remotePath, String localPath);
+    void uploadLocalFile(Long hostId, String remotePath, String localPath,
+                         FileTransferProgressCallback callback);
+    void downloadFile(Long hostId, String remotePath, String localPath,
+                      FileTransferProgressCallback callback);
+
     void deleteFile(Long hostId, String remotePath);
     void moveFile(Long hostId, String oldPath, String newPath);
-
     List<FileInfo> listFiles(Long hostId, String remotePath);
     void createDirectory(Long hostId, String remotePath);
     void deleteDirectory(Long hostId, String remotePath, boolean recursive);
     boolean exists(Long hostId, String remotePath);
     FileInfo getFileInfo(Long hostId, String remotePath);
 
-    long tailFile(Long hostId, String remotePath, long offset, Charset charset, Consumer<String> lineConsumer);
+    long tailFile(Long hostId, String remotePath, long offset,
+                  Charset charset, Consumer<String> lineConsumer);
 
-    // 远程命令执行
     CommandResult executeCommand(Long hostId, String command, long timeoutMs);
-    default CommandResult executeCommand(Long hostId, String command) { return executeCommand(hostId, command, 30_000L); }
-
-    @Data class FileInfo { String name; String path; boolean directory; long size; long lastModified; String permissions; String owner; }
-    @Data class CommandResult { boolean success; int exitCode; String output; String error; }
+    default CommandResult executeCommand(Long hostId, String command);
 }
 ```
 
-## 5. SshTunnelService — SSH 本地端口转发隧道（v3.7.0，ADR-0009）
+`FileInfo` 包含 `name`、`path`、`directory`、`size`、`lastModified`、`permissions` 和 `owner`。`CommandResult` 包含 `success`、`exitCode`、`output` 和 `error`。
 
-插件经宿主 SSH 会话建立本地端口转发：平台本地绑定回环端口，经隧道转发到 SSH 主机可达的远端目标（如实例容器内/宿主机映射的 MySQL）。典型场景——平台与目标主机仅 SSH 可达，插件需直连实例数据库。
+## 5. SshTunnelService
+
+SSH 本地端口转发是 ADR-0009 宿主能力。本地端口只绑定 `127.0.0.1`，由 OS 分配。句柄按插件与目标隔离，引用计数管理。
 
 ```java
 public interface SshTunnelService {
-    /** 用平台已登记主机的凭据开隧道（复用 SshUtil 会话池）；hostId 不存在或 SSH 失败抛 BusinessException */
     TunnelHandle openByHost(Long hostId, String remoteHost, int remotePort);
-    /** 用调用方自带凭据开隧道（专用会话，宿主不落库、不写日志——插件连接档案场景） */
     TunnelHandle openWithCredentials(SshEndpoint ssh, String remoteHost, int remotePort);
-    /** 幂等关闭：引用计数减 1，减至 0 才真正关闭隧道 */
     void close(TunnelHandle handle);
 
-    /** SSH 端点凭据（port 缺省 22 有便捷构造；toString 已脱敏禁止凭据进日志） */
-    record SshEndpoint(String host, int port, String user, String password, String privateKey) {}
-    /** 隧道句柄：连接 127.0.0.1:localPort 即等于连接 remoteHost:remotePort */
+    record SshEndpoint(String host, int port, String user, String password, String privateKey) {
+        public SshEndpoint(String host, String user, String password); // port 缺省 22
+        public String toString(); // 凭据脱敏
+    }
+
     record TunnelHandle(String id, int localPort, String remoteHost, int remotePort,
                         String ownerPluginId) {}
 }
 ```
 
-### 5.1 生命周期规则（必读）
+连接 `127.0.0.1:handle.localPort()`，不要缓存端口后继续假设句柄仍有效。插件应在 `onInstanceDelete` 和 `onUnload` 中释放自己的连接池与隧道；宿主卸载时也有兜底关闭。
 
-- **去重与引用计数**：去重键 = `(ownerPluginId, 凭据来源, remoteHost, remotePort)`。同插件对同一目标重复 open 返回**同一句柄**并叠加引用计数；**跨插件不共享**（即使目标相同）。`close()` 幂等，引用计数归零才真正关闭转发。
-- **本地端口安全默认**：仅绑定 `127.0.0.1`（不暴露网络），端口由 OS 随机分配（bind `:0` 取实际端口）。
-- **会话钉住**：`openByHost` 复用宿主 `SshUtil` 连接池会话并钉住（空闲回收器跳过），隧道流量不算会话活跃——隧道不会因"空闲"被误杀，也**不做空闲回收**。
-- **三层关闭兜底**：① `close()` 引用计数归零；② 插件 stop/unload 时宿主强制关闭该插件全部句柄（`onUnload()` 主动 close 是加速路径，忘关也有兜底）；③ 宿主删除主机时联动关闭该 hostId 开出的全部（平台凭据）隧道。
-- **信任边界**：可信插件模型——任何已安装插件可对任意已登记主机开隧道（转发到该主机可达的任意 remoteHost:remotePort），与 ExtensionClient 等现有 SDK 服务同信任级别。
+## 6. 数据库连接元数据
 
-### 5.2 注入与典型用法（连接实例 MySQL）
+带数据库的 Docker Compose 游戏，宿主在部署和实例更新时把 `configInfo.database` 组装好：
+
+```yaml
+dockerCompose:
+  database:
+    type: mysql
+    host: 127.0.0.1
+    portVar: MYSQL_PORT
+    user: root
+    passwordVar: DNF_DB_ROOT_PASSWORD
+    databases: [cain, siroco]
+```
+
+变量解析与 `.env` 生成同源：用户输入优先于默认变量，默认变量优先于字面量兜底。`onInstanceCreate` 发生在部署前，此时还没有 `database`；插件应懒建连接。改配置后要消费 `onInstanceUpdate`，主动失效并重建连接池。老实例可能只有裸 compose 变量。
+
+## 7. RconService
+
+RCON 传输层是宿主能力，见 ADR-0016。端点解析只认标准键 `configInfo.rconPort`（缺省 `27015`）和 `rconPassword`；密码不能由插件指定。
 
 ```java
-@Service
-@RequiredArgsConstructor
-public class MyDbConnectionFactory {
-    private final SshTunnelService sshTunnelService;   // 子容器自动注入（绑定本插件）
-    private final InstanceQueryService instanceQueryService;
+public interface RconService {
+    String executeCommand(long instanceId, String command);
+    String executeCommand(long instanceId, String command, Duration timeout);
+    boolean testConnection(long instanceId);
+}
+```
 
-    public DataSource buildDataSource(Long instanceId) {
-        InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
-        // configInfo.database 由宿主按 yml database 声明组装（见 §6）
-        Map<String, Object> db = (Map<String, Object>) instance.getConfigInfo().get("database");
+连接、连接池、超时和审计归宿主；游戏命令语义（例如解析 `status`、踢人、封禁）归插件。
 
-        // remoteHost=127.0.0.1 语义：实例所在主机的回环地址（MYSQL_PORT 已映射到宿主机）
-        TunnelHandle handle = sshTunnelService.openByHost(
-                instance.getHostId(), "127.0.0.1", ((Number) db.get("port")).intValue());
+## 8. FileTransferProgressCallback
 
-        // 连接 127.0.0.1:handle.localPort() 即连到远端 MySQL
-        String url = "jdbc:mysql://127.0.0.1:" + handle.localPort() + "/" + dbName;
-        // ... 建连接池并缓存 handle，实例删除/插件卸载时 close
+文件服务支持流式进度回调：
+
+```java
+public interface FileTransferProgressCallback {
+    void onStart(long totalBytes);                          // 未知为 -1
+    void onProgress(long bytesTransferred, long totalBytes);
+    void onComplete();                                      // 成功时最多一次
+    void onError(Throwable error);                          // 失败时最多一次
+}
+```
+
+回调是同步的；从回调抛异常会中止传输，可以用于取消。Docker 部署的进度只覆盖 SFTP 段，`docker cp` 段没有进度。
+
+## 9. CloudDriveService
+
+云盘传输是 ADR-0024 宿主能力。账号在主应用管理，按 `accountName` 寻址；路径是账号隐式挂载点内的相对路径。SDK 只提供传输能力，业务编排归插件。
+
+```java
+public interface CloudDriveService {
+    List<CloudFileInfo> list(String accountName, String path, boolean refresh);
+    CloudLink link(String accountName, String path);
+    long download(String accountName, String path, OutputStream target);
+    List<String> transfer(String accountName, String shareUrl, String passcode,
+                          String targetPath, Duration timeout);
+
+    record CloudFileInfo(String name, String path, boolean directory,
+                         long size, Long modifiedAtMillis) {}
+    record CloudLink(String url, Map<String, String> headers, Long expiresAtMillis) {}
+}
+```
+
+自定义 HTTP 客户端访问直链时，必须连同 `CloudLink.headers` 一起发送。`transfer` 阻塞到终态；超时或转存失败抛 `BusinessException`，返回值为转存产物路径。超时后云端任务可能仍在执行，是否重试由业务判断。
+
+## 10. HostToolingService
+
+主机工具是 ADR-0026 能力，只暴露语义化操作，不暴露裸容器执行。镜像选择、命令拼装、临时文件清理和审计都归宿主。
+
+```java
+public interface HostToolingService {
+    List<String> extractArchive(Long hostId, String remoteArchive,
+                                String destDir, String includePattern);
+    String fileDigest(Long instanceId, String relativePath);
+    VpkAnalyzeResult analyzeVpk(Long instanceId, String relativeVpkPath);
+}
+```
+
+`extractArchive` 在目标主机解压，优先原生工具，缺失时回退 `platform-tools` 镜像。`includePattern` 是逗号分隔、大小写不敏感的 glob（如 `*.vpk`）；提供时只把匹配文件平铺到 `destDir`。`fileDigest` 接受实例相对路径，返回小写 SHA-256 hex。`analyzeVpk` 读取 VPK 元数据，返回战役与章节：
+
+```java
+@Data
+public class VpkAnalyzeResult {
+    private String digest;
+    private String title;
+    private List<Chapter> chapters;
+
+    @Data
+    public static class Chapter {
+        private String code;
+        private String title;
+        private List<String> modes;
     }
 }
 ```
 
-> ⚠️ 句柄应随实例生命周期缓存与释放：`onInstanceDelete` 关闭对应池+隧道；插件 `onUnload()` 主动 close 全部句柄（宿主兜底之外的自清理）。
+`VpkInvalidException` 表示 VPK 有效，但不是含 mission 信息的 L4D2 地图。调用方应把它当业务上的 INVALID，而不是任务 FAILED。
 
-## 6. configInfo.database 组装（v3.7.0，ADR-0009）
+## 11. 控制器规范
 
-带数据库的 docker-compose 游戏（如 dnf_tw）无需插件手工解析 compose 变量——宿主在**部署与更新时**按游戏元数据 yml 声明组装数据库连接信息，写入实例 `configInfo.database`（`InstanceVO` 已透出，经 `InstanceQueryService.getInstanceById` 读取）。
+插件控制器路径必须以 `/api/plugin/{gameCode}/` 开头。跨插件重复路径抛 `PluginPathConflictException`，插件无法启动。REST 返回平台统一的 `{code, message, data}` 响应结构。
 
-### 6.1 yml 声明（`games/{gameCode}.yml` 的 dockerCompose 节内，主应用维护）
-
-```yaml
-game:
-  dockerCompose:
-    # ... 既有 composeTemplate / variables
-    database:
-      type: mysql
-      host: 127.0.0.1            # 语义：实例所在主机的回环地址（经 SSH 隧道访问）
-      portVar: MYSQL_PORT        # 端口变量名引用：取部署变量最终值（用户输入 > 默认值）
-      user: root
-      passwordVar: DNF_DB_ROOT_PASSWORD   # 密码变量名引用
-      databases: [cain, siroco]  # 库名列表
-```
-
-- 字段为**变量名引用式**（`portVar`/`passwordVar` 引用部署变量名，另有 `port`/`password` 字面量兜底），变量解析与 .env 生成同源同规则：**用户输入值 > variables 默认值 > 字面量兜底**。
-- database 子节随部署节纳入 ADR-0008 合并体系（插件 `getDeployConfigs()` 覆盖部署节时 variables + database 一起自洽替换）。
-
-### 6.2 组装时机与结果
-
-`DockerComposeAdapter.deploy` 完成时与 `InstanceServiceImpl.updateInstance` 写回时走**同一条组装路径**，结果：
-
-```json
-configInfo.database = { "type": "mysql", "host": "127.0.0.1", "port": 3000,
-                        "user": "root", "password": "88888888", "databases": ["cain", "siroco"] }
-```
-
-### 6.3 时序与回退（陷阱）
-
-- **`onInstanceCreate` 在部署前触发**，收到的 configInfo **尚无 database 节**——插件按"懒建"模型在首次连接时经 `getInstanceById` 读取，勿在 Create 钩子里预读 database。
-- **改密码/端口后**：消费 `onInstanceUpdate` 钩子（实参为更新后的完整新 configInfo，每次更新都触发、无平台侧 diff——配置是否真变由插件自行比对）主动失效并重建对应连接池/隧道。
-- **组装机制上线前部署的老实例** configInfo 无 database 节，插件侧用裸 compose 变量回退解析（`configInfo.MYSQL_PORT` / `configInfo.DNF_DB_ROOT_PASSWORD`），无需重部署。
-
-## 7. 注入示例
+## 12. 注入示例
 
 ```java
 @Service
@@ -242,83 +256,11 @@ configInfo.database = { "type": "mysql", "host": "127.0.0.1", "port": 3000,
 public class MyMapService {
     private final InstanceQueryService instanceQueryService;
     private final InstanceFileService instanceFileService;
+    private final CloudDriveService cloudDriveService;
+    private final HostToolingService hostToolingService;
 
-    public String readServerCfg(Long instanceId) {
+    public String readServerConfig(long instanceId) {
         return instanceFileService.readTextFile(instanceId, "cfg/server.cfg");
     }
 }
 ```
-
----
-
-## 8. 控制器开发规范
-
-```java
-@RestController
-@RequestMapping("/api/plugin/mygame/rcon")  // 必须以 /api/plugin/{gameCode}/ 开头
-public class RconController { /* ... */ }
-```
-
-- **路径前缀约束**：所有控制器路径必须以 `/api/plugin/{gameCode}/` 开头（框架注册时自动去掉 `/api`，因主应用 context-path 为 `/api`）。
-- **路径冲突检测**：两个插件注册相同 URL 会抛 `PluginPathConflictException` 阻止加载（见 `references/exceptions.md`）。
-- **统一响应**：建议返回 `{code, message, data}` 格式。
-
----
-
-## 9. RconService — RCON 宿主能力（v3.10.0，ADR-0016）
-
-Source RCON 传输层是主应用宿主能力：连接池、认证、端点解析归 core `com.gameplatform.rcon`，SDK 暴露 `RconService`，命令语义（status 解析、kick/ban 语法等）归插件。
-
-```java
-public interface RconService {
-    String executeCommand(long instanceId, String command);                              // 默认读超时
-    String executeCommand(long instanceId, String command, Duration timeout);            // timeout 为 null 时用默认
-    boolean testConnection(long instanceId);                                            // 建连 + 认证，不执行业务命令
-}
-```
-
-关键约束：
-
-- **端点解析只认标准键**：`configInfo.rconPort`（缺省 27015）与 `rconPassword`。插件自定义变量名（如 `rconPwd`）不会被识别——声明部署配置时必须用标准键。
-- **密码不可由插件指定**：认证凭据由宿主统一管理，插件无法传入或覆盖 RCON 密码。
-- **审计自动携带**：每次执行自动记录调用方插件 ID 到统一审计日志，来源不可伪造；命令语义与输出解析由插件自理。
-- **异常**：实例不存在、端点不可达或连接/通信失败抛 `BusinessException`。
-
-典型用法（参考实现 plugin-l4d2 的 `L4D2RconService`）：
-
-```java
-@Service
-@RequiredArgsConstructor
-public class MyRconFacade {
-    private final RconService rconService;
-
-    public int getPlayerCount(long instanceId) {
-        String out = rconService.executeCommand(instanceId, "status");
-        return parseStatus(out);  // 输出解析是插件语义层职责
-    }
-}
-```
-
-> 插件内**不要再自建 RCON 连接/协议实现**（旧 plugin-l4d2 的 rcon-lib 路线已废弃）；一律注入 `RconService`。
-
----
-
-## 10. FileTransferProgressCallback — 文件传输进度回调（v3.10.0）
-
-`InstanceFileService` / `FileAccessService` 的 `uploadLocalFile` / `downloadFile` 均有带回调重载，全链路流式（不整体载入内存）：
-
-```java
-public interface FileTransferProgressCallback {
-    void onStart(long totalBytes);                            // 流打开前；totalBytes 未知为 -1
-    void onProgress(long bytesTransferred, long totalBytes); // 频率不保证（可能被节流）
-    void onComplete();                                        // 成功，保证最终一次
-    void onError(Throwable error);                            // 失败，保证最终一次
-}
-```
-
-契约要点：
-
-- **同步回调**：在传输线程上触发，回调内勿做耗时操作（会拖慢传输）。
-- **异常即中止**：回调方法抛出的异常会中止传输并向上传播——可借此实现"取消传输"。
-- **totalBytes = -1**：大小无法预知时勿据此算百分比。
-- **Docker 类部署进度不完整**：传输分两段（SFTP 到宿主临时文件 + docker cp 进/出容器），进度仅覆盖 SFTP 段；docker cp 段无回调，进度可能停在 100% 一段时间，UI 需容忍。

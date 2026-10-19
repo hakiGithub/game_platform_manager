@@ -24,7 +24,7 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 | [reference/getting-started.md](reference/getting-started.md) | 版本约定、快速开始、项目结构、`plugin.properties`、Plugin 入口、`pom.xml` | 新建插件模块、配置骨架 |
 | [reference/extension-and-menus.md](reference/extension-and-menus.md) | `GameEnhancementExtension` 实现、`getManifest`、`getConfigFields`、生命周期钩子、**`getMenus()` + `PluginMenuDeclaration`（ADR-0001）**、`PluginManifestVO` 契约、菜单加载机制 | 实现扩展点、声明菜单、清单契约 |
 | [reference/persistence.md](reference/persistence.md) | `@ExtensionModel` 存储策略、`ExtensionClient` 全方法、`ListOptions`、安全约束 | 持久化扩展资源、CRUD |
-| [reference/host-services.md](reference/host-services.md) | `HostQueryService` / `InstanceQueryService` / `InstanceFileService` / `FileAccessService` / `SshTunnelService`、`configInfo.database` 组装、控制器规范 | 调用主机 / 实例 / 文件能力、SSH 隧道、实例数据库连接信息 |
+| [reference/host-services.md](reference/host-services.md) | `HostQueryService` / `InstanceQueryService` / `InstanceFileService` / `FileAccessService` / `SshTunnelService` / `RconService` / `CloudDriveService` / `HostToolingService`、`configInfo.database` 组装、控制器规范 | 调用主机 / 实例 / 文件 / RCON / 云盘 / 主机工具能力、SSH 隧道、实例数据库连接信息 |
 | [reference/async-tasks.md](reference/async-tasks.md) | `TaskHandler` / `TaskHandlerExtension` / `TaskService`、注册 / 实现 / 提交、进度节流、取消超时、互斥键、生命周期钩子 | 异步任务开发 |
 | [reference/scheduled-tasks.md](reference/scheduled-tasks.md) | `ScheduledTaskHandler` / `ScheduledTaskDeclarationExtension` / `ScheduleService`、声明式默认计划、来源隔离、cron 触发、重叠 SKIPPED、插件生命周期联动（[ADR-0011](../design/adr/0011-scheduled-task-management.md)） | 定时任务开发 |
 | [reference/frontend.md](reference/frontend.md) | 两运行模式（`detectMode`）、Wujie 通信、前端目录结构、前端约定 | 双端插件前端开发 |
@@ -80,6 +80,9 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 | `InstanceFileService` | 实例感知文件 SPI（自动路由 SFTP / docker exec，禁止 `..`） | [reference/host-services.md](reference/host-services.md) |
 | `FileAccessService` | 主机级 SFTP + `executeCommand` | [reference/host-services.md](reference/host-services.md) |
 | `SshTunnelService` | SSH 本地端口转发隧道（[ADR-0009](../design/adr/0009-platform-capability-requirements.md)） | [reference/host-services.md](reference/host-services.md) |
+| `RconService` | RCON 命令执行与连通性测试（[ADR-0016](../design/adr/0016-rcon-host-capability.md)） | [reference/host-services.md](reference/host-services.md) |
+| `CloudDriveService` | 云盘列目录 / 直链 / 下载 / 同步转存（[ADR-0024](../design/adr/0024-cloud-drive-host-capability.md)） | [reference/host-services.md](reference/host-services.md) |
+| `HostToolingService` | 主机侧解压、实例文件摘要、VPK 分析（[ADR-0026](../design/adr/0026-host-tooling-container.md)） | [reference/host-services.md](reference/host-services.md) |
 | `TaskService` | 任务提交 / 查询 / 取消（注入子容器） | [reference/async-tasks.md](reference/async-tasks.md) |
 | `ScheduleService` | 定时计划编程式服务（注入子容器，自动绑定本插件 source） | [reference/scheduled-tasks.md](reference/scheduled-tasks.md) |
 | `PluginContext` | 插件元数据上下文（仅元数据，不持数据访问） | [reference/extension-and-menus.md](reference/extension-and-menus.md) |
@@ -133,6 +136,9 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 - `InstanceQueryService`：实例查询 + 启停重启 + 日志 + 控制台命令。
 - `InstanceFileService`：实例感知文件 SPI，自动路由 SFTP / docker exec；`relativePath` 相对游戏数据根目录，禁止 `..`。
 - `FileAccessService`：主机级 SFTP + `executeCommand`。
+- `RconService`：按实例执行 RCON 命令，连接、端点与审计归宿主。
+- `CloudDriveService`：按云盘账号列目录、取直链、下载和同步转存。
+- `HostToolingService`：主机侧解压，以及实例相对路径的文件摘要和 VPK 分析。
 
 签名见 [reference/sdk-reference.md](reference/sdk-reference.md)。
 
@@ -180,6 +186,8 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 | 文件操作 IllegalArgumentException | `relativePath` 含 `..` 越界 → [reference/host-services.md](reference/host-services.md) |
 | 连不上实例数据库 | `configInfo.database` 是否存在（老实例裸变量回退）；隧道是否开启（连 `127.0.0.1:handle.localPort`）→ [reference/host-services.md](reference/host-services.md) |
 | 连接池用了旧密码 / 端口 | 是否消费 `onInstanceUpdate`（改配置后失效重建）；该钩子每次更新都触发 → [reference/host-services.md](reference/host-services.md) |
+| 云盘路径不可用 | 确认路径是账号挂载内相对路径；访问直链时必须带上 `CloudLink.headers` → [reference/host-services.md](reference/host-services.md) |
+| 压缩包解压失败 | 检查主机路径、目标目录和 `includePattern`；宿主原生工具优先，`platform-tools` 兜底 → [reference/host-services.md](reference/host-services.md) |
 
 ---
 
@@ -218,5 +226,5 @@ GamePlatform 是一个面向游戏服务器运维的轻量级管理后台。平�
 
 - 本文档是插件开发文档的**唯一权威源**。接口签名、路径常量、异常类均以 `backend/plugin/` 源码为准，新增即补登记到对应 `reference/` 文件。
 - 主版本变更（破坏性 API 改动）→ 在 [CHANGELOG.md](CHANGELOG.md) 升版本号并记录，并将旧版另存归档。
-- 关联 ADR：[ADR-0001 插件菜单归属](../design/adr/0001-plugin-menu-ownership.md)、[ADR-0002 范围隔离](../design/adr/0002-main-app-plugin-scope-isolation.md)、[ADR-0003 废弃 standalone](../design/adr/0003-deprecate-plugin-l4d2-standalone.md)、[ADR-0007 前端 token 隔离](../design/adr/0007-plugin-frontend-nightops-token-isolation.md)、[ADR-0009 平台能力](../design/adr/0009-platform-capability-requirements.md)、[ADR-0011 定时任务](../design/adr/0011-scheduled-task-management.md)。
+- 关联 ADR：[ADR-0001 插件菜单归属](../design/adr/0001-plugin-menu-ownership.md)、[ADR-0002 范围隔离](../design/adr/0002-main-app-plugin-scope-isolation.md)、[ADR-0003 废弃 standalone](../design/adr/0003-deprecate-plugin-l4d2-standalone.md)、[ADR-0007 前端 token 隔离](../design/adr/0007-plugin-frontend-nightops-token-isolation.md)、[ADR-0009 平台能力](../design/adr/0009-platform-capability-requirements.md)、[ADR-0011 定时任务](../design/adr/0011-scheduled-task-management.md)、[ADR-0014 插件开发文档三副本分工](../design/adr/0014-plugin-dev-docs-copies-roles.md)、[ADR-0016 RCON 宿主能力](../design/adr/0016-rcon-host-capability.md)、[ADR-0017 实例信息 Provider](../design/adr/0017-instance-info-provider.md)、[ADR-0024 云盘宿主能力](../design/adr/0024-cloud-drive-host-capability.md)、[ADR-0026 工具容器宿主能力](../design/adr/0026-host-tooling-container.md)、[ADR-0027 VPK 分析与开图命令](../design/adr/0027-l4d2-map-recognition-launch-commands.md)。
 - 文档中相对路径（`backend/...`、`scripts/...`、`docs/...`）均以**仓库根目录**为基准解析。

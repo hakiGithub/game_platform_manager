@@ -52,6 +52,8 @@
 - [ ] （双端插件）styles 带主应用 Night Ops token 副本（暗色单主题，ADR-0007）；变量名无 `$--` 前缀；`--el-*` 覆盖层选择器含 `html.dark`
 - [ ] （双端插件）下拉/弹层在 Wujie 嵌入下定位正常（集成 wujiePopperFix 模式，见 frontend.md §9）
 - [ ] 部署验证：改插件用 `deploy-plugin.sh` 热部署后插件 API/UI 正常、任务历史未丢失
+- [ ] 云盘路径使用账号挂载内相对路径；`CloudLink.headers` 与直链一起发送
+- [ ] 主机侧解压有原生工具或 `platform-tools` 兜底；`includePattern` 能匹配产物
 
 ### 2.2 验收标准
 
