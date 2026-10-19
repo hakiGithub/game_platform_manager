@@ -2,7 +2,7 @@
 
 # 12 — l4d2 重启管理页在长序列后插件资源加载返回 500
 
-Status: needs-triage
+Status: done
 Type: bug
 来源: 2026-10-20 附着模式完整 plugin-subapp.spec.js 执行（第 28 条）
 
@@ -59,7 +59,7 @@ Type: bug
 ### 2026-10-20 Triage
 
 **分类：** bug（插件资源加载 / Wujie 集成）
-**状态：** needs-triage
+**状态：** ready-for-agent
 
 已确认的初始事实：
 
@@ -68,5 +68,33 @@ Type: bug
 - 目标 URL 已到达，但 `.restart-page` 未渲染。
 - trace 与失败截图已保留在 `frontend/e2e/.artifacts/`。
 
-下一步：从后端 `application.log` 与插件资源接口请求记录中定位 500 的
-具体 URL 和异常栈，再决定是否升级为 `ready-for-agent` 或需要更多环境信息。
+### 2026-10-20 根因定位
+
+从 trace 与运行日志确认：
+
+- 失败请求为 `GET /api/pf4j/plugin/l4d2/manifest`，但响应是 Vite
+  开发代理生成的空 `text/plain` 500，不是后端 manifest 业务异常。
+- 同一 URL 紧邻的并发请求返回 200，后端在该时刻正常处理请求；
+  `logs/frontend-manual-3002.err.log` 同时记录
+  `http proxy error ... AggregateError [ECONNREFUSED]`。
+- 后端监听 `0.0.0.0:8080`（IPv4），Node 22 将
+  `localhost` 双栈解析为先 `::1`、后 `127.0.0.1`。长序列/高负载下
+  代理连接选择存在偶发抖动，造成瞬时 ECONNREFUSED。
+
+### 2026-10-20 修复完成
+
+- Vite `/api` 与 `/ws` 默认代理目标由 `localhost:8080` 固定为
+  `127.0.0.1:8080`，与后端监听地址一致，消除双栈选择不确定性。
+- manifest 请求对网络错误与 5xx 增加两次短延迟重试；4xx 业务响应不重试，
+  保留“插件不存在”等明确降级语义。
+- `gotoPluginPage` 失败上下文补充失败 URL、HTTP 状态与响应体摘要，
+  便于后续直接定位代理/后端错误。
+- 回归验证：`plugin-subapp.spec.js` 28 passed，0 failed，耗时 4.1 分钟；
+  最后一条重启管理页渲染模式配置通过。
+
+### 验收结果
+
+- [x] 定位返回 500 的具体 URL 与代理错误：`/api/pf4j/plugin/l4d2/manifest`
+  经 Vite 代理瞬时 ECONNREFUSED。
+- [x] 修复代理目标并增加 manifest 可重试网络错误处理。
+- [x] 完整 `plugin-subapp.spec.js` 28 条用例全部通过。

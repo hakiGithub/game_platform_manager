@@ -80,7 +80,12 @@ Playwright strict mode 直接失败。失败发生在 serial 文件中段，导�
 - 趋势区断言改为用 `expect.poll()` 分别检查 `.chart` 与“暂无趋势数据”
   两个独立定位器的可见性，只要任一可见即通过。
 - 不再把两个可能同时命中的定位器交给单个 strict 断言。
-- 定向执行
-  `玩家统计页可切换到游玩时长并展示格式校验`：1 passed，0 failed，
-  0 skipped，0 did not run。
+- 定向执行 `玩家统计页可切换到游玩时长并展示格式校验`：1 passed。
+- 修复后完整 `plugin-subapp.spec.js`：28 passed，0 failed，0 skipped，
+  0 did not run；该用例之后的 serial 用例均继续执行并通过。
 - 该用例后续玩家列表、游玩时长切换与 SteamID 格式校验断言均继续执行并通过。
+
+### 2026-10-20 集成验证
+
+- 完整 `plugin-subapp.spec.js` 回归：28 passed，耗时 4.1 分钟。
+- 玩家统计趋势断言与后续页面链路均通过，无 strict mode 错误。
