@@ -215,9 +215,13 @@ public class CloudInstallService {
             } catch (Exception e) {
                 context.log("WARN", "主机能力探测失败，走平台中转: " + e.getMessage());
             }
-            transferMode = preferDirect ? MODE_DIRECT : MODE_RELAY;
+            // 通道只在首个可直连产物（vpk/zip）实际走 DIRECT 后成立；
+            // 若目录只有 rar，或直连失败回退，则整任务保持 RELAY，避免详情误报 DIRECT。
+            boolean hasDirectCandidate = preferDirect && products.stream().anyMatch(
+                    p -> !p.name().toLowerCase(Locale.ROOT).endsWith(".rar"));
+            transferMode = hasDirectCandidate ? MODE_DIRECT : MODE_RELAY;
             updater.transferMode(transferMode);
-            context.reportProgress(45, "通道: " + (preferDirect ? "主机直连" : "平台中转")
+            context.reportProgress(45, "通道: " + (hasDirectCandidate ? "主机直连" : "平台中转")
                     + "，待安装 " + products.size() + " 个文件");
 
             // ===== 阶段 3：逐文件下载安装（45-95%） =====

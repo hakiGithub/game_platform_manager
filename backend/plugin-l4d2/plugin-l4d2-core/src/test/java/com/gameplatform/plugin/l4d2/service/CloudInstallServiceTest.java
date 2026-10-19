@@ -149,6 +149,36 @@ class CloudInstallServiceTest {
     }
 
     @Test
+    void rarOnlyProduct_shouldReportRelayBeforeDownloadStarts() throws Exception {
+        HostCapabilities capabilities = new HostCapabilities();
+        capabilities.getTools().put("curl", true);
+        when(patchInstallService.probeHost(2L)).thenReturn(capabilities);
+        when(taskContext.isCancelled()).thenReturn(false);
+        when(taskContext.isTimeout()).thenReturn(false);
+        when(cloudDriveService.download(eq("live-189"), anyString(), any(OutputStream.class)))
+                .thenAnswer(invocation -> {
+                    OutputStream out = invocation.getArgument(2);
+                    out.write(new byte[]{1});
+                    throw new ChildTaskCancelledException("任务已取消");
+                });
+
+        TaskPayload payload = new TaskPayload(Map.of(
+                "downloadTaskId", "download-1",
+                "instanceId", 97L,
+                "accountName", "live-189",
+                "shareUrl", "https://cloud.189.cn/t/share",
+                "cloudPath", "/maps/share-80f0499c"));
+
+        assertThrows(ChildTaskCancelledException.class, () -> service.execute(taskContext, payload));
+
+        ArgumentCaptor<DownloadTaskResource> captor = ArgumentCaptor.forClass(DownloadTaskResource.class);
+        verify(extensionClient, atLeastOnce()).update(captor.capture());
+        // 首次 transferMode 写回就必须是 RELAY；RAR-only 不能被预判成 DIRECT。
+        assertTrue(captor.getAllValues().stream()
+                .allMatch(r -> CloudInstallService.MODE_RELAY.equals(r.getSpec().getTransferMode())));
+    }
+
+    @Test
     void relayDownload_whenCancelledAfterHostWrapsException_shouldPersistCancelled() {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         when(taskContext.isCancelled()).thenAnswer(invocation -> cancelled.get());
