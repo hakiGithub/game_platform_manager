@@ -1,22 +1,22 @@
 {
-  "generatedAt": "2026-10-19T20:30:55.362Z",
+  "generatedAt": "2026-10-19T21:28:52.950Z",
   "sourceRoot": ".scratch",
   "policy": "Excluded statuses: done, resolved, closed, wontfix, cancelled. Directory semantics keep backlog and architecture review open.",
   "summary": {
-    "total": 59,
-    "unclosed": 30,
+    "total": 61,
+    "unclosed": 32,
     "byStatus": {
       "resolved": 18,
       "done": 11,
       "needs-info": 3,
       "ready-for-human": 3,
-      "open (directory)": 7,
+      "open (directory)": 8,
       "open (unregistered)": 9,
-      "open (review)": 8
+      "open (review)": 9
     },
     "byTone": {
       "success": 29,
-      "open": 27,
+      "open": 29,
       "human": 3
     }
   },
@@ -54,8 +54,8 @@
     {
       "id": "backlog",
       "label": "Backlog",
-      "count": 8,
-      "unclosed": 7
+      "count": 9,
+      "unclosed": 8
     },
     {
       "id": "ui-e2e-automation",
@@ -66,8 +66,8 @@
     {
       "id": "architecture-review-20261015",
       "label": "Architecture review",
-      "count": 8,
-      "unclosed": 8
+      "count": 9,
+      "unclosed": 9
     },
     {
       "id": "cloud-drive-host-capability",
@@ -967,19 +967,21 @@
       "closed": false,
       "summary": "",
       "acceptance": [
-        "上述 8 条用例绿（挂到 npm run e2e:round 插件分组）",
-        "整轮仍 PASS"
+        "上述 8 条用例已加入 frontend/e2e/plugins/l4d2/plugin-subapp.spec.js 的共享 fixture 套件，",
+        "随 npm run e2e:round 的“插件子应用 l4d2”分组执行",
+        "整轮 PASS（本环境未能执行：当前仓库 frontend/nodemodules 缺失，",
+        "且任务要求不重启已有服务）"
       ],
       "acceptanceChecks": [
-        "上述 8 条用例绿（挂到 npm run e2e:round 插件分组）",
-        "整轮仍 PASS"
+        "上述 8 条用例已加入 frontend/e2e/plugins/l4d2/plugin-subapp.spec.js 的共享 fixture 套件，",
+        "整轮 PASS（本环境未能执行：当前仓库 frontend/nodemodules 缺失，"
       ],
       "questions": [],
       "comments": [],
       "href": "../backlog/issues/05-l4d2-subapp-secondary-pages-cases.md",
       "specHref": "../backlog/README.md",
       "specPath": ".scratch/backlog/README.md",
-      "excerpt": "# 05 — l4d2 子应用次要页面渲染用例补齐（约 8 条）\n\n**Status:** needs-triage\n\n## 背景\n\n票 07 已覆盖 l4d2 子应用 6 个主路径页（仪表盘/RCON/地图管理/SourceMod 插件/服务器配置/重启管理）。子应用共 **17 个路由**（backend/plugin-l4d2/frontend/src/router/index.ts），以下页面尚无用例。\n\n## 要补的用例（每页一条\"可达渲染 + 关键交互冒烟\"）\n\n| 路由 | 页面 | 冒烟断言建议 |\n|------|------|--------------|\n| /monitor | 系统监控 | 页面标题/指标区块渲染 |\n| /logs | 日志 | 日志区渲染、刷新可点 |\n| /player-stats | 玩家统计 | 面板渲染（空数据态） |\n| /admins | 管理员 | 列表/空态渲染 |\n| /server-info | 服务器信息 | 信息字段渲染 |\n| /preset | 预设场景 | 预设卡片/列表渲染 |\n| /download | 下载管理 | 列表/空态渲染 |\n| /map-center | 地图中心 | 页面可达、区块渲染（数据依赖三方源，容忍加载失败提示） |\n\n## 实施要点\n\n- 复用 `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js` 的共享 fixture 模式（beforeAll API 部署 l4d2 运行实例 + afterAll 清理）；若票 02（addons 可见性）已修，可直接扩展现有文件。\n- 选择器事实已探明：`backend/plugin-l4d2/frontend/src/pages/*` 各页根元素类名（`.dashboard-page` 风格）。\n- 每条用例头按既有格式声明\"页面/用例/前置/步骤/通过标准\"。\n\n## 验收\n\n- [ ] 上述 8 条用例绿（挂到 `npm run e2e:round` 插件分组）\n- [ ] 整轮仍 PASS\n"
+      "excerpt": "# 05 — l4d2 子应用次要页面渲染用例补齐（约 8 条）\r\n\r\n**Status:** resolved\r\n\r\n## 背景\r\n\r\n票 07 已覆盖 l4d2 子应用 6 个主路径页（仪表盘/RCON/地图管理/SourceMod 插件/服务器配置/重启管理）。子应用共 **17 个路由**（backend/plugin-l4d2/frontend/src/router/index.ts），以下页面尚无用例。\r\n\r\n## 要补的用例（每页一条\"可达渲染 + 关键交互冒烟\"）\r\n\r\n| 路由 | 页面 | 冒烟断言建议 |\r\n|------|------|--------------|\r\n| /monitor | 系统监控 | 页面标题/指标区块渲染 |\r\n| /logs | 日志 | 日志区渲染、刷新可点 |\r\n| /player-stats | 玩家统计 | 面板渲染（空数据态） |\r\n| /admins | 管理员 | 列表/空态渲染 |\r\n| /server-info | 服务器信息 | 信息字段渲染 |\r\n| /preset | 预设场景 | 预设卡片/列表渲染 |\r\n| /download | 下载管理 | 列表/空态渲染 |\r\n| /map-center | 地图中心 | 页面可达、区块渲染（数据依赖三方源，容忍加载失败提示） |\r\n\r\n## 实施要点\r\n\r\n- 复用 `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js` 的共享 fixture 模式（beforeAll API 部署 l4d2 运行实例 + afterAll 清理）；若票 02（addons 可见性）已修，可直接扩展现有文件。\r\n- 选择器事实已探明：`backend/plugin-l4d2/frontend/src/pages/*` 各页根元素类名（`.dashboard-page` 风格）。\r\n- 每条用例头按既有格式声明\"页面/用例/前置/步骤/通过标准\"。\r\n\r\n## 验收\r\n\r\n- [x] 上述 8 条用例已加入 `frontend/e2e/plugins/l4d2/plugin-subapp.spec.js` 的共享 fixture 套件，\r\n      随 `npm run e2e:round` 的“插件子应用 l4d2”分组执行\r\n- [ ] 整轮 PASS（本环境未能执行：当前仓库 `frontend/node_modules` 缺失，\r\n      且任务要求不重启已有服务）\r\n\r\n## Answer\r\n\r\n- 在既有 `plugin-subapp.spec.js` 共享 fixture 上补齐 8 条次要页面用例：系统监控、日志、\r\n  玩家统计、管理员、服务器信息、预设场景、下载管理、地图中心。\r\n- 每"
     },
     {
       "id": ".scratch/backlog/issues/06-rcon-deep-ops-with-live-players.md",
@@ -998,19 +1000,27 @@
       "closed": false,
       "summary": "",
       "acceptance": [
-        "环境可行性结论（真实玩家源方案）",
-        "用例实现并挂到整轮插件分组（标记为环境依赖组）"
+        "环境可行性结论：laoyutang/l4d2-pure 可直接使用 L4D2RCONPASSWORD，当前实例 RCON 可用；不需要等待官方 cm2network 镜像。",
+        "用例实现并显式门控：E2EL4D2LIVEINSTANCEID 未设置时整文件 SKIP，避免默认受管 E2E 误写真实服务器。",
+        "难度切换：smcvar zdifficulty 后执行 zdifficulty 回读；命令未生效时返回业务失败。",
+        "踢人：创建 bot、users/status 双确认、调用 kick API 后确认 users 中消失。",
+        "封禁能力探测：help banid/cvarlist banid 与 writeid 可用，不对真实 SteamID 落盘。",
+        "封禁 UI 与 addban 生效断言：当前 RCON 页面没有封禁对话框，需产品实现后才能转为完整 E2E-063。"
       ],
       "acceptanceChecks": [
-        "环境可行性结论（真实玩家源方案）",
-        "用例实现并挂到整轮插件分组（标记为环境依赖组）"
+        "环境可行性结论：laoyutang/l4d2-pure 可直接使用 L4D2RCONPASSWORD，当前实例 RCON 可用；不需要等待官方 cm2network 镜像。",
+        "用例实现并显式门控：E2EL4D2LIVEINSTANCEID 未设置时整文件 SKIP，避免默认受管 E2E 误写真实服务器。",
+        "难度切换：smcvar zdifficulty 后执行 zdifficulty 回读；命令未生效时返回业务失败。",
+        "踢人：创建 bot、users/status 双确认、调用 kick API 后确认 users 中消失。",
+        "封禁能力探测：help banid/cvarlist banid 与 writeid 可用，不对真实 SteamID 落盘。",
+        "封禁 UI 与 addban 生效断言：当前 RCON 页面没有封禁对话框，需产品实现后才能转为完整 E2E-063。"
       ],
       "questions": [],
       "comments": [],
       "href": "../backlog/issues/06-rcon-deep-ops-with-live-players.md",
       "specHref": "../backlog/README.md",
       "specPath": ".scratch/backlog/README.md",
-      "excerpt": "# 06 — RCON 深度操作用例（踢人/封禁/难度/换图验证，需真实玩家在线）\n\n**Status:** needs-triage\n\n## 背景\n\n清单 E2E-061~065 的 RCON 深度操作在本轮只覆盖了 `status` 执行与特殊字符命令（票 07）。踢人/封禁/难度切换的**效果断言**需要服务器上有真实玩家（或 bot）在线。\n\n## 要补的用例\n\n| ID | 操作 | 效果断言 |\n|----|------|----------|\n| E2E-062 | 踢人 | 玩家列表中出现目标 → 踢出 → 玩家消失（经 A2S/status 双确认） |\n| E2E-063 | 封禁 | 封禁对话框 → addban 生效（ban 列表/日志可见） |\n| E2E-064 | 切换难度 | mp_coop Mission 难度 CVAR 变更（经 status/cvar 查询确认） |\n| E2E-092 | 防注入拦截 | **注意：当前 RCON 控制台无前端/后端拦截实现**（平台仅有 SourceMod CVAR 黑名单）——先做产品决策：是否要在 RCON 命令链路加拦截，再定用例 |\n\n## 前置条件（环境）\n\n- 一个能进真实玩家（或 SourceBot/模拟连接脚本）的 l4d2 服务器；\n- RCON 密码可达：retag 镜像无法注入 SRCDS_RCONPW（laoyutang 镜像用 L4D2_* 约定），需用官方 cm2network 镜像（网络可达后）或给该镜像适配 env。\n\n## 实施要点\n\n- 放在 `frontend/e2e/plugins/l4d2/` 用例包内，与票 07 共享 fixture；\n- 玩家模拟：srcds 支持 bot（`tf_bot` 类比 l4d2 无 bot 指令，需真实客户端或 SteamCMD 模拟工具）——先做环境可行性验证再写用例。\n\n## 验收\n\n- [ ] 环境可行性结论（真实玩家源方案）\n- [ ] 用例实现并挂到整轮插件分组（标记为环境依赖组）\n"
+      "excerpt": "# 06 — RCON 深度操作用例（踢人/封禁/难度/换图验证，需真实玩家在线）\r\n\r\n**Status:** ready-for-human\r\n\r\n## 背景\r\n\r\n清单 E2E-061~065 的 RCON 深度操作在本轮只覆盖了 `status` 执行与特殊字符命令（票 07）。踢人/封禁/难度切换的**效果断言**需要服务器上有真实玩家（或 bot）在线。\r\n\r\n## 要补的用例\r\n\r\n| ID | 操作 | 效果断言 |\r\n|----|------|----------|\r\n| E2E-062 | 踢人 | 玩家列表中出现目标 → 踢出 → 玩家消失（经 A2S/status 双确认） |\r\n| E2E-063 | 封禁 | 封禁对话框 → addban 生效（ban 列表/日志可见） |\r\n| E2E-064 | 切换难度 | mp_coop Mission 难度 CVAR 变更（经 status/cvar 查询确认） |\r\n| E2E-092 | 防注入拦截 | **注意：当前 RCON 控制台无前端/后端拦截实现**（平台仅有 SourceMod CVAR 黑名单）——先做产品决策：是否要在 RCON 命令链路加拦截，再定用例 |\r\n\r\n## 前置条件（环境）\r\n\r\n- 一个能进真实玩家（或 SourceBot/模拟连接脚本）的 l4d2 服务器；\r\n- RCON 密码可达。\r\n\r\n## 实施要点\r\n\r\n- 放在 `frontend/e2e/plugins/l4d2/` 用例包内，与票 07 共享 fixture；\r\n- 玩家模拟：SourceMod 的 `sb_add` 可生成 SurvivorBot；bot 会出现在 `users` 与 `status`，但不计入 `status` 的 humans 数。\r\n\r\n## 验收\r\n\r\n- [x] 环境可行性结论：`laoyutang/l4d2-pure` 可直接使用 `L4D2_RCON_PASSWORD`，当前实例 RCON 可用；不需要等待官方 cm2network 镜像。\r\n- [x] 用例实现并显式门控：`E2E_L4D2_LIVE_INSTANCE_ID` 未设置时整文件 SKIP，避免默认受管 E2E 误写真实服务器。\r\n- [x] 难度切换：`sm_cvar z_difficulty` 后执行 `z_difficulty` 回读；命令未生效时返回业务失败。\r\n- [x] 踢人：创建 bot、`users`/`status` 双确认、调用 kick API 后确认 `users` 中消失。\r\n- [x] 封禁能力探测：`help banid`/`cvarlist banid` 与 `writeid` 可用，不对真实 SteamID 落盘。\r\n- [ ] 封禁 UI 与 addba"
     },
     {
       "id": ".scratch/backlog/issues/07-linuxgsm-github-blocked-environment.md",
@@ -1039,11 +1049,42 @@
         "整轮 PASS"
       ],
       "questions": [],
-      "comments": [],
+      "comments": [
+        "This was generated by AI during triage.",
+        "2026-10-20 Triage",
+        "分类： bug（环境阻塞）",
+        "状态： needs-info",
+        "原描述的“本机 WSL 容器内访问 GitHub 不通”在 2026-10-20 已不能复现。"
+      ],
       "href": "../backlog/issues/07-linuxgsm-github-blocked-environment.md",
       "specHref": "../backlog/README.md",
       "specPath": ".scratch/backlog/README.md",
-      "excerpt": "# 07 — 环境阻塞：容器内 GitHub 不可达，dst/sdtd 启停断言待转正\n\n**Status:** needs-triage\n\n## 背景\n\nLinuxGSM 容器首启需访问 GitHub 下载 serverlist.csv，本机 WSL 容器内访问 GitHub 不通 → `/app/<shortname>` 脚本永不生成 → dst/sdtd 服务器无法进入运行中。这是**环境问题**（LinuxGsmDockerAdapter 源码注释有预言），非产品缺陷。票 08 已实现连通性预检秒级跳过。\n\n## 解除条件（三选一）\n\n1. 给 Docker 容器配置 HTTP 代理（daemon/容器级 `HTTP_PROXY`）；\n2. 在可直连 GitHub 的环境跑 E2E（远程牺牲主机，凭据走 `E2E_TEST_HOST_*`）；\n3. 为 LinuxGSM 提供离线 serverlist（镜像侧改造，成本最高）。\n\n## 转正步骤\n\n解除阻塞后，`frontend/e2e/main-app/instance/drill-legs.spec.js`：\n- dst 腿：`needsToken: true` 保持（另需 DST cluster token，Steam 账号生成——见票内备注）；启停断言中\"无 token 启动即退\"逻辑确认是否仍适用；\n- sdtd 腿：删除\"轮询重试启动\"用例中 `waitForLinuxGsmReady` 返回 false 的 SKIP 分支，恢复完整 `运行中` 断言；\n- 跑 `npm run e2e:round` 验证整轮 PASS。\n\n## 验收\n\n- [ ] 阻塞解除（容器内 `curl -m 8 -sI https://raw.githubusercontent.com` 返回 2xx/3xx）\n- [ ] sdtd 腿完整启停绿\n- [ ] 整轮 PASS\n"
+      "excerpt": "# 07 — 环境阻塞：容器内 GitHub 不可达，dst/sdtd 启停断言待转正\r\n\r\n**Status:** needs-info\r\n\r\n## 背景\r\n\r\nLinuxGSM 容器首启需访问 GitHub 下载 serverlist.csv，本机 WSL 容器内访问 GitHub 不通 → `/app/<shortname>` 脚本永不生成 → dst/sdtd 服务器无法进入运行中。这是**环境问题**（LinuxGsmDockerAdapter 源码注释有预言），非产品缺陷。票 08 已实现连通性预检秒级跳过。\r\n\r\n## 解除条件（三选一）\r\n\r\n1. 给 Docker 容器配置 HTTP 代理（daemon/容器级 `HTTP_PROXY`）；\r\n2. 在可直连 GitHub 的环境跑 E2E（远程牺牲主机，凭据走 `E2E_TEST_HOST_*`）；\r\n3. 为 LinuxGSM 提供离线 serverlist（镜像侧改造，成本最高）。\r\n\r\n## 转正步骤\r\n\r\n解除阻塞后，`frontend/e2e/main-app/instance/drill-legs.spec.js`：\r\n- dst 腿：`needsToken: true` 保持（另需 DST cluster token，Steam 账号生成——见票内备注）；启停断言中\"无 token 启动即退\"逻辑确认是否仍适用；\r\n- sdtd 腿：删除\"轮询重试启动\"用例中 `waitForLinuxGsmReady` 返回 false 的 SKIP 分支，恢复完整 `运行中` 断言；\r\n- 跑 `npm run e2e:round` 验证整轮 PASS。\r\n\r\n## 验收\r\n\r\n- [x] 阻塞解除（容器内 `curl -m 8 -sI https://raw.githubusercontent.com` 返回 2xx/3xx）\r\n- [ ] sdtd 腿完整启停绿\r\n- [ ] 整轮 PASS\r\n\r\n## Comments\r\n\r\n> *This was generated by AI during triage.*\r\n\r\n### 2026-10-20 Triage\r\n\r\n**分类：** bug（环境阻塞）\r\n**状态：** needs-info\r\n\r\n原描述的“本机 WSL 容器内访问 GitHub 不通”在 2026-10-20 已不能复现。\r\n当前的 Steam302 + hosts + CA 链路能够完成 LinuxGSM 的 GitHub 初始化，\r\n并且 `drill-legs.spec.js` 已不再静默 SKIP：预检失败会抛出带实际值、\r\nhint 和 remediation 的 `[CHECK][FAIL]`。\r\n\r\n已建立的事实：\r\n\r\n- WSL eth0 为 `"
+    },
+    {
+      "id": ".scratch/backlog/issues/08-rcon-command-interception-decision.md",
+      "title": "08 — RCON 任意命令链路是否增加防注入拦截",
+      "number": "08",
+      "feature": "backlog",
+      "area": "Backlog",
+      "status": "open (directory)",
+      "statusLabel": "目录内待处理",
+      "statusTone": "open",
+      "statusSource": "directory",
+      "type": "unspecified",
+      "priority": "",
+      "source": "",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "",
+      "acceptance": [],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [],
+      "href": "../backlog/issues/08-rcon-command-interception-decision.md",
+      "specHref": "../backlog/README.md",
+      "specPath": ".scratch/backlog/README.md",
+      "excerpt": "# 08 — RCON 任意命令链路是否增加防注入拦截\r\n\r\n**Status:** ready-for-human\r\n\r\n> *This was generated by AI during triage.*\r\n\r\n## 背景\r\n\r\n清单 E2E-092 要求“输入恶意命令 → 防注入拦截”，但当前\r\n`POST /api/plugin/l4d2/rcon/execute` 明确是“执行任意 RCON 命令”的原始控制台通道：\r\n前端直接把输入框内容提交给后端，后端直接转交宿主 `RconService`，没有命令解析、\r\nallowlist/denylist 或注入拦截层。平台其他配置路径使用的 SourceMod CVAR 黑名单\r\n不能保护这条任意命令通道。\r\n\r\n这与票 06 的“深度操作效果断言”不是一个问题：票 06 可以用真实 bot 验证难度与踢人，\r\n但“是否允许用户执行哪些远程命令”是产品与权限模型决策，不能靠测试自行假定。\r\n\r\n## 需要人工决定\r\n\r\n请选择一种目标行为，并把决定写回本票：\r\n\r\n1. **保留原始控制台**：任意命令继续透传，E2E-092 改为验证“命令原样到达/无崩溃”，并在界面与文档中明确这是高权限原始通道。\r\n2. **后端精确 allowlist**：按 L4D2 运维命令维护可执行清单，未知命令返回业务失败；需要定义扩展命令、参数匹配与错误码。\r\n3. **命令解析器 + 风险策略**：允许自由命令，但识别 `;`、换行、引号、`exec`、文件写入、封禁等高影响结构并拦截/二次确认；需要明确解析规则，避免仅做字符串替换。\r\n4. **仅审计、不拦截**：保留透传，把每次命令、调用者、实例、结果写入操作审计，E2E-092 转为审计断言。\r\n\r\n## 验收标准\r\n\r\n- [ ] 明确原始 RCON 控制台是否是受支持的产品能力，以及其权限边界。\r\n- [ ] 如果拦截：定义拒绝规则、错误响应与审计字段，并覆盖普通命令、特殊字符、换行/分号组合和未知命令。\r\n- [ ] 如果不拦截：修改 E2E-092 与界面提示，不再宣称“防注入”。\r\n- [ ] 任何方案都不得把 SourceMod CVAR 黑名单误当作任意命令通道的拦截证据。\r\n\r\n## 当前证据\r\n\r\n- `RconController.executeCommand()` 直接调用 `L4D2RconService.executeCommand()`。\r\n- `Rcon.vue` 只有文本输入框与“执行”按钮，没有命令策略提示或拦截逻辑。\r\n- 实例 97 上 `say \"e2e-rcon-live-bot'--; status` 原样透传并返回控制台回显。\r\n\r\n## 范围外\r\n\r\n- 修复难度切换假成功（已在本 worktree 处理，属"
     },
     {
       "id": ".scratch/ui-e2e-automation/issues/01-e2e-infra-bootstrap.md",
@@ -1365,7 +1406,7 @@
       "href": "../architecture-review-20261015/issues/03-remotehost-deep-module.md",
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
-      "excerpt": "# 03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 2）\r\n\r\n## 现象\r\n\r\n上一轮评审（2026-08-13 候选 2）已建立 `DeploymentAccess` 深模块收敛「deployType 分类 + Host→SSH 凭据解析」。\r\n但该 seam **只覆盖了 credentials/connect，没有把传输层包进去**，于是调用方从旁边绕回来：\r\n\r\n```\r\n45 处 sshUtil.executeCommand(host, port, user, key, pwd, cmd, timeout)\r\n```\r\n\r\n分布：`InstanceFileServiceImpl` 11 · `HostsFileRefresher` 8 · `DeployService` 6 · `BackupServiceImpl` 5\r\n· `SudoAwareSshRunner` 4 · 其余 8 个文件各 1-2。\r\n\r\n## 根因\r\n\r\n`SshUtil` 的 interface 宽达 **7 参数 × 11 方法**，且它本身就是 seam 的所在地——\r\n调用方直接传 7 元组，等于把「凭据如何解析」重新摊给每个调用方。\r\n16 个文件里每一个都得自己记得 `getHost → 判空 → credentials → 传包`。\r\n\r\n两个后果：\r\n\r\n- 凭据解析规则（ADR 明文禁止把用户名当密码、私钥优先密码回退）在 seam 外失效。\r\n- `DeployService:1026` 自带一条本地策略（有密码时丢弃私钥）覆盖 `DeploymentAccess` 的行为——\r\n  同一个规则，两个模块各说各话。\r\n- 另有第二个解凭据的模块 `SudoAwareSshRunner`（仅 5 个使用方），与 `DeploymentAccess` 平行存在。\r\n\r\n## 修复建议\r\n\r\n`RemoteHost` 深模块以 **hostId 为唯一入口**，承载凭据解析、提权策略、超时、重试与在线状态对账；\r\n`SshUtil` 降为它的内部实现细节（内部 seam，供本模块自身测试注入假传输）。\r\n\r\n```\r\nremoteHost.exec(hostId, command)          → CommandResult\r\nremoteHost.execPrivileged(hostId, command)\r\nremoteHost.upload(hostId, local, remote)\r\n```\r\n\r\n调用方写 `remoteHost.exec(hos"
+      "excerpt": "# 03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 2）\r\n\r\n## 现象\r\n\r\n上一轮评审（2026-08-13 候选 2）已建立 `DeploymentAccess` 深模块收敛「deployType 分类 + Host→SSH 凭据解析」。\r\n但该 seam **只覆盖了 credentials/connect，没有把传输层包进去**，于是调用方从旁边绕回来：\r\n\r\n```\r\n45 处 sshUtil.executeCommand(host, port, user, key, pwd, cmd, timeout)\r\n```\r\n\r\n分布：`InstanceFileServiceImpl` 11 · `HostsFileRefresher` 8 · `DeployService` 6 · `BackupServiceImpl` 5\r\n· `SudoAwareSshRunner` 4 · 其余 8 个文件各 1-2。\r\n\r\n## 根因\r\n\r\n`SshUtil` 的 interface 宽达 **7 参数 × 11 方法**，且它本身就是 seam 的所在地——\r\n调用方直接传 7 元组，等于把「凭据如何解析」重新摊给每个调用方。\r\n16 个文件里每一个都得自己记得 `getHost → 判空 → credentials → 传包`。\r\n\r\n两个后果：\r\n\r\n- 凭据解析规则（ADR 明文禁止把用户名当密码、私钥优先密码回退）在 seam 外失效。\r\n- `DeployService:1026` 自带一条本地策略（有密码时丢弃私钥）覆盖 `DeploymentAccess` 的行为——\r\n  同一个规则，两个模块各说各话。\r\n- 另有第二个解凭据的模块 `SudoAwareSshRunner`（仅 5 个使用方），与 `DeploymentAccess` 平行存在。\r\n\r\n## 修复建议\r\n\r\n`RemoteHost` 深模块以 **hostId 为唯一入口**，承载凭据解析、提权策略、超时、重试与在线状态对账；\r\n`SshUtil` 降为它的内部实现细节（内部 seam，供本模块自身测试注入假传输）。\r\n\r\n```\r\nremoteHost.exec(hostId, command)          → CommandResult\r\nremoteHost.execPrivileged(hostId, command)\r\nremoteHost.upload(hostId, local, remote)\r\n```\r\n\r\n调用方写 `remoteHost.exec(hostId,"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/04-typed-task-payload.md",
@@ -1394,7 +1435,7 @@
       "href": "../architecture-review-20261015/issues/04-typed-task-payload.md",
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
-      "excerpt": "# 04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 4）\r\n\r\n## 现象\r\n\r\n每次 service → handler 交接都是一个无类型 `Map<String,Object>`，字段名/类型/必填性写在 Javadoc 与 ADR 正文里，\r\n没有编译期约束让生产端与消费端吻合。\r\n\r\n**同一个逻辑值 `instanceId`，读法不一致**：\r\n\r\n| 消费端 | 行 | 读法 |\r\n|---|---|---|\r\n| `PatchInstallHandler` | :70 | `payload.getLong(\"instanceId\")` |\r\n| `CloudInstallService` | :173-179 | `payload.getLong(\"instanceId\")` |\r\n| `MapUploadTaskHandler` | :64-66 | `Long.parseLong(payload.getString(\"instanceId\"))` |\r\n\r\n生产端同样不一致：`CloudInstallService:117-142` 放 `Long`，`MapService:314-321` 放 `String`。\r\n\r\n## 根因\r\n\r\n`TaskPayload` 是 `Map<String,Object>`，契约由各 Handler 自行约定。票 01（headers/includePattern 被静默丢弃）\r\n正是这套契约的必然产物——一个 field 可以无声消失，两侧无人察觉。\r\n\r\n## 修复建议\r\n\r\n按任务族定义类型化 payload（`PatchInstallPayload`、`CloudInstallPayload` 等），\r\n由一个 codec 负责两侧序列化/反序列化；提交接口收 spec 对象而非 Map：\r\n\r\n```\r\nsubmit(taskType, source, scope, SPEC spec)   // 框架把 SPEC 落成 JSON\r\nexecute(context, SPEC spec)                  // handler 拿到类型化 spec\r\n```\r\n\r\n## 验收\r\n\r\n- 至少一个任务族（PATCH_INSTALL）完成类型化，含往返 codec 单测。\r\n- 消除 `getString`/`getLong` 类型漂移。\r\n- 生产端与消费端字段不一致时编译期或测试期即失败。\r\n\r\n## 关联\r\n\r\n- **前置**：票 01 已把 PATCH_INSTALL "
+      "excerpt": "# 04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 4）\r\n\r\n## 现象\r\n\r\n每次 service → handler 交接都是一个无类型 `Map<String,Object>`，字段名/类型/必填性写在 Javadoc 与 ADR 正文里，\r\n没有编译期约束让生产端与消费端吻合。\r\n\r\n**同一个逻辑值 `instanceId`，读法不一致**：\r\n\r\n| 消费端 | 行 | 读法 |\r\n|---|---|---|\r\n| `PatchInstallHandler` | :70 | `payload.getLong(\"instanceId\")` |\r\n| `CloudInstallService` | :173-179 | `payload.getLong(\"instanceId\")` |\r\n| `MapUploadTaskHandler` | :64-66 | `Long.parseLong(payload.getString(\"instanceId\"))` |\r\n\r\n生产端同样不一致：`CloudInstallService:117-142` 放 `Long`，`MapService:314-321` 放 `String`。\r\n\r\n## 根因\r\n\r\n`TaskPayload` 是 `Map<String,Object>`，契约由各 Handler 自行约定。票 01（headers/includePattern 被静默丢弃）\r\n正是这套契约的必然产物——一个 field 可以无声消失，两侧无人察觉。\r\n\r\n## 修复建议\r\n\r\n按任务族定义类型化 payload（`PatchInstallPayload`、`CloudInstallPayload` 等），\r\n由一个 codec 负责两侧序列化/反序列化；提交接口收 spec 对象而非 Map：\r\n\r\n```\r\nsubmit(taskType, source, scope, SPEC spec)   // 框架把 SPEC 落成 JSON\r\nexecute(context, SPEC spec)                  // handler 拿到类型化 spec\r\n```\r\n\r\n## 验收\r\n\r\n- 至少一个任务族（PATCH_INSTALL）完成类型化，含往返 codec 单测。\r\n- 消除 `getString`/`getLong` 类型漂移。\r\n- 生产端与消费端字段不一致时编译期或测试期即失败。\r\n\r\n## 关联\r\n\r\n- **前置**：票 01 已把 PATCH_INSTALL 的字段清"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/05-host-tooling-port-neutrality.md",
@@ -1452,7 +1493,7 @@
       "href": "../architecture-review-20261015/issues/06-child-task-follower.md",
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
-      "excerpt": "# 06 — 子任务跟随与进度窗口在两个 service 里逐字重复\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 6）\r\n\r\n## 现象\r\n\r\n「跟随一个已提交的子任务」这段握手在两个 service 里各写一遍：\r\n\r\n| 位置 | 内容 |\r\n|---|---|\r\n| `CloudInstallService:426-458` | `pollPatchTask` + `Thread.sleep(2000)` |\r\n| `DownloadService:432-476` | 同名方法，同 4 状态 switch，同 sleep |\r\n\r\n两处都实现「每 2s 查 `taskService.getTask(id)`，把 PENDING/RUNNING/COMPLETED/FAILED/CANCELLED\r\n映射到本地状态与进度」。差异只在写往哪里（VO vs `RecordUpdater`）。\r\n\r\n进度窗口换算第三次重复于 `MapUploadTaskHandler:181-219`（0-100 折进 `[startPercent, endPercent]`）。\r\n\r\n## 根因\r\n\r\nplugin SDK 的 `TaskService` 有 `getTask(String)`，但**没有「跟随」这一等能力**。\r\n于是每个用到它的 service 各自实现轮询循环、状态映射与进度换算。\r\n\r\n**取消语义还不一致**：`CloudInstallService` 抛 `CancelledSignal`，`DownloadService` 只同步终态。\r\n\r\n## 修复建议\r\n\r\nSDK 提供 `ChildTaskFollower`：\r\n\r\n```\r\nfollow(childTaskId, ProgressWindow(base, slice), TaskContext, ChildOutcome) → void\r\n```\r\n\r\n内部承担轮询节奏、状态映射、取消传播与进度窗口换算。两个 service 删掉各自的循环。\r\n\r\n## 验收\r\n\r\n- 插件 SDK 暴露 `ChildTaskFollower`，两个 service 不再有 `pollPatchTask`。\r\n- 轮询间隔与任务状态词只存在一处。\r\n- 取消语义收敛为一种；用假 `TaskService` 可直接单测跟随逻辑。\r\n\r\n## 关联\r\n\r\n`TaskVO.getStatus()` 的字符串状态词（`\"PENDING\"` 等）散落在这些循环里，\r\n若未来任务中心状态词变更，本票能一并收口。\r\n"
+      "excerpt": "# 06 — 子任务跟随与进度窗口在两个 service 里逐字重复\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 6）\r\n\r\n## 现象\r\n\r\n「跟随一个已提交的子任务」这段握手在两个 service 里各写一遍：\r\n\r\n| 位置 | 内容 |\r\n|---|---|\r\n| `CloudInstallService:426-458` | `pollPatchTask` + `Thread.sleep(2000)` |\r\n| `DownloadService:432-476` | 同名方法，同 4 状态 switch，同 sleep |\r\n\r\n两处都实现「每 2s 查 `taskService.getTask(id)`，把 PENDING/RUNNING/COMPLETED/FAILED/CANCELLED\r\n映射到本地状态与进度」。差异只在写往哪里（VO vs `RecordUpdater`）。\r\n\r\n进度窗口换算第三次重复于 `MapUploadTaskHandler:181-219`（0-100 折进 `[startPercent, endPercent]`）。\r\n\r\n## 根因\r\n\r\nplugin SDK 的 `TaskService` 有 `getTask(String)`，但**没有「跟随」这一等能力**。\r\n于是每个用到它的 service 各自实现轮询循环、状态映射与进度换算。\r\n\r\n**取消语义还不一致**：`CloudInstallService` 抛 `CancelledSignal`，`DownloadService` 只同步终态。\r\n\r\n## 修复建议\r\n\r\nSDK 提供 `ChildTaskFollower`：\r\n\r\n```\r\nfollow(childTaskId, ProgressWindow(base, slice), TaskContext, ChildOutcome) → void\r\n```\r\n\r\n内部承担轮询节奏、状态映射、取消传播与进度窗口换算。两个 service 删掉各自的循环。\r\n\r\n## 验收\r\n\r\n- 插件 SDK 暴露 `ChildTaskFollower`，两个 service 不再有 `pollPatchTask`。\r\n- 轮询间隔与任务状态词只存在一处。\r\n- 取消语义收敛为一种；用假 `TaskService` 可直接单测跟随逻辑。\r\n\r\n## 关联\r\n\r\n`TaskVO.getStatus()` 的字符串状态词（`\"PENDING\"` 等）散落在这些循环里，\r\n若未来任务中心状态词变更，本票能一并收口。\r\n\r\n## Answer\r\n\r\n- 插件 SDK 新增 `ChildTaskFollower`、`Progr"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/07-host-session-module.md",
@@ -1481,7 +1522,7 @@
       "href": "../architecture-review-20261015/issues/07-host-session-module.md",
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
-      "excerpt": "# 07 — HostServiceImpl 四处重复「连主机→写在线状态」，错误契约自相矛盾\r\n\r\n**Status:** needs-triage\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 7）\r\n\r\n## 现象\r\n\r\n`HostServiceImpl` 有四个方法，各自重复同一套四步动作\r\n（`selectById → 判空 → credentials → ssh 操作 → updateOnlineStatus(0|1) → 组装 VO`）：\r\n\r\n| 方法 | 行 |\r\n|---|---|\r\n| `testConnection` | :242-276 |\r\n| `refreshStatus` | :279-330 |\r\n| `checkPort` | :405-439 |\r\n| `getHostResourceInfo` | :442-518 |\r\n\r\n**同一个 SSH 调用，两种错误契约**：`refreshStatus` 失败写 `0`（离线），\r\n`getHostResourceInfo` 失败返回 `null`。`refreshStatus` 与 `getHostResourceInfo` 还抓取**同一份**\r\n`SshUtil.ResourceInfo` 再组装成不同形状。\r\n\r\n## 根因\r\n\r\nSSH 调用与数据库副作用（写在线状态）被焊死在同一个方法体里，\r\n所以「什么时候把主机标离线」这句话在四处各写一遍且不一致，\r\n且**无法按接口测试**——想验证「失败时怎么标记主机」只能真连一台主机。\r\n\r\n附带：`HostServiceImpl:17` 导入的是宿主内部实现 `SshTunnelManager`（住在 plugin 包），\r\n而面向插件的 SDK 契约是 `SshTunnelService` —— core 顺着内部类型穿过了自己的 seam。\r\n\r\n## 修复建议\r\n\r\n`HostSession` 深模块以 hostId + 操作为入口，内部承担凭据、超时、在线状态对账与统一错误契约：\r\n\r\n```\r\n<T> T run(hostId, HostOp<T> op)\r\n```\r\n\r\n四个公开方法退化为一行委托。\r\n\r\n## 验收\r\n\r\n- 在线状态对账规则只有一处实现，可用假 SSH 传输单测。\r\n- 错误契约统一（消除 `null` / 写 `0` 双标）。\r\n- `HostServiceImpl` 不再引用 `SshTunnelManager`（改用 SDK 的 `SshTunnelService`）。\r\n\r\n## 关联\r\n\r\n与票 03（RemoteHost）是同一组行为的两个入口，建议一并设计。\r\n"
+      "excerpt": "# 07 — HostServiceImpl 四处重复「连主机→写在线状态」，错误契约自相矛盾\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 7）\r\n\r\n## 现象\r\n\r\n`HostServiceImpl` 有四个方法，各自重复同一套四步动作\r\n（`selectById → 判空 → credentials → ssh 操作 → updateOnlineStatus(0|1) → 组装 VO`）：\r\n\r\n| 方法 | 行 |\r\n|---|---|\r\n| `testConnection` | :242-276 |\r\n| `refreshStatus` | :279-330 |\r\n| `checkPort` | :405-439 |\r\n| `getHostResourceInfo` | :442-518 |\r\n\r\n**同一个 SSH 调用，两种错误契约**：`refreshStatus` 失败写 `0`（离线），\r\n`getHostResourceInfo` 失败返回 `null`。`refreshStatus` 与 `getHostResourceInfo` 还抓取**同一份**\r\n`SshUtil.ResourceInfo` 再组装成不同形状。\r\n\r\n## 根因\r\n\r\nSSH 调用与数据库副作用（写在线状态）被焊死在同一个方法体里，\r\n所以「什么时候把主机标离线」这句话在四处各写一遍且不一致，\r\n且**无法按接口测试**——想验证「失败时怎么标记主机」只能真连一台主机。\r\n\r\n附带：`HostServiceImpl:17` 导入的是宿主内部实现 `SshTunnelManager`（住在 plugin 包），\r\n而面向插件的 SDK 契约是 `SshTunnelService` —— core 顺着内部类型穿过了自己的 seam。\r\n\r\n## 修复建议\r\n\r\n`HostSession` 深模块以 hostId + 操作为入口，内部承担凭据、超时、在线状态对账与统一错误契约：\r\n\r\n```\r\n<T> T run(hostId, HostOp<T> op)\r\n```\r\n\r\n四个公开方法退化为一行委托。\r\n\r\n## 验收\r\n\r\n- 在线状态对账规则只有一处实现，可用假 SSH 传输单测。\r\n- 错误契约统一（消除 `null` / 写 `0` 双标）。\r\n- `HostServiceImpl` 不再引用 `SshTunnelManager`（改用 SDK 的 `SshTunnelService`）。\r\n\r\n## 关联\r\n\r\n与票 03（RemoteHost）是同一组行为的两个入口，建议一并设计。\r\n\r\n## Answer\r\n\r\n- 新增 `HostSession`，统一封装“"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/08-l4d2-status-vocabulary.md",
@@ -1512,6 +1553,39 @@
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
       "excerpt": "# 08 — 难度/模式词汇表散在 3 语言 4 副本，已有可见漂移\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 8）\r\n\r\n## 现象\r\n\r\nL4D2 的玩家数正则与难度/模式中英对照表共 **4 份副本**：\r\n\r\n| 副本 | 位置 | 内容 |\r\n|---|---|---|\r\n| 1 | `L4D2RconService:32` | `PLAYERS_PATTERN` 正则 |\r\n| 2 | `StatusParser:37` | **逐字相同**的正则副本 |\r\n| 3 | `L4D2RconService:288-389` | 难度/模式中文↔英文切换表（≈100 行） |\r\n| 4 | `frontend/src/utils/statusParser.ts:232,251` | TS 侧难度/模式对照表 |\r\n| — | `frontend/src/utils/gameConstants.ts:6,31` | 第四份，含 `alias` 字段 |\r\n| — | `frontend/src/api/index.ts:21-23` | `toCode()` 兼容层，只用于把 Java 输出翻回前端期望 |\r\n\r\n**已经漂移**：`statusParser.ts` 对未知值返回 `'normal'`，而 API 层对未知返回 `''` —— \r\n`api/index.test.ts:57` 这条用例存在的目的就是给这处不一致打补丁。\r\n\r\n## 根因\r\n\r\n同一份词汇表被重新实现在 3 种语言里，且没有一个 owner。改一次要动 4 处。\r\n\r\n**已有实际成本**：`ad6d58b fix(l4d2): 仪表盘难度/游戏模式前端映射修复` —— \r\n一次修复被施加在前端副本上。\r\n\r\nADR-0005 已为实例状态确立「后端枚举是唯一文本源」的做法（前端只保留 UI 元数据），\r\n难度/模式未套用同一模式。\r\n\r\n## 修复建议\r\n\r\n插件侧一个词汇表 module（以 `StatusParser` 为唯一 owner，吸收 `L4D2RconService` 的切换表）：\r\n\r\n```\r\nparse(statusText) → Status\r\ndifficultyLabel(raw) → String      // 后端出中文标签\r\ngameModeLabel(raw) → String\r\ntoWireCode(cnLabel) → String\r\n```\r\n\r\n前端删除 `difficultyMap` / `modeMap` / `toCode()`，改为消费后端已翻译的中文标签\r\n（与 `instanceStatus.js` 消费 `runSta"
+    },
+    {
+      "id": ".scratch/architecture-review-20261015/issues/09-child-task-unknown-loop.md",
+      "title": "09 — ChildTaskFollower 遇到 UNKNOWN 状态会无限轮询",
+      "number": "09",
+      "feature": "architecture-review-20261015",
+      "area": "Architecture review",
+      "status": "open (review)",
+      "statusLabel": "架构评审待处理",
+      "statusTone": "open",
+      "statusSource": "directory",
+      "type": "unspecified",
+      "priority": "",
+      "source": "",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "ChildTaskFollower.follow(...) 对无法识别的任务状态进入 UNKNOWN 分支后只继续循环，",
+      "acceptance": [
+        "UNKNOWN 不再造成无界轮询。",
+        "假 TaskService 可稳定复现并验证上限行为。",
+        "现有跟随状态、取消、超时测试继续通过。"
+      ],
+      "acceptanceChecks": [
+        "UNKNOWN 不再造成无界轮询。",
+        "假 TaskService 可稳定复现并验证上限行为。",
+        "现有跟随状态、取消、超时测试继续通过。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../architecture-review-20261015/issues/09-child-task-unknown-loop.md",
+      "specHref": "../architecture-review-20261015/README.md",
+      "specPath": ".scratch/architecture-review-20261015/README.md",
+      "excerpt": "# 09 — ChildTaskFollower 遇到 UNKNOWN 状态会无限轮询\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** Arch 04/06 实施后复核\r\n\r\n## 现象\r\n\r\n`ChildTaskFollower.follow(...)` 对无法识别的任务状态进入 `UNKNOWN` 分支后只继续循环，\r\n既不设置上限，也不返回失败。若任务中心返回新状态词、空状态或格式异常，\r\n父任务会每 2 秒无限查询下去，直到外层任务被取消或超时。\r\n\r\n## 根因\r\n\r\n状态词解释只覆盖当前已知的 `PENDING/RUNNING/COMPLETED/FAILED/CANCELLED`；\r\n`UNKNOWN` 被当作“瞬时状态继续重试”，但没有连续次数或时间边界。\r\n\r\n## 修复建议\r\n\r\n为连续 `UNKNOWN` 设置明确上限（例如连续 3 次），超过后返回\r\n`ChildTaskOutcome.failed(\"子任务状态未知\")`，并补回归测试覆盖：\r\n\r\n1. 连续 `UNKNOWN` 达到上限即失败，不再继续轮询；\r\n2. 中间恢复正常状态时计数重置，不误判；\r\n3. `null` 任务或缺失状态同样纳入 `UNKNOWN` 上限。\r\n\r\n## 验收\r\n\r\n- [x] `UNKNOWN` 不再造成无界轮询。\r\n- [x] 假 `TaskService` 可稳定复现并验证上限行为。\r\n- [x] 现有跟随状态、取消、超时测试继续通过。\r\n\r\n## Answer\r\n\r\n- 连续 `UNKNOWN`（包括任务不存在或状态缺失）最多重试 3 次；达到上限后返回\r\n  `ChildTaskOutcome.failed(\"子任务状态未知\")`。\r\n- 任一已知状态出现时重置连续计数，避免瞬时未知状态在后续恢复正常时被误判。\r\n- `ChildTaskFollowerTest` 新增连续未知、计数重置和任务不存在三类回归用例。\r\n"
     },
     {
       "id": ".scratch/cloud-drive-host-capability/issues/01-clp-sdk-into-core.md",
