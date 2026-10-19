@@ -1,12 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { pluginManageApi, pluginStoreApi, serverApi } from './index'
 
-/**
- * 回归测试：仪表盘难度/游戏模式显示“未知”。
- * 根因链：后端返回中文（“高级”/“合作”）后，toCode 的常量表
- * （label=困难/合作模式）匹配不上 → 置空串 → Dashboard 显示未知。
- * 修复：DIFFICULTIES/GAME_MODES 增加 alias，toCode 支持 alias 与“模式”后缀宽容匹配。
- */
 function stubStatusResponse(vo: Record<string, unknown>) {
   vi.stubGlobal(
     'fetch',
@@ -17,44 +11,34 @@ function stubStatusResponse(vo: Record<string, unknown>) {
   )
 }
 
-describe('serverApi.getStatus 难度/模式归一化', () => {
+describe('serverApi.getStatus 难度/模式透传', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('后端中文“高级”→ hard（回归：此前映射失败显示未知）', async () => {
+  it('后端规范中文标签原样返回', async () => {
     stubStatusResponse({ online: true, difficulty: '高级', gameMode: '合作' })
     const status = await serverApi.getStatus(64)
-    expect(status.difficulty).toBe('hard')
+    expect(status.difficulty).toBe('高级')
+    expect(status.gameMode).toBe('合作')
   })
 
-  it('后端中文“合作”→ coop（回归：此前映射失败显示未知）', async () => {
-    stubStatusResponse({ online: true, difficulty: '高级', gameMode: '合作' })
-    const status = await serverApi.getStatus(64)
-    expect(status.gameMode).toBe('coop')
-  })
-
-  it('“拾荒”→ scavenge（后端与前端 label 用词不同）', async () => {
+  it('后端标签不在 UI 元数据中时也原样返回', async () => {
     stubStatusResponse({ online: true, difficulty: '普通', gameMode: '拾荒' })
     const status = await serverApi.getStatus(64)
-    expect(status.gameMode).toBe('scavenge')
+    expect(status.difficulty).toBe('普通')
+    expect(status.gameMode).toBe('拾荒')
   })
 
-  it('“写实模式”带后缀 → realism', async () => {
-    stubStatusResponse({ online: true, difficulty: '普通', gameMode: '写实模式' })
+  it('未知值不被前端替换', async () => {
+    stubStatusResponse({ online: true, difficulty: '未知', gameMode: '未知' })
     const status = await serverApi.getStatus(64)
-    expect(status.gameMode).toBe('realism')
+    expect(status.difficulty).toBe('未知')
+    expect(status.gameMode).toBe('未知')
   })
 
-  it('英文 code 直接匹配（coop/easy）', async () => {
-    stubStatusResponse({ online: true, difficulty: 'easy', gameMode: 'coop' })
-    const status = await serverApi.getStatus(64)
-    expect(status.difficulty).toBe('easy')
-    expect(status.gameMode).toBe('coop')
-  })
-
-  it('未识别值（未知/空串）保持空串，不得兜底默认值', async () => {
-    stubStatusResponse({ online: true, difficulty: '未知', gameMode: '' })
+  it('空值保持空串，不得兜底默认值', async () => {
+    stubStatusResponse({ online: true, difficulty: '', gameMode: '' })
     const status = await serverApi.getStatus(64)
     expect(status.difficulty).toBe('')
     expect(status.gameMode).toBe('')

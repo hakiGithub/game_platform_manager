@@ -210,7 +210,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { serverApi, instanceApi, restartApi } from '@/api'
 import type { InstanceStatusVO } from '@/api'
 import { usePluginStore } from '@/stores/plugin'
-import { DIFFICULTIES, GAME_MODES } from '@/utils/gameConstants'
+import { DIFFICULTIES } from '@/utils/gameConstants'
 import { formatUptime, parseMapName } from '@/utils/statusParser'
 import type { ServerStatus } from '@/types'
 import MapSelectorModal from '@/components/MapSelectorModal.vue'
@@ -283,22 +283,20 @@ const currentMapName = computed(() => {
 })
 
 const difficultyText = computed(() => {
-  // 查询失败/引擎未返回时显示"未知"，不得兜底为普通等默认值误导用户
   const difficulty = serverStatus.value?.difficulty
-  if (!difficulty) return '未知'
-  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.label || '未知'
+  return difficulty || '未知'
 })
 
 const difficultyColor = computed(() => {
   const difficulty = serverStatus.value?.difficulty
   if (!difficulty) return 'var(--el-color-info)'
-  return DIFFICULTIES[difficulty as keyof typeof DIFFICULTIES]?.color || 'var(--platform-cyan)'
+  return Object.values(DIFFICULTIES).find((item) => item.label === difficulty)?.color
+    || 'var(--platform-cyan)'
 })
 
 const gameModeText = computed(() => {
   const mode = serverStatus.value?.gameMode
-  if (!mode) return '未知'
-  return GAME_MODES[mode as keyof typeof GAME_MODES]?.label || '未知'
+  return mode || '未知'
 })
 
 /**

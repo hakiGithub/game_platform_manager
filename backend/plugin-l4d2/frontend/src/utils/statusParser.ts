@@ -17,7 +17,6 @@ export interface ParsedStatus {
   port: number
   steamId: string
 }
-
 /**
  * 解析 status 命令输出
  */
@@ -223,42 +222,4 @@ export function formatUptime(seconds: number): string {
   } else {
     return `${secs}秒`
   }
-}
-
-/**
- * 解析难度
- */
-export function parseDifficulty(value: string): string {
-  const difficultyMap: Record<string, string> = {
-    '0': 'easy',
-    '1': 'easy',
-    'easy': 'easy',
-    '1.0': 'normal',
-    'normal': 'normal',
-    '2.0': 'hard',
-    'hard': 'hard',
-    'impossible': 'impossible',
-    '3.0': 'impossible'
-  }
-  
-  return difficultyMap[value.toLowerCase()] || 'normal'
-}
-
-/**
- * 解析游戏模式
- */
-export function parseGameMode(mode: string): string {
-  const modeMap: Record<string, string> = {
-    'coop': 'coop',
-    'versus': 'versus',
-    'survival': 'survival',
-    'scavenge': 'scavenge',
-    'realism': 'realism',
-    'teamversus': 'versus',
-    'teamscavenge': 'scavenge',
-    'mutation1': 'coop',
-    'mutation2': 'versus'
-  }
-  
-  return modeMap[mode.toLowerCase()] || 'coop'
 }

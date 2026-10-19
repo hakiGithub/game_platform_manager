@@ -2,7 +2,6 @@
  * L4D2 API 接口
  */
 import { get, getMain, post, put, del, upload } from './request'
-import { DIFFICULTIES, GAME_MODES } from '@/utils/gameConstants'
 import type {
   PluginInfo,
   AdminInfo,
@@ -11,29 +10,6 @@ import type {
   PresetConfig,
   FileInfo
 } from '@/types'
-
-/**
- * 后端 StatusParser 返回中文难度/模式名（简单/普通/高级/专家、合作模式等），
- * 这里归一化为前端 code（easy/normal/...）；未识别的值（未知、新命令失败等）置空串，
- * 由组件显示"未知"，不得兜底为默认难度/模式误导用户。
- * 匹配规则：value/label 精确值 + alias（高级↔困难、拾荒↔清道夫等用词差异）
- * + 去掉“模式”后缀的宽容比对（后端发“合作”，前端 label 是“合作模式”）。
- */
-const stripModeSuffix = (s: string) => s.replace(/模式$/, '')
-
-function toCode(
-  map: Record<string, { value: string; label: string; alias?: readonly string[] }>,
-  raw?: string
-): string {
-  if (!raw) return ''
-  const rawTrimmed = raw.trim()
-  const rawCandidates = new Set([rawTrimmed, stripModeSuffix(rawTrimmed)])
-  for (const [code, meta] of Object.entries(map)) {
-    const known = [meta.value, meta.label, ...(meta.alias ?? [])].map(stripModeSuffix)
-    if (known.some((k) => rawCandidates.has(k))) return code
-  }
-  return ''
-}
 
 /**
  * 服务器状态 API
@@ -46,10 +22,9 @@ export const serverApi = {
       map: vo?.map || '',
       players: vo?.currentPlayers || 0,
       maxPlayers: vo?.maxPlayers || 0,
-      // 查询失败/引擎不支持的字段置空串，由组件显示"未知"，
-      // 不得兜底为 normal/coop 等默认值（否则面板会误导用户）
-      difficulty: toCode(DIFFICULTIES, vo?.difficulty),
-      gameMode: toCode(GAME_MODES, vo?.gameMode),
+      // StatusParser 是词汇表唯一 owner；这里直接透传规范中文标签。
+      difficulty: vo?.difficulty || '',
+      gameMode: vo?.gameMode || '',
       hostname: vo?.hostname || '',
       version: vo?.version || '',
       osType: vo?.osType || '',

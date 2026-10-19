@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2.info;
 
 import com.gameplatform.plugin.l4d2.service.L4D2RconService;
 import com.gameplatform.plugin.service.RconService;
+import com.gameplatform.plugin.l4d2.util.StatusParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +29,7 @@ class L4D2InstanceInfoProviderTest {
 
     @BeforeEach
     void setUp() {
-        l4d2RconService = new L4D2RconService(hostRconService);
+        l4d2RconService = new L4D2RconService(hostRconService, new StatusParser());
         provider = new L4D2InstanceInfoProvider(l4d2RconService);
     }
 

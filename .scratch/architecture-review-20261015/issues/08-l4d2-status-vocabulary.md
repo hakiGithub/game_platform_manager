@@ -1,6 +1,6 @@
 # 08 — 难度/模式词汇表散在 3 语言 4 副本，已有可见漂移
 
-**Status:** needs-triage
+**Status:** claimed
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 8）
 

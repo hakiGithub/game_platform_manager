@@ -1,6 +1,7 @@
 package com.gameplatform.plugin.l4d2.service;
 
 import com.gameplatform.plugin.service.RconService;
+import com.gameplatform.plugin.l4d2.util.StatusParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,7 @@ class L4D2RconServiceChangeMapTest {
     @BeforeEach
     void setUp() {
         rcon = mock(RconService.class);
-        service = new L4D2RconService(rcon);
+        service = new L4D2RconService(rcon, new StatusParser());
     }
 
     @Test
