@@ -6,13 +6,11 @@ import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.patch.PatchInstallService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.plugin.task.TaskService;
-import com.gameplatform.plugin.task.TaskSubmitRequest;
+import com.gameplatform.plugin.task.TypedTaskSubmitRequest;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
-import java.util.Map;
 
 /**
  * 补丁安装服务实现（core，ADR-0006 决策 1）
@@ -43,15 +41,14 @@ public class PatchInstallServiceImpl implements PatchInstallService {
             throw new BusinessException("实例不存在: " + request.getInstanceId());
         }
 
-        Map<String, Object> payload = PatchInstallContract.toPayload(request);
-
-        TaskSubmitRequest submit = TaskSubmitRequest.builder()
+        TypedTaskSubmitRequest<PatchInstallRequest> submit = TypedTaskSubmitRequest.<PatchInstallRequest>builder()
                 .taskType("PATCH_INSTALL")
                 .source("MAIN")
                 .scopeType("HOST")
                 .scopeKey(String.valueOf(instance.getHostId()))
                 .scopeName("补丁安装: " + instance.getInstanceName())
-                .payload(payload)
+                .codec(PatchInstallContract.INSTANCE)
+                .spec(request)
                 .build();
 
         String taskId = taskService.submit(submit);

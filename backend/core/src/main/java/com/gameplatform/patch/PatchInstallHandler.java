@@ -2,9 +2,10 @@ package com.gameplatform.patch;
 
 import com.gameplatform.plugin.patch.PatchInstallRequest;
 import com.gameplatform.plugin.task.TaskContext;
-import com.gameplatform.plugin.task.TaskHandler;
+import com.gameplatform.plugin.task.TaskPayloadCodec;
 import com.gameplatform.plugin.task.TaskPayload;
 import com.gameplatform.plugin.task.TaskResult;
+import com.gameplatform.plugin.task.TypedTaskHandler;
 import com.gameplatform.task.TaskHandlerRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PatchInstallHandler implements TaskHandler {
+public class PatchInstallHandler implements TypedTaskHandler<PatchInstallRequest> {
 
     /** 超时：1 小时（大补丁下载 + 解压 + 推送） */
     private static final long DEFAULT_TIMEOUT_MS = 60 * 60 * 1000L;
@@ -66,9 +67,12 @@ public class PatchInstallHandler implements TaskHandler {
     }
 
     @Override
-    public TaskResult execute(TaskContext context, TaskPayload payload) throws Exception {
-        PatchInstallRequest request = PatchInstallContract.fromPayload(payload);
+    public TaskPayloadCodec<PatchInstallRequest> getPayloadCodec() {
+        return PatchInstallContract.INSTANCE;
+    }
 
+    @Override
+    public TaskResult executeTyped(TaskContext context, PatchInstallRequest request) throws Exception {
         PatchInstallExecutor.ProgressListener progress = new PatchInstallExecutor.ProgressListener() {
             @Override
             public void onProgress(int percent, String message) {

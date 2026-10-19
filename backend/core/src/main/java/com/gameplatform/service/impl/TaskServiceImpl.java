@@ -298,6 +298,13 @@ public class TaskServiceImpl implements TaskService {
                 Thread.currentThread().interrupt();
                 handleInterruption(taskId, ctx, handler, payload, record, startedAt, "任务执行超时（强制中断）");
                 return;
+            } catch (ChildTaskCancelledException cancelled) {
+                ctx.markCancelled();
+                handleCancellation(taskId, ctx, handler, payload, record, startedAt);
+                return;
+            } catch (ChildTaskTimeoutException timedOut) {
+                handleFailure(taskId, ctx, handler, payload, record, startedAt, timedOut);
+                return;
             } catch (Exception e) {
                 // Handler 主动抛异常
                 handleFailure(taskId, ctx, handler, payload, record, startedAt, e);

@@ -22,7 +22,11 @@ import com.gameplatform.plugin.task.TaskContext;
 import com.gameplatform.plugin.task.TaskPayload;
 import com.gameplatform.plugin.task.TaskService;
 import com.gameplatform.plugin.task.TaskSubmitRequest;
-import com.gameplatform.plugin.task.TaskVO;
+import com.gameplatform.plugin.task.ChildTaskCancelledException;
+import com.gameplatform.plugin.task.ChildTaskFollower;
+import com.gameplatform.plugin.task.ChildTaskOutcome;
+import com.gameplatform.plugin.task.ChildTaskTimeoutException;
+import com.gameplatform.plugin.task.ProgressWindow;
 import com.gameplatform.vo.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -84,13 +88,6 @@ public class CloudInstallService {
     private final L4D2PathResolver pathResolver;
     private final L4D2Config config;
     private final MapRecognitionService mapRecognitionService;
-
-    /** 任务取消/超时信号：中断整个安装流程（不再转兜底通道） */
-    static class CancelledSignal extends RuntimeException {
-        CancelledSignal(String message) {
-            super(message);
-        }
-    }
 
     // ===== 提交侧 =====
 
@@ -271,9 +268,12 @@ public class CloudInstallService {
             data.put("cloudPath", cloudPath);
             data.put("launchCommands", launchCommands);
             return data;
-        } catch (CancelledSignal cs) {
-            updater.cancelled(cs.getMessage());
-            throw new IllegalStateException(cs.getMessage());
+        } catch (ChildTaskCancelledException cancelled) {
+            updater.cancelled(cancelled.getMessage());
+            throw cancelled;
+        } catch (ChildTaskTimeoutException timedOut) {
+            updater.fail(timedOut.getMessage());
+            throw timedOut;
         } catch (Exception e) {
             updater.fail(e.getMessage());
             throw e;
@@ -318,7 +318,7 @@ public class CloudInstallService {
                 }
                 String patchTaskId = patchInstallService.install(builder.build());
                 context.log("直连下载 " + name + "（第 " + attempt + " 次）");
-                String failure = pollPatchTask(context, patchTaskId, base, slice, name, updater);
+                String failure = followPatchTask(context, patchTaskId, base, slice, name, updater);
                 if (failure == null) {
                     return DirectOutcome.installed(List.of(name));
                 }
@@ -327,8 +327,8 @@ public class CloudInstallService {
                     return DirectOutcome.fallback();
                 }
                 context.log("WARN", "直连下载失败（第 " + attempt + " 次）: " + failure);
-            } catch (CancelledSignal cs) {
-                throw cs;
+            } catch (ChildTaskCancelledException | ChildTaskTimeoutException terminal) {
+                throw terminal;
             } catch (Exception e) {
                 String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 if (msg.contains("UNSUPPORTED_HEADER_FILE")) {
@@ -357,14 +357,15 @@ public class CloudInstallService {
                     lower.endsWith(".zip") ? ".zip" : lower.endsWith(".rar") ? ".rar" : ".vpk");
             long bytes = cloudDriveService.download(accountName, item.path(),
                     new ProgressOutputStream(new FileOutputStream(tempFile.toFile()), item.size(),
-                            pct -> context.reportProgress(base + (slice - base) * 2 / 3 * pct / 100,
+                            pct -> context.reportProgress(
+                                    new ProgressWindow(base, base + (slice - base) * 2 / 3).map(pct),
                                     "下载 " + name + " " + pct + "%"),
                             () -> {
                                 if (context.isCancelled()) {
-                                    throw new CancelledSignal("任务已取消");
+                                    throw new ChildTaskCancelledException("任务已取消");
                                 }
                                 if (context.isTimeout()) {
-                                    throw new CancelledSignal("任务已超时");
+                                    throw new ChildTaskTimeoutException("任务已超时");
                                 }
                             }));
             updater.downloaded(bytes);
@@ -389,14 +390,14 @@ public class CloudInstallService {
                 uploaded.add(name);
             }
             return uploaded;
-        } catch (CancelledSignal cs) {
-            throw cs;
+        } catch (ChildTaskCancelledException | ChildTaskTimeoutException terminal) {
+            throw terminal;
         } catch (Exception e) {
             if (context.isCancelled()) {
-                throw new CancelledSignal("任务已取消");
+                throw new ChildTaskCancelledException("任务已取消");
             }
             if (context.isTimeout()) {
-                throw new CancelledSignal("任务已超时");
+                throw new ChildTaskTimeoutException("任务已超时");
             }
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
                     "中转安装失败 " + name + ": " + e.getMessage());
@@ -440,39 +441,19 @@ public class CloudInstallService {
         }
     }
 
-    /** 轮询 PatchInstall 任务到终态；成功返回 null，失败返回原因；取消/超时抛 CancelledSignal */
-    private String pollPatchTask(TaskContext context, String patchTaskId, int base, int slice,
-                                 String label, RecordUpdater updater) throws InterruptedException {
-        while (true) {
-            if (context.isCancelled() || context.isTimeout()) {
-                taskService.cancelMyOwn(patchTaskId);
-                throw new CancelledSignal(context.isCancelled() ? "任务已取消" : "任务已超时");
-            }
-            TaskVO task = taskService.getTask(patchTaskId);
-            if (task != null) {
-                String status = task.getStatus();
-                int pct = task.getProgress() == null ? 0 : (int) Math.round(task.getProgress());
-                switch (status) {
-                    case "PENDING", "RUNNING" -> {
-                        int mapped = base + (slice - base) * pct / 100;
-                        context.reportProgress(mapped, label + " " + pct + "%");
-                        updater.progress((double) mapped);
-                    }
-                    case "COMPLETED" -> {
-                        return null;
-                    }
-                    case "FAILED" -> {
-                        return task.getErrorMessage() != null ? task.getErrorMessage() : "安装失败";
-                    }
-                    case "CANCELLED" -> {
-                        throw new CancelledSignal("任务已取消");
-                    }
-                    default -> {
-                    }
-                }
-            }
-            Thread.sleep(2000);
+    /** Follow PatchInstall through the shared SDK follower. */
+    private String followPatchTask(TaskContext context, String patchTaskId, int base, int slice,
+                                   String label, RecordUpdater updater) throws InterruptedException {
+        ChildTaskOutcome outcome = ChildTaskFollower.follow(
+                taskService, patchTaskId, new ProgressWindow(base, slice), context, progress -> {
+                    context.reportProgress(progress.mappedPercent(),
+                            label + " " + progress.childPercent() + "%");
+                    updater.progress((double) progress.mappedPercent());
+                });
+        if (!outcome.completedSuccessfully()) {
+            return outcome.message() != null ? outcome.message() : "安装失败";
         }
+        return null;
     }
 
     private void requireVpk(File file, String name) throws IOException {
