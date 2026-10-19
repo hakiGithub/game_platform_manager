@@ -610,12 +610,17 @@ test.describe.serial("l4d2 插件子应用", () => {
     await gotoPluginPage(page, "player-stats", ".player-stats-page");
 
     await expect(page.getByRole("heading", { name: "玩家统计" })).toBeVisible();
-    await expect(
-      page
-        .locator(".chart")
-        .first()
-        .or(page.getByText("暂无趋势数据", { exact: true })),
-    ).toBeVisible({ timeout: 30_000 });
+    const trendChart = page.locator(".chart").first();
+    const trendEmpty = page.getByText("暂无趋势数据", { exact: true });
+    await expect
+      .poll(async () => {
+        const [chartVisible, emptyVisible] = await Promise.all([
+          trendChart.isVisible().catch(() => false),
+          trendEmpty.isVisible().catch(() => false),
+        ]);
+        return chartVisible || emptyVisible;
+      }, { timeout: 30_000 })
+      .toBe(true);
 
     await page.getByRole("tab", { name: "玩家列表" }).click();
     await expect(
