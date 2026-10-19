@@ -1,6 +1,6 @@
 # 08 — 难度/模式词汇表散在 3 语言 4 副本，已有可见漂移
 
-**Status:** claimed
+**Status:** resolved
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 8）
 
@@ -54,3 +54,11 @@ toWireCode(cnLabel) → String
 ## 关联
 
 与票 01/04 同属一类根因：**契约住在约定里而非一个 owner 模块里**。
+
+## Answer
+
+- `StatusParser` 现在是玩家数正则、难度与模式词汇表的唯一 owner；`L4D2RconService` 只负责调用 RCON 并委托解析。
+- 后端提供标签与 wire code 的双向转换，并兼容“合作模式 / 写实模式 / 清道夫 / 困难”等历史用词；未知值保持原样。
+- 插件前端删除难度/模式映射、`toCode()` 与兼容 alias，API 直接透传后端规范中文标签；Dashboard 仅用标签查找颜色等 UI 元数据。
+- `StatusParserTest` 扩展为权威词汇表用例；后端定向测试、插件前端 40 项测试与生产构建通过。
+- 提交：`0315259`（合并提交 `28df530`）。

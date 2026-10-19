@@ -1,6 +1,6 @@
 # 05 — VPK 语义住在 core，工具容器端口不再中立
 
-**Status:** claimed
+**Status:** resolved
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 5）· **与 ADR-0027 冲突（需先谈 ADR）**
 
@@ -45,3 +45,11 @@ core 只保留：instance→host 路由、工具容器调用、脚本分发、�
 
 - **ADR-0027** 把 VPK 脚本嵌入 core，本票需重开该决策。
 - 紧迫度取决于是否会出现第二个 VPK 类插件；若短期不会，可维持观察。
+
+## Answer
+
+- `HostToolingService` 只保留游戏中立能力：归档解压、文件摘要与 `runToolScript(instanceId, relativePath, scriptResource)`。
+- VPK 剧本、`VpkAnalyzeResult` 与 `VpkInvalidException` 已迁入 L4D2 插件；插件通过 `plugin.tooling.scripts` 声明脚本，脚本资源按插件上下文解析。
+- SDK 移除 VPK 专属 API；没有声明工具脚本的插件可正常加载。ADR-0027 与插件开发文档已同步。
+- L4D2 地图识别功能保持不变，相关 Java/Python 回归通过。
+- 提交：`95cc000`（合并提交 `2aedeed`）。

@@ -1,6 +1,6 @@
 # 02 — 实例状态对账有三条独立路径，判定规则各说各话
 
-**Status:** claimed
+**Status:** resolved
 **Type:** task
 **来源:** 架构评审 2026-10-15（候选 3）
 
@@ -46,3 +46,10 @@ reconcile(observed, dbStatus) → Decision   // 纯函数：观测 ↔ 库中状
 ## 关联
 
 与候选 7（HostSession）天然合流——都涉及「连主机 + 对账」这一组行为的收口。
+
+## Answer
+
+- 新增纯函数 `InstanceStateReconciler`，统一根据“库中状态 + 已成功观测状态”产出写入决策；Docker 定时同步、Native 定时同步、启动同步与按需 `adapter.getStatus()` 共用该判定。
+- 适配器、Docker inspect、SSH/pgrep 查询失败均保留最后一次已知状态，不再把基础设施故障写成 `ERROR`；仅适配器明确返回 `ERROR` 时更新为异常。
+- 补充纯函数测试及 Docker/Native/按需刷新回归用例，覆盖状态转换、无变化、真实异常和观测失败。
+- 提交：`9538789`（合并提交 `c9060f4`）。
