@@ -54,4 +54,5 @@ SSH 调用与数据库副作用（写在线状态）被焊死在同一个方法�
 - 新增 `HostSession`，统一封装“加载主机 → 执行操作 → 按可达性对账在线状态”的规则；`HostServiceImpl` 的测试连接、刷新状态、端口检查、资源信息四处入口均委托该模块。
 - 在线状态写入规则只保留在 `HostSession`：普通操作成功写在线、`HostAccessException` 写离线；`probe` 支持显式可达性判断。
 - `HostServiceImpl` 不再引用宿主内部 `SshTunnelManager`，改为依赖 `HostTunnelLifecycle` 端口；`SshTunnelManager` 实现该端口，删除主机时仍联动清理隧道。
+- 验收偏差：未直接注入插件 SDK 的 `SshTunnelService`，因为该接口是绑定 `pluginId` 的插件能力视图，只暴露 open/close，没有宿主删除主机所需的 `closeAllForHost`；新增宿主侧 `HostTunnelLifecycle` 端口既消除具体实现依赖，也不向插件扩大清理权限。
 - 新增 `HostSessionTest` 覆盖成功、可达性 false、访问异常与主机不存在；完整后端测试 832 条通过。
