@@ -78,3 +78,34 @@ Type: bug
 本票需要先决定跨 SDK 边界的契约：目录浏览只接受路径；ID 型起始目录要么由 SDK 提供
 “文件夹 ID → 账号内路径”的解析能力，要么由平台在应用起始目录时把 ID 转换为已校验的路径。
 未经真实路径解析的字符串拼接会再次产生 `/-11/...` 形式的错误寻址，因此不在本票里临时修补。
+
+## Comments
+
+### 2026-10-20 实现与验证
+
+已在仓库内完成 cloud189 可安全覆盖的部分，未修改 `cloud_list_platform`：
+
+- **浏览契约统一为路径寻址**：`CloudAccountService.listFolders` 仍调用
+  `CloudDriveClient.listAccountFolders(accountId, path)`，响应保留 `id`、`path`，
+  但 `value` 对所有 provider 都返回 `path`。前端根节点也从 `-11` 改为 `/`。
+  新增 `CloudAccountServiceTest.cloud189FolderListingKeepsIdAndPathSeparateAndAcceptsOnlyPath`
+  和 `frontend/src/tests/api/cloud.test.js` 覆盖该契约。
+- **起始目录改为“路径持久化 + 原生根解析”**：`CloudAccountSpec` 新增 `rootPath`，
+  `applyRootDir` 只接受账号内路径；路径型 provider 写入 settings `rootPath`，ID 型 provider
+  从 `/` 逐级列目录，按 `CloudObject.path` 精确匹配后取得原生 ID，再调用 `createMount`。
+  `syncToEngine` 同样按 `spec.rootPath` 解析并在已有挂载根不一致时重建，保证启动对账不丢起始目录。
+- **回归测试**：
+  `CloudAccountServiceTest.applyRootDirForCloud189ResolvesIdToProviderRootWithoutUsingIdAsPath`
+  验证 `/maps` 被解析为 `-11`，且从未把 ID 作为 `listAccountFolders` 参数；
+  `pathProviderAppliesRootPathWithoutIdResolutionAndKeepsPathValue` 覆盖路径型 provider；
+  `syncToEngineRecreatesMountWhenPersistedRootPathDiffers` 覆盖挂载根对账。
+
+### 残留 blocker
+
+Aliyun/Xunlei 的 `CloudFolderId` 型起始目录仍不能安全穿透 SDK mount 边界：
+`MountService.createMount` 对非空 `rootPath` 执行 `DirectoryRef.of(rootPath).path()`，
+只有 cloud189 client 会把 `/-13` 还原为 `-13`。平台侧逐级解析得到的 Aliyun/Xunlei ID
+在 `createMount` 后会被当作路径字符串，缺少公开的“文件夹 ID → 已校验 mount root”API。
+平台当前对这两个 provider 的子目录起始目录显式拒绝（fail closed），不会生成错误挂载。
+已拆分为 `.scratch/cloud-drive-host-capability/issues/07-sdk-mount-root-id-contract.md`
+（`needs-triage`），本票保持 `ready-for-human`，等待该 SDK 契约决策。
