@@ -19,9 +19,12 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +71,8 @@ class EnabledPluginsServiceTest {
 
         service.saveYaml(1L, List.of(plugin));
 
-        verify(instanceFileService).writeTextFile(eq(1L), anyString(), anyString());
+        verify(instanceFileService).writeTextFile(
+                eq(1L), anyString(), anyString(), eq(StandardCharsets.UTF_8));
         verify(extensionClient).create(any(EnabledPluginResource.class));
     }
 
@@ -88,7 +92,8 @@ class EnabledPluginsServiceTest {
         service.add(1L, toAdd);
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
-        verify(instanceFileService).writeTextFile(eq(1L), anyString(), contentCaptor.capture());
+        verify(instanceFileService).writeTextFile(
+                eq(1L), anyString(), contentCaptor.capture(), eq(StandardCharsets.UTF_8));
         assertThat(contentCaptor.getValue()).contains("new_one");
     }
 
@@ -121,7 +126,8 @@ class EnabledPluginsServiceTest {
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
         verify(instanceFileService, org.mockito.Mockito.times(1))
-                .writeTextFile(eq(1L), anyString(), contentCaptor.capture());
+                .writeTextFile(eq(1L), anyString(), contentCaptor.capture(),
+                        eq(StandardCharsets.UTF_8));
         String yaml = contentCaptor.getValue();
         assertThat(yaml).contains("same", "other", "builtin");
         assertThat(yaml).doesNotContain("a.smx");
@@ -157,5 +163,142 @@ class EnabledPluginsServiceTest {
                 .thenReturn("enabled_plugins:\n  - name: \"foo\"\n    source: \"panel\"\n    enabled_at: 1\n    files:\n      - \"a.smx\"\n");
         assertThat(service.isEnabled(1L, "foo")).isTrue();
         assertThat(service.isEnabled(1L, "bar")).isFalse();
+    }
+
+    @Test
+    void loadYaml_restoresCorruptedChineseNameFromUniqueStoreDirectory() {
+        when(instanceFileService.exists(eq(1L), anyString())).thenReturn(true);
+        when(instanceFileService.readTextFile(eq(1L), anyString(), eq(StandardCharsets.UTF_8)))
+                .thenReturn("""
+                        enabled_plugins:
+                          - name: "???-????????(v2.19.23)(??????)(sorallll)"
+                            source: "upload"
+                            enabled_at: 1
+                            files:
+                              - "addons/sourcemod/plugins/l4d2_emshud_info.smx"
+                        """);
+        when(instanceFileService.listFiles(eq(1L), anyString()))
+                .thenAnswer(invocation -> {
+                    String path = invocation.getArgument(1);
+                    if (path.endsWith("/plugins_store")) {
+                        return List.of(storeDirectory(
+                                "自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)"));
+                    }
+                    if (path.contains("自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)")
+                            && path.endsWith("/plugins")) {
+                        return List.of(storeDirectory("l4d2_emshud_info.smx", false));
+                    }
+                    return List.of();
+                });
+
+        List<EnabledPlugin> plugins = service.loadYaml(1L);
+
+        assertThat(plugins).hasSize(1);
+        assertThat(plugins.get(0).getName())
+                .isEqualTo("自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)");
+    }
+
+    @Test
+    void loadYaml_skipsAmbiguousCorruptedName() {
+        when(instanceFileService.exists(eq(1L), anyString())).thenReturn(true);
+        when(instanceFileService.readTextFile(eq(1L), anyString(), eq(StandardCharsets.UTF_8)))
+                .thenReturn("""
+                        enabled_plugins:
+                          - name: "???-????????"
+                            source: "upload"
+                            enabled_at: 1
+                        """);
+        when(instanceFileService.listFiles(eq(1L), anyString()))
+                .thenAnswer(invocation -> {
+                    String path = invocation.getArgument(1);
+                    if (path.endsWith("/plugins_store")) {
+                        return List.of(
+                                storeDirectory("自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)"),
+                                storeDirectory("必选-修复类(v1.4)(Lux)"));
+                    }
+                    if (path.endsWith("/plugins")) {
+                        return List.of(storeDirectory("l4d2_emshud_info.smx", false));
+                    }
+                    return List.of();
+                });
+
+        assertThat(service.loadYaml(1L)).isEmpty();
+    }
+
+    @Test
+    void loadYaml_indexesStoreDirectoriesOnceForMultipleCorruptedNames() {
+        when(instanceFileService.exists(eq(1L), anyString())).thenReturn(true);
+        when(instanceFileService.readTextFile(eq(1L), anyString(), eq(StandardCharsets.UTF_8)))
+                .thenReturn("""
+                        enabled_plugins:
+                          - name: "???-????????"
+                            source: "upload"
+                            enabled_at: 1
+                            files:
+                              - "addons/sourcemod/plugins/alpha.smx"
+                          - name: "???-????"
+                            source: "upload"
+                            enabled_at: 2
+                            files:
+                              - "addons/sourcemod/plugins/beta.smx"
+                        """);
+        when(instanceFileService.listFiles(eq(1L), anyString()))
+                .thenAnswer(invocation -> {
+                    String path = invocation.getArgument(1);
+                    if (path.endsWith("/plugins_store")) {
+                        return List.of(
+                                storeDirectory("中文插件甲"),
+                                storeDirectory("中文插件乙"));
+                    }
+                    if (path.contains("中文插件甲") && path.endsWith("/plugins")) {
+                        return List.of(storeDirectory("nested/alpha.smx", false));
+                    }
+                    if (path.contains("中文插件乙") && path.endsWith("/plugins")) {
+                        return List.of(storeDirectory("beta.smx", false));
+                    }
+                    return List.of();
+                });
+
+        assertThat(service.loadYaml(1L))
+                .extracting(EnabledPlugin::getName)
+                .containsExactly("中文插件甲", "中文插件乙");
+        verify(instanceFileService, times(1)).listFiles(
+                eq(1L), eq("left4dead2/addons/sourcemod/plugins_store"));
+        verify(instanceFileService, times(1)).listFiles(eq(1L),
+                eq("left4dead2/addons/sourcemod/plugins_store/中文插件甲"
+                        + "/left4dead2/addons/sourcemod/plugins"));
+        verify(instanceFileService, times(1)).listFiles(eq(1L),
+                eq("left4dead2/addons/sourcemod/plugins_store/中文插件乙"
+                        + "/left4dead2/addons/sourcemod/plugins"));
+    }
+
+    @Test
+    void loadYaml_keepsExactChineseNameWithoutDirectoryLookup() {
+        when(instanceFileService.exists(eq(1L), anyString())).thenReturn(true);
+        when(instanceFileService.readTextFile(eq(1L), anyString(), eq(StandardCharsets.UTF_8)))
+                .thenReturn("""
+                        enabled_plugins:
+                          - name: "自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)"
+                            source: "upload"
+                            enabled_at: 1
+                        """);
+
+        assertThat(service.loadYaml(1L))
+                .extracting(EnabledPlugin::getName)
+                .containsExactly("自选-排行榜插件(v2.19.23)(豆瓣酱な)(sorallll)");
+        verify(instanceFileService, never()).listFiles(anyLong(), anyString());
+    }
+
+    private com.gameplatform.plugin.service.FileAccessService.FileInfo storeDirectory(String name) {
+        return storeDirectory(name, true);
+    }
+
+    private com.gameplatform.plugin.service.FileAccessService.FileInfo storeDirectory(
+            String name, boolean directory) {
+        com.gameplatform.plugin.service.FileAccessService.FileInfo info =
+                new com.gameplatform.plugin.service.FileAccessService.FileInfo();
+        info.setName(name);
+        info.setDirectory(directory);
+        return info;
     }
 }
