@@ -1,6 +1,6 @@
 # Spec: Matt Pocock Skills 刷新与项目接入
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 来源: 2026-10-19 上游 `mattpocock/skills` 版本核对
 
@@ -101,3 +101,51 @@ Type: task
 ## Further Notes
 
 第一批 frontier 为 ticket 01 与 ticket 03；ticket 02 依赖 01；ticket 04 依赖 01、02、03。用户要求先把 issue 单记录清楚，再后续并行处理，因此本轮只产出 spec 与 ticket 文件。
+
+## Verification Evidence
+
+独立复验于 2026-10-20 在当前 integration tip 执行：
+
+- 固定上游 clone `49dd158d1076134a641b33efb035946536778336` 的 27 个 Git
+  tree hash、27 个 skill 目录 SHA-256、27 个 `SKILL.md` SHA-256 与
+  `skills-lock.json` 全部一致。
+- `.agents/skills/` 与 `.claude/skills/` 的 54 个上游来源目录比较无差异；
+  3 个自定义平台 skill 均保留。
+- `npx skills@1.7.2 list --json` 发现 30 项：27 个上游来源 + 3 个自定义；
+  `implement-spec`、`pr`、`retro` 可见，`resolving-merge-conflicts` 为 0 项。
+- `npx skills@1.7.2 update ask-matt -p -y` 输出
+  `All project skills are up to date`，证明 lock 的项目级 CLI schema 可用。
+- `GLOSSARY.md` 有 71 个术语条目；`CONTEXT.md` 无术语正文且指向
+  `GLOSSARY.md`；`docs/agents/domain.md` 与根 `AGENTS.md` 使用新入口。
+- `docs/agents/skill-workflow-runbook.md` 覆盖 14/14 必需 skill，PowerShell
+  检查块解析通过，最终文档集的 41 个本地链接全部可解析。
+- 复验发现并修复票 05：lock 原先只有 40 位 Git tree hash，缺少
+  `computedHash` 与 `skillMdHash`；修复后 27 项均具备 64 位 SHA-256。
+
+### 复验命令
+
+```powershell
+$clone = 'C:\Users\haki\AppData\Local\Temp\codex-mattpocock-skills-49dd158d1076134a641b33efb035946536778336'
+$lock = Get-Content -Raw -LiteralPath 'skills-lock.json' | ConvertFrom-Json
+foreach ($prop in $lock.skills.PSObject.Properties) {
+    $folderPath = (Split-Path $prop.Value.skillPath -Parent).Replace('\','/')
+    $folderName = Split-Path $folderPath -Leaf
+    $tree = (git -C $clone rev-parse "HEAD:$folderPath").Trim()
+    $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $clone $prop.Value.skillPath)).Hash.ToLowerInvariant()
+    if ($tree -ne $prop.Value.skillFolderHash) { throw "Tree mismatch: $($prop.Name)" }
+    if ($sha -ne $prop.Value.skillMdHash) { throw "SKILL.md mismatch: $($prop.Name)" }
+    foreach ($base in @('.agents\skills', '.claude\skills')) {
+        git diff --no-index --quiet -- (Join-Path $clone $folderPath) (Join-Path $base $folderName)
+        if ($LASTEXITCODE -ne 0) { throw "Copy mismatch: $base/$folderName" }
+    }
+}
+npx.cmd --yes skills@1.7.2 list --json
+npx.cmd --yes skills@1.7.2 update ask-matt -p -y
+node .scratch/tickets/build-tickets.mjs --check
+```
+
+观察结果：lock/tree/copy 检查为 27 个条目、0 错误；CLI list 为 30 项
+（27 上游 + 3 自定义）、缺少 0、废弃 0；CLI update 输出
+`All project skills are up to date`；ticket board 输出
+`Ticket board is current: 67 tickets`。路径与链接检查为 41 个本地链接、0 断链；
+指南检查为 14/14 必需 skill、0 个 PowerShell 解析错误。
