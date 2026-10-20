@@ -415,6 +415,18 @@ public class FileService {
      * @param content    文件内容
      */
     public void writeTextFile(Long hostId, String remotePath, String content) {
+        writeTextFile(hostId, remotePath, content, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 按指定字符集写入文本文件
+     *
+     * @param hostId     主机ID
+     * @param remotePath 远程文件路径
+     * @param content    文件内容
+     * @param charset    写入字符集
+     */
+    public void writeTextFile(Long hostId, String remotePath, String content, Charset charset) {
         log.info("写入文本文件: hostId={}, path={}", hostId, remotePath);
 
         try {
@@ -431,7 +443,7 @@ public class FileService {
 
                     // 写入文件
                     try (OutputStream os = sftp.write(remotePath)) {
-                        os.write(content.getBytes(StandardCharsets.UTF_8));
+                        os.write(content.getBytes(charset));
                     }
 
                     log.info("文本文件写入成功: {}", remotePath);

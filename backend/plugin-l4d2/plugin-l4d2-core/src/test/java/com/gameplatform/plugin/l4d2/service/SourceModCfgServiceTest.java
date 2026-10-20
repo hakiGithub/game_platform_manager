@@ -21,7 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -150,8 +150,8 @@ class SourceModCfgServiceTest {
     void getConfig_firstCandidateExists_shouldReturnParsedResource() {
         String cfgAbs = CFG_SOURCEMOD_ABS + "/l4d2_ai_upgrade.cfg";
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn("\"test\" \"value\" // desc\n");
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn("\"test\" \"value\" // desc\n".getBytes(StandardCharsets.UTF_8));
 
         PluginConfigResource resource = service.getConfig(INSTANCE_ID, "l4d2_ai_upgrade");
 
@@ -190,8 +190,8 @@ class SourceModCfgServiceTest {
         String cfgAbs = CFG_SOURCEMOD_ABS + "/l4d2_ai_upgrade.cfg";
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
         String original = "\"sm_dp\" \"1.0\" // Default: 0.5 Min: 0 Max: 10 伤害倍率\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn(original);
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
 
         // 解析后修改 value
         List<ConfigItem> items = cfgParser.parse(original);
@@ -202,7 +202,8 @@ class SourceModCfgServiceTest {
 
         // 验证 writeTextFile 被调用，且写入的内容包含新值并保留注释
         org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(instanceFileService).writeTextFile(eq(INSTANCE_ID), eq(cfgAbs), captor.capture());
+        verify(instanceFileService).writeTextFile(
+                eq(INSTANCE_ID), eq(cfgAbs), captor.capture(), eq(StandardCharsets.UTF_8));
         String written = captor.getValue();
         assertTrue(written.contains("\"sm_dp\" \"2.5\""), "写入内容应包含新值 2.5");
         assertTrue(written.contains("// Default: 0.5"), "写入内容应保留 Default 注释");
@@ -218,8 +219,8 @@ class SourceModCfgServiceTest {
         String cfgAbs = CFG_SOURCEMOD_ABS + "/l4d2_ai_upgrade.cfg";
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
         String original = "\"sm_dp\" \"1.0\" // Default: 0.5\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn(original);
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
 
         // 模拟已存在资源
         PluginConfigResource existing = new PluginConfigResource();
@@ -237,6 +238,34 @@ class SourceModCfgServiceTest {
 
         verify(extensionClient).update(any(PluginConfigResource.class));
         verify(extensionClient, never()).create(any(PluginConfigResource.class));
+    }
+
+    @Test
+    void updateConfig_utf8ChineseDescription_shouldDecodeAndWriteBackAsUtf8() {
+        String cfgAbs = CFG_SOURCEMOD_ABS + "/l4d2_ai_upgrade.cfg";
+        when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
+        String original = """
+                // 幸存者团队不超过4人时有多少个特感
+                // -
+                // Default: "4"
+                // Minimum: "0.000000"
+                // Maximum: "32.000000"
+                ss_base_limit "4"
+                """;
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
+
+        List<ConfigItem> items = cfgParser.parse(original);
+        assertEquals("幸存者团队不超过4人时有多少个特感", items.get(0).getDescription());
+        items.get(0).setValue("8");
+
+        service.updateConfig(INSTANCE_ID, "l4d2_ai_upgrade", items);
+
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(instanceFileService).writeTextFile(
+                eq(INSTANCE_ID), eq(cfgAbs), captor.capture(), eq(StandardCharsets.UTF_8));
+        assertTrue(captor.getValue().contains("幸存者团队不超过4人时有多少个特感"));
+        assertTrue(captor.getValue().contains("ss_base_limit \"8\""));
     }
 
     @Test
@@ -262,10 +291,10 @@ class SourceModCfgServiceTest {
         String beta = CFG_SOURCEMOD_ABS + "/beta.cfg";
         when(instanceFileService.exists(eq(INSTANCE_ID), contains("alpha.cfg"))).thenReturn(true);
         when(instanceFileService.exists(eq(INSTANCE_ID), contains("beta.cfg"))).thenReturn(true);
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), contains("alpha.cfg"), any(Charset.class)))
-                .thenReturn("\"alpha_key\" \"1\" // alpha\n");
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), contains("beta.cfg"), any(Charset.class)))
-                .thenReturn("\"beta_key\" \"2\" // beta\n");
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), contains("alpha.cfg")))
+                .thenReturn("\"alpha_key\" \"1\" // alpha\n".getBytes(StandardCharsets.UTF_8));
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), contains("beta.cfg")))
+                .thenReturn("\"beta_key\" \"2\" // beta\n".getBytes(StandardCharsets.UTF_8));
 
         PluginConfigResource resource = service.getConfig(INSTANCE_ID, "multi_cfg_plugin");
 
@@ -288,10 +317,10 @@ class SourceModCfgServiceTest {
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(alpha))).thenReturn(true);
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(beta))).thenReturn(true);
         String betaOriginal = "\"beta_key\" \"2\" // beta\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(beta), any(Charset.class)))
-                .thenReturn(betaOriginal);
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(alpha), any(Charset.class)))
-                .thenReturn("\"alpha_key\" \"1\" // alpha\n");
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(beta)))
+                .thenReturn(betaOriginal.getBytes(StandardCharsets.UTF_8));
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(alpha)))
+                .thenReturn("\"alpha_key\" \"1\" // alpha\n".getBytes(StandardCharsets.UTF_8));
         ConfigItem betaItem = cfgParser.parse(betaOriginal).get(0);
         betaItem.setValue("9");
         PluginConfigResource resource = service.getConfig(INSTANCE_ID, "multi_cfg_plugin");
@@ -303,7 +332,8 @@ class SourceModCfgServiceTest {
                 INSTANCE_ID, "multi_cfg_plugin", List.of(betaItem), betaId, beta);
 
         org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(instanceFileService).writeTextFile(eq(INSTANCE_ID), eq(beta), captor.capture());
+        verify(instanceFileService).writeTextFile(
+                eq(INSTANCE_ID), eq(beta), captor.capture(), eq(StandardCharsets.UTF_8));
         assertThat(captor.getValue()).contains("\"beta_key\" \"9\"");
         verify(instanceFileService, never()).writeTextFile(eq(INSTANCE_ID), eq(alpha), anyString());
     }
@@ -492,14 +522,15 @@ class SourceModCfgServiceTest {
         String cfgAbs = CFG_SOURCEMOD_ABS + "/l4d2_ai_upgrade.cfg";
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
         String original = "\"sm_dp\" \"2.5\" // Default: 0.5 Min: 0 Max: 10 伤害倍率\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn(original);
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
 
         service.restoreDefaults(INSTANCE_ID, "l4d2_ai_upgrade");
 
         // 验证写回的文件包含默认值 0.5
         org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(instanceFileService).writeTextFile(eq(INSTANCE_ID), eq(cfgAbs), captor.capture());
+        verify(instanceFileService).writeTextFile(
+                eq(INSTANCE_ID), eq(cfgAbs), captor.capture(), eq(StandardCharsets.UTF_8));
         String written = captor.getValue();
         assertTrue(written.contains("\"sm_dp\" \"0.5\""), "应将 sm_dp 重置为默认值 0.5");
         assertTrue(written.contains("// Default: 0.5"), "应保留 Default 注释");
@@ -511,8 +542,8 @@ class SourceModCfgServiceTest {
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
         // 没有 Default 注释
         String original = "\"sm_dp\" \"2.5\" // 伤害倍率\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn(original);
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
 
         service.restoreDefaults(INSTANCE_ID, "l4d2_ai_upgrade");
 
@@ -527,8 +558,8 @@ class SourceModCfgServiceTest {
         when(instanceFileService.exists(eq(INSTANCE_ID), eq(cfgAbs))).thenReturn(true);
         // value 已等于 default
         String original = "\"sm_dp\" \"0.5\" // Default: 0.5\n";
-        when(instanceFileService.readTextFile(eq(INSTANCE_ID), eq(cfgAbs), any(Charset.class)))
-                .thenReturn(original);
+        when(instanceFileService.downloadFileToMemory(eq(INSTANCE_ID), eq(cfgAbs)))
+                .thenReturn(original.getBytes(StandardCharsets.UTF_8));
 
         service.restoreDefaults(INSTANCE_ID, "l4d2_ai_upgrade");
 

@@ -74,6 +74,8 @@ test.describe("L4D2 plugin config multi-file editing", () => {
 
     const firstDescriptionCell = page.locator(".el-table__body tbody tr td:nth-child(5)").first();
     await expect(firstDescriptionCell).not.toContainText(/Minimum:|Maximum:/);
+    await expect(firstDescriptionCell).toContainText("生还者团队不超过4人时有多少个特感");
+    await expect(firstDescriptionCell).not.toContainText(/鐢|鍚|缂/);
 
     const original = await firstValueInput.inputValue();
     const changed = original === "draft-check" ? "draft-check-2" : "draft-check";

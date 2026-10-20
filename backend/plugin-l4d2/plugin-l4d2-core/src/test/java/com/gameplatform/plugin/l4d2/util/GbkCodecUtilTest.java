@@ -28,4 +28,20 @@ class GbkCodecUtilTest {
         byte[] gbkBytes = "测试".getBytes(java.nio.charset.Charset.forName("GBK"));
         assertEquals("测试", GbkCodecUtil.decodeAuto(gbkBytes));
     }
+
+    @Test
+    void decodeAutoWithCharset_shouldDetectUtf8WithoutBom() {
+        byte[] utf8Bytes = "中文描述".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        GbkCodecUtil.DecodedText decoded = GbkCodecUtil.decodeAutoWithCharset(utf8Bytes);
+        assertEquals("中文描述", decoded.text());
+        assertEquals(java.nio.charset.StandardCharsets.UTF_8, decoded.charset());
+    }
+
+    @Test
+    void decodeAutoWithCharset_shouldReportGbkFallback() {
+        byte[] gbkBytes = "中文描述".getBytes(java.nio.charset.Charset.forName("GBK"));
+        GbkCodecUtil.DecodedText decoded = GbkCodecUtil.decodeAutoWithCharset(gbkBytes);
+        assertEquals("中文描述", decoded.text());
+        assertEquals(java.nio.charset.Charset.forName("GBK"), decoded.charset());
+    }
 }

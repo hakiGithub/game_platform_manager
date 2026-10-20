@@ -42,6 +42,11 @@ public class FileAccessServiceImpl implements FileAccessService {
     }
 
     @Override
+    public void writeTextFile(Long hostId, String remotePath, String content, Charset charset) {
+        fileService.writeTextFile(hostId, remotePath, content, charset);
+    }
+
+    @Override
     public byte[] downloadFileToMemory(Long hostId, String remotePath) {
         return fileService.downloadFileToMemory(hostId, remotePath);
     }

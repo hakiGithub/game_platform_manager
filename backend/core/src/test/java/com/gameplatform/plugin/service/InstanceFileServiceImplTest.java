@@ -114,7 +114,20 @@ class InstanceFileServiceImplTest {
         service.writeTextFile(1L, "cfg/server.cfg", "content");
 
         verify(fileAccessService).writeTextFile(
-            10L, "/home/gameserver/instance_1/cfg/server.cfg", "content");
+            10L, "/home/gameserver/instance_1/cfg/server.cfg", "content",
+            java.nio.charset.Charset.defaultCharset());
+    }
+
+    @Test
+    @DisplayName("Native writeTextFile(charset) 将编码传给 FileAccessService")
+    void writeTextFile_nativeWithCharset_delegatesWithCharset() {
+        when(instanceQueryService.getInstanceById(1L)).thenReturn(nativeInstance);
+
+        service.writeTextFile(1L, "cfg/server.cfg", "中文", StandardCharsets.UTF_8);
+
+        verify(fileAccessService).writeTextFile(
+            10L, "/home/gameserver/instance_1/cfg/server.cfg",
+            "中文", StandardCharsets.UTF_8);
     }
 
     @Test
@@ -259,10 +272,11 @@ class InstanceFileServiceImplTest {
             .thenReturn(ok);
 
         String big = "x".repeat(200_000);
-        service.writeTextFile(3L, "cfg/x.yaml", big);
+        service.writeTextFile(3L, "cfg/x.yaml", big, StandardCharsets.UTF_8);
 
         // 大内容必须经 SFTP 流式写入宿主临时文件，绝不内联进 docker exec 命令参数
-        verify(fileAccessService).writeTextFile(eq(10L), contains("/tmp/.gp-write-"), eq(big));
+        verify(fileAccessService).writeTextFile(
+            eq(10L), contains("/tmp/.gp-write-"), eq(big), eq(StandardCharsets.UTF_8));
         verify(remoteHost, atLeastOnce()).exec(eq(10L), contains("docker cp "));
     }
 

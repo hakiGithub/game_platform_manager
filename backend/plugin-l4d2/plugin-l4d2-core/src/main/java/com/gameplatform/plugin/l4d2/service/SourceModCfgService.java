@@ -221,15 +221,18 @@ public class SourceModCfgService {
         }
 
         String original;
+        Charset writeCharset;
         try {
-            original = instanceFileService.readTextFile(instanceId, targetRelPath, gbk);
+            GbkCodecUtil.DecodedText decoded = readConfigText(instanceId, targetRelPath);
+            original = decoded.text();
+            writeCharset = decoded.charset();
         } catch (Exception e) {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "读取原配置文件失败: " + e.getMessage(), e);
         }
         String serialized = cfgParser.serialize(items, original);
         try {
-            instanceFileService.writeTextFile(instanceId, targetRelPath, serialized);
+            instanceFileService.writeTextFile(instanceId, targetRelPath, serialized, writeCharset);
         } catch (Exception e) {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "写入配置文件失败: " + e.getMessage(), e);
@@ -263,9 +266,12 @@ public class SourceModCfgService {
         String cfgRelPath = resolveCfgRelPath(pluginName, cfgName);
 
         String original = "";
+        Charset originalCharset = gbk;
         try {
             if (instanceFileService.exists(instanceId, cfgRelPath)) {
-                original = instanceFileService.readTextFile(instanceId, cfgRelPath, gbk);
+                GbkCodecUtil.DecodedText decoded = readConfigText(instanceId, cfgRelPath);
+                original = decoded.text();
+                originalCharset = decoded.charset();
             }
         } catch (Exception e) {
             log.warn("读取 cfg 文件失败，将创建新文件: path={}, err={}", cfgRelPath, e.getMessage());
@@ -292,7 +298,7 @@ public class SourceModCfgService {
         }
 
         String updated = cfgParser.serialize(items, original);
-        instanceFileService.writeTextFile(instanceId, cfgRelPath, updated, gbk);
+        instanceFileService.writeTextFile(instanceId, cfgRelPath, updated, originalCharset);
         log.info("cfg 配置已更新: instanceId={}, plugin={}, cfg={}, keys={}",
                 instanceId, pluginName, cfgName, values.size());
     }
@@ -390,7 +396,7 @@ public class SourceModCfgService {
                 return file;
             }
             file.setExists(true);
-            String content = instanceFileService.readTextFile(instanceId, relPath, gbk);
+            String content = readConfigText(instanceId, relPath).text();
             file.setRawContent(content);
             List<ConfigItem> items = cfgParser.parse(content);
             file.setItems(items);
@@ -405,6 +411,11 @@ public class SourceModCfgService {
             file.setError("读取配置文件失败: " + e.getMessage());
         }
         return file;
+    }
+
+    private GbkCodecUtil.DecodedText readConfigText(Long instanceId, String relPath) {
+        byte[] bytes = instanceFileService.downloadFileToMemory(instanceId, relPath);
+        return GbkCodecUtil.decodeAutoWithCharset(bytes);
     }
 
     private record ResolvedConfigTarget(String candidate, String relativePath) {
@@ -650,8 +661,11 @@ public class SourceModCfgService {
 
         // 2. 读取并解析
         String content;
+        Charset writeCharset;
         try {
-            content = instanceFileService.readTextFile(instanceId, targetRelPath, gbk);
+            GbkCodecUtil.DecodedText decoded = readConfigText(instanceId, targetRelPath);
+            content = decoded.text();
+            writeCharset = decoded.charset();
         } catch (Exception e) {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "读取配置文件失败: " + e.getMessage(), e);
@@ -679,7 +693,7 @@ public class SourceModCfgService {
         // 4. 写回
         String serialized = cfgParser.serialize(items, content);
         try {
-            instanceFileService.writeTextFile(instanceId, targetRelPath, serialized);
+            instanceFileService.writeTextFile(instanceId, targetRelPath, serialized, writeCharset);
         } catch (Exception e) {
             throw new L4D2PluginException(L4D2PluginException.FILE,
                     "写入配置文件失败: " + e.getMessage(), e);

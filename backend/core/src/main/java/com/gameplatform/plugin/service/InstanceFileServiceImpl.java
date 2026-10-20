@@ -182,10 +182,10 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     public void writeTextFile(long instanceId, String relativePath, String content, Charset charset) {
         FileRoute route = resolveRoute(instanceId, relativePath);
         if (route.isNative()) {
-            fileAccessService.writeTextFile(route.hostId, route.resolvedPath, content);
+            fileAccessService.writeTextFile(route.hostId, route.resolvedPath, content, charset);
             return;
         }
-        dockerWriteTextFile(route, content);
+        dockerWriteTextFile(route, content, charset);
     }
 
     // ===== 二进制读写 =====
@@ -566,12 +566,12 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
     /**
      * 写入容器内文本文件：用 base64 编码内容后解码写入，避免特殊字符问题。
      */
-    private void dockerWriteTextFile(FileRoute route, String content) {
+    private void dockerWriteTextFile(FileRoute route, String content, Charset charset) {
         // 内容经 SFTP 流式写宿主临时文件，再 docker cp 进容器：
         // 避免把大内容内联进 docker exec 命令参数（大清单触发 Argument list too long）
         String tempHostPath = "/tmp/.gp-write-" + UUID.randomUUID();
         try {
-            fileAccessService.writeTextFile(route.hostId, tempHostPath, content);
+            fileAccessService.writeTextFile(route.hostId, tempHostPath, content, charset);
             String parentDir = route.resolvedPath;
             int lastSlash = parentDir.lastIndexOf('/');
             if (lastSlash > 0) {

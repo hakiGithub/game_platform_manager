@@ -39,6 +39,17 @@ public interface FileAccessService {
     void writeTextFile(Long hostId, String remotePath, String content);
 
     /**
+     * 按指定字符集写入远程文本文件（覆盖写入）。
+     *
+     * @param hostId     主机 ID
+     * @param remotePath 远程文件路径
+     * @param content    文本内容
+     * @param charset    写入字符集
+     */
+    void writeTextFile(Long hostId, String remotePath, String content,
+                       java.nio.charset.Charset charset);
+
+    /**
      * 下载远程文件到内存。
      *
      * @param hostId     主机 ID
