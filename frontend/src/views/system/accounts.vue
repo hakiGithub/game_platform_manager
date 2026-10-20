@@ -205,8 +205,8 @@ const rootDirProps = {
         leaf: false,
       }));
       if (node.level === 0) {
-        // 根节点自身可选（整盘）：idBased → -11，路径语义 → /
-        items.unshift({ value: rootDirIdBased.value ? "-11" : "/", label: "（根目录/整盘）", path: "/", leaf: true });
+        // 根节点自身可选（整盘）：浏览与提交都按账号内路径寻址
+        items.unshift({ value: "/", label: "（根目录/整盘）", path: "/", leaf: true });
       }
       resolve(items);
     } catch (e) {

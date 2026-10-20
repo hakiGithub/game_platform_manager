@@ -8,6 +8,8 @@ import com.gameplatform.plugin.extension.ExtensionClient;
 import com.gameplatform.util.AesUtil;
 import com.haki.clouddrive.core.domain.CloudAccount;
 import com.haki.clouddrive.core.domain.Mount;
+import com.haki.clouddrive.core.model.CloudObject;
+import com.haki.clouddrive.core.model.DirectoryRef;
 import com.haki.clouddrive.core.model.QuotaInfo;
 import com.haki.clouddrive.core.provider.ProviderSettings;
 import com.haki.clouddrive.sdk.CloudDriveClient;
@@ -95,6 +97,7 @@ public class CloudAccountService {
         spec.setProviderType(providerType);
         spec.setDisplayName(displayName == null || displayName.isBlank() ? name : displayName);
         spec.setSettingsCipher(AesUtil.encrypt(settingsJson));
+        spec.setRootPath("/");
         spec.setCredentialHint(hintOf(settingsJson));
         spec.setRemark(remark);
 
@@ -203,8 +206,8 @@ public class CloudAccountService {
 
     /**
      * 浏览账号目录（起始目录下拉用，ADR-0024 增补）：只返回目录；
-     * value 由服务端按 provider 语义决定（rootPath 类=path，rootFolderId 类=文件夹 ID），
-     * 前端无脑回填，避免路径/ID 错位。
+     * value 始终为账号内路径，供前端直接作为下一次 path 使用。id 仅作展示/审计元数据，
+     * 不参与后续寻址，避免 ID 型 Provider 把文件夹 ID 当路径查询。
      */
     public Map<String, Object> listFolders(String name, String path) {
         CloudAccountResource res = require(name);
@@ -218,16 +221,16 @@ public class CloudAccountService {
             String rootField = rootFieldName(res.getSpec().getProviderType());
             boolean idBased = "rootFolderId".equals(rootField);
             List<Map<String, Object>> folders = new ArrayList<>();
-            for (com.haki.clouddrive.core.model.CloudObject f : client.listAccountFolders(sdk.id(), path)) {
+            for (CloudObject f : client.listAccountFolders(sdk.id(), normalizePath(path))) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("name", f.name());
                 item.put("path", f.path());
                 item.put("id", f.id());
-                item.put("value", idBased ? f.id() : f.path());
+                item.put("value", f.path());
                 folders.add(item);
             }
             Map<String, Object> result = new HashMap<>();
-            result.put("path", path == null || path.isBlank() ? "/" : path);
+            result.put("path", normalizePath(path));
             result.put("rootField", rootField);
             result.put("idBased", idBased);
             result.put("folders", folders);
@@ -240,33 +243,41 @@ public class CloudAccountService {
     }
 
     /**
-     * 应用起始目录（ADR-0024 增补）：更新 settings 的 root 字段 + 重建默认挂载
-     * （rootPath=选中值）。路径命名空间随之切换，已转存产物需按新命名空间重新寻址。
+     * 应用起始目录（ADR-0024 增补）：value 只接受账号内路径；路径型 Provider 直接写入
+     * settings 的 root 字段，ID 型 Provider 先按路径逐级解析出 Provider 原生文件夹 ID，
+     * 再重建默认挂载。路径命名空间随之切换，已转存产物需按新命名空间重新寻址。
      */
     public CloudAccountResource applyRootDir(String name, String value) {
         if (value == null || value.isBlank()) {
             throw new BusinessException("起始目录值不能为空");
         }
+        String rootPath = normalizePath(value);
         CloudAccountResource res = require(name);
-        String rootField = rootFieldName(res.getSpec().getProviderType());
+        String providerType = res.getSpec().getProviderType();
+        String rootField = rootFieldName(providerType);
+        requireMountRootSemantics(providerType, rootField, rootPath);
         try {
-            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(
-                    AesUtil.decrypt(res.getSpec().getSettingsCipher()));
-            ((com.fasterxml.jackson.databind.node.ObjectNode) node).put(rootField, value);
-            String newJson = objectMapper.writeValueAsString(node);
+            CloudAccount sdk = ensureSdkAccount(res);
+            String providerRoot = resolveProviderRoot(sdk.id(), providerType, rootPath);
+
+            if ("rootPath".equals(rootField)) {
+                String newJson = withRootField(res, rootField, rootPath);
+                CloudAccountSpec spec = res.getSpec();
+                spec.setSettingsCipher(AesUtil.encrypt(newJson));
+                spec.setCredentialHint(hintOf(newJson));
+                res.setSpec(spec);
+            }
+
             CloudAccountSpec spec = res.getSpec();
-            spec.setSettingsCipher(AesUtil.encrypt(newJson));
-            spec.setCredentialHint(hintOf(newJson));
-            res.setSpec(spec);
+            spec.setRootPath(rootPath);
             hostExtensionClient.update(res);
 
-            CloudAccount sdk = ensureSdkAccount(res);
             String mp = mountPath(res);
             client.listMounts().stream()
                     .filter(m -> m.mountPath().equals(mp))
                     .findFirst()
                     .ifPresent(m -> client.deleteMount(m.id()));
-            client.createMount(sdk.id(), mp, value);
+            client.createMount(sdk.id(), mp, providerRoot);
             return hostExtensionClient.updateStatus(CloudAccountResource.class, name, STATUS_HEALTHY);
         } catch (BusinessException e) {
             hostExtensionClient.updateStatus(CloudAccountResource.class, name, STATUS_UNHEALTHY);
@@ -340,12 +351,94 @@ public class CloudAccountService {
     CloudAccount syncToEngine(CloudAccountResource res) throws Exception {
         CloudAccount sdk = ensureSdkAccount(res);
         String mountPath = mountPath(res);
-        boolean mounted = client.listMounts().stream()
-                .anyMatch(m -> m.mountPath().equals(mountPath));
-        if (!mounted) {
-            client.createMount(sdk.id(), mountPath, "/");
+        String rootPath = normalizePath(res.getSpec().getRootPath());
+        String providerRoot = resolveProviderRoot(sdk.id(), res.getSpec().getProviderType(), rootPath);
+        Optional<Mount> existing = client.listMounts().stream()
+                .filter(m -> m.mountPath().equals(mountPath))
+                .findFirst();
+        String expectedMountRoot = normalizeMountRoot(providerRoot);
+        if (existing.isPresent()) {
+            Mount mount = existing.get();
+            if (!normalizeMountRoot(mount.rootPath()).equals(expectedMountRoot)) {
+                client.deleteMount(mount.id());
+                client.createMount(sdk.id(), mountPath, providerRoot);
+            }
+        } else {
+            client.createMount(sdk.id(), mountPath, providerRoot);
         }
         return sdk;
+    }
+
+    /**
+     * 把账号内路径解析为 Provider 原生挂载根值。路径型 Provider 直接返回路径；
+     * ID 型 Provider 从账号根逐级列目录、按 CloudObject.path 精确匹配并返回 id。
+     * 该值随后只交给 createMount，不会进入 listAccountFolders。
+     */
+    private String resolveProviderRoot(String sdkAccountId, String providerType, String rootPath)
+            throws Exception {
+        String normalized = normalizePath(rootPath);
+        String rootField = rootFieldName(providerType);
+        if (!"rootFolderId".equals(rootField)) {
+            return normalized;
+        }
+        requireMountRootSemantics(providerType, rootField, normalized);
+        if ("/".equals(normalized)) {
+            return rootFolderIdSentinel(providerType);
+        }
+        String currentPath = "/";
+        String currentId = rootFolderIdSentinel(providerType);
+        for (String segment : segments(normalized)) {
+            String childPath = DirectoryRef.of(currentPath).resolve(segment).path();
+            CloudObject child = client.listAccountFolders(sdkAccountId, currentPath).stream()
+                    .filter(CloudObject::directory)
+                    .filter(f -> childPath.equals(f.path()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException("起始目录不存在: " + childPath));
+            currentPath = childPath;
+            currentId = child.id();
+        }
+        return currentId;
+    }
+
+    /**
+     * Aliyun/Xunlei 的 SDK mount 层目前只会把非空 root 当路径规范化，没有安全的 ID 型
+     * mount root 契约。除 cloud189（client 会还原数字 ID）外，子目录起始目录先拒绝，
+     * 避免生成 {@code /<id>/...} 这类错误寻址。
+     */
+    private static void requireMountRootSemantics(String providerType, String rootField, String rootPath) {
+        if ("rootFolderId".equals(rootField) && !"cloud189".equals(providerType) && !"/".equals(rootPath)) {
+            throw new BusinessException("当前 SDK 尚不支持该网盘用文件夹 ID 作为起始目录；"
+                    + "请保持整盘根目录，或等待 SDK mount root 契约修复（见 ticket 07）");
+        }
+    }
+
+    private String withRootField(CloudAccountResource res, String rootField, String value) throws Exception {
+        com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(
+                AesUtil.decrypt(res.getSpec().getSettingsCipher()));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) node).put(rootField, value);
+        return objectMapper.writeValueAsString(node);
+    }
+
+    private static String rootFolderIdSentinel(String providerType) {
+        return "cloud189".equals(providerType) ? "-11" : "";
+    }
+
+    private static String normalizeMountRoot(String rootPath) {
+        return rootPath == null || rootPath.isBlank() ? "/" : DirectoryRef.of(rootPath).path();
+    }
+
+    private static String normalizePath(String path) {
+        return DirectoryRef.of(path).path();
+    }
+
+    private static List<String> segments(String path) {
+        List<String> segments = new ArrayList<>();
+        for (String segment : normalizePath(path).split("/")) {
+            if (!segment.isBlank()) {
+                segments.add(segment);
+            }
+        }
+        return segments;
     }
 
     private CloudAccount ensureSdkAccount(CloudAccountResource res) throws Exception {

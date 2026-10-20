@@ -5,6 +5,7 @@ import com.gameplatform.clouddrive.extension.CloudAccountResource;
 import com.gameplatform.clouddrive.extension.CloudAccountSpec;
 import com.gameplatform.common.exception.BusinessException;
 import com.gameplatform.plugin.extension.ExtensionClient;
+import com.gameplatform.util.AesUtil;
 import com.haki.clouddrive.core.domain.CloudAccount;
 import com.haki.clouddrive.core.domain.Mount;
 import com.haki.clouddrive.core.error.CredentialInvalidException;
@@ -250,5 +251,133 @@ class CloudAccountServiceTest {
         assertThat(child.get("path")).isEqualTo("/maps");
         assertThat(child.get("folders").toString()).contains("coop");
         verify(client).listAccountFolders("a1", "/maps");
+    }
+
+    @Test
+    void cloud189FolderListingKeepsIdAndPathSeparateAndAcceptsOnlyPath() throws Exception {
+        CloudAccountResource res = resource("live-189", "cloud189",
+                "{\"ssonCookie\":\"x\",\"rootFolderId\":\"-11\"}");
+        when(hostExtensionClient.get(CloudAccountResource.class, "live-189"))
+                .thenReturn(Optional.of(res));
+        when(client.settingsClass("cloud189")).thenReturn(
+                (Class) com.haki.clouddrive.provider.cloud189.Cloud189Settings.class);
+        when(client.listAccounts()).thenReturn(List.of(sdkAccount("a1", "live-189")));
+        when(client.replaceSettings(eq("a1"), any())).thenReturn(sdkAccount("a1", "live-189"));
+        when(client.getAccount("a1")).thenReturn(Optional.of(sdkAccount("a1", "live-189")));
+        when(client.describeProvider("cloud189")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("天翼", java.util.Set.of("cloud189"),
+                        com.haki.clouddrive.core.provider.SettingsSchema.of(
+                                com.haki.clouddrive.provider.cloud189.Cloud189Settings.class))));
+        when(client.listAccountFolders("a1", "/")).thenReturn(List.of(
+                com.haki.clouddrive.core.model.CloudObject.directory("-11", "maps", "/maps")));
+
+        Map<String, Object> root = service.listFolders("live-189", "/");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> folders = (List<Map<String, Object>>) root.get("folders");
+        assertThat(folders).singleElement().satisfies(item -> {
+            assertThat(item.get("id")).isEqualTo("-11");
+            assertThat(item.get("path")).isEqualTo("/maps");
+            assertThat(item.get("value")).isEqualTo("/maps");
+        });
+        assertThat(root.get("rootField")).isEqualTo("rootFolderId");
+        assertThat(root.get("idBased")).isEqualTo(true);
+        verify(client).listAccountFolders("a1", "/");
+    }
+
+    @Test
+    void applyRootDirForCloud189ResolvesIdToProviderRootWithoutUsingIdAsPath() throws Exception {
+        CloudAccountResource res = resource("live-189", "cloud189",
+                "{\"ssonCookie\":\"x\",\"rootFolderId\":\"-11\"}");
+        when(hostExtensionClient.get(CloudAccountResource.class, "live-189"))
+                .thenReturn(Optional.of(res));
+        when(client.settingsClass("cloud189")).thenReturn(
+                (Class) com.haki.clouddrive.provider.cloud189.Cloud189Settings.class);
+        when(client.listAccounts()).thenReturn(List.of(sdkAccount("a1", "live-189")));
+        when(client.replaceSettings(eq("a1"), any())).thenReturn(sdkAccount("a1", "live-189"));
+        when(client.getAccount("a1")).thenReturn(Optional.of(sdkAccount("a1", "live-189")));
+        when(client.describeProvider("cloud189")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("天翼", java.util.Set.of("cloud189"),
+                        com.haki.clouddrive.core.provider.SettingsSchema.of(
+                                com.haki.clouddrive.provider.cloud189.Cloud189Settings.class))));
+        when(client.listAccountFolders("a1", "/")).thenReturn(List.of(
+                com.haki.clouddrive.core.model.CloudObject.directory("-11", "maps", "/maps")));
+        when(client.listMounts()).thenReturn(List.of());
+
+        service.applyRootDir("live-189", "/maps");
+
+        assertThat(res.getSpec().getRootPath()).isEqualTo("/maps");
+        assertThat(AesUtil.decrypt(res.getSpec().getSettingsCipher())).contains("\"rootFolderId\":\"-11\"");
+        verify(client).createMount("a1", "/cloud189/live-189", "-11");
+        verify(client, never()).createMount(eq("a1"), eq("/cloud189/live-189"), eq("/maps"));
+        verify(client, never()).listAccountFolders("a1", "-11");
+    }
+
+    @Test
+    void pathProviderAppliesRootPathWithoutIdResolutionAndKeepsPathValue() throws Exception {
+        CloudAccountResource res = resource("quark-main", "quark",
+                "{\"cookie\":\"x\",\"rootPath\":\"/\"}");
+        when(hostExtensionClient.get(CloudAccountResource.class, "quark-main"))
+                .thenReturn(Optional.of(res));
+        when(client.settingsClass("quark")).thenReturn(
+                (Class) com.haki.clouddrive.provider.quark.QuarkSettings.class);
+        when(client.listAccounts()).thenReturn(List.of(sdkAccount("a1", "quark-main")));
+        when(client.replaceSettings(eq("a1"), any())).thenReturn(sdkAccount("a1", "quark-main"));
+        when(client.getAccount("a1")).thenReturn(Optional.of(sdkAccount("a1", "quark-main")));
+        when(client.describeProvider("quark")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("夸克", java.util.Set.of("quark"),
+                        com.haki.clouddrive.core.provider.SettingsSchema.of(
+                                com.haki.clouddrive.provider.quark.QuarkSettings.class))));
+        when(client.listMounts()).thenReturn(List.of());
+
+        service.applyRootDir("quark-main", "/maps");
+
+        assertThat(res.getSpec().getRootPath()).isEqualTo("/maps");
+        assertThat(AesUtil.decrypt(res.getSpec().getSettingsCipher())).contains("\"rootPath\":\"/maps\"");
+        verify(client).createMount("a1", "/quark/quark-main", "/maps");
+        verify(client, never()).listAccountFolders(anyString(), anyString());
+    }
+
+    @Test
+    void syncToEngineRecreatesMountWhenPersistedRootPathDiffers() throws Exception {
+        CloudAccountResource res = resource("quark-main", "quark",
+                "{\"cookie\":\"x\",\"rootPath\":\"/maps\"}");
+        res.getSpec().setRootPath("/maps");
+        when(client.settingsClass("quark")).thenReturn(
+                (Class) com.haki.clouddrive.provider.quark.QuarkSettings.class);
+        when(client.listAccounts()).thenReturn(List.of(sdkAccount("a1", "quark-main")));
+        when(client.replaceSettings(eq("a1"), any())).thenReturn(sdkAccount("a1", "quark-main"));
+        when(client.getAccount("a1")).thenReturn(Optional.of(sdkAccount("a1", "quark-main")));
+        when(client.describeProvider("quark")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("夸克", java.util.Set.of("quark"),
+                        com.haki.clouddrive.core.provider.SettingsSchema.of(
+                                com.haki.clouddrive.provider.quark.QuarkSettings.class))));
+        when(client.listMounts()).thenReturn(List.of(
+                new Mount("m1", "a1", "/quark/quark-main", "/", true, null, Instant.now())));
+
+        service.syncToEngine(res);
+
+        verify(client).deleteMount("m1");
+        verify(client).createMount("a1", "/quark/quark-main", "/maps");
+    }
+
+    @Test
+    void unsupportedIdProviderSubdirRootFailsClosedBeforeMountMutation() throws Exception {
+        CloudAccountResource res = resource("aliyun-main", "aliyun",
+                "{\"accessToken\":\"x\",\"rootFolderId\":\"root\"}");
+        when(hostExtensionClient.get(CloudAccountResource.class, "aliyun-main"))
+                .thenReturn(Optional.of(res));
+        when(client.describeProvider("aliyun")).thenReturn(Optional.of(
+                new com.haki.clouddrive.core.provider.ProviderDescriptor("阿里云盘", java.util.Set.of("aliyun"),
+                        com.haki.clouddrive.core.provider.SettingsSchema.of(
+                                com.haki.clouddrive.provider.aliyun.AliyunSettings.class))));
+
+        assertThatThrownBy(() -> service.applyRootDir("aliyun-main", "/maps"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("尚不支持");
+
+        verify(client, never()).createMount(anyString(), anyString(), anyString());
+        verify(hostExtensionClient, never()).update(any());
+        verify(hostExtensionClient, never()).updateStatus(any(), anyString(), anyString());
     }
 }

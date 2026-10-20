@@ -102,14 +102,14 @@ public class CloudAccountController {
         return Result.success(accountService.quota(name));
     }
 
-    @Operation(summary = "浏览账号目录（起始目录下拉用）", description = "只返回目录；value 已按 provider 语义解析（rootPath=path / rootFolderId=文件夹ID），前端直接回填")
+    @Operation(summary = "浏览账号目录（起始目录下拉用）", description = "只返回目录；value 始终为账号内路径，可直接作为下一次 path；id 仅作元数据")
     @GetMapping("/accounts/{name}/folders")
     public Result<Map<String, Object>> folders(@PathVariable String name,
                                                @RequestParam(defaultValue = "/") String path) {
         return Result.success(accountService.listFolders(name, path));
     }
 
-    @Operation(summary = "应用起始目录", description = "更新 settings 起始目录字段并重建默认挂载；路径命名空间随之切换，已转存产物需重新寻址")
+    @Operation(summary = "应用起始目录", description = "接受账号内路径；路径型 Provider 写入 settings root，ID 型 Provider 解析为原生根值后重建挂载；路径命名空间随之切换")
     @PostMapping("/accounts/{name}/root-dir")
     public Result<Map<String, Object>> applyRootDir(@PathVariable String name,
                                                     @Valid @RequestBody RootDirDTO dto) {

@@ -32,9 +32,10 @@ L4D2 地图中心需要"一键转存后下载"能力：从网盘分享链接（�
 ## 增补（2026-09-15）：起始目录下拉选择
 
 - **两段式交互**：SDK 目录浏览要求账号已存在（浏览即探活），新增账号时起始目录手填（默认整盘）；保存后在账号列表对该账号点「起始目录」→ 级联懒加载浏览（el-cascader + checkStrictly，任意层级可选，失败降级手输）→ 选中即生效。
-- **取值语义由服务端决定**：新增 `GET /api/cloud/accounts/{name}/folders`（管理员），返回目录项带 `value`——rootPath 类 provider（quark/baidu/uc）= 路径，rootFolderId 类（cloud189/aliyun/xunlei）= 文件夹 ID（clp-web 同类端点丢 id 导致路径/ID 错位，不复刻）。root 字段按 provider schema 字段名识别（`rootPath`/`rootFolderId`）。
-- **应用语义**：`POST /api/cloud/accounts/{name}/root-dir` = 更新 settings root 字段 + 重建默认挂载（rootPath=选中值）。路径命名空间随之切换，已转存产物需重新寻址——前端弹明确警告。
-- **ID 兼容**：clp `createMount` 会把 rootPath 规范化加前导斜杠（"-13"→"/-13"），cloud189 client 对斜杠+纯数字串剥斜杠还原真实 ID（上游同日修复）。
+- **目录浏览按路径寻址**：`GET /api/cloud/accounts/{name}/folders`（管理员）只接受账号内路径；响应同时保留 `id` 与 `path`，但 `value` 始终为 `path`，前端直接作为下一次 `path` 回填。ID 仅作展示/审计元数据，避免 ID 型 provider 把文件夹 ID 当路径查询。
+- **应用语义**：`POST /api/cloud/accounts/{name}/root-dir` 只接受账号内路径，并持久化到 `CloudAccountSpec.rootPath`（宿主侧起始目录，独立于 provider settings）。路径型 provider（quark/baidu/uc）同步写入 settings `rootPath`；ID 型 provider（cloud189/aliyun/xunlei）不把路径写入 `rootFolderId`，而是在重建默认挂载前按路径逐级列目录解析 provider 原生根值（cloud189 根为 `-11`，其余 provider 根语义由各自 SDK settings 决定）。路径命名空间随之切换，已转存产物需重新寻址——前端弹明确警告。
+- **挂载重建**：宿主启动对账会按 `spec.rootPath` 重新解析原生根值；已有挂载的 `rootPath` 不一致时删除后重建，避免引擎态与扩展表权威态分叉。
+- **SDK 边界**：cloud189 可用数字 ID 作为 mount root（SDK 会把 `-11` 规范化为 `/-11`，再由 cloud189 client 还原 ID）。Aliyun/Xunlei 的 `createMount` 只把非空 root 当路径规范化，尚无“文件夹 ID → 已校验 mount root”的公开 API；平台侧逐级路径解析可得到 ID，但无法安全穿透该 mount 归一化。因此这两个 provider 的子目录起始目录会 fail closed（保持整盘根，明确报错），见独立 triage 票。
 
 ## Consequences
 
