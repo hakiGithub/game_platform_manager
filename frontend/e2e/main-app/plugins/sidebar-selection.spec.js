@@ -5,9 +5,9 @@
  * 步骤:
  *  - 注入管理员会话并打开 L4D2 服务器信息深链
  *  - 等待侧边栏插件菜单树加载
- *  - 断言完整选中叶子数量为 1，且祖先标题不属于叶子选中态
+ *  - 断言完整选中叶子数量为 1，祖先文字/背景/边框/阴影均无叶子选中态
  *  - 保存截图作为视觉回归证据
- * 通过标准: 活跃叶子唯一，祖先节点仍表示展开链路，截图可复核。
+ * 通过标准: 活跃叶子唯一；祖先无青色文字、选中背景、底边或阴影；截图可复核。
  */
 import { expect, test } from "@playwright/test";
 import { injectSession } from "../../support/session.js";
@@ -37,6 +37,33 @@ test("L4D2 深链侧边栏只高亮唯一叶子", async ({ page }) => {
     ".el-sub-menu.is-active > .el-sub-menu__title",
   );
   await expect(activeAncestorTitles.first()).toBeVisible();
+
+  const activeColor = await sidebar.locator(".el-menu-item.is-active").first().evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  for (const title of await activeAncestorTitles.all()) {
+    const styles = await title.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        color: style.color,
+        backgroundImage: style.backgroundImage,
+        borderBottomColor: style.borderBottomColor,
+        boxShadow: style.boxShadow,
+      };
+    });
+    expect(styles.color).not.toBe(activeColor);
+    expect(styles.backgroundImage).toBe("none");
+    expect(styles.borderBottomColor).toBe("rgba(0, 0, 0, 0)");
+    expect(styles.boxShadow).toBe("none");
+  }
+
+  const inactiveSubmenuTitles = sidebar.locator(
+    ".el-sub-menu:not(.is-active) > .el-sub-menu__title",
+  );
+  await expect(inactiveSubmenuTitles.first()).toBeVisible();
+  for (const title of await inactiveSubmenuTitles.all()) {
+    await expect(title).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
+  }
 
   await page.screenshot({
     path: "e2e/.artifacts/sidebar-selection/l4d2-single-active-leaf.png",
