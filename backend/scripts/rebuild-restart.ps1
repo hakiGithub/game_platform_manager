@@ -66,6 +66,8 @@ $script:LAUNCHER_PID_FILE = Join-Path $LOG_DIR "$APP_NAME.launcher.pid"
 # 插件目录
 $script:PLUGINS_DIR = Join-Path $BACKEND_DIR "plugins"
 $script:PLUGIN_L4D2_DIR = Join-Path $BACKEND_DIR "plugin-l4d2\plugin-l4d2-core"
+$script:PLUGIN_L4D2_FRONTEND_DIR = Join-Path $BACKEND_DIR "plugin-l4d2\frontend"
+$script:PLUGIN_L4D2_UI_DIR = Join-Path $PLUGIN_L4D2_DIR "src\main\resources\ui"
 # 插件 JAR 名带版本，随父 POM 版本变化（当前 SNAPSHOT），用通配符动态匹配
 $script:PLUGIN_L4D2_JAR_GLOB = Join-Path $PLUGIN_L4D2_DIR "target\plugin-l4d2-core*.jar"
 
@@ -215,12 +217,65 @@ function Compile-Backend {
     Write-LogInfo "Classpath 已生成: $cpFile"
 }
 
-# 打包插件 JAR 并部署到 plugins 目录
+# 构建插件前端并校验 UI 产物
+function Build-PluginFrontend {
+    Write-LogInfo "========== 开始构建插件前端 =========="
+    Write-LogInfo "插件前端目录: $PLUGIN_L4D2_FRONTEND_DIR"
+
+    if (-not (Test-Path $PLUGIN_L4D2_FRONTEND_DIR)) {
+        Write-LogError "插件前端目录不存在: $PLUGIN_L4D2_FRONTEND_DIR"
+        throw "插件前端目录不存在"
+    }
+
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npmCmd) {
+        $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    }
+    if (-not $npmCmd) {
+        Write-LogError "未找到 npm，无法构建插件前端"
+        throw "未找到 npm"
+    }
+
+    Set-Location $PLUGIN_L4D2_FRONTEND_DIR
+
+    $nodeModulesDir = Join-Path $PLUGIN_L4D2_FRONTEND_DIR "node_modules"
+    $viteDir = Join-Path $nodeModulesDir "vite"
+    $vueTscDir = Join-Path $nodeModulesDir "vue-tsc"
+    if (-not (Test-Path $nodeModulesDir) -or -not (Test-Path $viteDir) -or -not (Test-Path $vueTscDir)) {
+        Write-LogInfo "插件前端依赖不完整，执行 npm ci ..."
+        $installOutput = cmd /c "npm ci 2>&1"
+        $installExitCode = $LASTEXITCODE
+        if ($installExitCode -ne 0) {
+            Write-LogError "插件前端依赖安装失败 (exit code: $installExitCode)"
+            $installOutput | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
+            throw "插件前端依赖安装失败"
+        }
+    }
+
+    Write-LogInfo "执行 npm run build ..."
+    # Windows 下 npm 实际是 npm.cmd；通过 cmd /c 调用，避免 PowerShell 对 .cmd 的解析问题。
+    $buildOutput = cmd /c "npm run build 2>&1"
+    $buildExitCode = $LASTEXITCODE
+    if ($buildExitCode -ne 0) {
+        Write-LogError "插件前端构建失败 (exit code: $buildExitCode)"
+        $buildOutput | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
+        throw "插件前端构建失败"
+    }
+
+    $uiIndex = Join-Path $PLUGIN_L4D2_UI_DIR "index.html"
+    $uiAssets = Get-ChildItem -Path (Join-Path $PLUGIN_L4D2_UI_DIR "assets") -File -ErrorAction SilentlyContinue
+    if (-not (Test-Path $uiIndex) -or -not $uiAssets) {
+        Write-LogError "插件 UI 产物不完整: index.html=$uiIndex, assets=$($uiAssets.Count)"
+        throw "插件 UI 产物不完整"
+    }
+
+    Write-LogInfo "插件前端构建成功，UI 产物校验通过: $PLUGIN_L4D2_UI_DIR"
+}
+
+# 构建插件前端，打包 JAR 并部署到 plugins 目录
 function Build-Plugins {
     Write-LogInfo "========== 开始打包插件 JAR =========="
     Write-LogInfo "插件源码目录: $PLUGIN_L4D2_DIR"
-
-    Set-Location $BACKEND_DIR
 
     # 检查插件源码目录
     if (-not (Test-Path $PLUGIN_L4D2_DIR)) {
@@ -234,6 +289,9 @@ function Build-Plugins {
         Write-LogError "未找到 Maven，跳过插件打包"
         return
     }
+
+    Build-PluginFrontend
+    Set-Location $BACKEND_DIR
 
     # 打包 plugin-l4d2-core（跳过测试以加速）。必须带 -am，确保 plugin SDK 与本模块
     # 一起编译；-SkipCompile 时本地仓库可能还是旧 SDK，否则新增 builder 字段会编译失败。
