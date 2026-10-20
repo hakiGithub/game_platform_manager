@@ -59,6 +59,19 @@ public class BackendProcessFixture {
         Test-BackendJavaProcess -ProcessInfo $currentProcess | Should Be $false
     }
 
+    It "returns false when process info is null" {
+        Test-BackendJavaProcess -ProcessInfo $null | Should Be $false
+    }
+
+    It "returns null without throwing when a stale PID has no process" {
+        $stalePid = [int]::MaxValue
+        while (Get-Process -Id $stalePid -ErrorAction SilentlyContinue) {
+            $stalePid--
+        }
+
+        Get-BackendProcessByPid -ProcessId $stalePid | Should BeNullOrEmpty
+    }
+
     It "rejects an argfile that does not exist" {
         $missingArgFile = Join-Path $fixtureDir "missing-jvm-args.txt"
         $processInfo = [pscustomobject]@{

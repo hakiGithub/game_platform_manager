@@ -2,7 +2,7 @@
 
 # 02 — stale PID 触发必填参数绑定错误，后端重启脚本无法开始部署
 
-Status: ready-for-agent
+Status: done
 Type: bug
 来源: 2026-10-20 集成分支全栈重部署人工验证
 
@@ -73,3 +73,17 @@ pwsh -NoProfile -File scripts/rebuild-restart-all.ps1 -FrontendPort 3002
 - `Test-BackendJavaProcess` 的 `ProcessInfo` 参数标记为
   `[Parameter(Mandatory = $true)]`，与调用方可能传入 `$null` 的契约冲突。
 - 该缺陷会阻断所有需要清理 stale PID 文件的正常重部署。
+
+### 2026-10-20 实施与验证
+
+**状态：** done
+
+- `Test-BackendJavaProcess` 接受空 `ProcessInfo` 并返回 `$false`。
+- `Get-BackendProcessByPid` 在 CIM 查询不到 PID 时提前返回 `$null`，不再调用
+  必填参数校验。
+- `backend/scripts/tests/backend-process.Tests.ps1` 新增空进程信息和 stale PID
+  两条回归用例。
+- `Pester backend/scripts/tests/backend-process.Tests.ps1`：6/6 通过。
+- `deploy-plugin-artifact-contract.test.ps1`：通过。
+- `rebuild-restart-plugin-ui.test.ps1`：通过。
+- 修复提交：`10a6a32 fix(scripts): handle stale backend pid safely`。
