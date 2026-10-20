@@ -7,6 +7,7 @@ import com.gameplatform.plugin.l4d2.extension.EnabledPluginResource;
 import com.gameplatform.plugin.l4d2.extension.EnabledPluginSpec;
 import com.gameplatform.plugin.l4d2.resolver.L4D2PathResolver;
 import com.gameplatform.plugin.l4d2.vo.EnabledPlugin;
+import com.gameplatform.plugin.service.FileAccessService.FileInfo;
 import com.gameplatform.plugin.service.InstanceFileService;
 import com.gameplatform.plugin.service.InstanceQueryService;
 import com.gameplatform.vo.InstanceVO;
@@ -18,11 +19,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 已启用插件管理：.enabled_plugins.yaml 远程文件 + EnabledPluginResource 扩展资源双写。
@@ -74,6 +77,7 @@ public class EnabledPluginsService {
                 return new ArrayList<>();
             }
             List<EnabledPlugin> result = new ArrayList<>();
+            Map<String, Set<String>> storeSmxIndex = null;
             for (Object item : list) {
                 if (!(item instanceof Map<?, ?> map)) continue;
                 EnabledPlugin ep = new EnabledPlugin();
@@ -81,6 +85,18 @@ public class EnabledPluginsService {
                 ep.setSource(asString(map.get("source")));
                 ep.setEnabledAt(asLong(map.get("enabled_at")));
                 ep.setFiles(asStringList(map.get("files")));
+                if (isCorruptedName(ep.getName())) {
+                    if (storeSmxIndex == null) {
+                        storeSmxIndex = buildStoreSmxIndex(instanceId);
+                    }
+                    String restored = restoreCorruptedName(ep, storeSmxIndex);
+                    if (restored == null) {
+                        log.warn("跳过无法唯一恢复的已启用插件记录: instanceId={}, name={}",
+                                instanceId, ep.getName());
+                        continue;
+                    }
+                    ep.setName(restored);
+                }
                 result.add(ep);
             }
             return result;
@@ -106,7 +122,7 @@ public class EnabledPluginsService {
             }
             root.put(YAML_KEY, pluginList);
             String yaml = yamlMapper.writeValueAsString(root);
-            instanceFileService.writeTextFile(instanceId, path, yaml);
+            instanceFileService.writeTextFile(instanceId, path, yaml, StandardCharsets.UTF_8);
             // 同步扩展资源（先清空再重建）
             syncResources(instanceId, plugins);
         } catch (Exception e) {
@@ -234,6 +250,93 @@ public class EnabledPluginsService {
 
     private String buildResourceName(Long instanceId, String pluginName) {
         return instanceId + "-" + pluginName;
+    }
+
+    private boolean isCorruptedName(String name) {
+        return name != null && name.indexOf('?') >= 0;
+    }
+
+    /**
+     * 历史清单曾用平台默认字符集写回，中文插件名被替换为问号。
+     *
+     * <p>目录名仍是真实的 UTF-8 名称。以启用时记录的 SMX 文件名作为稳定指纹，
+     * 只在唯一命中时恢复；歧义条目跳过，避免把启用状态挂到错误插件上。
+     */
+    private String restoreCorruptedName(EnabledPlugin plugin, Map<String, Set<String>> storeSmxIndex) {
+        if (storeSmxIndex == null || storeSmxIndex.isEmpty()) {
+            return null;
+        }
+        Set<String> enabledSmxNames = new HashSet<>();
+        if (plugin.getFiles() != null) {
+            for (String file : plugin.getFiles()) {
+                if (file == null) continue;
+                String filename = smxFileName(file);
+                if (filename != null) {
+                    enabledSmxNames.add(filename);
+                }
+            }
+        }
+        if (enabledSmxNames.isEmpty()) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> entry : storeSmxIndex.entrySet()) {
+            if (entry.getValue().stream().anyMatch(enabledSmxNames::contains)) {
+                candidates.add(entry.getKey());
+            }
+        }
+        return candidates.size() == 1 ? candidates.get(0) : null;
+    }
+
+    /**
+     * 一次性扫描插件库，避免历史清单中的多条损坏记录重复触发远端目录读取。
+     */
+    private Map<String, Set<String>> buildStoreSmxIndex(Long instanceId) {
+        Map<String, Set<String>> index = new LinkedHashMap<>();
+        try {
+            List<String> storeNames = instanceFileService.listFiles(
+                            instanceId, pathResolver.getPluginsStorePath()).stream()
+                    .filter(FileInfo::isDirectory)
+                    .map(FileInfo::getName)
+                    .filter(Objects::nonNull)
+                    .filter(name -> !name.isBlank() && !isCorruptedName(name))
+                    .toList();
+            for (String storeName : storeNames) {
+                String pluginsPath = pathResolver.getPluginLeft4Dead2Path(storeName)
+                        + "/addons/sourcemod/plugins";
+                Set<String> smxNames = new HashSet<>();
+                try {
+                    instanceFileService.listFiles(instanceId, pluginsPath).stream()
+                            .filter(file -> !file.isDirectory())
+                            .map(FileInfo::getName)
+                            .filter(Objects::nonNull)
+                            .map(this::smxFileName)
+                            .filter(Objects::nonNull)
+                            .forEach(smxNames::add);
+                } catch (Exception e) {
+                    log.debug("读取插件库文件失败，跳过候选: store={}, err={}",
+                            storeName, e.getMessage());
+                    continue;
+                }
+                if (!smxNames.isEmpty()) {
+                    index.put(storeName, smxNames);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取插件库目录失败，无法恢复已启用插件名: instanceId={}, err={}",
+                    instanceId, e.getMessage());
+        }
+        return index;
+    }
+
+    private String smxFileName(String path) {
+        if (path == null) {
+            return null;
+        }
+        String normalized = path.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        String filename = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        return filename.toLowerCase().endsWith(".smx") ? filename : null;
     }
 
     private boolean existsSafe(Long instanceId, String path) {
