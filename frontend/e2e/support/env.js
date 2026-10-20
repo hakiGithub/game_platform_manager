@@ -29,6 +29,9 @@ export const e2eEnv = {
   // 并行 worker 数（用例共享一个后端，默认串行）
   workers: Number(process.env.E2E_WORKERS ?? 1),
 
+  // 需要真实 L4D2 实例的 live 用例显式门控；不设置时整文件/单用例 SKIP。
+  liveL4d2InstanceId: Number(process.env.E2E_L4D2_LIVE_INSTANCE_ID ?? 0),
+
   // 牺牲主机（真实主机全链路用例专用）。任一缺失 ⇒ 主机类用例整组 SKIP。
   testHost: {
     address: process.env.E2E_TEST_HOST_ADDRESS ?? "",
@@ -41,5 +44,9 @@ export const e2eEnv = {
     return Boolean(
       this.testHost.address && this.testHost.username && this.testHost.auth,
     );
+  },
+
+  hasLiveL4d2Instance() {
+    return Number.isInteger(this.liveL4d2InstanceId) && this.liveL4d2InstanceId > 0;
   },
 };

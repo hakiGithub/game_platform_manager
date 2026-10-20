@@ -29,6 +29,10 @@ test("l4d2 插件卡片状态为 STARTED", async ({ page }) => {
 test("进入工作区按 l4d2 实例状态进入工作区或提示未找到实例", async ({
   page,
 }) => {
+  test.skip(
+    !e2eEnv.hasLiveL4d2Instance(),
+    "SKIP (set E2E_L4D2_LIVE_INSTANCE_ID to a live L4D2 instance)",
+  );
   const token = await login(
     e2eEnv.backendUrl,
     e2eEnv.adminUser,
