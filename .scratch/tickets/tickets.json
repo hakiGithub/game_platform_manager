@@ -1,28 +1,56 @@
 {
-  "generatedAt": "2026-10-20T12:24:03.426Z",
+  "generatedAt": "2026-10-20T18:40:41.399Z",
   "sourceRoot": ".scratch",
   "policy": "Excluded statuses: done, resolved, closed, wontfix, cancelled. Directory semantics keep backlog and architecture review open.",
   "summary": {
-    "total": 78,
-    "unclosed": 6,
+    "total": 94,
+    "unclosed": 15,
     "byStatus": {
-      "resolved": 35,
+      "resolved": 42,
       "done": 33,
       "ready-for-human": 6,
       "wontfix（裁决：备份功能临时下线，不修复——2026-09-10）": 1,
-      "done（2026-09-10 修复，E2E 断言已转正/验证）": 3
+      "done（2026-09-10 修复，E2E 断言已转正/验证）": 3,
+      "needs-triage": 5,
+      "ready-for-agent": 4
     },
     "byTone": {
-      "success": 71,
+      "success": 78,
       "human": 6,
-      "muted": 1
+      "muted": 1,
+      "warning": 5,
+      "agent": 4
     }
   },
   "features": [
     {
+      "id": "l4d2-log-tail-grep",
+      "label": "L4D2 UI / plugins",
+      "count": 1,
+      "unclosed": 0
+    },
+    {
+      "id": "l4d2-map-hot-reload",
+      "label": "L4D2 UI / plugins",
+      "count": 1,
+      "unclosed": 0
+    },
+    {
+      "id": "l4d2-monitor-temp-file-history",
+      "label": "L4D2 UI / plugins",
+      "count": 1,
+      "unclosed": 0
+    },
+    {
       "id": "l4d2-plugin-config-editor",
       "label": "L4D2 UI / plugins",
       "count": 5,
+      "unclosed": 0
+    },
+    {
+      "id": "l4d2-plugin-enable-state",
+      "label": "L4D2 UI / plugins",
+      "count": 1,
       "unclosed": 0
     },
     {
@@ -42,6 +70,12 @@
       "label": "L4D2 UI / plugins",
       "count": 7,
       "unclosed": 1
+    },
+    {
+      "id": "l4d2-workshop-parse",
+      "label": "L4D2 UI / plugins",
+      "count": 1,
+      "unclosed": 0
     },
     {
       "id": "l4d2-cloud-map-install",
@@ -66,6 +100,12 @@
       "label": "Architecture review",
       "count": 9,
       "unclosed": 0
+    },
+    {
+      "id": "architecture-review-20261021",
+      "label": "Architecture review",
+      "count": 5,
+      "unclosed": 5
     },
     {
       "id": "cloud-drive-host-capability",
@@ -110,6 +150,12 @@
       "unclosed": 0
     },
     {
+      "id": "plugin-capability-mining",
+      "label": "Other",
+      "count": 6,
+      "unclosed": 4
+    },
+    {
       "id": "plugin-hot-deploy-artifact-contract",
       "label": "Other",
       "count": 2,
@@ -135,6 +181,180 @@
     }
   ],
   "tickets": [
+    {
+      "id": ".scratch/l4d2-map-hot-reload/issues/01-hot-reload-instanceid-query.md",
+      "title": "01: 地图热重载请求缺少 instanceId query 参数",
+      "number": "01",
+      "feature": "l4d2-map-hot-reload",
+      "area": "L4D2 UI / plugins",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "bug",
+      "priority": "",
+      "source": "用户反馈（2026-10-21）",
+      "blockedBy": [],
+      "closed": true,
+      "summary": "地图管理页点击“热重载”，接口返回：",
+      "acceptance": [
+        "前端热重载请求 URL 包含 instanceId。",
+        "前端定向测试通过。",
+        "插件前端生产构建通过。",
+        "部署后真实热重载请求不再返回缺少参数错误。"
+      ],
+      "acceptanceChecks": [
+        "前端热重载请求 URL 包含 instanceId。",
+        "前端定向测试通过。",
+        "插件前端生产构建通过。",
+        "部署后真实热重载请求不再返回缺少参数错误。"
+      ],
+      "questions": [],
+      "comments": [
+        "2026-10-21：已复现真实接口返回 code:400、缺少请求参数: instanceId；",
+        "根因是 query/body 参数位置不一致。",
+        "2026-10-21：mapApi.hotReload 改为 query 传参；新增 API 契约测试，",
+        "断言 URL 含 instanceId=97 且请求体为空。index.test.ts 7/7 通过，",
+        "插件前端生产构建通过。"
+      ],
+      "href": "../l4d2-map-hot-reload/issues/01-hot-reload-instanceid-query.md",
+      "specHref": "../l4d2-map-hot-reload/spec.md",
+      "specPath": ".scratch/l4d2-map-hot-reload/spec.md",
+      "excerpt": "# 01: 地图热重载请求缺少 instanceId query 参数\r\n\r\nStatus: resolved\r\nType: bug\r\n来源: 用户反馈（2026-10-21）\r\n\r\n## 现象\r\n\r\n地图管理页点击“热重载”，接口返回：\r\n\r\n```text\r\n热重载失败：缺少请求参数: instanceId\r\n```\r\n\r\n真实请求：\r\n\r\n```http\r\nPOST /api/plugin/l4d2/maps/hot-reload\r\nContent-Type: application/json\r\n\r\n{\"instanceId\":97}\r\n```\r\n\r\n响应：\r\n\r\n```json\r\n{\"code\":400,\"message\":\"缺少请求参数: instanceId\",\"data\":null}\r\n```\r\n\r\n## 根因\r\n\r\n`MapController.hotReload(...)` 使用 `@RequestParam Long instanceId`，只从 query\r\n读取参数；前端 `mapApi.hotReload` 使用 JSON body 调用。\r\n\r\n## 期望\r\n\r\n- 前端请求改为 `POST /maps/hot-reload?instanceId=<id>`。\r\n- 保持后端控制器现有 query 契约，不扩大到其他地图接口。\r\n- 增加 API 单元测试断言 `instanceId` 出现在 URL，而不是请求体。\r\n\r\n## 验收\r\n\r\n- [x] 前端热重载请求 URL 包含 `instanceId`。\r\n- [x] 前端定向测试通过。\r\n- [x] 插件前端生产构建通过。\r\n- [x] 部署后真实热重载请求不再返回缺少参数错误。\r\n\r\n## Comments\r\n\r\n- 2026-10-21：已复现真实接口返回 `code:400`、`缺少请求参数: instanceId`；\r\n  根因是 query/body 参数位置不一致。\r\n- 2026-10-21：`mapApi.hotReload` 改为 query 传参；新增 API 契约测试，\r\n  断言 URL 含 `instanceId=97` 且请求体为空。`index.test.ts` 7/7 通过，\r\n  插件前端生产构建通过。\r\n"
+    },
+    {
+      "id": ".scratch/l4d2-plugin-enable-state/issues/01-enabled-state-not-readable.md",
+      "title": "01: 启用成功但插件列表仍显示已禁用",
+      "number": "01",
+      "feature": "l4d2-plugin-enable-state",
+      "area": "L4D2 UI / plugins",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "bug",
+      "priority": "",
+      "source": "用户反馈（2026-10-21）",
+      "blockedBy": [],
+      "closed": true,
+      "summary": "已安装插件页面中的插件全部显示“已禁用”。点击单个“启用”或“批量启用”",
+      "acceptance": [
+        "中文插件名启用后接口和列表均回读为 enabled。",
+        "单插件启用与批量启用共用 addAll 登记路径，回归测试覆盖批量登记。",
+        "UTF-8 清单读写有回归测试。",
+        "历史问号名称恢复或安全跳过有回归测试。",
+        "定向测试、构建、热部署和真实接口验证通过。"
+      ],
+      "acceptanceChecks": [
+        "中文插件名启用后接口和列表均回读为 enabled。",
+        "单插件启用与批量启用共用 addAll 登记路径，回归测试覆盖批量登记。",
+        "UTF-8 清单读写有回归测试。",
+        "历史问号名称恢复或安全跳过有回归测试。",
+        "定向测试、构建、热部署和真实接口验证通过。"
+      ],
+      "questions": [],
+      "comments": [
+        "2026-10-21：已用实例 97 复现。单插件启用 API 返回 200，目标",
+        ".smx 文件已复制，但列表仍为 disabled。",
+        "2026-10-21：检查远程 .enabledplugins.yaml 发现历史中文名称被写成问号；",
+        "新插件记录存在，但历史名称失配导致列表状态大面积错误。",
+        "2026-10-21：已修复并热部署。EnabledPluginsService 保存清单固定使用"
+      ],
+      "href": "../l4d2-plugin-enable-state/issues/01-enabled-state-not-readable.md",
+      "specHref": "../l4d2-plugin-enable-state/spec.md",
+      "specPath": ".scratch/l4d2-plugin-enable-state/spec.md",
+      "excerpt": "> *This was generated by AI during triage.*\n\n# 01: 启用成功但插件列表仍显示已禁用\n\nStatus: resolved\nType: bug\n来源: 用户反馈（2026-10-21）\n\n## 现象\n\n已安装插件页面中的插件全部显示“已禁用”。点击单个“启用”或“批量启用”\n后接口返回成功，但刷新列表状态不变。\n\n真实请求：\n\n```http\nPOST /api/plugin/l4d2/plugins/enable-load?instanceId=97&pluginName=...\n```\n\n返回：\n\n```json\n{\"code\":200,\"message\":\"操作成功\",\"data\":null}\n```\n\n随后查询 `GET /api/plugin/l4d2/plugins/list?instanceId=97`，目标插件仍为：\n\n```json\n{\"status\":\"disabled\",\"enableTime\":null}\n```\n\n## 根因候选与证据\n\n- 文件复制实际成功，目标 `.smx` 已出现在游戏目录中。\n- `.enabled_plugins.yaml` 已追加新插件记录，说明接口链路执行完成。\n- 同一 YAML 中大量历史中文插件名已损坏为问号，例如\n  `自选-排行榜插件...` 变成 `???-????????...`。\n- `EnabledPluginsService.loadYaml` 显式按 UTF-8 读取，但\n  `saveYaml` 调用了不带字符集的 `writeTextFile`，落到 JVM 默认字符集。\n- 名单读取后再整体写回会把损坏名称继续传播，列表按目录名匹配时失配，\n  最终全部回落为 `disabled`。\n\n## 期望\n\n- 清单读写固定使用 UTF-8。\n- 保存时不能把已损坏的名称当作有效插件名。\n- 对历史损坏条目，从已有 `plugins_store` 目录中选择唯一可识别名称恢复。\n- 无法唯一恢复的损坏条目应跳过，不得产生错误启用状态或覆盖其他记录。\n- 单插件和批量启用都通过同一修复后的登记逻辑回读为 `enabled`。\n\n## 验收\n\n- [x] 中文插件名启用后接口和列表均回读为 `enabled`。\n- [x] 单插件启用与批量启用共用 `addAll` 登记路径，回归测试覆盖批量登记。\n- [x] UTF-8 清单读写有回归测试。\n- [x] 历史问号名称恢复或安全跳过有回归测试。\n- [x] 定向测试、构建、热部署和真实接口验证通过。\n\n## 关联\n\n- `backend/plugin-l4d2/plugin-l4d2-core/src/main/java/com/gameplatform/plugin/l4d2/servic"
+    },
+    {
+      "id": ".scratch/l4d2-log-tail-grep/issues/01-log-file-click-tail-grep.md",
+      "title": "01: 日志文件点击不加载且搜索未走远端 grep",
+      "number": "01",
+      "feature": "l4d2-log-tail-grep",
+      "area": "L4D2 UI / plugins",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "bug",
+      "priority": "",
+      "source": "用户反馈（2026-10-20）",
+      "blockedBy": [],
+      "closed": true,
+      "summary": "在 L4D2 日志页点击 L261020.log 后，右侧标题仍显示 errors20261018.log，内容为空，",
+      "acceptance": [
+        "点击文件后标题立即更新，内容请求携带正确文件名。",
+        "Native 与 Docker 路由都执行 tail -n / grep -F 语义命令。",
+        "搜索词中的空格、引号、$、管道字符不会改变命令结构。",
+        "无匹配时显示明确空态，不误显示旧文件内容。",
+        "快速切换文件时旧响应不会覆盖新文件。",
+        "后端与前端回归测试、插件构建通过。"
+      ],
+      "acceptanceChecks": [
+        "点击文件后标题立即更新，内容请求携带正确文件名。",
+        "Native 与 Docker 路由都执行 tail -n / grep -F 语义命令。",
+        "搜索词中的空格、引号、$、管道字符不会改变命令结构。",
+        "无匹配时显示明确空态，不误显示旧文件内容。",
+        "快速切换文件时旧响应不会覆盖新文件。",
+        "后端与前端回归测试、插件构建通过。"
+      ],
+      "questions": [],
+      "comments": [
+        "2026-10-20：日志读取改为带 JWT 的 HTTP 短轮询，初始加载远端 tail -n 2000 -- <file；",
+        "Native 与 Docker 路由统一执行 tail、可选 grep -F，并通过 Base64 传输避免 GBK 日志损坏。",
+        "2026-10-20：文件选择会立即更新标题并重置搜索；请求序号防止快速切换时旧响应覆盖新文件；",
+        "搜索后的轮询继续携带当前关键字，避免 grep 结果被无过滤内容覆盖。",
+        "验证：InstanceFileServiceImplTest 通过；插件前端 Logs.test.ts 3 个用例通过；"
+      ],
+      "href": "../l4d2-log-tail-grep/issues/01-log-file-click-tail-grep.md",
+      "specHref": "../l4d2-log-tail-grep/spec.md",
+      "specPath": ".scratch/l4d2-log-tail-grep/spec.md",
+      "excerpt": "# 01: 日志文件点击不加载且搜索未走远端 grep\n\nStatus: resolved\nType: bug\n来源: 用户反馈（2026-10-20）\n\n## 现象\n\n在 L4D2 日志页点击 `L261020.log` 后，右侧标题仍显示 `errors_20261018.log`，内容为空，\n连接状态为“未连接”。当前前端使用无法附加 JWT `Authorization` 头的 `EventSource`，\n且文件选择状态在启动早退时不会更新。搜索框只过滤浏览器已经加载的行。\n\n## 期望\n\n- 点击任一日志文件后，标题、内容和连接状态对应新文件。\n- 初次加载使用远端 `tail -n N -- <file>`，只读取末尾若干行。\n- 搜索使用远端 `tail -n N -- <file> | grep -F -- <pattern>`，无匹配时显示明确空态。\n- 新内容轮询和搜索请求使用带鉴权的 HTTP API，快速切换文件时旧响应不得覆盖新选择。\n- 路径与搜索词经过安全转义，不开放任意 shell 执行。\n\n## 验收\n\n- [x] 点击文件后标题立即更新，内容请求携带正确文件名。\n- [x] Native 与 Docker 路由都执行 `tail -n` / `grep -F` 语义命令。\n- [x] 搜索词中的空格、引号、`$`、管道字符不会改变命令结构。\n- [x] 无匹配时显示明确空态，不误显示旧文件内容。\n- [x] 快速切换文件时旧响应不会覆盖新文件。\n- [x] 后端与前端回归测试、插件构建通过。\n\n## Comments\n\n- 2026-10-20：日志读取改为带 JWT 的 HTTP 短轮询，初始加载远端 `tail -n 2000 -- <file>`；\n  Native 与 Docker 路由统一执行 `tail`、可选 `grep -F`，并通过 Base64 传输避免 GBK 日志损坏。\n- 2026-10-20：文件选择会立即更新标题并重置搜索；请求序号防止快速切换时旧响应覆盖新文件；\n  搜索后的轮询继续携带当前关键字，避免 grep 结果被无过滤内容覆盖。\n- 验证：`InstanceFileServiceImplTest` 通过；插件前端 `Logs.test.ts` 3 个用例通过；\n  `plugin-l4d2-core` 打包与插件前端生产构建通过。\n"
+    },
+    {
+      "id": ".scratch/l4d2-monitor-temp-file-history/issues/01-monitor-history-temp-files.md",
+      "title": "01: 性能监控历史改用临时文件",
+      "number": "01",
+      "feature": "l4d2-monitor-temp-file-history",
+      "area": "L4D2 UI / plugins",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "enhancement",
+      "priority": "",
+      "source": "用户反馈（2026-10-20）",
+      "blockedBy": [],
+      "closed": true,
+      "summary": "性能监控每秒采集一次，当前通过 ExtensionClient.create 写入扩展资源表。历史查询会",
+      "acceptance": [
+        "采集不再调用 ExtensionClient.create。",
+        "历史查询不再调用 ExtensionClient.list / listAll。",
+        "NDJSON 文件按实例写入，查询结果按时间升序返回。",
+        "超过降采样阈值时结果不超过 downsampleTo。",
+        "过期文件和实例删除时文件可被清理。",
+        "监控相关单元测试、插件构建通过。"
+      ],
+      "acceptanceChecks": [
+        "采集不再调用 ExtensionClient.create。",
+        "历史查询不再调用 ExtensionClient.list / listAll。",
+        "NDJSON 文件按实例写入，查询结果按时间升序返回。",
+        "超过降采样阈值时结果不超过 downsampleTo。",
+        "过期文件和实例删除时文件可被清理。",
+        "监控相关单元测试、插件构建通过。"
+      ],
+      "questions": [],
+      "comments": [
+        "2026-10-20：新增 MonitorMetricFileStore，按 java.io.tmpdir/l4d2-monitor/{instanceId}/yyyyMMdd.ndjson",
+        "追加采集数据；查询时流式读取并聚合，内存仅保留最新值和有限桶。",
+        "2026-10-20：监控采集与 API 已移除 ExtensionClient 历史读写；实例删除与保留期清理会删除对应临时文件。",
+        "2026-10-20：修复降采样最终桶数可能超过 downsampleTo 的边界问题。",
+        "验证：MonitorCollectorServiceTest、MonitorControllerTest、MonitorMetricFileStoreTest 通过；"
+      ],
+      "href": "../l4d2-monitor-temp-file-history/issues/01-monitor-history-temp-files.md",
+      "specHref": "../l4d2-monitor-temp-file-history/spec.md",
+      "specPath": ".scratch/l4d2-monitor-temp-file-history/spec.md",
+      "excerpt": "# 01: 性能监控历史改用临时文件\n\nStatus: resolved\nType: enhancement\n来源: 用户反馈（2026-10-20）\n\n## 现象\n\n性能监控每秒采集一次，当前通过 `ExtensionClient.create` 写入扩展资源表。历史查询会\n从表中读取最多 10000 条记录，再在内存中降采样。数据量增长后既增加数据库写入压力，\n也增加查询时的内存占用。\n\n## 期望\n\n- 采集结果追加写入插件本地临时文件，不落扩展资源表。\n- 历史查询流式读取文件，按查询时间范围和目标桶数直接聚合，不加载完整历史。\n- 临时文件按实例隔离，保留时长到期后清理。\n- 实例删除时清理对应文件。\n- 保留现有监控 API 和前端图表契约。\n\n## 验收\n\n- [x] 采集不再调用 `ExtensionClient.create`。\n- [x] 历史查询不再调用 `ExtensionClient.list` / `listAll`。\n- [x] NDJSON 文件按实例写入，查询结果按时间升序返回。\n- [x] 超过降采样阈值时结果不超过 `downsampleTo`。\n- [x] 过期文件和实例删除时文件可被清理。\n- [x] 监控相关单元测试、插件构建通过。\n\n## Comments\n\n- 2026-10-20：新增 `MonitorMetricFileStore`，按 `java.io.tmpdir/l4d2-monitor/{instanceId}/yyyyMMdd.ndjson`\n  追加采集数据；查询时流式读取并聚合，内存仅保留最新值和有限桶。\n- 2026-10-20：监控采集与 API 已移除 `ExtensionClient` 历史读写；实例删除与保留期清理会删除对应临时文件。\n- 2026-10-20：修复降采样最终桶数可能超过 `downsampleTo` 的边界问题。\n- 验证：`MonitorCollectorServiceTest`、`MonitorControllerTest`、`MonitorMetricFileStoreTest` 通过；\n  `plugin-l4d2-core` 打包通过；插件前端 40 个测试及生产构建通过。\n- 2026-10-20（人工验证复核）：临时文件历史读写与界面已生效，但主动采集未持续运行。\n  插件 Spring 子容器未注册 `@Scheduled` 注解处理器，现有 `collectMetrics()` 不会被周期调用；\n  同时采集入口依赖默认值为 `null` 的 `Monitor.gameId`，即使调度生效也会直接返回。\n- 2026-10-20：重新打开票据。改为由插件生命周期自管守护调度线程，并通过\n  `InstanceQueryService.listByG"
+    },
     {
       "id": ".scratch/l4d2-sidebar-selection/issues/01-sidebar-multiple-selected-styles.md",
       "title": "01: L4D2 侧边栏多个菜单同时呈现选中样式",
@@ -306,6 +526,49 @@
       "specHref": "",
       "specPath": "",
       "excerpt": "# 01: L4D2 切换第三方地图后未生效\r\n\r\nStatus: resolved\r\nType: bug\r\n来源: 用户反馈（2026-10-19）\r\n\r\n## 现象\r\n\r\n在 L4D2 实例中请求切换第三方地图 `c1918_red_square_c1` 后，`/rcon/status` 没有返回或保持为该目标地图，服务器仍停留在原地图。\r\n\r\n用户提供的顺序：\r\n\r\n1. 调用 `POST /api/plugin/l4d2/rcon/change-map`，请求体包含 `{\"instanceId\":97,\"mapName\":\"c1918_red_square_c1\"}`。\r\n2. 随后调用 `POST /api/plugin/l4d2/rcon/status`，请求体包含 `{\"instanceId\":97}`。\r\n3. `status` 返回的地图不是替换后的三方地图 `c1918_red_square_c1`。\r\n\r\n复现入口：\r\n\r\n- L4D2 地图管理页切换第三方地图。\r\n- 或直接调用上述两个接口，以状态接口返回的 `map` 为最终判定。\r\n\r\n## 期望\r\n\r\n- 对已安装且服务器可识别的第三方地图，`change-map` 成功后，`status` 在合理等待时间内返回 `c1918_red_square_c1`。\r\n- 若服务器拒绝或无法加载该地图，接口不能只返回成功；需要给出可定位的失败结果或明确状态。\r\n- 原有地图管理能力（列表展示、选择地图、触发切换）继续可用。\r\n\r\n## 已核对的现状\r\n\r\n- 前端 `changeMap` 调用 `/rcon/change-map`。\r\n- 后端接口目前只执行 `changelevel <mapName>`，未把 RCON 输出或换图结果作为响应返回。\r\n- 仓库已有相关但不完全相同的问题：Docker addons 地图列表不可见（已记录、状态为 done）以及换图终态未被 E2E 强断言。本 issue 聚焦“接口返回/状态显示未切到指定三方地图”。\r\n\r\n## 脱敏复现请求\r\n\r\n请求头中的认证信息已移除，字段结构保持不变：\r\n\r\n```http\r\nPOST /api/plugin/l4d2/rcon/change-map\r\nAccept: */*\r\nContent-Type: application/json\r\nAuthorization: Bearer <REDACTED>\r\nCookie: <REDACTED>\r\n\r\n{\"instanceId\":97,\"mapName\":\"c1918_red_square_c1\"}\r\n```\r\n\r\n```http\r\nPOST /api/plugin/l4d2/rcon/status\r\nAccept: */*\r\nContent-Type: ap"
+    },
+    {
+      "id": ".scratch/l4d2-workshop-parse/issues/01-workshop-parse-requires-steam-key.md",
+      "title": "01: Workshop 解析在未配置 Steam API Key 时返回通用系统异常",
+      "number": "01",
+      "feature": "l4d2-workshop-parse",
+      "area": "L4D2 UI / plugins",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "bug",
+      "priority": "",
+      "source": "用户反馈（2026-10-21）",
+      "blockedBy": [],
+      "closed": true,
+      "summary": "请求：",
+      "acceptance": [
+        "无 Key 时公开 Workshop 条目解析成功。",
+        "带 Key 回退路径有测试覆盖。",
+        "控制器异常映射有回归测试。",
+        "插件定向测试与生产构建通过。",
+        "热部署后通过真实接口验证用户给出的 Workshop 链接。"
+      ],
+      "acceptanceChecks": [
+        "无 Key 时公开 Workshop 条目解析成功。",
+        "带 Key 回退路径有测试覆盖。",
+        "控制器异常映射有回归测试。",
+        "插件定向测试与生产构建通过。",
+        "热部署后通过真实接口验证用户给出的 Workshop 链接。"
+      ],
+      "questions": [],
+      "comments": [
+        "2026-10-21：已复现真实 500，并从运行日志确认根因是 Steam API Key 缺失。",
+        "2026-10-21：已直接探测 Steam 两个接口；公开接口对目标条目返回 200，",
+        "带 Key 接口在不带 Key 时返回 401。",
+        "2026-10-21：已改为优先调用无需 Key 的",
+        "ISteamRemoteStorage/GetPublishedFileDetails，失败时按配置回退到带 Key"
+      ],
+      "href": "../l4d2-workshop-parse/issues/01-workshop-parse-requires-steam-key.md",
+      "specHref": "../l4d2-workshop-parse/spec.md",
+      "specPath": ".scratch/l4d2-workshop-parse/spec.md",
+      "excerpt": "> *This was generated by AI during triage.*\n\n# 01: Workshop 解析在未配置 Steam API Key 时返回通用系统异常\n\nStatus: resolved\nType: bug\n来源: 用户反馈（2026-10-21）\n\n## 现象\n\n请求：\n\n```http\nPOST /api/plugin/l4d2/download/parse-workshop\nContent-Type: application/json\n\n{\"url\":\"https://steamcommunity.com/sharedfiles/filedetails/?id=3560886237\"}\n```\n\n响应：\n\n```json\n{\"code\":500,\"message\":\"系统异常,请联系管理员\",\"data\":null}\n```\n\n日志中的真实异常：\n\n```text\nL4D2PluginException: STEAM_API_KEY 未配置\nat SteamApiClient.getPublishedFileDetails(SteamApiClient.java:79)\n```\n\n## 根因\n\n- `SteamApiClient` 只调用要求 Key 的 `IPublishedFileService/GetDetails/v1`。\n- 当前部署没有配置 `plugin.l4d2.steam.api-key`。\n- `DownloadController` 未把 `L4D2PluginException` 转换为宿主可识别的\n  `BusinessException`，最终落到通用 500 处理器。\n\n已验证 Steam 公开接口 `ISteamRemoteStorage/GetPublishedFileDetails/v1`\n无需 Key，且条目 `3560886237` 可返回完整文件信息。\n\n## 期望\n\n- 单文件 Workshop 解析优先使用无需 Key 的公开接口。\n- 公开接口不可用或需要集合展开时，回退到现有带 Key 接口。\n- 控制器把插件业务失败转换为可读错误，不再返回通用“系统异常”。\n- 不改变现有接口路径和响应字段。\n\n## 验收\n\n- [x] 无 Key 时公开 Workshop 条目解析成功。\n- [x] 带 Key 回退路径有测试覆盖。\n- [x] 控制器异常映射有回归测试。\n- [x] 插件定向测试与生产构建通过。\n- [x] 热部署后通过真实接口验证用户给出的 Workshop 链接。\n\n## 关联\n\n- `backend/plugin-l4d2/plugin-l4d2-core/src/main/java/com/gameplatform/plugin/l4d2/util/Steam"
     },
     {
       "id": ".scratch/l4d2-sidebar-selection/issues/02-active-submenu-still-looks-selected.md",
@@ -1670,6 +1933,42 @@
       "excerpt": "> *This was generated by AI during verification.*\r\n\r\n# 14 — 缺少主机凭据时，部分 live 插件用例未显式 SKIP 而失败\r\n\r\nStatus: done\r\nType: bug\r\n来源: 2026-10-20 集成分支 UI E2E 独立验收（附着模式整轮，无 `e2e/.env.local`）\r\n\r\n## 现象\r\n\r\n在无牺牲主机凭据的环境执行：\r\n\r\n```powershell\r\ncd frontend\r\n$env:E2E_BASE_URL='http://127.0.0.1:3002'\r\n$env:E2E_BACKEND_URL='http://127.0.0.1:8080'\r\nnode e2e/runner.mjs --attach --round\r\n```\r\n\r\n整轮结果为 `19 passed / 3 failed / 58 skipped`，其中三条失败均来自依赖真实\r\nL4D2 实例的 live 用例，而不是由 `skipWithoutTestHost()` 或等价门控显式跳过：\r\n\r\n1. `main-app/plugins/plugin-list-pagination-live.spec.js` 固定访问实例 `97`，\r\n   页面 `.plugins-page` 未渲染，`waitForResponse` 超时。\r\n2. `main-app/plugins/plugins.spec.js` 的“进入工作区”分支固定按实例状态进入\r\n   dashboard，但目标实例的插件页面不可用，`.dashboard-page` 超时。\r\n3. `plugins/l4d2/plugin-config-multifile-live.spec.js` 固定访问实例 `97`，\r\n   `.plugin-config-page` 超时。\r\n\r\n同一轮中的 `rcon-live-ops.spec.js` 已通过\r\n`E2E_L4D2_LIVE_INSTANCE_ID` 显式跳过；其他真实主机用例通过\r\n`skipWithoutTestHost()` 跳过。上述三条用例的固定实例 ID 与未门控前置使\r\n“无主机环境整轮 PASS（除显式 SKIP 外）”契约不成立。\r\n\r\n## 复现路径\r\n\r\n1. 不提供 `frontend/e2e/.env.local`，不设置 `E2E_L4D2_LIVE_INSTANCE_ID`。\r\n2. 保持平台前后端可访问，并按上方命令执行附着整轮。\r\n3. 观察无主机页面组和插件子应用组中的三条失败，而不是显式 SKIP。\r\n\r\n## 期望\r\n\r\n- 依赖真实 L4D2 实例的用例必须使用统一、可审计的 live-instance 门控；缺少\r\n  目标实例变"
     },
     {
+      "id": ".scratch/architecture-review-20261021/issues/01-collapse-compose-adapters.md",
+      "title": "01 — 两个 Compose 适配器逐字重复，副本已漂移",
+      "number": "01",
+      "feature": "architecture-review-20261021",
+      "area": "Architecture review",
+      "status": "needs-triage",
+      "statusLabel": "待分诊",
+      "statusTone": "warning",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "架构评审 2026-10-21（候选 1，强度 Strong）",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "DockerComposeAdapter（1377 行）与 LinuxGsmDockerAdapter（1331 行）各自实现同一批",
+      "acceptance": [
+        "mountHostCerts 与 env 文件规则各只有一处实现。",
+        "两个部署方式的 validateEnvironment / uninstallWithResult / getDetails 行为不变，",
+        "现有 DockerComposeAdapterTest 全绿，并为 LinuxGsmDockerAdapter 补对应用例集。",
+        "两个适配器合计净减 ≥ 400 行。",
+        "一条回归测试证明两个风味走同一份 certs/env 逻辑（同一 config，两条部署路径）。"
+      ],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [
+        "This was generated by AI during architecture review.",
+        "2026-10-21 评审结论",
+        "代码核查确认：九项助手跨两份实现，仅 summarizeSshError 逐字相同，其余已各自演化。",
+        "mountHostCerts 为承重约定（AGENTS.md），副本漂移会静默破坏两种部署方式的一致性。"
+      ],
+      "href": "../architecture-review-20261021/issues/01-collapse-compose-adapters.md",
+      "specHref": "../architecture-review-20261021/README.md",
+      "specPath": ".scratch/architecture-review-20261021/README.md",
+      "excerpt": "# 01 — 两个 Compose 适配器逐字重复，副本已漂移\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 1，强度 Strong）\n\n## 现象\n\n`DockerComposeAdapter`（1377 行）与 `LinuxGsmDockerAdapter`（1331 行）各自实现同一批\nCompose 部署规则。逐方法比对行级重合度：\n\n| 方法 | 行重合度 | 是否已漂移 |\n|---|---|---|\n| `getProjectName` | 91% | 否 |\n| `generateEnvFileContent` | 85% | 是（46 vs 39 行） |\n| `getComposeCommand` | 85% | 是（含日志文案差异） |\n| `injectHostCertsMount` | 84% | 是（67 vs 73 行） |\n| `ensureVolumesDeclaration` | 74% | 是（60 vs 72 行） |\n| `resolveWorkDir` | 73% | 是（28 vs 30 行） |\n| `getWorkDir` | 60% | 是（20 vs 14 行） |\n| `uploadEnvFile` | 50% | 是 |\n| `stripAnsiCodes` | 43% | 是（7 vs 14 行） |\n| `summarizeSshError` | 逐字相同 | 否 |\n\n只有 `summarizeSshError` 是逐字相同；其余九项都已各自演化。涉及的行为都是**承重**的：\n`mountHostCerts`（AGENTS.md 明文约定 Docker 类部署统一支持、默认关闭）、\nenv 文件生成、volumes 声明补全、project/workdir 解析、Compose 命令探测与回退。\n\n后果：修其中一份，另一份静默不生效。例如 `mountHostCerts` 相关改动只落在\n`DockerComposeAdapter` 上时，`linuxgsm-docker` 部署的证书挂载行为与\n`docker-compose` 不再一致，且没有任何测试会红。\n\n## 根因\n\n两个部署方式共享「Compose 编排」这一整块实现，但**没有一个 module 拥有它**。\n`DeployAdapter` 接口按部署方式切分，实现却按「是否用 compose」切分，两个维度错位。\n`AbstractDeployAdapter`（794 行、0 个 public 方法）只提供 protected 助手，\n没有承担这块公共实现——删掉它复杂度不会回来，但删掉它也不解决问题。\n\n## 修复建议\n\n抽一个深 mod"
+    },
+    {
       "id": ".scratch/architecture-review-20261015/issues/01-patchinstall-payload-drops-fields.md",
       "title": "01 — PatchInstall 的 headers / includePattern 跨 seam 静默丢失",
       "number": "01",
@@ -1707,6 +2006,43 @@
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
       "excerpt": "# 01 — PatchInstall 的 headers / includePattern 跨 seam 静默丢失\r\n\r\n**Status:** done\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 1）\r\n\r\n## 现象\r\n\r\n`PatchInstallRequest` 携带 7 个字段，但经任务中心 payload 往返后只剩 5 个。`headers` 与 `includePattern`\r\n被静默丢弃，`PatchInstallExecutor` 读到的永远是 `null`。**不报错、不告警**，只在真实云端分享链接下表现异常。\r\n\r\n## 根因\r\n\r\n请求↔payload 的字段清单被手写在三处，其中两处已互相矛盾：\r\n\r\n| 站点 | 行 | 内容 |\r\n|---|---|---|\r\n| `PatchInstallServiceImpl` | :47-56 | 只 `put` instanceId / url / targetPath / format / sha256 |\r\n| `PatchInstallHandler` | :70-76 | 只 `builder` 重建这 5 个 |\r\n| `PatchInstallExecutor` | :146 / :155 / :272 | 读 `getHeaders()` 与 `getIncludePattern()` |\r\n\r\n两个被丢字段的用途：\r\n\r\n- `headers` — ADR-0025「主机直连（DIRECT）」的**唯一理由**：云盘分享直链需要 Cookie/UA。\r\n  `CloudInstallService:301-315` 构造了它，`CloudInstallService:321` 还专门分支判断\r\n  `UNSUPPORTED_HEADER_FILE` —— **该错误路径永不触发**，直连实际在无请求头下载。\r\n- `includePattern` — ADR-0026 的产物筛选（如压缩包只取 `*.vpk`）。\r\n\r\n零测试覆盖：`backend/core/src/test` 中 `headers` 零命中。\r\n\r\n## 修复建议\r\n\r\n把请求↔payload 往返收敛为一个 module，字段清单只存在一处：\r\n\r\n```\r\nPatchInstallContract.toPayload(PatchInstallRequest) → Map<String,Object>\r\nPatchInstallContract.fromPayload(TaskPayload) → PatchInstallRequest\r\n```\r\n\r\nService 与 Handler 两侧都调它。补一条往返测试：断言每个非 null 字段都存活"
+    },
+    {
+      "id": ".scratch/architecture-review-20261021/issues/02-deploy-type-vocabulary-owner.md",
+      "title": "02 — 部署方式词汇表无 owner，前端已两处拼写不一致",
+      "number": "02",
+      "feature": "architecture-review-20261021",
+      "area": "Architecture review",
+      "status": "needs-triage",
+      "statusLabel": "待分诊",
+      "statusTone": "warning",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "架构评审 2026-10-21（候选 2，强度 Strong）",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "ADR-0005 已把实例状态词汇表收口：后端 DeployAdapter.InstanceStatus 是唯一文本源，",
+      "acceptance": [
+        "部署方式文案只有一处定义，与 DeployType.getDescription() 一致。",
+        "detail.vue 的三张表、game/index.vue 的表合并为一个 module。",
+        "Docker 类判断收敛为一个谓词，deploy.vue 五处数组删除。",
+        "有单测覆盖全部四个 code 的 label/tagType/short，并断言未知 code 的兜底行为。",
+        "AdoptInstanceDialog 的集合改由该谓词派生（或显式引用，并说明为何与谓词不同）。"
+      ],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [
+        "This was generated by AI during architecture review.",
+        "2026-10-21 评审结论",
+        "确认两种拼写并存：detail.vue:238 用「LinuxGSM Docker 部署」、game/index.vue:346",
+        "用「LinuxGSM Docker」。instanceStatus.js 已证明该收口模式可行，本票是其在",
+        "DeployType 上的复制。"
+      ],
+      "href": "../architecture-review-20261021/issues/02-deploy-type-vocabulary-owner.md",
+      "specHref": "../architecture-review-20261021/README.md",
+      "specPath": ".scratch/architecture-review-20261021/README.md",
+      "excerpt": "# 02 — 部署方式词汇表无 owner，前端已两处拼写不一致\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 2，强度 Strong）\n\n## 现象\n\nADR-0005 已把实例状态词汇表收口：后端 `DeployAdapter.InstanceStatus` 是唯一文本源，\n前端 `utils/instanceStatus.js` 只留 UI 元数据（颜色、图标、活跃集合）。\n\n但**部署方式**（`DeployType` 的四个 code）没有享受同一待遇，前端多处各自重新建表：\n\n| 站点 | 行 | 内容 |\n|---|---|---|\n| `views/instance/detail.vue` | :238 | `\"linuxgsm-docker\": \"LinuxGSM Docker 部署\"`（完整文案表） |\n| `views/instance/detail.vue` | :249 | `\"linuxgsm-docker\": \"danger\"`（tag 颜色表） |\n| `views/instance/detail.vue` | :260 | `\"linuxgsm-docker\": \"LGSM Docker\"`（简短文案表，第三张） |\n| `views/game/index.vue` | :346 | `\"linuxgsm-docker\": { label: \"LinuxGSM Docker\", type: \"danger\" }` |\n| `components/docker/AdoptInstanceDialog.vue` | :113 | `[\"docker\",\"docker-compose\",\"linuxgsm-docker\"]`（可认领集合） |\n| `views/instance/deploy.vue` | :181, :713, :1332, :1626 | 选项表 + 四处 Docker 类判断数组 |\n\n同一事实的**两种拼写已经并存**：`detail.vue` 用「LinuxGSM Docker 部署」，\n`game/index.vue` 用「LinuxGSM Docker」。同一个 key、同一个枚举，UI 上不一致。\n\n## 根因\n\n`DeployType` 虽是后端枚举，但前端没有一个 module 认领它。\nADR-0005 的模式（后端出文本、前端留 UI 元数据）没有套用到部署方式上，\n于是每个视图按自己需要各建一张表，表与表之间没有约束。\n\n## 修复建议\n\n按 `instanceStatus.js` 的同形做法，建一个部署方式词汇表 module：\n\n```\ndeployTypeLabels: code -> { la"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/02-instance-state-reconciliation.md",
@@ -1767,6 +2103,80 @@
       "excerpt": "# 03 — 45 处 SSH 调用绕过 DeploymentAccess seam，直接传 7 元组\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 2）\r\n\r\n## 现象\r\n\r\n上一轮评审（2026-08-13 候选 2）已建立 `DeploymentAccess` 深模块收敛「deployType 分类 + Host→SSH 凭据解析」。\r\n但该 seam **只覆盖了 credentials/connect，没有把传输层包进去**，于是调用方从旁边绕回来：\r\n\r\n```\r\n45 处 sshUtil.executeCommand(host, port, user, key, pwd, cmd, timeout)\r\n```\r\n\r\n分布：`InstanceFileServiceImpl` 11 · `HostsFileRefresher` 8 · `DeployService` 6 · `BackupServiceImpl` 5\r\n· `SudoAwareSshRunner` 4 · 其余 8 个文件各 1-2。\r\n\r\n## 根因\r\n\r\n`SshUtil` 的 interface 宽达 **7 参数 × 11 方法**，且它本身就是 seam 的所在地——\r\n调用方直接传 7 元组，等于把「凭据如何解析」重新摊给每个调用方。\r\n16 个文件里每一个都得自己记得 `getHost → 判空 → credentials → 传包`。\r\n\r\n两个后果：\r\n\r\n- 凭据解析规则（ADR 明文禁止把用户名当密码、私钥优先密码回退）在 seam 外失效。\r\n- `DeployService:1026` 自带一条本地策略（有密码时丢弃私钥）覆盖 `DeploymentAccess` 的行为——\r\n  同一个规则，两个模块各说各话。\r\n- 另有第二个解凭据的模块 `SudoAwareSshRunner`（仅 5 个使用方），与 `DeploymentAccess` 平行存在。\r\n\r\n## 修复建议\r\n\r\n`RemoteHost` 深模块以 **hostId 为唯一入口**，承载凭据解析、提权策略、超时、重试与在线状态对账；\r\n`SshUtil` 降为它的内部实现细节（内部 seam，供本模块自身测试注入假传输）。\r\n\r\n```\r\nremoteHost.exec(hostId, command)          → CommandResult\r\nremoteHost.execPrivileged(hostId, command)\r\nremoteHost.upload(hostId, local, remote)\r\n```\r\n\r\n调用方写 `remoteHost.exec(hostId,"
     },
     {
+      "id": ".scratch/architecture-review-20261021/issues/03-task-status-vocabulary-deepening.md",
+      "title": "03 — 任务状态词汇表被两个前端重新实现，插件侧还有两个枚举外的状态",
+      "number": "03",
+      "feature": "architecture-review-20261021",
+      "area": "Architecture review",
+      "status": "needs-triage",
+      "statusLabel": "待分诊",
+      "statusTone": "warning",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "架构评审 2026-10-21（候选 3，强度 Worth exploring）",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "后端 backend/core/.../enums/TaskStatus.java 已是任务状态机唯一 owner，",
+      "acceptance": [
+        "TaskStatus 仍是状态机唯一 owner；isTerminal() 的判断只存在于后端。",
+        "插件侧不再有枚举外的状态词；DOWNLOADING / INSTALLING 变为进度阶段或文案。",
+        "主应用侧 42 处字面量中，判断「是否终态」的部分改为消费 VO 字段；",
+        "纯展示的标签映射可保留（与 ADR-0005 的 UI 元数据例外一致）。",
+        "有单测覆盖：新增状态词时前端不会静默落到兜底分支（或明确断言兜底行为）。"
+      ],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [
+        "This was generated by AI during architecture review.",
+        "2026-10-21 评审结论",
+        "实测字面量数由初版 125 修正为 120。插件侧两个枚举外状态是本票最具体的痛点：",
+        "它让「任务是否还在跑」出现两套真值源。是否推进取决于能否改任务 VO——若不能，",
+        "建议降级为修正插件侧越界状态词。"
+      ],
+      "href": "../architecture-review-20261021/issues/03-task-status-vocabulary-deepening.md",
+      "specHref": "../architecture-review-20261021/README.md",
+      "specPath": ".scratch/architecture-review-20261021/README.md",
+      "excerpt": "# 03 — 任务状态词汇表被两个前端重新实现，插件侧还有两个枚举外的状态\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 3，强度 Worth exploring）\n\n## 现象\n\n后端 `backend/core/.../enums/TaskStatus.java` 已是任务状态机唯一 owner，\n自带 `isTerminal()` 与 `canTransitionTo()`。但两个前端各自重新声明这套词汇：\n\n| 侧 | 文件数 | 字面量数 |\n|---|---|---|\n| 主应用 `frontend/src` | 15 | 42 |\n| 插件 `backend/plugin-l4d2/frontend/src` | 14 | 78 |\n\n合计 **120 处** `PENDING / RUNNING / COMPLETED / FAILED / CANCELLED` 字面量，\n分布在任务详情、部署进度、备份进度、还原确认、地图下载、插件安装等场景。\n\n（初版 HTML 报告写「125 处」，实测为 120，以本表为准。）\n\n**枚举外状态**：插件侧 `api/index.ts:483` 定义了\n\n```\nSTORE_TASK_RUNNING_STATUSES = ['PENDING', 'RUNNING', 'DOWNLOADING', 'INSTALLING']\n```\n\n`DOWNLOADING` 与 `INSTALLING` **不在 `TaskStatus` 枚举中**。这两个词是插件 UI 自己造的\n「进行中」状态，用来让任务条保持转圈。后端状态机不认识它们，所以：\n\n- 若后端某天返回这两个词，主应用侧的状态映射会落到兜底分支。\n- 插件侧判断「任务是否还在跑」靠这张自建表，与 `TaskStatus.isTerminal()` 是两套真值源。\n\n## 根因\n\nSDK 的 `TaskVO` 只暴露 `status` 字符串，没有把**状态机**本身递过去。\n于是每个调用方自己判断「是否终态」「是否在跑」。上一轮评审（票 06）已把\n轮询节奏与进度窗口收口到 `ChildTaskFollower`，但**状态词汇的解释权**仍在各调用方手里。\n\n## 修复建议\n\n让后端在任务 VO 上直接给出语义，前端只留展示：\n\n- 任务 VO 增加 `terminal: boolean`（或 `progressPhase` 枚举），由 `TaskStatus.isTerminal()` 派生。\n- 插件侧删除 `STORE_TASK_RUNNING_STATUSES` 的自建集合，改用 VO 的终态判断；\n  `DOWNLOADING` / `INSTALL"
+    },
+    {
+      "id": ".scratch/architecture-review-20261021/issues/04-typed-deploy-config-seam.md",
+      "title": "04 — 部署配置是无类型 Map，同一份数据被组装两遍且规则不同",
+      "number": "04",
+      "feature": "architecture-review-20261021",
+      "area": "Architecture review",
+      "status": "needs-triage",
+      "statusLabel": "待分诊",
+      "statusTone": "warning",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "架构评审 2026-10-21（候选 4，强度 Worth exploring）",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "DeployAdapter 的全部 18 个方法都接 Map<String,Object config。",
+      "acceptance": [
+        "实例配置只经一个入口组装；getInstanceConfig 删除。",
+        "适配器不再用字符串键猜配置，缺必需键时编译期或启动期即失败。",
+        "buildDeployConfig 现有行为不变（含 database 跳过与 image:tag 拼接），",
+        "现有 InstanceServiceImplTest 全绿。",
+        "新增 runtimeMetadata 字段只需改声明列表，不改组装逻辑。"
+      ],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [
+        "This was generated by AI during architecture review.",
+        "2026-10-21 评审结论",
+        "两处组装规则不一致已核实（buildDeployConfig 6 步 vs getInstanceConfig 2 步）。",
+        "风险主要在 buildDeployConfig 的微妙行为（跳过 database、image:tag 拼接），",
+        "重构需以现有测试为护栏。是否推进取决于适配器签名改动面是否可接受。"
+      ],
+      "href": "../architecture-review-20261021/issues/04-typed-deploy-config-seam.md",
+      "specHref": "../architecture-review-20261021/README.md",
+      "specPath": ".scratch/architecture-review-20261021/README.md",
+      "excerpt": "# 04 — 部署配置是无类型 Map，同一份数据被组装两遍且规则不同\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 4，强度 Worth exploring）\n\n## 现象\n\n`DeployAdapter` 的全部 18 个方法都接 `Map<String,Object> config`。\n「config 里必须有哪些键」这件事不住在任何地方——每个适配器自己在代码里\n`getConfigString(config, \"image\", \"\")` 猜，缺键就静默用默认值。\n\n同一份实例数据被**组装两遍**，且两遍规则不同：\n\n| 站点 | 行 | 做了什么 |\n|---|---|---|\n| `InstanceServiceImpl.buildDeployConfig` | :714-803 | 6 步合并：游戏元数据模板 &rarr; configInfo（跳过 `database`）&rarr; portConfig &rarr; installPath/instanceId/gameCode &rarr; runtimeMetadata 提升 &rarr; image:tag 拼接 |\n| `DeployService.getInstanceConfig` | :809-822 | 只合并 configInfo + portConfig，共 8 行 |\n\n`buildDeployConfig` 内部还有 `promoteMetadataIfAbsent`，按 key 逐个手写提升\n（`projectName` / `workDir` / `containerName` / `shortname` / `serviceName`）——\n加一个 runtime 字段就要回来改这个方法。\n\n`InstanceServiceImpl` 一个文件里 20 处调用 `buildDeployConfig`，另 11 处在 `DeployService`。\n\n## 根因\n\n部署配置的**形状**没有 owner。它是 DB 三列（`configInfo` / `portConfig` /\n`runtimeMetadata`）加游戏元数据模板的合成产物，但合成规则散落在两个 service 里，\n消费方又按字符串键各自解释。缺键不报错，所以契约只能靠约定维持。\n\n## 修复建议\n\n一个 module 拥有配置组装，向适配器交出类型化记录：\n\n```\nDeployConfig(installPath, workDir, projectName, containerName, serviceName,\n             shortname, image, ports, env"
+    },
+    {
       "id": ".scratch/architecture-review-20261015/issues/04-typed-task-payload.md",
       "title": "04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文",
       "number": "04",
@@ -1794,6 +2204,42 @@
       "specHref": "../architecture-review-20261015/README.md",
       "specPath": ".scratch/architecture-review-20261015/README.md",
       "excerpt": "# 04 — 任务 payload 是 stringly-typed Map，契约只存在于注释与 ADR 正文\r\n\r\n**Status:** resolved\r\n**Type:** task\r\n**来源:** 架构评审 2026-10-15（候选 4）\r\n\r\n## 现象\r\n\r\n每次 service → handler 交接都是一个无类型 `Map<String,Object>`，字段名/类型/必填性写在 Javadoc 与 ADR 正文里，\r\n没有编译期约束让生产端与消费端吻合。\r\n\r\n**同一个逻辑值 `instanceId`，读法不一致**：\r\n\r\n| 消费端 | 行 | 读法 |\r\n|---|---|---|\r\n| `PatchInstallHandler` | :70 | `payload.getLong(\"instanceId\")` |\r\n| `CloudInstallService` | :173-179 | `payload.getLong(\"instanceId\")` |\r\n| `MapUploadTaskHandler` | :64-66 | `Long.parseLong(payload.getString(\"instanceId\"))` |\r\n\r\n生产端同样不一致：`CloudInstallService:117-142` 放 `Long`，`MapService:314-321` 放 `String`。\r\n\r\n## 根因\r\n\r\n`TaskPayload` 是 `Map<String,Object>`，契约由各 Handler 自行约定。票 01（headers/includePattern 被静默丢弃）\r\n正是这套契约的必然产物——一个 field 可以无声消失，两侧无人察觉。\r\n\r\n## 修复建议\r\n\r\n按任务族定义类型化 payload（`PatchInstallPayload`、`CloudInstallPayload` 等），\r\n由一个 codec 负责两侧序列化/反序列化；提交接口收 spec 对象而非 Map：\r\n\r\n```\r\nsubmit(taskType, source, scope, SPEC spec)   // 框架把 SPEC 落成 JSON\r\nexecute(context, SPEC spec)                  // handler 拿到类型化 spec\r\n```\r\n\r\n## 验收\r\n\r\n- 至少一个任务族（PATCH_INSTALL）完成类型化，含往返 codec 单测。\r\n- 消除 `getString`/`getLong` 类型漂移。\r\n- 生产端与消费端字段不一致时编译期或测试期即失败。\r\n\r\n## 关联\r\n\r\n- **前置**：票 01 已把 PATCH_INSTALL 的字段清"
+    },
+    {
+      "id": ".scratch/architecture-review-20261021/issues/05-instance-file-route-adapters.md",
+      "title": "05 — 实例文件访问靠 20 处 isNative 分支区分两种传输",
+      "number": "05",
+      "feature": "architecture-review-20261021",
+      "area": "Architecture review",
+      "status": "needs-triage",
+      "statusLabel": "待分诊",
+      "statusTone": "warning",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "架构评审 2026-10-21（候选 5，强度 Speculative）",
+      "blockedBy": [],
+      "closed": false,
+      "summary": "InstanceFileServiceImpl（688 行）同时服务两种传输：宿主机 SSH 与容器内",
+      "acceptance": [
+        "传输分支从 20 处降为 1 处（路由选择）。",
+        "临时文件创建/清理只在一处实现，失败路径有测试覆盖。",
+        "现有 InstanceFileServiceImplTest 全绿，行为不变。",
+        "跨路由操作的宿主机中转语义显式可测。"
+      ],
+      "acceptanceChecks": [],
+      "questions": [],
+      "comments": [
+        "This was generated by AI during architecture review.",
+        "2026-10-21 评审结论",
+        "强度 Speculative：AbstractInstanceFileService 的 seam 已经是对的，问题只在实现未跟随",
+        "seam 分叉。收益是结构性清晰度，没有正在发生的故障。若短期内要动这个模块做功能，",
+        "顺势拆分比单独排期更划算。"
+      ],
+      "href": "../architecture-review-20261021/issues/05-instance-file-route-adapters.md",
+      "specHref": "../architecture-review-20261021/README.md",
+      "specPath": ".scratch/architecture-review-20261021/README.md",
+      "excerpt": "# 05 — 实例文件访问靠 20 处 isNative 分支区分两种传输\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 5，强度 Speculative）\n\n## 现象\n\n`InstanceFileServiceImpl`（688 行）同时服务两种传输：宿主机 SSH 与容器内\n`docker exec` / `docker cp`。区分方式是 `route.isNative()`，全文件 **20 处分支**，\n外加 24 处 `docker exec` / `docker cp` 引用。\n\n典型形态（上传路径）：\n\n```\nnative:  SFTP 上传到 installPath\ndocker:  SFTP 上传到宿主机临时路径 -> mkdir -p（容器内）-> docker cp 进容器\n         -> 删除宿主机临时文件\n```\n\n后半段（临时文件生命周期、失败清理）**只属于 docker 路径**，却写在同一个方法体里，\n与 native 路径共享 try/catch 尾段。native 路径永远看不到这些代码，却要承担它的复杂度。\n\n`srcRoute.isNative() != dstRoute.isNative()` 的组合判断出现 4 次（跨路由操作）。\n\n## 根因\n\n`AbstractInstanceFileService` 已有正确的 seam 设计：`buildRoute` 由子类实现，\n`FileRoute` 承载路由上下文。但**路由之后的行为没有跟着分叉**——\n只有路由分叉了，执行没有。于是传输差异以 `if` 的形式留在每个方法里。\n\n## 修复建议\n\n沿已有 seam 把实现拆成两个 adapter：\n\n```\nInstanceFileAccess (已有接口)\n  ├── NativeFileAccess     : 直接 SFTP + 宿主机命令\n  └── DockerFileAccess     : 宿主机临时文件 + docker exec/cp + 清理\n```\n\n- `FileRoute` 决定选哪个 adapter，只决定一次。\n- 临时文件生命周期规则收进 `DockerFileAccess`。\n- 跨路由操作（`srcRoute.isNative() != dstRoute.isNative()`）显式建模为\n  「宿主机中转」，而不是 4 处布尔比较。\n\n## 验收\n\n1. 传输分支从 20 处降为 1 处（路由选择）。\n2. 临时文件创建/清理只在一处实现，失败路径有测试覆盖。\n3. 现有 `InstanceFileServiceImplTest` 全绿，行为不变。\n4. 跨路由操作的宿主机"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/05-host-tooling-port-neutrality.md",
@@ -2733,6 +3179,41 @@
       "excerpt": "> *This was generated by AI during triage.*\n\n# 01: 热部署先卸载插件，后校验构建产物，且 Jar 命名与 Maven 产物不一致\n\nStatus: done\nType: bug\n来源: 2026-10-20 跟进 dnf-tw 问题 05 后热部署 L4D2 插件\n\n## 现象\n\n执行 Maven 打包后，插件构建实际生成：\n\n```text\nbackend/plugin-l4d2/plugin-l4d2-core/target/plugin-l4d2-core-1.0.0-SNAPSHOT.jar\n```\n\n但热部署脚本默认查找：\n\n```text\nbackend/plugin-l4d2/plugin-l4d2-core/target/plugin-l4d2-core-1.0.0.jar\n```\n\n当使用 `--skip-build`，或外部直接构建后再部署时，脚本可能已经完成 PF4J\n`stop` 与 `DELETE unload`，随后在复制阶段才发现源 Jar 不存在。此时插件处于\n`ABSENT`，而脚本只打印复制失败，后端实际没有可用插件。\n\n2026-10-20 已真实复现：后端 `8080` 与前端 `3002` 均正常运行，`plugin-l4d2`\n先被卸载，复制失败；随后手工加载既有部署 Jar 才恢复为 `STARTED`。\n\n## 根因\n\n1. 插件版本来自父 POM 的 `1.0.0-SNAPSHOT`，Maven 产物因此带 `-SNAPSHOT`；\n      脚本却硬编码部署文件名 `plugin-l4d2-core-1.0.0.jar`，并把同一名称用于\n      构建源文件查找。\n2. 构建产物的存在性校验发生在卸载之前，但默认路径不正确，导致校验被绕过；\n      当使用 `--jar` 或某些入口直接调用后续步骤时，也没有在卸载前再次确认\n      最终可部署文件。\n3. 脚本没有在卸载后复制失败时自动回滚旧 Jar 并恢复插件。\n\n`backend/scripts/build-and-deploy.ps1` 同样硬编码\n`target\\plugin-l4d2-core-1.0.0.jar`，与实际 Maven 产物不一致。\n\n## 期望行为\n\n- 部署脚本从 Maven 的最终产物解析 Jar，不依赖硬编码版本后缀；至少支持\n  `plugin-l4d2-core-1.0.0.jar` 和 `plugin-l4d2-core-1.0.0-SNAPSHOT.jar`。\n- 在调用任何插件卸载接口之前，确认源 Jar 存在、是普通文件且非空。\n- 将候选 Jar 复制到临时文件，并校验大小/可读性后，才允许卸载旧插件。\n- 卸载后替换、加载或启动任一步失败时，自"
     },
     {
+      "id": ".scratch/plugin-capability-mining/issues/01-upstream-repo-inventory.md",
+      "title": "01: 上游候选仓库核验清单",
+      "number": "01",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "research",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "None"
+      ],
+      "closed": true,
+      "summary": "",
+      "acceptance": [
+        "至少 25 个已核验仓库，覆盖上表全部 gameCode 分组，且无 MISS 项混入结论区。",
+        "每条记录含 stars、语言、最近 commit 日期、关联 gameCode。",
+        "已明确列出\"搜索无结果\"的游戏族（不编造）。"
+      ],
+      "acceptanceChecks": [
+        "至少 25 个已核验仓库，覆盖上表全部 gameCode 分组，且无 MISS 项混入结论区。",
+        "每条记录含 stars、语言、最近 commit 日期、关联 gameCode。",
+        "已明确列出\"搜索无结果\"的游戏族（不编造）。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/01-upstream-repo-inventory.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 01: 上游候选仓库核验清单\n\nStatus: resolved\nType: research\nBlocked by: None\n\n## 任务\n\n为平台已支持的 145 个 gameCode（见 `backend/core/src/main/resources/games/`）搜索 GitHub 上的\nWeb 管理面板 / GM 工具 / 服务端增强项目，产出一份**已核验**的候选仓库清单。这是后续所有调研票的\n唯一输入源，不允许后续票再各自凭印象列仓库。\n\n## 要求\n\n- 使用 GitHub REST API（`https://api.github.com/search/repositories?q=...`、`/repos/{owner}/{repo}`）\n  核验，不要凭记忆写仓库名。PowerShell 用 `Invoke-RestMethod`，必须带 `User-Agent` 头。\n- 每个候选仓库记录：`full_name`、`stars`、`language`、`html_url`、默认分支最近 commit 日期\n  （`/repos/{o}/{r}/commits?per_page=1`）、关联 gameCode 列表、一句话能力概括。\n- 无法访问的仓库一律标 `MISS`，不写入结论清单。\n\n## 已核验的种子仓库（本票可直接复用，仍需补全活跃度字段）\n\n| 仓库 | stars | 相关 gameCode | 能力 |\n|------|-------|---------------|------|\n| pterodactyl/panel | 9358 | 通用 | 通用游戏服管理面板（Docker 隔离、Egg 配置模板体系） |\n| pelican/panel | 2394 | 通用 | Pterodactyl 的 Laravel 后继者 |\n| pterodactyl/wings | 1062 | 通用 | 守护进程：容器生命周期、安装脚本、备份、文件、WS 控制台 |\n| pelican-eggs/eggs | 3091 | 通用 | 数百个游戏的 Egg（启动参数 + 配置 schema + 安装脚本） |\n| MCSManager/MCSManager | 4995 | minecraft/通用 | 分布式实例管理、文件、终端、计划任务 |\n| pufferpanel/pufferpanel | 1754 | 通用 | 轻量管理面板 |\n| easy-wi/developer | 246 | 通用 | 老牌游戏/语音服 Webinterface |\n| brainfoolong/rcon-web-admin | 80 | 通用 | 纯 RCON Web 控制台（多游戏 RCON 语义） |\n| GameServer"
+    },
+    {
       "id": ".scratch/plugin-hot-deploy-health-probe/issues/01-deploy-plugin-get-login-probe-false-offline.md",
       "title": "01: deploy-plugin.sh 将运行中的后端误判为离线",
       "number": "01",
@@ -2903,6 +3384,185 @@
       "specHref": "",
       "specPath": "",
       "excerpt": "> *This was generated by AI during triage.*\r\n\r\n# 02 — stale PID 触发必填参数绑定错误，后端重启脚本无法开始部署\r\n\r\nStatus: done\r\nType: bug\r\n来源: 2026-10-20 集成分支全栈重部署人工验证\r\n\r\n## 现象\r\n\r\n在集成分支执行：\r\n\r\n```powershell\r\npwsh -NoProfile -File scripts/rebuild-restart-all.ps1 -FrontendPort 3002\r\n```\r\n\r\n后端重启阶段在停止旧进程时立即失败：\r\n\r\n```text\r\n[ERROR] 后端脚本执行失败: Cannot bind argument to parameter 'ProcessInfo' because it is null.\r\n```\r\n\r\n上层随即报告后端重启失败，后端编译、插件打包和启动都没有执行。\r\n\r\n## 复现路径\r\n\r\n1. 停止现有后端，确保 `8080` 没有监听。\r\n2. 让 `backend/logs/game-platform-manager.pid` 保留一个已不存在的 PID。\r\n3. 执行 `backend/scripts/rebuild-restart.ps1` 或全栈入口。\r\n4. 停止旧进程逻辑通过 stale PID 调用 `Get-BackendProcessByPid`。\r\n5. 目标进程不存在时 `Get-CimInstance` 返回 `$null`，随后传给必填参数\r\n   `Test-BackendJavaProcess -ProcessInfo`，PowerShell 在函数体执行前抛参数绑定错误。\r\n\r\n本次现场 PID 文件为 `4780`，启动器 PID 文件为 `8440`，两者进程均已不存在；\r\n`8080` 也无监听。\r\n\r\n## 期望\r\n\r\n- stale PID 是正常停止场景，必须安全返回“未发现运行中的后端进程”，不得抛异常。\r\n- `Test-BackendJavaProcess` 对不存在的进程返回 `false`，由调用方按无进程处理。\r\n- `Get-BackendProcessByPid` 在进程不存在时不调用必填参数校验或显式跳过。\r\n- 回归测试覆盖 stale PID、空进程结果和正常 Java 识别。\r\n- 修复后全栈重部署能够继续执行编译、插件构建、打包、启动与健康检查。\r\n\r\n## 验收\r\n\r\n- [ ] stale PID 调用 `Get-BackendProcessByPid` 返回 `$null`，不抛异常。\r\n- [ ] `Test-BackendJavaProcess` 接受空/不存在进程并返回 `$false`。\r\n- [ ] "
+    },
+    {
+      "id": ".scratch/plugin-capability-mining/issues/02-research-source-engine.md",
+      "title": "02: Source 引擎生态调研（SourceMod / SourceBans / RCON 语义）",
+      "number": "02",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "ready-for-agent",
+      "statusLabel": "Agent 可执行",
+      "statusTone": "agent",
+      "statusSource": "registered",
+      "type": "research",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "01"
+      ],
+      "closed": false,
+      "summary": "",
+      "acceptance": [
+        "至少 3 个已核验上游项目，每条能力有源码路径或官方 wiki 链接。",
+        "明确列出哪些能力已被 plugin-l4d2 实现、哪些是新增（避免重复造）。",
+        "明确 Source 系是否存在\"一次实现、多游戏复用\"的横向插件可能。"
+      ],
+      "acceptanceChecks": [
+        "至少 3 个已核验上游项目，每条能力有源码路径或官方 wiki 链接。",
+        "明确列出哪些能力已被 plugin-l4d2 实现、哪些是新增（避免重复造）。",
+        "明确 Source 系是否存在\"一次实现、多游戏复用\"的横向插件可能。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/02-research-source-engine.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 02: Source 引擎生态调研（SourceMod / SourceBans / RCON 语义）\n\nStatus: ready-for-agent\nType: research\nBlocked by: 01\n\n## 范围\n\ngameCode：`l4d2` `l4d` `css` `tf2` `tf2c` `tfc` `csgo` `cs2` `cs` `cscz` `dods` `dod` `hl2dm` `hldm` `hldms`\n`gmod` `ins` `inss` `doi` `nmrih` `zps` `zmr` `sven` `bmdm` `ahl` `ahl2` `fof` `pvkii` `em` `sfc` `dys`\n`dab` `bs` `ts` `sof2` `q2`(非Source,略) —— 重点是 Source 引擎那批。\n\n## 调研问题\n\n1. SourceMod 的 admin 体系（`admins_simple.ini` / `admins.cfg`、admin 组、免疫等级、override）是什么结构？\n   它的权限模型能否映射到平台现有的\"操作审计 + 实例级操作\"？给出源码/文档路径。\n2. SourceBans++ 的 Web 端提供哪些能力（封禁、禁言、管理员、申诉、服务器组、提交日志）？数据落在哪种 DB？\n   是否有可调用的 API 而非直接改库？\n3. Source 系通用的 RCON 命令语义清单（`status` `kick` `banid` `changelevel` `sv_cheats` `cvar` 读写、\n   `sm_` 系列）哪些适合做成平台上的\"自定义操作 + 语义层\"？\n4. MetaMod/SourceMod 插件的安装-启用-禁用-配置链路在文件系统上具体落哪些目录\n   （`addons/sourcemod/plugins`、`cfg/sourcemod/*.cfg`、`disabled/`）？与 L4D2 插件现有实现差异。\n5. 蒸汽创意工坊（Workshop）/ 第三方地图的管理在 Source 系如何统一（collection id、addon 列表、\n   `host_workshop_map`）？\n\n## 输出\n\n`.scratch/plugin-capability-mining/research/01-source-engine.md`，按\"能力名 / 上游实现 + 出处 /\n文件系统或协议契约 / 平台可复用方式\"四列组织。\n\n## 验收\n\n- [ ] 至少 3 个已核验上游项目，每条能力有源码路径或官方 wiki 链接。\n- [ ] 明确列出哪些能力已被 `plugin-l4d2` 实现、哪些是新增（避免重复造）。\n- [ ] 明确 Sou"
+    },
+    {
+      "id": ".scratch/plugin-capability-mining/issues/03-research-minecraft-family.md",
+      "title": "03: Minecraft 家族调研（mc / mcb / pmc / wmc / vpmc）",
+      "number": "03",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "ready-for-agent",
+      "statusLabel": "Agent 可执行",
+      "statusTone": "agent",
+      "statusSource": "registered",
+      "type": "research",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "01"
+      ],
+      "closed": false,
+      "summary": "",
+      "acceptance": [
+        "至少 3 个已核验上游项目（itzg 镜像、MCSManager、Overviewer 已核验，仍需补 Modrinth/CurseForge 相关）。",
+        "明确区分\"宿主层能力\"（文件/容器/SSH，平台已有）与\"插件语义层能力\"（版本/模组/世界，需要新做）。",
+        "明确 Bedrock 与 Java 版在管理协议上的差异对插件设计的影响。"
+      ],
+      "acceptanceChecks": [
+        "至少 3 个已核验上游项目（itzg 镜像、MCSManager、Overviewer 已核验，仍需补 Modrinth/CurseForge 相关）。",
+        "明确区分\"宿主层能力\"（文件/容器/SSH，平台已有）与\"插件语义层能力\"（版本/模组/世界，需要新做）。",
+        "明确 Bedrock 与 Java 版在管理协议上的差异对插件设计的影响。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/03-research-minecraft-family.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 03: Minecraft 家族调研（mc / mcb / pmc / wmc / vpmc）\n\nStatus: ready-for-agent\nType: research\nBlocked by: 01\n\n## 范围\n\ngameCode：`minecraft`（Java 版）、`mcb`（Bedrock）、`pmc`（PaperMC）、`wmc`（WaterfallMC 代理）、\n`vpmc`（Velocity 代理）。\n\n## 调研问题\n\n1. `itzg/docker-minecraft-server` 暴露了哪些可在平台上复用的能力面：版本切换、模组加载器\n   （Forge/Fabric/Quilt/Paper）、modpack 平台（CurseForge/Modrinth/FTB）自动安装、世界/存档管理、\n   `RCON` 开关、健康检查？\n2. MCSManager 的分布式模型（Daemon + Web）有哪些能力是平台还没有的：实例分布式调度、终端、\n   文件在线编辑、计划任务、镜像/模板、用户与权限、API？给出源码/文档路径。\n3. Minecraft 服务端的管理协议面有哪些：RCON（`rcon-cli`）、`Query`、Minecraft 1.19+ 的\n   `server.properties` 管理、Bedrock 的 `bedrock_server` 无 RCON 时怎么办？\n4. 世界/存档管理：备份与回滚、地图渲染（Minecraft-Overviewer）、玩家数据（`.dat`/NBT）查看编辑，\n   哪些有成熟工具？这些是\"文件层能力\"还是\"协议层能力\"？\n5. 代理端（Waterfall/Velocity）的运维操作：后端服务器注册、玩家跨服转移、插件（BungeeCord 系）\n   管理，是否值得单独做一个插件？\n\n## 输出\n\n`.scratch/plugin-capability-mining/research/02-minecraft-family.md`，同样按\n\"能力名 / 上游实现 + 出处 / 契约（协议·文件·命令） / 平台可复用方式\"四列组织。\n\n## 验收\n\n- [ ] 至少 3 个已核验上游项目（itzg 镜像、MCSManager、Overviewer 已核验，仍需补 Modrinth/CurseForge 相关）。\n- [ ] 明确区分\"宿主层能力\"（文件/容器/SSH，平台已有）与\"插件语义层能力\"（版本/模组/世界，需要新做）。\n- [ ] 明确 Bedrock 与 Java 版在管理协议上的差异对插件设计的影响。\n"
+    },
+    {
+      "id": ".scratch/plugin-capability-mining/issues/04-research-survival-family.md",
+      "title": "04: 生存/沙盒类调研（palworld / valheim / rust / ark / pz / sdtd / dst / dayz 等）",
+      "number": "04",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "ready-for-agent",
+      "statusLabel": "Agent 可执行",
+      "statusTone": "agent",
+      "statusSource": "registered",
+      "type": "research",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "01"
+      ],
+      "closed": false,
+      "summary": "",
+      "acceptance": [
+        "至少覆盖 palworld / valheim / rust / pz 四个重点游戏，每个有 ≥2 个已核验上游项目。",
+        "每个游戏的\"管理协议\"字段明确（RCON / REST / 仅文件 / 无），不写\"可能\"。",
+        "存档工具链标注了运行时依赖，并对照 ADR-0021 判断可行性。"
+      ],
+      "acceptanceChecks": [
+        "至少覆盖 palworld / valheim / rust / pz 四个重点游戏，每个有 ≥2 个已核验上游项目。",
+        "每个游戏的\"管理协议\"字段明确（RCON / REST / 仅文件 / 无），不写\"可能\"。",
+        "存档工具链标注了运行时依赖，并对照 ADR-0021 判断可行性。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/04-research-survival-family.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 04: 生存/沙盒类调研（palworld / valheim / rust / ark / pz / sdtd / dst / dayz 等）\n\nStatus: ready-for-agent\nType: research\nBlocked by: 01\n\n## 范围\n\ngameCode：`palworld` `valheim` `rust` `ark` `pz` `sdtd` `dst` `dayz` `unt` `sm`（Soulmask）`eco` `hz`\n`mh`（MORDHAU，非生存但同属\"无 SourceMod 生态\"）`rw` `sb` `terraria` `stn` `ti` `dodr` `dys`。\n\n## 调研问题\n\n1. 这批游戏的**管理协议面**分别是什么：\n   - Palworld：RCON（`thijsvanloef` 镜像用 `RCON_ENABLED` + `rcon-cli`）+ REST（`restapi`？），端口契约？\n   - Rust：RCON（WebSocket，`Facepunch` 协议）+ Oxide/UMod 插件生态，命令语义？\n   - Valheim / Ark / PZ / 7DTD / DST / DayZ：各自是 RCON、Telnet、HTTP API，还是\"只能改配置文件+重启\"？\n2. 存档/世界管理：Palworld `Level.sav` 可用 `cheahjs/palworld-save-tools` 解析，Valheim `.db`/`.fwl`、\n   PZ 存档、7DTD 世界目录各自有什么成熟工具？这些工具的运行时依赖（Python/.NET）对平台主机\n   （ADR-0021 主机工具安装）意味着什么？\n3. 自动化运维能力：定时备份、自动更新、崩溃自愈、无人时自动关服（Palworld 镜像的\n   `BACKUP_CRON_EXPRESSION` 之类），哪些是镜像自带 vs 需要平台编排？\n4. 玩家/管理员管理：白名单、管理员名单、封禁（SteamID/EOS ID）、离线消息，各自落哪些文件或数据库？\n5. `fpsacha/zomboid-control-panel`（PZ）这类\"单游戏专用面板\"的形态，对平台\"一个游戏一个插件\"的\n   粒度有什么启示？它做了哪些平台没有的功能？\n\n## 输出\n\n`.scratch/plugin-capability-mining/research/03-survival-family.md`。因为游戏多，允许按游戏分小节，\n但每节必须回答上面 5 个问题的对应部分，并标\"无成熟工具\"时也要给出核验证据（搜过了、没有）。\n\n## 验收\n\n- [ ] 至少覆盖 palworld / valheim / rus"
+    },
+    {
+      "id": ".scratch/plugin-capability-mining/issues/05-research-generic-panel-capabilities.md",
+      "title": "05: 通用面板的宿主能力面调研（Pterodactyl / Wings / Eggs / MCSManager / PufferPanel）",
+      "number": "05",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "ready-for-agent",
+      "statusLabel": "Agent 可执行",
+      "statusTone": "agent",
+      "statusSource": "registered",
+      "type": "research",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "None"
+      ],
+      "closed": false,
+      "summary": "",
+      "acceptance": [
+        "四列对照表覆盖：部署模板、文件、备份、控制台、计划任务、资源限额、权限 七个能力域。",
+        "每个\"缺失\"项都给出上游源码路径或文档链接作为出处。",
+        "明确写出\"不做\"清单（多租户 / 计费 / 子用户 API 密钥等）及理由。"
+      ],
+      "acceptanceChecks": [
+        "四列对照表覆盖：部署模板、文件、备份、控制台、计划任务、资源限额、权限 七个能力域。",
+        "每个\"缺失\"项都给出上游源码路径或文档链接作为出处。",
+        "明确写出\"不做\"清单（多租户 / 计费 / 子用户 API 密钥等）及理由。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/05-research-generic-panel-capabilities.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 05: 通用面板的宿主能力面调研（Pterodactyl / Wings / Eggs / MCSManager / PufferPanel）\n\nStatus: ready-for-agent\nType: research\nBlocked by: None\n\n## 目的\n\n这批是**通用面板**，不是单个游戏的插件。调研目标不是抄 UI，而是回答：一个游戏服管理平台到底该提供\n哪些**与游戏无关**的宿主能力面？本平台（core/api/plugin 主应用）哪些已有、哪些缺失、哪些该由插件补。\n\n## 范围与已核验入口\n\n- `pterodactyl/panel`（9358 stars）+ `pterodactyl/wings`（1062）：Egg 体系、安装脚本、备份、文件管理、\n  控制台 WebSocket、资源限额、子用户与权限。\n- `pelican/panel`（2394）+ `pelican-eggs/eggs`（3091）：Egg 生态的去重与演进，Egg 的\n  \"启动参数 + 环境变量 + 配置 schema + 安装脚本\"四段式契约。\n- `MCSManager/MCSManager`（4995）+ `MCSManager/Daemon`：分布式守护、实例模板、计划任务、镜像。\n- `pufferpanel/pufferpanel`（1754）、`easy-wi/developer`（246）：轻量面板的功能取舍（个人自用视角）。\n\n## 调研问题\n\n1. **Egg 契约**：Egg 的四段式（startup command / variables / install script / config parser）能否作为\n   本平台 `games/{code}.yml` 的增强参考？平台现在的 `configSchema` + `customOperations` + `variables`\n   缺了哪一段（例如 config parser 把配置文件键映射到 UI 表单）？\n2. **文件管理**：Wings 的文件 API（列出/读/写/重命名/删除/压缩解压/上传分片/Copy）哪些平台已有，\n   哪些缺（对照 `InstanceFileService`）。\n3. **备份**：Wings 的备份（压缩、限额、下载、恢复、自动轮换）与平台 `InstanceBackup` 的差异。\n4. **控制台/终端**：Wings 的 WS 控制台（命令注入、统计推送、日志）与平台现有的\n   `/ws/instance/{id}/console`、`/ws/docker/.../attach` 的差异。\n5. **子用户与权限**：这些面板的子用户/密钥/权限模型，对本平台（个人自用单租户、JWT + Spring Sec"
+    },
+    {
+      "id": ".scratch/plugin-capability-mining/issues/06-synthesize-catalog-and-roadmap.md",
+      "title": "06: 汇总产出能力目录与插件路线图",
+      "number": "06",
+      "feature": "plugin-capability-mining",
+      "area": "Other",
+      "status": "resolved",
+      "statusLabel": "已解决",
+      "statusTone": "success",
+      "statusSource": "registered",
+      "type": "task",
+      "priority": "",
+      "source": "",
+      "blockedBy": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05"
+      ],
+      "closed": true,
+      "summary": "",
+      "acceptance": [
+        "capability-catalog.md 覆盖 ≥20 条能力，其中通用能力 ≥5 条。",
+        "roadmap.md 给出 ≥3 个候选插件，每个标注 MVP 功能集与依赖宿主能力现状。",
+        "两份文件可作为 to-spec 的输入，无需再回头补调研。"
+      ],
+      "acceptanceChecks": [
+        "capability-catalog.md 覆盖 ≥20 条能力，其中通用能力 ≥5 条。",
+        "roadmap.md 给出 ≥3 个候选插件，每个标注 MVP 功能集与依赖宿主能力现状。",
+        "两份文件可作为 to-spec 的输入，无需再回头补调研。"
+      ],
+      "questions": [],
+      "comments": [],
+      "href": "../plugin-capability-mining/issues/06-synthesize-catalog-and-roadmap.md",
+      "specHref": "../plugin-capability-mining/spec.md",
+      "specPath": ".scratch/plugin-capability-mining/spec.md",
+      "excerpt": "# 06: 汇总产出能力目录与插件路线图\n\nStatus: resolved\nType: task\nBlocked by: 01, 02, 03, 04, 05\n\n## 任务\n\n把 01-05 的调研结果合成两份决策文件，供后续 `to-spec` / `to-tickets` 直接切片实现。\n\n### 产物一：`capability-catalog.md`\n\n统一的能力目录，每条能力一行，字段：\n\n| 字段 | 说明 |\n|------|------|\n| capability | 能力名（动词短语，如\"在线玩家列表与踢出\"） |\n| 上游实现 | 仓库 + 源码路径链接 |\n| 契约 | 落到什么上：RCON 命令 / REST / 文件与目录 / 配置文件 / 容器 API |\n| 适用 gameCode | 具体游戏码列表，或\"通用\" |\n| 宿主依赖 | 需要哪些宿主服务（`RconService`、`InstanceFileService`、`TaskService`、`ScheduleService`、`CloudDriveService`、`HostToolingService`、`SshTunnelService` 等） |\n| 归属 | 主应用宿主能力 / 通用横向插件 / 单游戏插件 |\n| 现状 | 平台已实现 / 部分实现 / 未实现 |\n\n### 产物二：`roadmap.md`\n\n- 候选插件清单（至少 3 个），每个给出：目标 gameCode、MVP 功能集、依赖的宿主能力是否具备、\n  预估工作量级别（S/M/L）、优先级与理由。\n- 一条\"先做横向能力还是先做单游戏插件\"的判断（例如：先抽一个 Source 系通用插件骨架，\n  让 css/tf2/csgo 复用 L4D2 已验证的 RCON + 文件 + 任务链路）。\n- 明确不做清单（多租户、计费、子用户 API 密钥等）。\n\n## 约束\n\n- 严格 ADR-0002 范围隔离：任何要进主应用的东西必须论证\"通用宿主能力\"，游戏专属能力一律归插件。\n- 引用 01-05 的结论，不新引入未核验仓库。\n- 现状列必须对照真实代码：`backend/plugin/` 的宿主服务面、`backend/core/` 的\n  `rcon`/`instanceinfo`/`task`/`schedule`/`archive` 包、以及 `plugin-l4d2` 已有页面。\n\n## 验收\n\n- [x] `capability-catalog.md` 覆盖 ≥20 条能力，其中通用能力 ≥5 条。\n- [x] `roadmap.md` 给出 ≥3 个候选插件，每个标注 MVP 功能集与依赖宿主能力现状。\n- [x] 两份文件可作为 `to-spec` 的输入，无需再回头补调研。\n"
     },
     {
       "id": ".scratch/plugin-hot-deploy-artifact-contract/issues/02-managed-startup-does-not-build-plugin-ui.md",

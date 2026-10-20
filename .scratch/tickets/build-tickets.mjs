@@ -113,7 +113,7 @@ function firstParagraph(text) {
 
 function ticketArea(feature) {
   if (feature === 'backlog') return 'Backlog'
-  if (feature === 'architecture-review-20261015') return 'Architecture review'
+  if (feature.startsWith('architecture-review-')) return 'Architecture review'
   if (feature === 'ui-e2e-automation') return 'E2E automation'
   if (feature === 'mattpocock-skills-refresh') return 'Agent workflow'
   if (feature === 'cloud-drive-host-capability') return 'Cloud drive'
