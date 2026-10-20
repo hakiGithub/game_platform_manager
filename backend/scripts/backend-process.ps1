@@ -2,7 +2,6 @@
 
 function Test-BackendJavaProcess {
     param(
-        [Parameter(Mandatory = $true)]
         [object]$ProcessInfo,
 
         [string]$MainClass = "com.gameplatform.GamePlatformApplication",
@@ -60,6 +59,10 @@ function Get-BackendProcessByPid {
     )
 
     $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    if ($null -eq $processInfo) {
+        return $null
+    }
+
     if (Test-BackendJavaProcess -ProcessInfo $processInfo -MainClass $MainClass -ArgFile $ArgFile) {
         return $processInfo
     }
