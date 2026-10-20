@@ -108,7 +108,17 @@ public class MonitorCollectorService {
         List<InstanceVO> instances;
         try {
             instances = instanceQueryService.listByGameCode(GAME_CODE);
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
+            log.warn("拉取 L4D2 实例列表失败, gameCode={}", GAME_CODE, e);
+            return;
         } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                return;
+            }
             log.warn("拉取 L4D2 实例列表失败, gameCode={}", GAME_CODE, e);
             return;
         }

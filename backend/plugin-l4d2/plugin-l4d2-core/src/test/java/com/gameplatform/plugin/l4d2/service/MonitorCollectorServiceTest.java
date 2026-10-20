@@ -16,6 +16,8 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationContext;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -160,6 +162,23 @@ class MonitorCollectorServiceTest {
 
         MonitorCollectorService.stopSchedulingFromPluginLifecycle();
         assertFalse(service.isScheduling());
+    }
+
+    @Test
+    void stop_scheduling_interrupts_running_collection() throws Exception {
+        CountDownLatch collectionStarted = new CountDownLatch(1);
+        when(instanceQueryService.listByGameCode("l4d2")).thenAnswer(invocation -> {
+            collectionStarted.countDown();
+            Thread.sleep(30_000L);
+            return List.of();
+        });
+        service.startScheduling();
+        assertTrue(collectionStarted.await(2, TimeUnit.SECONDS));
+
+        service.stopScheduling();
+
+        assertFalse(service.isScheduling());
+        verify(metricFileStore, never()).append(anyLong(), any(SystemMetricVO.class));
     }
 
     @Test
