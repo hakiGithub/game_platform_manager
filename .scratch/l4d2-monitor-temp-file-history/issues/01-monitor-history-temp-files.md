@@ -35,3 +35,13 @@ Type: enhancement
 - 2026-10-20：修复降采样最终桶数可能超过 `downsampleTo` 的边界问题。
 - 验证：`MonitorCollectorServiceTest`、`MonitorControllerTest`、`MonitorMetricFileStoreTest` 通过；
   `plugin-l4d2-core` 打包通过；插件前端 40 个测试及生产构建通过。
+- 2026-10-20（人工验证复核）：临时文件历史读写与界面已生效，但主动采集未持续运行。
+  插件 Spring 子容器未注册 `@Scheduled` 注解处理器，现有 `collectMetrics()` 不会被周期调用；
+  同时采集入口依赖默认值为 `null` 的 `Monitor.gameId`，即使调度生效也会直接返回。
+- 2026-10-20：重新打开票据。改为由插件生命周期自管守护调度线程，并通过
+  `InstanceQueryService.listByGameCode("l4d2")` 获取实例，移除对宿主注入数据库 `gameId` 的依赖。
+- 2026-10-20（修复验收）：`onLoad()` 启动单线程守护调度，`onUnload()` / `@PreDestroy`
+  停止；固定延迟执行，采集慢时不会堆积并发任务。补充了按 gameCode 查询、启动停止幂等、
+  停止时中断运行中采集的单元测试。
+- 验证：监控相关 4 个测试类通过；插件 JAR 打包通过；后端重启后临时 NDJSON 文件在 4 秒内
+  从 14532 字节增长到 15211 字节，5 分钟历史接口返回 69 个点；Playwright 探针通过。
