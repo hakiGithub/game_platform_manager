@@ -4,6 +4,7 @@ import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.*;
 import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.service.L4D2RconService;
+import com.gameplatform.plugin.l4d2.service.MapService;
 import com.gameplatform.plugin.l4d2.util.RconFailureDetector;
 import com.gameplatform.plugin.l4d2.vo.ChangeMapResultVO;
 import com.gameplatform.plugin.l4d2.vo.PlayerInfoVO;
@@ -37,6 +38,7 @@ import java.util.List;
 public class RconController {
 
     private final L4D2RconService rconService;
+    private final MapService mapService;
 
     /**
      * 获取服务器状态
@@ -105,7 +107,7 @@ public class RconController {
         log.info("切换地图, instanceId: {}, mapName: {}", dto.getInstanceId(), dto.getMapName());
         try {
             L4D2RconService.ChangeMapResult outcome =
-                    rconService.changeMap(dto.getInstanceId(), dto.getMapName());
+                    mapService.changeMap(dto.getInstanceId(), dto.getMapName());
             ChangeMapResultVO vo = convertToChangeMapResultVO(outcome);
             if (!Boolean.TRUE.equals(vo.getAccepted())) {
                 String message = vo.getError() != null ? vo.getError() : "服务器拒绝换图";
