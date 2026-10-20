@@ -89,11 +89,12 @@ class L4D2RconServiceChangeMapTest {
     void isMapRegistered_matchesCaseAndBspSuffix() {
         when(rcon.executeCommand(1L, "maps *"))
                 .thenReturn("""
-                        L4D2_Brooklyn_part4.bsp
-                        l4d2_broadway_d4.bsp (fs)
+                        -------------
+                        PENDING:   (fs) l4d2_brooklyn_part4.bsp
+                        PENDING:   (fs) l4d2_broadway_d4.bsp
                         """);
 
-        assertTrue(service.isMapRegistered(1L, "L4D2_Brooklyn_part4"));
+        assertTrue(service.isMapRegistered(1L, "l4d2_brooklyn_part4"));
         assertTrue(service.isMapRegistered(1L, "L4D2_BROADWAY_D4.BSP"));
         assertFalse(service.isMapRegistered(1L, "l4d2_chinatown_d2"));
     }
