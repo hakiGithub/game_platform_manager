@@ -106,6 +106,24 @@ class SourceModCfgParserTest {
     }
 
     @Test
+    void parse_shouldKeepDescriptionAcrossSourceModMetadataSeparator() {
+        // SourceMod 自动生成格式用独立的 "// -" 分隔描述和 Default/Min/Max 元数据。
+        String content = "// 多特感上限\n"
+                + "// -\n"
+                + "// Default: \"4\"\n"
+                + "// Minimum: \"0.000000\"\n"
+                + "// Maximum: \"32.000000\"\n"
+                + "ss_base_limit \"4\"\n";
+
+        ConfigItem item = parser.parse(content).get(0);
+
+        assertEquals("多特感上限", item.getDescription());
+        assertEquals("4", item.getDefaultValue());
+        assertEquals(0.0, item.getMin());
+        assertEquals(32.0, item.getMax());
+    }
+
+    @Test
     void serialize_shouldPreserveUnquotedKeyStyle() {
         // 回归：不带引号键的行保存后曾出现 "key" 被复制为值（键重复）导致 cfg 损坏
         String content = "l4d2_health_Head_Boomer \"2\"\n"
