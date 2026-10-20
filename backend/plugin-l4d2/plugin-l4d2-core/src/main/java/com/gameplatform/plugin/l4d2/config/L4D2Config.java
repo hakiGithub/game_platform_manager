@@ -92,9 +92,9 @@ public class L4D2Config {
         private String networkIgnorePattern = "docker|veth|br-|lo";
         /** 是否启用历史临时文件采集（关闭时只刷新最新值） */
         private boolean historyEnabled = true;
-        /** 是否启用主动采集（@Scheduled 实际执行） */
+        /** 是否启用主动采集（插件生命周期守护线程执行） */
         private boolean collectEnabled = true;
-        /** L4D2 游戏 ID（用于拉取所有 L4D2 实例；为 null 时不采集） */
+        /** 可选游戏 ID，供旧采集逻辑兼容；监控主动采集按 gameCode 查询，无需设置 */
         private Long gameId;
     }
 

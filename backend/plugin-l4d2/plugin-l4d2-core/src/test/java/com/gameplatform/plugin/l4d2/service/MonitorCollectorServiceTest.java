@@ -38,7 +38,7 @@ class MonitorCollectorServiceTest {
         config = new L4D2Config();
         config.getMonitor().setCollectEnabled(true);
         config.getMonitor().setHistoryEnabled(true);
-        config.getMonitor().setGameId(1L);
+        config.getMonitor().setCollectIntervalMs(3_600_000L);
         config.getMonitor().setRetentionMs(3L * 24 * 3600 * 1000);
         service = new MonitorCollectorService(instanceQueryService, hostQueryService,
                 metricFileStore, config, pluginContext);
@@ -46,13 +46,15 @@ class MonitorCollectorServiceTest {
 
     @Test
     void collect_metrics_appends_for_each_instance() {
-        when(instanceQueryService.getInstancesByGameId(1L))
+        when(instanceQueryService.listByGameCode("l4d2"))
                 .thenReturn(List.of(buildInstance(1L, 10L), buildInstance(2L, 20L)));
         when(hostQueryService.getHostResourceInfo(10L)).thenReturn(buildHostResource(10.0));
         when(hostQueryService.getHostResourceInfo(20L)).thenReturn(buildHostResource(20.0));
 
         service.collectMetrics();
 
+        verify(instanceQueryService).listByGameCode("l4d2");
+        verify(instanceQueryService, never()).getInstancesByGameId(anyLong());
         verify(metricFileStore, times(2)).append(anyLong(), any(SystemMetricVO.class));
         assertNotNull(service.getLatestMetric(1L));
         assertNotNull(service.getLatestMetric(2L));
@@ -60,7 +62,7 @@ class MonitorCollectorServiceTest {
 
     @Test
     void collect_metrics_skips_failed_instance() {
-        when(instanceQueryService.getInstancesByGameId(1L))
+        when(instanceQueryService.listByGameCode("l4d2"))
                 .thenReturn(List.of(buildInstance(1L, 10L), buildInstance(2L, 20L)));
         when(hostQueryService.getHostResourceInfo(10L)).thenThrow(new RuntimeException("down"));
         when(hostQueryService.getHostResourceInfo(20L)).thenReturn(buildHostResource(20.0));
@@ -85,7 +87,7 @@ class MonitorCollectorServiceTest {
     @Test
     void history_disabled_keeps_latest_without_file_append() {
         config.getMonitor().setHistoryEnabled(false);
-        when(instanceQueryService.getInstancesByGameId(1L))
+        when(instanceQueryService.listByGameCode("l4d2"))
                 .thenReturn(List.of(buildInstance(1L, 10L)));
         when(hostQueryService.getHostResourceInfo(10L)).thenReturn(buildHostResource(10.0));
 
@@ -116,7 +118,7 @@ class MonitorCollectorServiceTest {
 
     @Test
     void delete_instance_clears_cache_and_files() {
-        when(instanceQueryService.getInstancesByGameId(1L))
+        when(instanceQueryService.listByGameCode("l4d2"))
                 .thenReturn(List.of(buildInstance(1L, 10L)));
         when(hostQueryService.getHostResourceInfo(10L)).thenReturn(buildHostResource(10.0));
         service.collectMetrics();
@@ -134,6 +136,30 @@ class MonitorCollectorServiceTest {
         MonitorCollectorService.deleteInstanceFromPluginLifecycle(7L);
 
         verify(metricFileStore).deleteInstance(7L);
+    }
+
+    @Test
+    void scheduling_start_is_idempotent_and_stop_is_idempotent() {
+        service.startScheduling();
+        service.startScheduling();
+
+        assertTrue(service.isScheduling());
+
+        service.stopScheduling();
+        service.stopScheduling();
+
+        assertFalse(service.isScheduling());
+    }
+
+    @Test
+    void plugin_lifecycle_starts_and_stops_scheduling() {
+        when(pluginContext.getBean(MonitorCollectorService.class)).thenReturn(service);
+
+        MonitorCollectorService.startSchedulingFromPluginLifecycle();
+        assertTrue(service.isScheduling());
+
+        MonitorCollectorService.stopSchedulingFromPluginLifecycle();
+        assertFalse(service.isScheduling());
     }
 
     @Test

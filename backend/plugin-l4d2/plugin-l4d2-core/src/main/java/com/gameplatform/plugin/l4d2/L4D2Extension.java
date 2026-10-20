@@ -2,6 +2,7 @@ package com.gameplatform.plugin.l4d2;
 
 import com.gameplatform.plugin.extension.GameEnhancementExtension;
 import com.gameplatform.plugin.extension.PluginMenuDeclaration;
+import com.gameplatform.plugin.context.PluginContext;
 import lombok.extern.slf4j.Slf4j;
 import org.pf4j.Extension;
 
@@ -154,6 +155,18 @@ public class L4D2Extension implements GameEnhancementExtension {
                         .title("下载管理").path("/download").icon("Download").order(53)
                         .parent("/data").build()
         );
+    }
+
+    @Override
+    public void onLoad(PluginContext context) {
+        com.gameplatform.plugin.l4d2.service.MonitorCollectorService
+                .startSchedulingFromPluginLifecycle();
+    }
+
+    @Override
+    public void onUnload() {
+        com.gameplatform.plugin.l4d2.service.MonitorCollectorService
+                .stopSchedulingFromPluginLifecycle();
     }
 
     @Override
