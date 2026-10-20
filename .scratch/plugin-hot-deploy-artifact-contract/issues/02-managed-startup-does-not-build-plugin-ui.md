@@ -46,8 +46,8 @@ GET /api/pf4j/plugin/l4d2/ui/index.html
 - [x] `rebuild-restart.ps1` 默认启动路径会构建 `backend/plugin-l4d2/frontend`。
 - [x] 插件前端构建失败时脚本以非零状态中止，且不部署缺 UI 的 JAR。
 - [x] 重新打包后的 JAR 含 `ui/index.html` 与 `ui/assets/*`。
-- [ ] `/api/pf4j/plugin/l4d2/ui/index.html` 返回 200。
-- [ ] 定向复跑依赖插件资源的 E2E spec 通过。
+- [x] `/api/pf4j/plugin/l4d2/ui/index.html` 返回 200。
+- [x] 定向复跑依赖插件资源的 E2E spec 通过。
 
 ## Out of scope
 
@@ -84,5 +84,9 @@ GET /api/pf4j/plugin/l4d2/ui/index.html
 - 真实构建验证：脚本自动执行 `npm ci` 与 `npm run build`，随后生成
   `plugin-l4d2-core-1.0.0-SNAPSHOT.jar`，大小 1.66 MB、400 entries，
   包含 `ui/index.html` 和 71 个 `ui/assets/*`。
-- 本次使用 `-SkipCompile` 验证，脚本在启动阶段因新 worktree 尚无
-  `core/target/cp.txt` 明确中止；该行为与既有脚本契约一致，不是 UI 构建回归。
+- 全量启动验证：脚本完成后端编译、插件前端构建、JAR 打包和健康检查；
+  `GET /api/pf4j/plugin/l4d2/ui/index.html` 返回 200
+  (`text/html; charset=UTF-8`，含 `#app`)，插件 Spring 容器加载成功。
+- E2E 定向验证：`main-app/plugins/plugins.spec.js` 结果为
+  `1 passed, 1 skipped`；通过项确认 `l4d2` 插件状态为 `STARTED`，
+  SKIP 项为需要 live 实例的环境门控。
