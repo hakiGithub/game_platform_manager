@@ -5,6 +5,7 @@
 Status: ready-for-human
 Type: enhancement
 来源: CloudDriveService SDK 超时契约核对（2026-10-20）
+Blocked by: external SDK `cloud_list_platform` 提供经测试的转存 Job 取消 API
 
 ## 现象
 

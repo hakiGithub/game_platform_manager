@@ -16,7 +16,7 @@
 4. 账号 REST 三件套（CRUD / verify / quota），管理员权限；凭证用主应用现有 AES 加密落 spec，接口不回显明文（仅脱敏尾号）。
 5. 主前端新页 `/system/accounts`，菜单"云盘账号"，挂系统设置组；Header"账号与安全"占位不动。
 6. 默认挂载点 `/{providerType}/{accountName}/` 由宿主隐式派生，调用方以账号 name + 相对路径寻址。
-7. 同步转存：`transfer(account, shareUrl, targetPath, timeout)`，默认超时 10 分钟（服务参数），超时尽力取消底层 Job，完成返回目标路径。
+7. 同步转存：`transfer(account, shareUrl, targetPath, timeout)`，默认超时 10 分钟（服务参数）；超时抛错并保留 `jobId`，不承诺远端取消，底层 Job 可能继续，完成返回目标路径。
 8. 构建前置：`cd cloud_list_platform && mvn -pl clp-sdk -am install`（clp-sdk 0.1.0 未发布仓库，需写入构建脚本说明）。
 
 ## Tickets
