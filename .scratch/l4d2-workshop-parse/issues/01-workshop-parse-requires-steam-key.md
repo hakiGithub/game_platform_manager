@@ -2,7 +2,7 @@
 
 # 01: Workshop 解析在未配置 Steam API Key 时返回通用系统异常
 
-Status: ready-for-agent
+Status: resolved
 Type: bug
 来源: 用户反馈（2026-10-21）
 
@@ -49,11 +49,11 @@ at SteamApiClient.getPublishedFileDetails(SteamApiClient.java:79)
 
 ## 验收
 
-- [ ] 无 Key 时公开 Workshop 条目解析成功。
-- [ ] 带 Key 回退路径有测试覆盖。
-- [ ] 控制器异常映射有回归测试。
-- [ ] 插件定向测试与生产构建通过。
-- [ ] 热部署后通过真实接口验证用户给出的 Workshop 链接。
+- [x] 无 Key 时公开 Workshop 条目解析成功。
+- [x] 带 Key 回退路径有测试覆盖。
+- [x] 控制器异常映射有回归测试。
+- [x] 插件定向测试与生产构建通过。
+- [x] 热部署后通过真实接口验证用户给出的 Workshop 链接。
 
 ## 关联
 
@@ -65,3 +65,14 @@ at SteamApiClient.getPublishedFileDetails(SteamApiClient.java:79)
 - 2026-10-21：已复现真实 500，并从运行日志确认根因是 Steam API Key 缺失。
 - 2026-10-21：已直接探测 Steam 两个接口；公开接口对目标条目返回 200，
   带 Key 接口在不带 Key 时返回 401。
+- 2026-10-21：已改为优先调用无需 Key 的
+  `ISteamRemoteStorage/GetPublishedFileDetails`，失败时按配置回退到带 Key
+  的 `IPublishedFileService/GetDetails`；下载控制器统一返回可读业务错误。
+- 2026-10-21：定向测试 37 个通过；插件全量测试 588 个中仅剩两个既有失败
+  （`PluginStoreServiceTest.cancel_shouldCancelRunningTask`、
+  `SourceModCfgServiceCandidatesTest`），与本次 Workshop 链路无关。
+- 2026-10-21：新插件 JAR 热部署成功，运行包与构建包 SHA-256 一致，
+  插件状态 `STARTED`。
+- 2026-10-21：经 `http://localhost:3002` 真实请求目标链接返回
+  `code=200`、`sourceId=3560886237`、`title=Tower Raid`、
+  `filename=tower.vpk`、`fileSize=325848778`，下载与预览 URL 均有效。
