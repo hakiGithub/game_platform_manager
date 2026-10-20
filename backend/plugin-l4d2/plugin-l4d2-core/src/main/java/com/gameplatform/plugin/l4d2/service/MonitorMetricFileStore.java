@@ -5,6 +5,7 @@ import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.vo.SystemMetricVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -40,6 +41,7 @@ public class MonitorMetricFileStore {
     private final L4D2Config config;
     private final Path rootDir;
 
+    @Autowired
     public MonitorMetricFileStore(ObjectMapper objectMapper, L4D2Config config) {
         this(objectMapper, config,
                 Path.of(System.getProperty("java.io.tmpdir"), "l4d2-monitor"));
