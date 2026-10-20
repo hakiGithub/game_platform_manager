@@ -60,6 +60,7 @@ public class InstanceServiceImpl implements InstanceService {
     private final RconConnectionManager rconConnectionManager;
     private final InstanceInfoService instanceInfoService;
     private final DeploymentAccess deployAccess;
+    private final InstanceTransactionService instanceTransactionService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -209,13 +210,11 @@ public class InstanceServiceImpl implements InstanceService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public InstanceDeleteResultVO deleteInstance(Long id) {
         return deleteInstance(id, true);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public InstanceDeleteResultVO deleteInstance(Long id, boolean deleteContainer) {
         GameInstance instance = instanceMapper.selectById(id);
         if (instance == null) {
@@ -260,14 +259,11 @@ public class InstanceServiceImpl implements InstanceService {
             }
         }
 
-        // 通知 gameCode 匹配的插件扩展点（在删除前，让插件能感知到被删实例）
+        // 插件钩子可能访问外部资源，同样放在数据库事务外。
         pluginLifecycleHook.executeInstanceDeleteHooks(id, instance.getGameCode());
 
-        // 使用物理删除，避免逻辑删除后 instance_name UNIQUE 约束仍冲突
-        int rows = instanceMapper.physicalDeleteById(id);
-        if (rows == 0) {
-            throw new BusinessException("删除实例失败，记录不存在或已被删除");
-        }
+        // 只有短事务内的物理删除需要数据库写锁；远端卸载不得包在事务里。
+        instanceTransactionService.deleteRecord(id);
         log.info("物理删除实例成功: id={}, name={}", id, instance.getInstanceName());
 
         // RCON 连接池联动失效（ADR-0016 决策 5）

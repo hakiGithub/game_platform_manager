@@ -71,6 +71,9 @@ class InstanceServiceImplTest {
     @Mock
     private com.gameplatform.instanceinfo.InstanceInfoService instanceInfoService;
 
+    @Mock
+    private com.gameplatform.service.impl.InstanceTransactionService instanceTransactionService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
@@ -288,11 +291,10 @@ class InstanceServiceImplTest {
 
         when(instanceMapper.selectById(1L)).thenReturn(instance);
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         instanceService.deleteInstance(1L);
 
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
     }
 
     @Test
@@ -305,13 +307,12 @@ class InstanceServiceImplTest {
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
         when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
                 .thenReturn(UninstallResult.success("卸载成功"));
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
 
         assertEquals("success", result.getRemoteCleanupStatus());
         verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
     }
 
     @Test
@@ -324,7 +325,6 @@ class InstanceServiceImplTest {
         when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
                 .thenReturn(UninstallResult.partialSuccess(
                         "清理工作目录失败: Permission denied", "/home/u/games/dnf-tw"));
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
 
@@ -332,7 +332,7 @@ class InstanceServiceImplTest {
         assertTrue(result.isDeleted());
         assertEquals(1, result.getResidualPaths().size());
         assertEquals("/home/u/games/dnf-tw", result.getResidualPaths().get(0));
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
         verify(rconConnectionManager).invalidate(1L);
         verify(instanceInfoService).invalidate(1L);
     }
@@ -346,14 +346,13 @@ class InstanceServiceImplTest {
         when(adapterFactory.getAdapter(DeployAdapter.DeployType.DOCKER)).thenReturn(deployAdapter);
         when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
                 .thenThrow(new IllegalStateException("ssh unavailable"));
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         InstanceDeleteResultVO result = instanceService.deleteInstance(1L);
 
         assertEquals("failed", result.getRemoteCleanupStatus());
         assertTrue(result.isDeleted());
         assertTrue(result.getMessage().contains("ssh unavailable"));
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
     }
 
     @Test
