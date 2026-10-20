@@ -4,6 +4,7 @@ import com.gameplatform.common.result.Result;
 import com.gameplatform.plugin.l4d2.dto.ChangeMapDTO;
 import com.gameplatform.plugin.l4d2.dto.RconCommandDTO;
 import com.gameplatform.plugin.l4d2.service.L4D2RconService;
+import com.gameplatform.plugin.l4d2.service.MapService;
 import com.gameplatform.plugin.l4d2.vo.ChangeMapResultVO;
 import com.gameplatform.plugin.l4d2.vo.RconResultVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,12 +20,14 @@ import static org.mockito.Mockito.when;
 class RconControllerTest {
 
     private L4D2RconService service;
+    private MapService mapService;
     private RconController controller;
 
     @BeforeEach
     void setUp() {
         service = mock(L4D2RconService.class);
-        controller = new RconController(service);
+        mapService = mock(MapService.class);
+        controller = new RconController(service, mapService);
     }
 
     @Test
@@ -34,7 +37,7 @@ class RconControllerTest {
         outcome.setAccepted(true);
         outcome.setConfirmed(true);
         outcome.setCurrentMap("c1m1_hotel");
-        when(service.changeMap(1L, "c1m1_hotel")).thenReturn(outcome);
+        when(mapService.changeMap(1L, "c1m1_hotel")).thenReturn(outcome);
 
         Result<ChangeMapResultVO> result = controller.changeMap(changeMapDto(1L, "c1m1_hotel"));
 
@@ -48,7 +51,7 @@ class RconControllerTest {
         L4D2RconService.ChangeMapResult outcome =
                 new L4D2RconService.ChangeMapResult("missing", "No such map 'missing'");
         outcome.setError("服务器拒绝换图: No such map 'missing'");
-        when(service.changeMap(1L, "missing")).thenReturn(outcome);
+        when(mapService.changeMap(1L, "missing")).thenReturn(outcome);
 
         Result<ChangeMapResultVO> result = controller.changeMap(changeMapDto(1L, "missing"));
 
@@ -60,7 +63,7 @@ class RconControllerTest {
 
     @Test
     void changeMap_transportFailureReturnsBusinessFailure() {
-        when(service.changeMap(1L, "c1m1_hotel"))
+        when(mapService.changeMap(1L, "c1m1_hotel"))
                 .thenThrow(new RuntimeException("RCON unavailable"));
 
         Result<ChangeMapResultVO> result = controller.changeMap(changeMapDto(1L, "c1m1_hotel"));

@@ -60,6 +60,53 @@ public class L4D2RconService {
     }
 
     /**
+     * 查询服务器运行时已注册的 BSP 地图。
+     *
+     * <p>平台识别 VPK 成功不等于当前 srcds 进程已经注册其中的 BSP；换图前必须
+     * 以该集合为准，否则会把必然失败的 changelevel 发给服务器。
+     */
+    public List<String> listRegisteredMaps(long instanceId) {
+        String output = rcon.executeCommand(instanceId, "maps *");
+        if (RconFailureDetector.isFailed(output)) {
+            throw new IllegalStateException("读取服务器地图列表失败: " + firstNonBlankLine(output));
+        }
+        List<String> maps = new ArrayList<>();
+        if (output == null || output.isBlank()) {
+            return maps;
+        }
+        for (String line : output.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            String candidate = trimmed
+                    .replaceAll("(?i)\\(fs\\)", "")
+                    .replaceAll("(?i)\\.bsp", "")
+                    .trim();
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            int separator = candidate.indexOf(' ');
+            String mapName = separator >= 0 ? candidate.substring(0, separator) : candidate;
+            if (!mapName.isEmpty()) {
+                maps.add(mapName);
+            }
+        }
+        return maps;
+    }
+
+    /**
+     * 判断目标地图是否已被服务器运行时注册（忽略大小写与 .bsp 后缀）。
+     */
+    public boolean isMapRegistered(long instanceId, String mapName) {
+        if (mapName == null || mapName.isBlank()) {
+            return false;
+        }
+        return listRegisteredMaps(instanceId).stream()
+                .anyMatch(registered -> mapMatches(mapName, registered));
+    }
+
+    /**
      * 获取服务器状态。依次执行 status + z_difficulty + sm_cvar mp_gamemode。
      *
      * @param instanceId 实例 ID
@@ -336,11 +383,13 @@ public class L4D2RconService {
         if (requested == null || current == null) {
             return false;
         }
-        String normalizedCurrent = current.trim().toLowerCase();
-        String normalizedRequested = requested.trim().toLowerCase();
-        return normalizedCurrent.equals(normalizedRequested)
-                || normalizedCurrent.equals(normalizedRequested + ".bsp")
-                || normalizedCurrent.replace(".bsp", "").equals(normalizedRequested);
+        return normalizeMapName(current).equals(normalizeMapName(requested));
+    }
+
+    private String normalizeMapName(String mapName) {
+        return mapName.trim()
+                .toLowerCase()
+                .replaceAll("(?i)\\.bsp$", "");
     }
 
     private String firstNonBlankLine(String output) {

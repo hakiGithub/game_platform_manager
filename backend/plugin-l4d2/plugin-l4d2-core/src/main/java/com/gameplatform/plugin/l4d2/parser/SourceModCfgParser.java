@@ -79,7 +79,13 @@ public class SourceModCfgParser {
                 String prev = lines[j].trim();
                 if (!prev.startsWith("//")) break;
                 String meta = prev.substring(2).trim();
-                if (meta.isEmpty() || meta.equals("-")) break;
+                if (meta.isEmpty()) break;
+                // SourceMod cfgbuilder 用独立的 "// -" 分隔描述与 Default/Min/Max 元数据，
+                // 它是格式分隔符而非描述结束标记，继续向上扫描。
+                if (meta.equals("-")) {
+                    j--;
+                    continue;
+                }
                 parseDefaultMetadata(meta, item);
                 parseRangeMetadata(meta, item);
                 blockDesc.insert(0, meta + "\n");
@@ -181,6 +187,7 @@ public class SourceModCfgParser {
         String withoutDefault = DEFAULT_PATTERN.matcher(comment).replaceAll("");
         String withoutRange = RANGE_PATTERN.matcher(withoutDefault).replaceAll("");
         return withoutRange
+                .replaceAll("(?m)^\\s*-\\s*$", "")
                 .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
                 .replaceAll(" *(\\n+) *", "$1")
                 .trim();

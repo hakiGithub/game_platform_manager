@@ -497,10 +497,16 @@ onMounted(loadPluginMenus);
 }
 
 :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
-  color: var(--platform-cyan) !important;
+  /* 祖先只表达展开链路，选中语义只属于唯一叶子。 */
+  color: var(--el-text-color-regular) !important;
   background: transparent !important;
-  border-color: transparent;
+  border-color: transparent !important;
   box-shadow: none;
+}
+
+:deep(.el-sub-menu.is-active .el-sub-menu__title) {
+  /* Element Plus 的活跃祖先后代规则会向非活跃子分组传播底边。 */
+  border-bottom-color: transparent !important;
 }
 
 :deep(.el-sub-menu.is-active > .el-sub-menu__title:hover) {
@@ -574,9 +580,9 @@ onMounted(loadPluginMenus);
   }
 
   :deep(.el-menu--collapse .el-sub-menu.is-active > .el-sub-menu__title) {
-    color: var(--platform-cyan) !important;
+    color: var(--el-text-color-regular) !important;
     background: transparent !important;
-    border-color: transparent;
+    border-color: transparent !important;
     box-shadow: none;
   }
 

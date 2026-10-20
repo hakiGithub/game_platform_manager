@@ -335,6 +335,37 @@ public class MapService {
     public void hotReload(Long instanceId) {
         log.info("地图热重载, instanceId: {}", instanceId);
         requireInstance(instanceId);
+        executeHotReloadCommand(instanceId);
+    }
+
+    /**
+     * 换图前置校验与恢复：目标 BSP 未注册时先执行地图热重载；重载后仍不可见则
+     * 返回结构化失败，不发送必然失败的 changelevel。
+     */
+    public L4D2RconService.ChangeMapResult changeMap(Long instanceId, String mapName) {
+        log.info("切换地图, instanceId: {}, mapName: {}", instanceId, mapName);
+        validateMapName(mapName);
+        requireInstance(instanceId);
+
+        if (!rconService.isMapRegistered(instanceId, mapName)) {
+            log.info("目标地图未被运行时注册，先执行地图热重载: instanceId={}, mapName={}",
+                    instanceId, mapName);
+            executeHotReloadCommand(instanceId);
+        }
+
+        if (!rconService.isMapRegistered(instanceId, mapName)) {
+            L4D2RconService.ChangeMapResult result =
+                    new L4D2RconService.ChangeMapResult(mapName, "");
+            result.setError("目标地图未被服务器运行时注册: " + mapName
+                    + "；已尝试地图热重载。请检查 VPK 是否包含目标 BSP，"
+                    + "并确认容器 addons 目录已正确挂载后重启服务器。");
+            return result;
+        }
+
+        return rconService.changeMap(instanceId, mapName);
+    }
+
+    private void executeHotReloadCommand(Long instanceId) {
         String command = config.getMapHotReload().getCommand();
         try {
             rconService.executeCommand(instanceId, command);

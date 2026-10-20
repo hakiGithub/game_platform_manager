@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -126,6 +127,61 @@ class MapServiceTest {
         L4D2PluginException ex = assertThrows(L4D2PluginException.class,
                 () -> mapService.hotReload(999L));
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+    }
+
+    // ============================================================
+    // changeMap 测试
+    // ============================================================
+
+    @Test
+    void changeMap_registeredMapSkipsHotReload() {
+        L4D2RconService.ChangeMapResult expected =
+                new L4D2RconService.ChangeMapResult("c1m1_hotel", "Changing map...");
+        expected.setAccepted(true);
+        expected.setConfirmed(true);
+        when(rconService.isMapRegistered(1L, "c1m1_hotel")).thenReturn(true);
+        when(rconService.changeMap(1L, "c1m1_hotel")).thenReturn(expected);
+
+        L4D2RconService.ChangeMapResult result =
+                mapService.changeMap(1L, "c1m1_hotel");
+
+        assertTrue(result.getConfirmed());
+        verify(rconService, org.mockito.Mockito.never())
+                .executeCommand(eq(1L), eq(config.getMapHotReload().getCommand()));
+    }
+
+    @Test
+    void changeMap_unregisteredMapHotReloadsThenChanges() {
+        L4D2RconService.ChangeMapResult expected =
+                new L4D2RconService.ChangeMapResult("L4D2_Brooklyn_part4", "Changing map...");
+        expected.setAccepted(true);
+        expected.setConfirmed(true);
+        when(rconService.isMapRegistered(1L, "L4D2_Brooklyn_part4"))
+                .thenReturn(false, true);
+        when(rconService.changeMap(1L, "L4D2_Brooklyn_part4")).thenReturn(expected);
+
+        L4D2RconService.ChangeMapResult result =
+                mapService.changeMap(1L, "L4D2_Brooklyn_part4");
+
+        assertTrue(result.getConfirmed());
+        verify(rconService).executeCommand(
+                eq(1L), eq(config.getMapHotReload().getCommand()));
+        verify(rconService).changeMap(1L, "L4D2_Brooklyn_part4");
+    }
+
+    @Test
+    void changeMap_stillUnregisteredAfterHotReloadDoesNotSendChangelevel() {
+        when(rconService.isMapRegistered(1L, "L4D2_Brooklyn_part4"))
+                .thenReturn(false);
+
+        L4D2RconService.ChangeMapResult result =
+                mapService.changeMap(1L, "L4D2_Brooklyn_part4");
+
+        assertFalse(result.getAccepted());
+        assertTrue(result.getError().contains("未被服务器运行时注册"));
+        assertTrue(result.getError().contains("热重载"));
+        verify(rconService, org.mockito.Mockito.never())
+                .changeMap(anyLong(), anyString());
     }
 
     // ============================================================
