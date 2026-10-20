@@ -90,7 +90,7 @@ public class L4D2Config {
         private int maxPoints = 2000;
         private int downsampleTo = 720;
         private String networkIgnorePattern = "docker|veth|br-|lo";
-        /** 是否启用历史持久化（关闭时只读不写） */
+        /** 是否启用历史临时文件采集（关闭时只刷新最新值） */
         private boolean historyEnabled = true;
         /** 是否启用主动采集（@Scheduled 实际执行） */
         private boolean collectEnabled = true;
