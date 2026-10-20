@@ -46,8 +46,25 @@ if [[ -z "${SERVER_HOST}" ]]; then
   fi
 fi
 BASE_URL="http://${SERVER_HOST}:${SERVER_PORT}"
-PYTHON_BIN="$(command -v python3 || command -v python || true)"
-[[ -n "${PYTHON_BIN}" ]] || { echo "错误: 需要 python3 或 python 解析接口响应"; exit 1; }
+find_python() {
+  local candidate path
+  for candidate in python python3; do
+    path="$(command -v "${candidate}" 2>/dev/null || true)"
+    [[ -n "${path}" ]] || continue
+    # Git Bash 的 Windows Store python3 别名不可执行；必须做最小探测。
+    if "${path}" -c "import json,sys" >/dev/null 2>&1; then
+      printf '%s\n' "${path}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON_BIN="$(find_python || true)"
+[[ -n "${PYTHON_BIN}" ]] || {
+  echo "错误: 需要可执行的 python 或 python3 解析接口响应"
+  exit 1
+}
 
 SKIP_FRONTEND=0
 SKIP_BUILD=0

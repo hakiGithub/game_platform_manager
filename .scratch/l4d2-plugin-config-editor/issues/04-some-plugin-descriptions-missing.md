@@ -2,7 +2,7 @@
 
 # 04: 部分 L4D2 插件配置项仍缺少描述
 
-Status: needs-triage
+Status: resolved
 Type: bug
 来源: 用户反馈（2026-10-20）
 
@@ -33,3 +33,32 @@ Type: bug
 
 - 现有实现单：`.scratch/l4d2-plugin-config-editor/issues/01-config-editor-description-and-multi-file.md`
 - 范围解析修复：`.scratch/l4d2-plugin-config-editor/issues/03-sourcemod-minimum-maximum-metadata.md`
+
+### 2026-10-20 实施与真实验证
+
+**根因**
+
+SourceMod cfgbuilder 生成的 cfg 在描述和 `Default/Minimum/Maximum` 之间使用
+独立一行 `// -`。原解析器遇到 `-` 就停止向上扫描，导致描述永远为空。
+
+**实现**
+
+- `SourceModCfgParser` 遇到独立 `// -` 时跳过并继续扫描描述块。
+- 描述清理移除独立 `-` 行，不把分隔符显示给用户。
+- 新增精确回归用例，覆盖
+  `描述 + // - + Default + Minimum + Maximum + key`。
+
+**真实验证**
+
+- `SourceModCfgParserTest`：12/12 通过。
+- 热部署后对实例 97 的四类真实插件配置复核：
+
+| 插件 | cfg | 配置项 | 有描述 | 缺失 |
+|---|---|---:|---:|---:|
+| 自选-多特感插件 | specialspawner.cfg | 30 | 30 | 0 |
+| 自选-排行榜插件 | l4d2_emshud_info.cfg | 9 | 9 | 0 |
+| WeaponHandling | WeaponHandling.cfg | 3 | 3 | 0 |
+| left4dhooks | left4dhooks.cfg | 1 | 1 | 0 |
+
+- Playwright `plugin-config-multifile-live.spec.js`：1/1 通过，页面描述列不再
+  泄漏 `Minimum:` / `Maximum:`。

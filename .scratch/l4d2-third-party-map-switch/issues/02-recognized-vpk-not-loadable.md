@@ -2,7 +2,7 @@
 
 # 02: 第三方地图识别为 OK 但游戏运行时无法加载
 
-Status: needs-info
+Status: resolved
 Type: bug
 来源: Issue 01 真实环境复现（L4D2 实例 ID 97，2026-10-19）
 
@@ -154,3 +154,31 @@ POST /api/plugin/l4d2/rcon/execute
 - 在不影响玩家的情况下重启实例 97 后，`maps *` 是否出现 `L4D2_Brooklyn_part4`。
 
 在补齐这些信息前，本票仍保持 `needs-info`；但“平台识别 OK 不等于运行时已注册 BSP”已由两个独立 VPK 复现，后续修复可据此把运行时可见性纳入识别/换图前置校验。
+
+### 2026-10-20 实施与真实验证
+
+**根因**
+
+平台此前只依据 VPK 文件可解析结果展示 `OK`，换图接口也未检查当前 srcds
+进程是否已经注册目标 BSP。实际回显中的 `maps *` 每行带 `PENDING:` 前缀，
+直接取首 token 会把 `PENDING:` 误当成地图名。
+
+**实现**
+
+- `L4D2RconService.listRegisteredMaps()` 解析 `maps *` 的运行时地图集合，
+  兼容 `PENDING: (fs) map.bsp`、大小写和 `.bsp` 后缀。
+- `MapService.changeMap()` 在发送 `changelevel` 前检查目标 BSP 是否注册；
+  未注册时先执行地图热重载，重载后仍不可见则返回可操作失败，不再发送必然
+  失败的换图命令。
+- `RconController.change-map` 改走前置校验路径，接口契约保持不变。
+- 回归测试覆盖已注册直接换图、未注册热重载后换图、重载后仍不可见拒绝，
+  以及真实 `PENDING:` 回显解析。
+
+**真实验证**
+
+- 热部署 `plugin-l4d2-core` 后后端进程保持运行。
+- 实例 97 在线人数 0，换图前地图 `c1918_red_square_c2`。
+- `POST /rcon/change-map`，目标 `L4D2_Brooklyn_part4`：
+  `accepted:true`、`confirmed:true`、`currentMap:L4D2_Brooklyn_part4`。
+- 随后 `POST /rcon/status` 返回 `map:L4D2_Brooklyn_part4`，不再出现
+  `No such map`。

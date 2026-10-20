@@ -2,7 +2,7 @@
 
 # 02: 侧边栏多个分组标题仍呈现选中态外观
 
-Status: needs-triage
+Status: resolved
 Type: bug
 来源: 用户反馈（2026-10-20）
 
@@ -34,3 +34,28 @@ Type: bug
 - 用 Playwright 打开截图对应的 L4D2 页面，统计 `.el-sub-menu.is-active > .el-sub-menu__title` 的实际样式。
 - 检查上一票的样式修复是否因主应用当前构建未重新部署，或现有选择器仍对非当前祖先生效。
 - 将截图场景转成视觉回归断言：唯一叶子 + 祖先无选中边框/背景。
+
+### 2026-10-20 实施与真实验证
+
+**根因**
+
+Element Plus 的活跃祖先规则
+`.el-sub-menu.is-active .el-sub-menu__title` 是后代选择器，会把青色底边传播
+到活跃祖先下的所有非活跃子分组标题。上一轮只清理了直接活跃祖先标题，未覆盖
+这个后代传播。
+
+**实现**
+
+- 活跃祖先标题文字改为普通文本色，清除背景、边框和阴影。
+- 对活跃祖先下的全部子菜单标题明确清除 `border-bottom-color`。
+- 折叠态同步保持同一语义。
+- Playwright 回归增加真实计算样式断言：祖先不得使用叶子选中色、背景、底边或
+  阴影，非活跃子菜单标题不得残留选中底边。
+
+**真实验证**
+
+- `SidebarSelection.test.js`：4/4 通过。
+- Playwright `sidebar-selection.spec.js`：1/1 通过。
+- 截图
+  `frontend/e2e/.artifacts/sidebar-selection/l4d2-single-active-leaf.png`
+  复核：仅「服务器信息」叶子为整行选中，插件根和各分组标题无青色底边或选中块。
