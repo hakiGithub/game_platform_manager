@@ -64,18 +64,83 @@ class SteamApiClientTest {
     @Test
     void get_details_api_key_missing() {
         config.getSteam().setApiKey("");
+        when(httpClient.postForObject(anyString(), any(), eq(Map.class)))
+                .thenReturn(new HashMap<>(), new HashMap<>());
         L4D2PluginException ex = assertThrows(L4D2PluginException.class,
                 () -> client.getPublishedFileDetails(List.of("123456")));
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
-        assertTrue(ex.getMessage().contains("STEAM_API_KEY 未配置"));
+        assertTrue(ex.getMessage().contains("公开解析失败"));
     }
 
     @Test
     void get_details_api_key_null() {
         config.getSteam().setApiKey(null);
+        when(httpClient.postForObject(anyString(), any(), eq(Map.class)))
+                .thenThrow(new L4D2PluginException(
+                        L4D2PluginException.EXTERNAL_API, "public unavailable"))
+                .thenThrow(new L4D2PluginException(
+                        L4D2PluginException.EXTERNAL_API, "key api unavailable"));
         L4D2PluginException ex = assertThrows(L4D2PluginException.class,
                 () -> client.getPublishedFileDetails(List.of("123456")));
         assertEquals(L4D2PluginException.BUSINESS, ex.getCode());
+    }
+
+    @Test
+    void get_details_uses_public_endpoint_without_api_key() {
+        config.getSteam().setApiKey("");
+        Map<String, Object> resp = buildSteamResponse(List.of(
+                buildDetailMap("3560886237", 1, "Tower Raid", "tower.vpk",
+                        "325848778", "https://cdn.example/tower.vpk",
+                        "https://cdn.example/tower.png", null)
+        ));
+        when(httpClient.postForObject(anyString(), any(), eq(Map.class))).thenReturn(resp);
+
+        List<SteamApiClient.WorkshopDetail> result =
+                client.getPublishedFileDetails(List.of("3560886237"));
+
+        assertEquals(1, result.size());
+        assertEquals("Tower Raid", result.get(0).title());
+        assertEquals("tower.vpk", result.get(0).fileName());
+        assertTrue(result.get(0).fileUrl().contains("tower.vpk"));
+
+        ArgumentCaptor<MultiValueMap<String, String>> captor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(httpClient).postForObject(anyString(), captor.capture(), eq(Map.class));
+        MultiValueMap<String, String> form = captor.getValue();
+        assertEquals("1", form.getFirst("itemcount"));
+        assertEquals("3560886237", form.getFirst("publishedfileids[0]"));
+        assertFalse(form.containsKey("key"));
+    }
+
+    @Test
+    void get_details_falls_back_to_api_key_when_public_fails() {
+        Map<String, Object> resp = buildSteamResponse(List.of(
+                buildDetailMap("123456", 1, "Fallback", "fallback.vpk",
+                        "100", "https://cdn.example/fallback.vpk", null, null)
+        ));
+        when(httpClient.postForObject(anyString(), any(), eq(Map.class)))
+                .thenReturn(new HashMap<>())
+                .thenReturn(resp);
+
+        List<SteamApiClient.WorkshopDetail> result =
+                client.getPublishedFileDetails(List.of("123456"));
+
+        assertEquals(1, result.size());
+        assertEquals("Fallback", result.get(0).title());
+
+        ArgumentCaptor<MultiValueMap<String, String>> captor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(httpClient, org.mockito.Mockito.times(2))
+                .postForObject(anyString(), captor.capture(), eq(Map.class));
+        MultiValueMap<String, String> fallbackForm = captor.getAllValues().get(1);
+        assertEquals("test-api-key", fallbackForm.getFirst("key"));
+        assertEquals("550", fallbackForm.getFirst("appid"));
+
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(httpClient, org.mockito.Mockito.times(2))
+                .postForObject(urlCaptor.capture(), any(), eq(Map.class));
+        assertTrue(urlCaptor.getAllValues().get(0).contains("ISteamRemoteStorage"));
+        assertTrue(urlCaptor.getAllValues().get(1).contains("IPublishedFileService"));
     }
 
     // ============================================================
@@ -105,14 +170,13 @@ class SteamApiClientTest {
         assertEquals("https://preview/test.png", d.previewUrl());
         assertTrue(d.childrenIds().isEmpty());
 
-        // 验证 form 数据包含 key / appid / publishedfileids[0] / includechildren
+        // 默认走无 Key 公开接口，验证 itemcount / publishedfileids[0]
         ArgumentCaptor<MultiValueMap<String, String>> captor = ArgumentCaptor.forClass(MultiValueMap.class);
         verify(httpClient).postForObject(anyString(), captor.capture(), eq(Map.class));
         MultiValueMap<String, String> form = captor.getValue();
-        assertEquals("test-api-key", form.getFirst("key"));
-        assertEquals("550", form.getFirst("appid"));
         assertEquals("123456", form.getFirst("publishedfileids[0]"));
-        assertEquals("true", form.getFirst("includechildren"));
+        assertEquals("1", form.getFirst("itemcount"));
+        assertFalse(form.containsKey("key"));
     }
 
     // ============================================================

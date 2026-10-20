@@ -5,6 +5,7 @@ import com.gameplatform.plugin.l4d2.dto.ParseLinkDTO;
 import com.gameplatform.plugin.l4d2.dto.ParseWorkshopDTO;
 import com.gameplatform.plugin.l4d2.dto.UrlDownloadDTO;
 import com.gameplatform.plugin.l4d2.dto.WorkshopDownloadDTO;
+import com.gameplatform.plugin.l4d2.exception.L4D2PluginException;
 import com.gameplatform.plugin.l4d2.service.DownloadService;
 import com.gameplatform.plugin.l4d2.service.WorkshopDownloadService;
 import com.gameplatform.plugin.l4d2.vo.DownloadTaskVO;
@@ -59,8 +60,12 @@ public class DownloadController {
     public Result<String> createCloudTask(@Valid @RequestBody com.gameplatform.plugin.l4d2.dto.CloudInstallDTO dto) {
         log.info("创建云盘转存安装任务: instanceId={}, account={}, sourceId={}",
                 dto.getInstanceId(), dto.getAccountName(), dto.getSourceId());
-        String taskId = cloudInstallService.createTask(dto);
-        return Result.success("云盘转存安装任务已创建", taskId);
+        try {
+            String taskId = cloudInstallService.createTask(dto);
+            return Result.success("云盘转存安装任务已创建", taskId);
+        } catch (L4D2PluginException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**
@@ -70,8 +75,12 @@ public class DownloadController {
     @PostMapping("/url")
     public Result<List<String>> createUrlTask(@Valid @RequestBody UrlDownloadDTO dto) {
         log.info("创建 URL 下载任务: instanceId={}", dto.getInstanceId());
-        List<String> taskIds = downloadService.createUrlTasks(dto);
-        return Result.success("下载任务已创建", taskIds);
+        try {
+            List<String> taskIds = downloadService.createUrlTasks(dto);
+            return Result.success("下载任务已创建", taskIds);
+        } catch (L4D2PluginException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**
@@ -82,8 +91,12 @@ public class DownloadController {
     public Result<List<String>> createWorkshopTask(@Valid @RequestBody WorkshopDownloadDTO dto) {
         log.info("创建 Workshop 下载任务: instanceId={}, urlOrId={}",
                 dto.getInstanceId(), dto.getWorkshopUrlOrId());
-        List<String> taskIds = workshopDownloadService.createWorkshopTasks(dto);
-        return Result.success("Workshop 下载任务已创建", taskIds);
+        try {
+            List<String> taskIds = workshopDownloadService.createWorkshopTasks(dto);
+            return Result.success("Workshop 下载任务已创建", taskIds);
+        } catch (L4D2PluginException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**
@@ -92,7 +105,11 @@ public class DownloadController {
     @Operation(summary = "解析下载链接", description = "解析任意下载链接为可下载项列表（预览）")
     @PostMapping("/parse-link")
     public Result<LinkParseResultVO> parseLink(@Valid @RequestBody ParseLinkDTO dto) {
-        return Result.success(workshopDownloadService.parseLink(dto.getUrl()));
+        try {
+            return Result.success(workshopDownloadService.parseLink(dto.getUrl()));
+        } catch (L4D2PluginException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**
@@ -101,7 +118,11 @@ public class DownloadController {
     @Operation(summary = "解析 Workshop 链接", description = "解析 Workshop URL/ID 为可下载项列表（预览）")
     @PostMapping("/parse-workshop")
     public Result<WorkshopParseResultVO> parseWorkshop(@Valid @RequestBody ParseWorkshopDTO dto) {
-        return Result.success(workshopDownloadService.parseWorkshop(dto.getUrl()));
+        try {
+            return Result.success(workshopDownloadService.parseWorkshop(dto.getUrl()));
+        } catch (L4D2PluginException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
     /**

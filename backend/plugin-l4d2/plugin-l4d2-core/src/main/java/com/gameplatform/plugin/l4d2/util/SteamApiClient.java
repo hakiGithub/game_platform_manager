@@ -44,6 +44,15 @@ public class SteamApiClient {
     private static final String GET_DETAILS_URL =
             "https://api.steampowered.com/IPublishedFileService/GetDetails/v1/";
 
+    /**
+     * Steam 公开 PublishedFileDetails 端点。
+     *
+     * <p>该端点不需要 Web API Key，覆盖普通 Workshop 条目；需要集合展开等增强字段时，
+     * 仍回退到 {@link #GET_DETAILS_URL}。
+     */
+    private static final String GET_PUBLISHED_FILE_DETAILS_URL =
+            "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
+
     /** IPlayerService/GetOwnedGames 端点（查询玩家拥有的游戏 + 总时长） */
     private static final String GET_OWNED_GAMES_URL =
             "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
@@ -73,11 +82,47 @@ public class SteamApiClient {
             return Collections.emptyList();
         }
 
+        List<WorkshopDetail> publicDetails = getPublicPublishedFileDetails(publishedFileIds);
+        if (!publicDetails.isEmpty()) {
+            return publicDetails;
+        }
+
+        return getPublishedFileDetailsWithApiKey(publishedFileIds);
+    }
+
+    /**
+     * 通过无需 API Key 的公开端点查询 Workshop 详情。
+     *
+     * <p>公开端点不可用属于可降级失败：无 Key 时由调用方返回可读业务错误，
+     * 有 Key 时由调用方回退到 PublishedFileService。
+     */
+    private List<WorkshopDetail> getPublicPublishedFileDetails(List<String> publishedFileIds) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("itemcount", String.valueOf(publishedFileIds.size()));
+        for (int i = 0; i < publishedFileIds.size(); i++) {
+            form.add("publishedfileids[" + i + "]", publishedFileIds.get(i));
+        }
+
+        Map<String, Object> resp;
+        try {
+            resp = httpClient.postForObject(GET_PUBLISHED_FILE_DETAILS_URL, form, Map.class);
+        } catch (Exception e) {
+            log.warn("Steam 公开 Workshop 接口不可用，尝试带 Key 接口: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+        return parsePublishedFileDetails(resp);
+    }
+
+    /**
+     * 通过 IPublishedFileService 查询 Workshop 详情（需要 API Key）。
+     */
+    @SuppressWarnings("unchecked")
+    private List<WorkshopDetail> getPublishedFileDetailsWithApiKey(List<String> publishedFileIds) {
         L4D2Config.Steam steam = config.getSteam();
         String apiKey = steam == null ? null : steam.getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             throw new L4D2PluginException(L4D2PluginException.BUSINESS,
-                    "STEAM_API_KEY 未配置，请在 application.yml 中设置 plugin.l4d2.steam.api-key");
+                    "Steam Workshop 公开解析失败，请稍后重试或配置 plugin.l4d2.steam.api-key");
         }
         int appid = steam == null ? 550 : steam.getL4d2Appid();
 
@@ -102,7 +147,16 @@ public class SteamApiClient {
         if (resp == null) {
             return Collections.emptyList();
         }
+        return parsePublishedFileDetails(resp);
+    }
 
+    /**
+     * 解析 IPublishedFileService/ISteamRemoteStorage 共用的 publishedfiledetails 结构。
+     */
+    private List<WorkshopDetail> parsePublishedFileDetails(Map<String, Object> resp) {
+        if (resp == null) {
+            return Collections.emptyList();
+        }
         Object responseObj = resp.get("response");
         if (!(responseObj instanceof Map<?, ?> responseMap)) {
             return Collections.emptyList();
