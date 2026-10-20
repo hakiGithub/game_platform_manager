@@ -88,7 +88,7 @@
 | 单元测试 | ✅ 已有 | 主应用 frontend/src/tests/、插件 backend/plugin-l4d2/frontend/src/ |
 | 组件测试 | ✅ 已有 | 覆盖 BackupForm、PluginContainer 等关键组件 |
 | E2E 测试 | ✅ 已有 | 基于 Playwright 的页面遍历与回归验证 |
-| 视觉回归 | ✅ 已有 | 通过 Playwright screenshot 进行 UI Audit 与回归对比 |
+| 视觉回归 | 📋 规划中 | 尚无基线截图比对；现有 `playwright.config.js` 的 `screenshot: 'only-on-failure'` 仅失败留证，不构成回归能力 |
 | 性能测试 | 📋 规划中 | Lighthouse CI 接入 |
 
 ## 维护约定
