@@ -79,6 +79,7 @@ tests/e2e/*.sh
 tests/e2e/*.java
 tests/e2e/*.class
 tests/e2e/screenshots/
+test-results/
 qa/
 
 # Agent workspace directories

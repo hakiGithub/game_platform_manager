@@ -22,6 +22,9 @@
 .PARAMETER FrontendPort
     前端端口（默认 3000）；传 0 自动选择空闲端口
 
+.PARAMETER SkipVerify
+    跳过部署后的自动验收
+
 .EXAMPLE
     .\rebuild-restart-all.ps1
     全栈编译并重启（后端 + 插件 + 前端）
@@ -46,7 +49,9 @@ param(
 
     [switch]$SkipFrontend,
 
-    [int]$FrontendPort = 3000
+    [int]$FrontendPort = 3000,
+
+    [switch]$SkipVerify
 )
 
 # ============================================
@@ -100,6 +105,7 @@ Write-LogInfo "项目目录: $PROJECT_DIR"
 Write-LogInfo "跳过后端编译: $($SkipBackendCompile.IsPresent)"
 Write-LogInfo "跳过插件打包: $($SkipPlugins.IsPresent)"
 Write-LogInfo "跳过前端重启: $($SkipFrontend.IsPresent)"
+Write-LogInfo "跳过部署验收: $($SkipVerify.IsPresent)"
 Write-LogInfo "前端端口: $FrontendPort"
 Write-LogInfo ""
 
@@ -244,3 +250,33 @@ if (-not $SkipFrontend) {
     Write-LogInfo "前端访问: http://localhost:$finalFrontendPort"
 }
 Write-LogInfo "默认账号: admin / admin123"
+
+# 3. 部署后自动验收（默认执行；失败即返回非零）
+if (-not $SkipVerify) {
+    Write-LogInfo ""
+    Write-LogInfo "========== [3/3] 部署后自动验收 =========="
+    $verifyScript = Join-Path $SCRIPT_DIR "verify-deployment.ps1"
+    if (-not (Test-Path -LiteralPath $verifyScript)) {
+        Write-LogError "部署验收脚本不存在: $verifyScript"
+        exit 1
+    }
+
+    $verifyArgs = @{}
+    if ($SkipFrontend) {
+        $verifyArgs['SkipPlaywright'] = $true
+    }
+
+    try {
+        & $verifyScript @verifyArgs
+        if ($LASTEXITCODE -ne 0) {
+            Write-LogError "部署验收失败 (exit code: $LASTEXITCODE)"
+            exit 1
+        }
+    } catch {
+        Write-LogError "部署验收失败: $($_.Exception.Message)"
+        exit 1
+    }
+    Write-LogInfo "部署验收通过"
+} else {
+    Write-LogWarn "跳过部署验收"
+}

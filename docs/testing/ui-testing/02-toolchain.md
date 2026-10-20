@@ -258,7 +258,34 @@ mvn spring-boot:run -pl core
 | `-SkipBackendCompile` | 跳过后端编译（仅修改前端时使用） |
 | `-SkipPlugins` | 跳过插件 JAR 打包（仅修改后端代码时使用） |
 | `-SkipFrontend` | 跳过前端启动 |
+| `-SkipVerify` | 跳过部署后自动验收（默认不跳过） |
 | `-FrontendPort 3001` | 指定前端端口（默认 3000） |
+
+脚本在服务启动后默认执行 `scripts/verify-deployment.ps1`，完成四项自动验收：
+后端管理员登录、l4d2 插件 UI、插件 JAR 内 UI 产物、l4d2 插件 Playwright 用例。
+验收失败会返回非零退出码；只有显式传 `-SkipVerify` 才跳过。
+
+**部署流程约定（2026-10-20 复盘）：**
+
+日常部署使用一条命令闭环：
+
+```powershell
+pwsh -NoProfile -File scripts\rebuild-restart-all.ps1 -FrontendPort 3002
+```
+
+脚本负责编译、插件 UI 构建、插件 JAR 打包、停旧进程、启动前后端，并自动执行
+`scripts/verify-deployment.ps1`。只有以下情况需要人工介入：
+
+- 自动验收输出 `[FAIL]`，且脚本已打印失败项和 remediation；
+- 需求本身要求浏览器人工确认，而自动用例没有覆盖对应交互；
+- 需要真实部署某个游戏实例、访问外部主机或验证远端容器状态。
+
+不再重复手工确认“登录 200 / 插件 UI 200 / JAR 含 UI / 插件用例通过”这四项；
+它们已由自动验收覆盖。部署后如需单独复查，只运行：
+
+```powershell
+pwsh -NoProfile -File scripts\verify-deployment.ps1
+```
 
 ### 5.6 重启脚本与操作场景
 
