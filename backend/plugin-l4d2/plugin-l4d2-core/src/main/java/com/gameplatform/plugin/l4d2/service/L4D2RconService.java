@@ -76,18 +76,20 @@ public class L4D2RconService {
         }
         for (String line : output.split("\\R")) {
             String trimmed = line.trim();
-            if (trimmed.isEmpty()) {
+            if (trimmed.isEmpty() || trimmed.matches("[-=]+")) {
                 continue;
             }
-            String candidate = trimmed
-                    .replaceAll("(?i)\\(fs\\)", "")
-                    .replaceAll("(?i)\\.bsp", "")
-                    .trim();
-            if (candidate.isEmpty()) {
+            // 真实 srcds 回显形如 "PENDING:   (fs) map.bsp"；前缀不是地图名，
+            // 取行内最后一个 BSP 文件名，兼容无前缀和带 (fs) 的格式。
+            String[] tokens = trimmed.split("\\s+");
+            String mapToken = tokens[tokens.length - 1]
+                    .replaceAll("(?i)\\.bsp$", "");
+            if (mapToken.isEmpty()
+                    || mapToken.equalsIgnoreCase("(fs)")
+                    || !mapToken.matches("[A-Za-z0-9_][A-Za-z0-9_.-]*")) {
                 continue;
             }
-            int separator = candidate.indexOf(' ');
-            String mapName = separator >= 0 ? candidate.substring(0, separator) : candidate;
+            String mapName = mapToken;
             if (!mapName.isEmpty()) {
                 maps.add(mapName);
             }
