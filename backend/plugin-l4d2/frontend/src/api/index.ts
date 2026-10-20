@@ -406,9 +406,10 @@ export const logsApi = {
   }>>('/logs/files', { instanceId }),
   getContent: (instanceId: number, file: string) =>
     get<string>('/logs/content', { instanceId, file }),
-  /** SSE 流 URL（完整路径，不含 API_BASE 因为 SSE 需要绝对路径） */
-  streamUrl: (instanceId: number, file: string) =>
-    `/api/plugin/l4d2/logs/stream?instanceId=${instanceId}&file=${encodeURIComponent(file)}`,
+  readContent: (instanceId: number, file: string, lines = 2000) =>
+    get<string>('/logs/content', { instanceId, file, lines }),
+  searchContent: (instanceId: number, file: string, keyword: string, lines = 2000) =>
+    get<string>('/logs/content', { instanceId, file, lines, keyword }),
 }
 
 /**

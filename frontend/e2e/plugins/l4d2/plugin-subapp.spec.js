@@ -615,8 +615,9 @@ test.describe.serial("l4d2 插件子应用", () => {
    * 页面: l4d2 / 日志
    * 用例: 次要页面可达渲染与刷新冒烟
    * 前置: 共享 fixture 部署的运行中 l4d2 实例
-   * 步骤: 打开 /logs → 断言文件表与日志视图 → 点击刷新并等待文件列表响应
-   * 通过标准: 日志区可见，刷新触发成功的日志文件列表请求
+   * 步骤: 打开 /logs → 刷新文件表 → 点击第二个文件并等待内容请求 →
+   *       输入搜索词并等待远端 grep 请求
+   * 通过标准: 标题跟随所选文件，内容请求携带 tail 行数，搜索请求携带 keyword
    */
   test("服务器日志页渲染文件表与刷新入口", async ({ page }) => {
     test.setTimeout(60_000);
@@ -638,6 +639,40 @@ test.describe.serial("l4d2 插件子应用", () => {
     );
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await filesResponse;
+
+    const rows = page.locator(".log-file-table .el-table__row");
+    await expect.poll(() => rows.count(), { timeout: 30_000 }).toBeGreaterThan(1);
+    const targetRow = rows.nth(1);
+    const fileName = (await targetRow.locator("td").first().innerText()).trim();
+
+    const contentResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/plugin/l4d2/logs/content") &&
+        new URL(response.url()).searchParams.get("file") === fileName &&
+        new URL(response.url()).searchParams.get("lines") === "2000" &&
+        response.ok(),
+      { timeout: 30_000 },
+    );
+    await targetRow.click();
+    await contentResponse;
+    await expect(page.locator(".log-file-title")).toHaveText(fileName);
+    await expect(page.getByText("已连接", { exact: true })).toBeVisible();
+
+    const keyword = "e2e-grep-missing-token";
+    const searchResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/plugin/l4d2/logs/content") &&
+        new URL(response.url()).searchParams.get("file") === fileName &&
+        new URL(response.url()).searchParams.get("keyword") === keyword &&
+        response.ok(),
+      { timeout: 30_000 },
+    );
+    await page.getByPlaceholder("搜索...").fill(keyword);
+    await page.getByRole("button", { name: "搜索", exact: true }).click();
+    await searchResponse;
+    await expect(page.getByText("暂无日志", { exact: true })).toBeVisible();
   });
 
   /**

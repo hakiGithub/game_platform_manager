@@ -40,6 +40,7 @@ public class SourceModLogService {
     private static final Pattern LOG_PATTERN = Pattern.compile("(L\\d{8}\\.log|errors_\\d{8}\\.log)");
     private static final Pattern ERROR_LOG_PATTERN = Pattern.compile("errors_\\d{8}\\.log");
     private static final long MAX_CONTENT_BYTES = 200 * 1024;
+    private static final int DEFAULT_TAIL_LINES = 2000;
     private static final long SSE_TAIL_INTERVAL_MS = 1000;
 
     private final InstanceFileService instanceFileService;
@@ -71,17 +72,28 @@ public class SourceModLogService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 读取日志文件末尾 200KB 内容（自动检测编码）。
-     */
+    /** 读取日志文件末尾 2000 行。 */
     public String getContent(Long instanceId, String file) {
+        return tail(instanceId, file, DEFAULT_TAIL_LINES, null);
+    }
+
+    /**
+     * 读取日志末尾若干行；keyword 非空时通过远端 grep -F 过滤。
+     */
+    public String tail(Long instanceId, String file, Integer lines, String keyword) {
         InstanceVO instance = instanceQueryService.getInstanceById(instanceId);
         if (instance == null) {
             return "";
         }
+        validateFile(file);
+        int tailLines = lines == null ? DEFAULT_TAIL_LINES : Math.max(1, Math.min(lines, 5000));
         String path = pathResolver.getSourceModLogsPath() + "/" + file;
-        byte[] bytes = instanceFileService.getFileBytes(instanceId, path, -MAX_CONTENT_BYTES, MAX_CONTENT_BYTES);
-        return GbkCodecUtil.decodeAuto(bytes);
+        try {
+            return instanceFileService.tailText(instanceId, path, tailLines, keyword, gbk);
+        } catch (Exception e) {
+            log.warn("读取日志末尾失败 instanceId={}, file={}, err={}", instanceId, file, e.getMessage());
+            throw e;
+        }
     }
 
     /**
@@ -150,6 +162,12 @@ public class SourceModLogService {
         vo.setLastModified(f.getLastModified());
         vo.setErrorLog(ERROR_LOG_PATTERN.matcher(f.getName()).matches());
         return vo;
+    }
+
+    private void validateFile(String file) {
+        if (file == null || !LOG_PATTERN.matcher(file).matches()) {
+            throw new IllegalArgumentException("非法日志文件名: " + file);
+        }
     }
 
     private long getFileEndOffset(Long instanceId, String path) {

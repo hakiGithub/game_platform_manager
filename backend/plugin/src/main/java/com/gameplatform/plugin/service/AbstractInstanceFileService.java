@@ -1,7 +1,9 @@
 package com.gameplatform.plugin.service;
 
+import com.gameplatform.plugin.service.FileAccessService.CommandResult;
 import com.gameplatform.vo.InstanceVO;
 import java.nio.charset.Charset;
+import java.util.Base64;
 import java.util.function.Consumer;
 
 /**
@@ -32,6 +34,63 @@ public abstract class AbstractInstanceFileService implements InstanceFileService
         }
         String safeRel = validateRelativePath(relativePath);
         return buildRoute(instance, safeRel);
+    }
+
+    @Override
+    public String tailText(long instanceId, String relativePath, int lines,
+                           String keyword, Charset charset) {
+        if (lines <= 0) {
+            throw new IllegalArgumentException("tail 行数必须大于 0: " + lines);
+        }
+        FileRoute route = resolveRoute(instanceId, relativePath);
+        String safeKeyword = keyword == null || keyword.isBlank() ? null : keyword;
+        String command;
+        if (route.isNative()) {
+            command = "tail -n " + lines + " -- " + shellQuote(route.resolvedPath);
+            if (safeKeyword != null) {
+                command += " | grep -F -- " + shellQuote(safeKeyword);
+            }
+            command += " 2>/dev/null | base64 -w0 || true";
+            CommandResult result = executeHostCommand(route.hostId, command);
+            if (result.getExitCode() != 0) {
+                throw new RuntimeException("读取日志末尾失败: " + result.getError());
+            }
+            return decodeBase64(result.getOutput(), charset, "读取日志末尾失败");
+        }
+
+        command = "tail -n " + lines + " -- " + shellQuote(route.resolvedPath);
+        if (safeKeyword != null) {
+            command += " | grep -F -- " + shellQuote(safeKeyword);
+        }
+        command += " 2>/dev/null | base64 -w0 || true";
+        CommandResult result = executeDockerCommand(route, command);
+        if (result.getExitCode() != 0) {
+            throw new RuntimeException("读取容器日志末尾失败: " + result.getError());
+        }
+        return decodeBase64(result.getOutput(), charset, "读取容器日志末尾失败");
+    }
+
+    private String decodeBase64(String output, Charset charset, String errorPrefix) {
+        try {
+            String encoded = output == null ? "" : output.replaceAll("\\s+", "");
+            return new String(Base64.getDecoder().decode(encoded), charset);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException(errorPrefix + ": 远端输出不是有效 Base64", e);
+        }
+    }
+
+    /** 执行宿主机 SSH 命令。 */
+    protected abstract CommandResult executeHostCommand(long hostId, String command);
+
+    /** 在实例容器内执行命令。Native 路由不会调用此方法。 */
+    protected abstract CommandResult executeDockerCommand(FileRoute route, String innerCommand);
+
+    /** POSIX shell 单引号转义。 */
+    protected String shellQuote(String value) {
+        if (value == null || value.isEmpty()) {
+            return "''";
+        }
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 
     /**

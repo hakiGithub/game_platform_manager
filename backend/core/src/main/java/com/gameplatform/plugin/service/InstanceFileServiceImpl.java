@@ -487,6 +487,16 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         return currentSize;
     }
 
+    @Override
+    protected FileAccessService.CommandResult executeHostCommand(long hostId, String command) {
+        return toCommandResult(remoteHost.exec(hostId, command));
+    }
+
+    @Override
+    protected FileAccessService.CommandResult executeDockerCommand(FileRoute route, String innerCommand) {
+        return toCommandResult(execDocker(route, innerCommand));
+    }
+
     // ===== 文件摘要 =====
 
     @Override
@@ -676,10 +686,19 @@ public class InstanceFileServiceImpl extends AbstractInstanceFileService {
         return remoteHost.exec(hostId, command);
     }
 
+    private FileAccessService.CommandResult toCommandResult(com.gameplatform.hostaccess.CommandResult source) {
+        FileAccessService.CommandResult result = new FileAccessService.CommandResult();
+        result.setSuccess(source.isSuccess());
+        result.setExitCode(source.getExitCode());
+        result.setOutput(source.getOutput());
+        result.setError(source.getError());
+        return result;
+    }
+
     /**
      * 对 shell 参数进行简单转义，避免路径中包含空格或特殊字符导致命令解析错误。
      */
-    private String shellQuote(String value) {
+    protected String shellQuote(String value) {
         if (value == null || value.isEmpty()) {
             return "''";
         }
