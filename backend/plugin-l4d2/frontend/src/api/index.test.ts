@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { pluginManageApi, pluginStoreApi, serverApi } from './index'
+import { mapApi, pluginManageApi, pluginStoreApi, serverApi } from './index'
 
 function stubStatusResponse(vo: Record<string, unknown>) {
   vi.stubGlobal(
@@ -94,5 +94,26 @@ describe('插件列表分页 API 参数', () => {
     expect(url).toContain('/plugin-store/list')
     expect(url).toContain('installed=uninstalled')
     expect(url).toContain('instanceId=9')
+  })
+})
+
+describe('地图 API 参数契约', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('热重载通过 query 传递 instanceId，不发送 JSON body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ code: 200, message: 'ok', data: null })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await mapApi.hotReload(97)
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(String(url)).toContain('/maps/hot-reload?instanceId=97')
+    expect(options.method).toBe('POST')
+    expect(options.body).toBeUndefined()
   })
 })

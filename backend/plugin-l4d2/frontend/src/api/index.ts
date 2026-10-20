@@ -117,7 +117,8 @@ export const mapApi = {
   refresh: (instanceId: number) => post<void>('/maps/refresh', { instanceId }),
 
   // 热重载地图（RCON）
-  hotReload: (instanceId: number) => post<void>('/maps/hot-reload', { instanceId }),
+  hotReload: (instanceId: number) =>
+    post<void>(`/maps/hot-reload?instanceId=${instanceId}`),
 
   // 批量识别（异步任务，ADR-0027），返回任务 ID 供轮询
   recognize: (instanceId: number, forceRetry = true) =>

@@ -1,6 +1,6 @@
 # 01: 地图热重载请求缺少 instanceId query 参数
 
-Status: ready-for-agent
+Status: resolved
 Type: bug
 来源: 用户反馈（2026-10-21）
 
@@ -40,12 +40,15 @@ Content-Type: application/json
 
 ## 验收
 
-- [ ] 前端热重载请求 URL 包含 `instanceId`。
-- [ ] 前端定向测试通过。
-- [ ] 插件前端生产构建通过。
-- [ ] 部署后真实热重载请求不再返回缺少参数错误。
+- [x] 前端热重载请求 URL 包含 `instanceId`。
+- [x] 前端定向测试通过。
+- [x] 插件前端生产构建通过。
+- [x] 部署后真实热重载请求不再返回缺少参数错误。
 
 ## Comments
 
 - 2026-10-21：已复现真实接口返回 `code:400`、`缺少请求参数: instanceId`；
   根因是 query/body 参数位置不一致。
+- 2026-10-21：`mapApi.hotReload` 改为 query 传参；新增 API 契约测试，
+  断言 URL 含 `instanceId=97` 且请求体为空。`index.test.ts` 7/7 通过，
+  插件前端生产构建通过。
