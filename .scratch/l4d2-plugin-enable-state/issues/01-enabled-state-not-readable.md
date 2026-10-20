@@ -76,3 +76,5 @@ POST /api/plugin/l4d2/plugins/enable-load?instanceId=97&pluginName=...
   `status=enabled`、`enableTime=2026-10-21 01:15:06`。最终 17 个插件全部为
   `enabled`，无缺失 `enableTime`；`.enabled_plugins.yaml` 为 UTF-8，35 条记录
   均无问号名称。热部署后 `plugin-l4d2` 为 `STARTED`，运行 JAR 哈希与构建产物一致。
+- 2026-10-21：用 `batch-enable` 对两个中文插件做真实批量启用验证，接口返回 200，
+  两项均回读为 `enabled`，`enableTime` 均为 `2026-10-21 01:17:37`。
