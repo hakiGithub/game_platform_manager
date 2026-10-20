@@ -81,6 +81,9 @@ class InstanceServiceTest {
     @Mock
     private com.gameplatform.instanceinfo.InstanceInfoService instanceInfoService;
 
+    @Mock
+    private com.gameplatform.service.impl.InstanceTransactionService instanceTransactionService;
+
     @InjectMocks
     private InstanceServiceImpl instanceService;
 
@@ -311,7 +314,6 @@ class InstanceServiceTest {
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
                 .thenReturn(UninstallResult.success("卸载成功"));
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         // When
         instanceService.deleteInstance(1L);
@@ -319,7 +321,7 @@ class InstanceServiceTest {
         // Then
         verify(instanceMapper).selectById(1L);
         verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
     }
 
     @Test
@@ -333,7 +335,6 @@ class InstanceServiceTest {
         when(adapterFactory.getAdapter(any(DeployAdapter.DeployType.class))).thenReturn(deployAdapter);
         when(deployAdapter.uninstallWithResult(eq(1L), anyMap(), any()))
                 .thenReturn(UninstallResult.success("卸载成功"));
-        when(instanceMapper.physicalDeleteById(1L)).thenReturn(1);
 
         // When
         instanceService.deleteInstance(1L);
@@ -341,7 +342,7 @@ class InstanceServiceTest {
         // Then
         verify(instanceMapper, atLeast(1)).selectById(1L);
         verify(deployAdapter).uninstallWithResult(eq(1L), anyMap(), any());
-        verify(instanceMapper).physicalDeleteById(1L);
+        verify(instanceTransactionService).deleteRecord(1L);
     }
 
     @Test
