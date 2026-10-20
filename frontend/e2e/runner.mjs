@@ -18,6 +18,7 @@ const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)));
 const FRONTEND_DIR = resolve(E2E_DIR, "..");
 const PROJECT_DIR = resolve(FRONTEND_DIR, "..");
 const TMP_DIR = join(E2E_DIR, ".tmp");
+const ROUND_BLOB_DIR = join(TMP_DIR, "round-blobs");
 const FRONTEND_PORT_FILE = join(PROJECT_DIR, "logs", "frontend.port");
 const BACKEND_PID_FILE = join(PROJECT_DIR, "backend", "logs", "game-platform-manager.pid");
 const BACKEND_ARG_FILE_POINTER = join(
@@ -404,6 +405,7 @@ const ROUND_GROUPS = [
 ];
 
 function runPlaywright(args, opts = {}) {
+  const { env: extraEnv, ...runOpts } = opts;
   return run(
     process.execPath,
     ["node_modules/@playwright/test/cli.js", "test", ...args],
@@ -413,10 +415,50 @@ function runPlaywright(args, opts = {}) {
         ...process.env,
         E2E_BASE_URL: BASE_URL,
         E2E_BACKEND_URL: BACKEND_URL,
+        ...extraEnv,
       },
-      ...opts,
+      ...runOpts,
     },
   );
+}
+
+function runPlaywrightRoundGroup(paths, index) {
+  return runPlaywright(
+    [...paths, "--reporter=list,blob"],
+    {
+      env: {
+        PLAYWRIGHT_BLOB_OUTPUT_DIR: ROUND_BLOB_DIR,
+        PLAYWRIGHT_BLOB_OUTPUT_NAME: `report-group-${index}.zip`,
+        PWTEST_BLOB_DO_NOT_REMOVE: "1",
+      },
+      stdio: ["ignore", "pipe", "inherit"],
+      encoding: "utf8",
+    },
+  );
+}
+
+function mergeRoundReport() {
+  const result = run(
+    process.execPath,
+    [
+      "node_modules/@playwright/test/cli.js",
+      "merge-reports",
+      "--reporter=html",
+      ROUND_BLOB_DIR,
+    ],
+    {
+      cwd: FRONTEND_DIR,
+      env: {
+        ...process.env,
+        PLAYWRIGHT_HTML_OUTPUT_DIR: join(E2E_DIR, ".report"),
+        PLAYWRIGHT_HTML_OPEN: "never",
+      },
+      stdio: "inherit",
+    },
+  );
+  if (result.status !== 0) {
+    throw new Error(`整轮 HTML 报告合并失败，退出码 ${result.status}`);
+  }
 }
 
 function parseSummary(output) {
@@ -442,7 +484,14 @@ async function runRound() {
   const deadline =
     Date.now() + Number(process.env.E2E_ROUND_TIMEOUT ?? 150) * 60_000;
   const tally = { passed: 0, failed: 0, skipped: 0, didNotRun: 0 };
-  for (const group of ROUND_GROUPS) {
+  rmSync(ROUND_BLOB_DIR, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 1000,
+  });
+  mkdirSync(ROUND_BLOB_DIR, { recursive: true });
+  for (const [index, group] of ROUND_GROUPS.entries()) {
     if (Date.now() > deadline) {
       log(`整轮看门狗超时，跳过剩余分组：${group.name}`);
       tally.didNotRun += 1; // 以分组数计的未执行标记
@@ -450,10 +499,7 @@ async function runRound() {
     }
     log(`—— 分组[${group.name}]开始 ——`);
     // 管道捕获以便聚合；分组结束后回显完整输出保持可见性
-    const r = runPlaywright([...group.paths, "--reporter=list"], {
-      stdio: ["ignore", "pipe", "inherit"],
-      encoding: "utf8",
-    });
+    const r = runPlaywrightRoundGroup(group.paths, index + 1);
     if (r.stdout) process.stdout.write(r.stdout);
     const status = r.status ?? 1;
     const summary = parseSummary(r.stdout ?? "");
@@ -481,6 +527,18 @@ async function runRound() {
     `总数 ${tally.passed + tally.failed + tally.skipped} = 通过 ${tally.passed} + 失败 ${tally.failed} + 跳过 ${tally.skipped}` +
       (tally.didNotRun ? `（另有 ${tally.didNotRun} 项未执行）` : ""),
   );
+  try {
+    mergeRoundReport();
+    log(`整轮 HTML 报告已生成: ${join(E2E_DIR, ".report", "index.html")}`);
+  } catch (error) {
+    check(
+      "整轮 HTML 报告",
+      false,
+      error.message,
+      "检查 frontend/e2e/.tmp/round-blobs 是否包含各组 blob 报告",
+    );
+    tally.failed += 1;
+  }
   const verdict = tally.failed === 0 && tally.didNotRun === 0 ? "PASS" : "FAIL";
   check(
     "整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）",

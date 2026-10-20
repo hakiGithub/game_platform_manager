@@ -1,7 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { injectSession } from "../../support/session.js";
+import { e2eEnv } from "../../support/env.js";
+import { skipWithoutLiveL4d2Instance } from "../../support/skip.js";
 
-const INSTANCE_ID = 97;
+const INSTANCE_ID = e2eEnv.liveL4d2InstanceId;
+
+skipWithoutLiveL4d2Instance();
 
 /**
  * 页面：主应用 / L4D2 插件管理

@@ -11,7 +11,7 @@ cd frontend
 # 前端自动选择空闲端口；不会占用或杀掉被 WSL 转发等进程占用的 3000/3001。
 npm run e2e
 
-# 整轮编排：六个分组保序执行（无主机用例 → 主机 → 生命周期 → 插件 → 演练腿），
+# 整轮编排：七个分组保序执行（冒烟导航 → 无主机 → 主机 → 容器认领 → 生命周期 → 插件 → 演练腿），
 # 聚合各分组结果并输出整轮通过判定（除显式 SKIP 外全部用例通过 = PASS）
 npm run e2e:round
 
@@ -62,6 +62,7 @@ E2E_TEST_HOST_AUTH=你的密码
 | `E2E_BACKEND_URL` | `http://localhost:8080` | 后端地址（API 断言通道） |
 | `E2E_ADMIN_USER` / `E2E_ADMIN_PASS` | `admin` / `admin123` | 种子管理员 |
 | `E2E_TEST_HOST_ADDRESS` / `_PORT` / `_USERNAME` / `_AUTH` | 空 | 牺牲主机凭据；任一缺失 ⇒ 主机类用例整组 `SKIP (no test host)` |
+| `E2E_L4D2_LIVE_INSTANCE_ID` | 空 | 真实 L4D2 live 插件用例的目标实例；未设置时相关用例显式 SKIP |
 | `E2E_WORKERS` | `1` | 并行 worker 数（用例共享一个后端，默认串行） |
 | `E2E_FAST` | 空 | `1` = 受管模式跳过 mvn 编译 |
 
