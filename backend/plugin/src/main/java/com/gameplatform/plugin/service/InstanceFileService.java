@@ -102,6 +102,15 @@ public interface InstanceFileService {
     long tailFile(long instanceId, String relativePath, long offset,
                   Charset charset, Consumer<String> lineConsumer);
 
+    /**
+     * 读取文件末尾若干行，可选固定字符串过滤。
+     *
+     * <p>实现层负责执行远端 {@code tail -n} 与 {@code grep -F} 语义，调用方不得拼接
+     * shell 命令。{@code keyword} 为空或仅空白时返回末尾行；非空时只返回包含该固定
+     * 字符串的行。返回内容按原文件顺序排列。
+     */
+    String tailText(long instanceId, String relativePath, int lines, String keyword, Charset charset);
+
     // ===== 文件摘要 =====
     /**
      * 计算远程文件摘要。

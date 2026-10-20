@@ -24,6 +24,7 @@
             </div>
           </template>
           <el-table
+            class="log-file-table"
             :data="files"
             v-loading="loading"
             @row-click="onSelectFile"
@@ -45,12 +46,21 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>{{ currentFile || '请选择日志文件' }}</span>
+              <span class="log-file-title">{{ currentFile || '请选择日志文件' }}</span>
               <div class="header-actions">
                 <el-tag :type="connected ? 'success' : 'info'" size="small" style="margin-right: 8px">
                   {{ connected ? '已连接' : (paused ? '已暂停' : '未连接') }}
                 </el-tag>
-                <el-input v-model="searchText" placeholder="搜索..." size="small" style="width: 200px; margin-right: 8px" clearable />
+                <el-input
+                  v-model="searchInput"
+                  placeholder="搜索..."
+                  size="small"
+                  style="width: 200px; margin-right: 8px"
+                  clearable
+                  @keyup.enter="runSearch"
+                  @clear="runSearch"
+                />
+                <el-button size="small" @click="runSearch" :loading="searching">搜索</el-button>
                 <el-button-group>
                   <el-button size="small" @click="togglePause" :type="paused ? 'danger' : 'default'">
                     {{ paused ? '继续' : '暂停' }}
@@ -64,7 +74,7 @@
             :logs="logs"
             :connected="connected"
             :paused="paused"
-            :search-text="searchText"
+            :search-text="''"
             style="height: calc(100vh - 280px)"
           />
         </el-card>
@@ -74,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useLogStream } from '@/composables/useLogStream'
 import LogViewer from '@/components/LogViewer.vue'
@@ -90,9 +100,10 @@ interface LogFileInfo {
 
 const files = ref<LogFileInfo[]>([])
 const loading = ref(false)
-const searchText = ref('')
+const searchInput = ref('')
+const searching = ref(false)
 
-const { logs, connected, paused, currentFile, instanceId, start, togglePause, clear } = useLogStream()
+const { logs, connected, paused, currentFile, instanceId, start, togglePause, clear, search } = useLogStream()
 
 async function loadFileList() {
   if (!instanceId.value) {
@@ -110,10 +121,26 @@ async function loadFileList() {
   }
 }
 
-function onSelectFile(row: LogFileInfo) {
+async function onSelectFile(row: LogFileInfo) {
   if (currentFile.value === row.name) return
   clear()
-  start(row.name)
+  searchInput.value = ''
+  await start(row.name)
+}
+
+async function runSearch() {
+  if (!currentFile.value) {
+    ElMessage.warning('请先选择日志文件')
+    return
+  }
+  searching.value = true
+  try {
+    await search(searchInput.value.trim())
+  } catch (e: any) {
+    ElMessage.error('搜索日志失败：' + (e?.message || e))
+  } finally {
+    searching.value = false
+  }
 }
 
 function formatSize(b: number): string {

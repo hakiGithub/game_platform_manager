@@ -40,13 +40,15 @@ public class LogsController {
     }
 
     /**
-     * 日志文件内容（末尾 200KB）。
+     * 日志文件内容（末尾若干行，可通过 keyword 做固定字符串过滤）。
      */
-    @Operation(summary = "日志文件内容", description = "读取日志文件末尾 200KB 内容")
+    @Operation(summary = "日志文件内容", description = "读取日志末尾行，可通过 keyword 执行固定字符串过滤")
     @GetMapping("/content")
     public Result<String> content(@Parameter(description = "实例ID") @RequestParam Long instanceId,
-                                  @Parameter(description = "文件名") @RequestParam String file) {
-        return Result.success(logService.getContent(instanceId, file));
+                                  @Parameter(description = "文件名") @RequestParam String file,
+                                  @Parameter(description = "末尾行数") @RequestParam(defaultValue = "2000") Integer lines,
+                                  @Parameter(description = "固定字符串过滤") @RequestParam(required = false) String keyword) {
+        return Result.success(logService.tail(instanceId, file, lines, keyword));
     }
 
     /**

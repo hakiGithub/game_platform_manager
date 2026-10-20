@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -335,5 +336,68 @@ class InstanceFileServiceImplTest {
 
         assertEquals(1, files.size());
         verify(remoteHost).exec(eq(10L), contains("docker exec adopted-container-id"));
+    }
+
+    @Test
+    @DisplayName("Native tailText 使用 tail -n 与 grep -F 并安全转义搜索词")
+    void tailText_native_usesTailAndGrepWithEscaping() {
+        when(instanceQueryService.getInstanceById(1L)).thenReturn(nativeInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+        CommandResult result = mock(CommandResult.class);
+        when(result.getExitCode()).thenReturn(0);
+        when(result.getOutput()).thenReturn(Base64.getEncoder().encodeToString(
+                "匹配行\n".getBytes(StandardCharsets.UTF_8)));
+        when(remoteHost.exec(eq(10L), anyString())).thenReturn(result);
+
+        String content = service.tailText(1L, "logs/L261020.log", 200,
+                "quote ' | $HOME", StandardCharsets.UTF_8);
+
+        assertEquals("匹配行\n", content);
+        verify(remoteHost).exec(eq(10L), eq(
+                "tail -n 200 -- '/home/gameserver/instance_1/logs/L261020.log' "
+                        + "| grep -F -- 'quote '\\'' | $HOME' 2>/dev/null | base64 -w0 || true"));
+    }
+
+    @Test
+    @DisplayName("Docker tailText 在容器内执行 tail -n 与 grep -F")
+    void tailText_docker_executesInsideContainer() {
+        InstanceVO dockerInstance = new InstanceVO();
+        dockerInstance.setId(3L);
+        dockerInstance.setHostId(10L);
+        dockerInstance.setDeployType("docker");
+        dockerInstance.setConfigInfo(Map.of("containerId", "abc123", "containerWorkDir", "/l4d2"));
+        when(instanceQueryService.getInstanceById(3L)).thenReturn(dockerInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+        CommandResult result = mock(CommandResult.class);
+        when(result.getExitCode()).thenReturn(0);
+        when(result.getOutput()).thenReturn(Base64.getEncoder().encodeToString(
+                "容器匹配\n".getBytes(StandardCharsets.UTF_8)));
+        when(remoteHost.exec(eq(10L), anyString())).thenReturn(result);
+
+        String content = service.tailText(3L, "left4dead2/addons/sourcemod/logs/L261020.log",
+                300, "error | warning", StandardCharsets.UTF_8);
+
+        assertEquals("容器匹配\n", content);
+        verify(remoteHost).exec(eq(10L), contains(
+                "docker exec abc123 sh -c 'tail -n 300 -- "
+                        + "'\\''/l4d2/left4dead2/addons/sourcemod/logs/L261020.log'\\'' "
+                        + "| grep -F -- '\\''error | warning'\\'' 2>/dev/null | base64 -w0 || true'"));
+    }
+
+    @Test
+    @DisplayName("Native tailText 用指定字符集解码 Base64 内容")
+    void tailText_native_decodesBase64WithRequestedCharset() {
+        when(instanceQueryService.getInstanceById(1L)).thenReturn(nativeInstance);
+        when(hostMapper.selectById(10L)).thenReturn(host);
+        CommandResult result = mock(CommandResult.class);
+        when(result.getExitCode()).thenReturn(0);
+        when(result.getOutput()).thenReturn(Base64.getEncoder().encodeToString(
+                "中文日志\n".getBytes(java.nio.charset.Charset.forName("GBK"))));
+        when(remoteHost.exec(eq(10L), anyString())).thenReturn(result);
+
+        String content = service.tailText(1L, "logs/L261020.log", 100,
+                null, java.nio.charset.Charset.forName("GBK"));
+
+        assertEquals("中文日志\n", content);
     }
 }
