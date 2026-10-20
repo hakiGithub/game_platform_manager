@@ -1,13 +1,10 @@
 package com.gameplatform.plugin.l4d2.controller;
 
 import com.gameplatform.common.result.Result;
-import com.gameplatform.plugin.extension.ExtensionClient;
-import com.gameplatform.plugin.extension.ListOptions;
 import com.gameplatform.plugin.l4d2.config.L4D2Config;
 import com.gameplatform.plugin.l4d2.dto.MonitorHistoryQueryDTO;
-import com.gameplatform.plugin.l4d2.extension.SystemMetricResource;
-import com.gameplatform.plugin.l4d2.extension.SystemMetricSpec;
 import com.gameplatform.plugin.l4d2.service.MonitorCollectorService;
+import com.gameplatform.plugin.l4d2.service.MonitorMetricFileStore;
 import com.gameplatform.plugin.l4d2.vo.MonitorConfigVO;
 import com.gameplatform.plugin.l4d2.vo.MonitorHistoryVO;
 import com.gameplatform.plugin.l4d2.vo.MonitorStatusVO;
@@ -28,12 +25,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 监控控制器
@@ -52,8 +45,8 @@ public class MonitorController {
 
     private final InstanceQueryService instanceQueryService;
     private final HostQueryService hostQueryService;
-    private final ExtensionClient extensionClient;
     private final MonitorCollectorService monitorCollectorService;
+    private final MonitorMetricFileStore metricFileStore;
     private final L4D2Config config;
 
     /**
@@ -70,9 +63,9 @@ public class MonitorController {
         }
 
         // 优先从采集服务缓存读取最新指标
-        SystemMetricResource cached = monitorCollectorService.getLatestMetric(instanceId);
-        if (cached != null && cached.getSpec() != null) {
-            MonitorStatusVO vo = toStatusVOFromSpec(instanceId, cached.getSpec());
+        SystemMetricVO cached = monitorCollectorService.getLatestMetric(instanceId);
+        if (cached != null) {
+            MonitorStatusVO vo = toStatusVO(instanceId, cached);
             return Result.success(vo);
         }
 
@@ -109,16 +102,9 @@ public class MonitorController {
             startTime = endTime.minusMinutes(queryDTO.getTimeRangeMinutes());
         }
 
-        List<SystemMetricResource> resources = queryResourcesFromDatabase(
-                queryDTO.getInstanceId(), startTime, endTime);
-        List<SystemMetricVO> raw = resources.stream()
-                .map(SystemMetricVO::from)
-                .collect(Collectors.toList());
-
-        // 降采样
         long startMs = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         long endMs = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        List<SystemMetricVO> result = downsampleIfNecessary(raw, startMs, endMs);
+        List<SystemMetricVO> result = metricFileStore.query(queryDTO.getInstanceId(), startMs, endMs);
         return Result.success(result);
     }
 
@@ -140,7 +126,7 @@ public class MonitorController {
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-        List<MonitorHistoryVO> historyList = queryHistoryFromDatabase(instanceId, startTime, endTime);
+        List<MonitorHistoryVO> historyList = queryHistoryFromFiles(instanceId, startTime, endTime);
         return Result.success(historyList);
     }
 
@@ -157,7 +143,7 @@ public class MonitorController {
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-        List<MonitorHistoryVO> historyList = queryHistoryFromDatabase(instanceId, startTime, endTime);
+        List<MonitorHistoryVO> historyList = queryHistoryFromFiles(instanceId, startTime, endTime);
         return Result.success(historyList);
     }
 
@@ -174,7 +160,7 @@ public class MonitorController {
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-        List<MonitorHistoryVO> historyList = queryHistoryFromDatabase(instanceId, startTime, endTime);
+        List<MonitorHistoryVO> historyList = queryHistoryFromFiles(instanceId, startTime, endTime);
         return Result.success(historyList);
     }
 
@@ -191,7 +177,7 @@ public class MonitorController {
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-        List<MonitorHistoryVO> historyList = queryHistoryFromDatabase(instanceId, startTime, endTime);
+        List<MonitorHistoryVO> historyList = queryHistoryFromFiles(instanceId, startTime, endTime);
         return Result.success(historyList);
     }
 
@@ -265,175 +251,54 @@ public class MonitorController {
         return vo;
     }
 
-    /**
-     * 从 SystemMetricSpec 还原 MonitorStatusVO（缓存命中时使用）。
-     */
-    private MonitorStatusVO toStatusVOFromSpec(Long instanceId, SystemMetricSpec spec) {
+    /** 从最新指标还原 MonitorStatusVO。 */
+    private MonitorStatusVO toStatusVO(Long instanceId, SystemMetricVO metric) {
         MonitorStatusVO vo = new MonitorStatusVO();
         vo.setInstanceId(instanceId);
-        vo.setTimestamp(spec.getTimestamp());
-        vo.setCpuPercent(spec.getCpuPercent());
-        vo.setCpuMaxCore(spec.getCpuMaxCore());
-        vo.setMemUsed(spec.getMemUsed());
-        vo.setMemTotal(spec.getMemTotal());
-        vo.setSwapUsed(spec.getSwapUsed());
-        vo.setNetUpSpeed(spec.getNetUpSpeed());
-        vo.setNetDownSpeed(spec.getNetDownSpeed());
-        vo.setDiskUsed(spec.getDiskUsed());
-        vo.setDiskTotal(spec.getDiskTotal());
+        vo.setTimestamp(metric.getTimestamp());
+        vo.setCpuPercent(metric.getCpuPercent());
+        vo.setCpuMaxCore(metric.getCpuMaxCore());
+        vo.setMemUsed(metric.getMemUsed());
+        vo.setMemTotal(metric.getMemTotal());
+        vo.setSwapUsed(metric.getSwapUsed());
+        vo.setNetUpSpeed(metric.getNetUpSpeed());
+        vo.setNetDownSpeed(metric.getNetDownSpeed());
+        vo.setDiskUsed(metric.getDiskUsed());
+        vo.setDiskTotal(metric.getDiskTotal());
         return vo;
     }
 
-    /**
-     * 从扩展存储查询历史 SystemMetricResource（用于 /history，按时间范围过滤）。
-     */
-    private List<SystemMetricResource> queryResourcesFromDatabase(Long instanceId,
-                                                                   LocalDateTime startTime,
-                                                                   LocalDateTime endTime) {
+    /** 从临时文件查询历史数据，保持 realtime/trend 端点契约不变。 */
+    private List<MonitorHistoryVO> queryHistoryFromFiles(Long instanceId,
+                                                          LocalDateTime startTime,
+                                                          LocalDateTime endTime) {
         long startEpochMilli = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         long endEpochMilli = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-
-        ListOptions opts = ListOptions.builder()
-                .specFilter("$.instanceId", "=", instanceId)
-                .createdAfter(startEpochMilli)
-                .orderBy("creation_timestamp")
-                .limit(10000)
-                .build();
-
-        List<SystemMetricResource> resources = extensionClient.list(SystemMetricResource.class, opts);
-        return resources.stream()
-                .filter(r -> r.getMetadata() != null
-                        && r.getMetadata().getCreationTimestamp() != null
-                        && r.getMetadata().getCreationTimestamp() <= endEpochMilli)
-                .collect(Collectors.toList());
+        return metricFileStore.query(instanceId, startEpochMilli, endEpochMilli).stream()
+                .map(metric -> toHistoryVO(instanceId, metric))
+                .toList();
     }
 
-    /**
-     * 从扩展存储查询历史数据（保持 realtime/trend 端点契约不变，返回 MonitorHistoryVO）。
-     */
-    private List<MonitorHistoryVO> queryHistoryFromDatabase(Long instanceId,
-                                                             LocalDateTime startTime,
-                                                             LocalDateTime endTime) {
-        long startEpochMilli = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long endEpochMilli = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-
-        ListOptions opts = ListOptions.builder()
-                .specFilter("$.instanceId", "=", instanceId)
-                .createdAfter(startEpochMilli)
-                .orderBy("creation_timestamp")
-                .limit(10000)
-                .build();
-
-        List<SystemMetricResource> resources = extensionClient.list(SystemMetricResource.class, opts);
-
-        return resources.stream()
-                .filter(r -> r.getMetadata() != null
-                        && r.getMetadata().getCreationTimestamp() != null
-                        && r.getMetadata().getCreationTimestamp() <= endEpochMilli)
-                .map(this::toHistoryVO)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Resource 转 MonitorHistoryVO
-     */
-    private MonitorHistoryVO toHistoryVO(SystemMetricResource resource) {
+    /** 临时文件指标转 MonitorHistoryVO。 */
+    private MonitorHistoryVO toHistoryVO(Long instanceId, SystemMetricVO metric) {
         MonitorHistoryVO vo = new MonitorHistoryVO();
-        if (resource.getMetadata() != null && resource.getMetadata().getCreationTimestamp() != null) {
-            vo.setId(resource.getMetadata().getCreationTimestamp());
+        if (metric.getTimestamp() != null) {
+            vo.setId(metric.getTimestamp());
             vo.setCreateTime(LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(resource.getMetadata().getCreationTimestamp()),
+                    Instant.ofEpochMilli(metric.getTimestamp()),
                     ZoneId.systemDefault()));
         }
-        SystemMetricSpec spec = resource.getSpec();
-        if (spec != null) {
-            vo.setInstanceId(spec.getInstanceId());
-            vo.setTimestamp(spec.getTimestamp());
-            vo.setCpuPercent(spec.getCpuPercent());
-            vo.setCpuMaxCore(spec.getCpuMaxCore());
-            vo.setMemUsed(spec.getMemUsed());
-            vo.setMemTotal(spec.getMemTotal());
-            vo.setSwapUsed(spec.getSwapUsed());
-            vo.setNetUpSpeed(spec.getNetUpSpeed());
-            vo.setNetDownSpeed(spec.getNetDownSpeed());
-            vo.setDiskUsed(spec.getDiskUsed());
-            vo.setDiskTotal(spec.getDiskTotal());
-        }
+        vo.setInstanceId(instanceId);
+        vo.setTimestamp(metric.getTimestamp());
+        vo.setCpuPercent(metric.getCpuPercent());
+        vo.setCpuMaxCore(metric.getCpuMaxCore());
+        vo.setMemUsed(metric.getMemUsed());
+        vo.setMemTotal(metric.getMemTotal());
+        vo.setSwapUsed(metric.getSwapUsed());
+        vo.setNetUpSpeed(metric.getNetUpSpeed());
+        vo.setNetDownSpeed(metric.getNetDownSpeed());
+        vo.setDiskUsed(metric.getDiskUsed());
+        vo.setDiskTotal(metric.getDiskTotal());
         return vo;
-    }
-
-    /**
-     * 降采样：如果点数超过 maxPoints，按 bucketSize = duration / downsampleTo 分桶，
-     * 每桶取各字段 MAX（对齐源项目 monitor.go:366-371）。
-     */
-    private List<SystemMetricVO> downsampleIfNecessary(List<SystemMetricVO> raw, long startMs, long endMs) {
-        int maxPoints = config.getMonitor().getMaxPoints();
-        int downsampleTo = config.getMonitor().getDownsampleTo();
-        if (raw.size() <= maxPoints || downsampleTo <= 0) {
-            return raw;
-        }
-        long duration = Math.max(1L, endMs - startMs);
-        long bucketSize = Math.max(1L, duration / downsampleTo);
-
-        // 按桶聚合：bucketIndex → 聚合结果
-        Map<Long, SystemMetricVO> buckets = new LinkedHashMap<>();
-        for (SystemMetricVO vo : raw) {
-            Long ts = vo.getTimestamp();
-            if (ts == null) {
-                continue;
-            }
-            long bucketIndex = (ts - startMs) / bucketSize;
-            if (bucketIndex < 0) {
-                bucketIndex = 0;
-            }
-            SystemMetricVO existing = buckets.get(bucketIndex);
-            if (existing == null) {
-                SystemMetricVO bucket = new SystemMetricVO();
-                bucket.setTimestamp(startMs + bucketIndex * bucketSize);
-                copyFieldsForMax(bucket, vo);
-                buckets.put(bucketIndex, bucket);
-            } else {
-                mergeMax(existing, vo);
-            }
-        }
-        List<SystemMetricVO> result = new ArrayList<>(buckets.values());
-        result.sort(Comparator.comparing(SystemMetricVO::getTimestamp));
-        return result;
-    }
-
-    /**
-     * 初始化桶：直接复制首个样本的字段。
-     */
-    private void copyFieldsForMax(SystemMetricVO target, SystemMetricVO source) {
-        target.setCpuPercent(source.getCpuPercent());
-        target.setCpuMaxCore(source.getCpuMaxCore());
-        target.setMemUsed(source.getMemUsed());
-        target.setMemTotal(source.getMemTotal());
-        target.setSwapUsed(source.getSwapUsed());
-        target.setNetUpSpeed(source.getNetUpSpeed());
-        target.setNetDownSpeed(source.getNetDownSpeed());
-        target.setDiskUsed(source.getDiskUsed());
-        target.setDiskTotal(source.getDiskTotal());
-    }
-
-    /**
-     * 合并桶：每字段取 MAX（null 视为 0）。
-     */
-    private void mergeMax(SystemMetricVO target, SystemMetricVO source) {
-        target.setCpuPercent(maxOrNull(target.getCpuPercent(), source.getCpuPercent()));
-        target.setCpuMaxCore(maxOrNull(target.getCpuMaxCore(), source.getCpuMaxCore()));
-        target.setMemUsed(maxOrNull(target.getMemUsed(), source.getMemUsed()));
-        target.setMemTotal(maxOrNull(target.getMemTotal(), source.getMemTotal()));
-        target.setSwapUsed(maxOrNull(target.getSwapUsed(), source.getSwapUsed()));
-        target.setNetUpSpeed(maxOrNull(target.getNetUpSpeed(), source.getNetUpSpeed()));
-        target.setNetDownSpeed(maxOrNull(target.getNetDownSpeed(), source.getNetDownSpeed()));
-        target.setDiskUsed(maxOrNull(target.getDiskUsed(), source.getDiskUsed()));
-        target.setDiskTotal(maxOrNull(target.getDiskTotal(), source.getDiskTotal()));
-    }
-
-    private Double maxOrNull(Double a, Double b) {
-        if (a == null) return b;
-        if (b == null) return a;
-        return Math.max(a, b);
     }
 }

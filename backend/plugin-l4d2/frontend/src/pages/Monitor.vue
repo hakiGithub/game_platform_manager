@@ -51,9 +51,9 @@
           </span>
           <el-divider direction="vertical" />
           <span class="config-item">
-            历史持久化：
+            历史存储：
             <el-tag :type="config.historyEnabled ? 'success' : 'info'" size="small">
-              {{ config.historyEnabled ? '启用' : '停用' }}
+              {{ config.historyEnabled ? '临时文件' : '停用' }}
             </el-tag>
           </span>
         </div>

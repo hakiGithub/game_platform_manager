@@ -1,7 +1,6 @@
 package com.gameplatform.plugin.l4d2.vo;
 
-import com.gameplatform.plugin.l4d2.extension.SystemMetricResource;
-import com.gameplatform.plugin.l4d2.extension.SystemMetricSpec;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -17,6 +16,9 @@ import java.io.Serializable;
  * @version 1.0.0
  */
 @Data
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY,
+        getterVisibility = JsonAutoDetect.Visibility.NONE,
+        isGetterVisibility = JsonAutoDetect.Visibility.NONE)
 @Schema(description = "系统监控指标")
 public class SystemMetricVO implements Serializable {
 
@@ -61,31 +63,6 @@ public class SystemMetricVO implements Serializable {
     /** 总磁盘空间（GB） */
     @Schema(description = "总磁盘空间（GB）")
     private Double diskTotal;
-
-    /**
-     * 从 Resource 转换为 VO。
-     */
-    public static SystemMetricVO from(SystemMetricResource resource) {
-        SystemMetricVO vo = new SystemMetricVO();
-        if (resource == null) {
-            return vo;
-        }
-        SystemMetricSpec spec = resource.getSpec();
-        if (spec == null) {
-            return vo;
-        }
-        vo.setTimestamp(spec.getTimestamp());
-        vo.setCpuPercent(spec.getCpuPercent());
-        vo.setCpuMaxCore(spec.getCpuMaxCore());
-        vo.setMemUsed(spec.getMemUsed());
-        vo.setMemTotal(spec.getMemTotal());
-        vo.setSwapUsed(spec.getSwapUsed());
-        vo.setNetUpSpeed(spec.getNetUpSpeed());
-        vo.setNetDownSpeed(spec.getNetDownSpeed());
-        vo.setDiskUsed(spec.getDiskUsed());
-        vo.setDiskTotal(spec.getDiskTotal());
-        return vo;
-    }
 
     /**
      * 格式化已用内存，例如 "12.34 GB"。

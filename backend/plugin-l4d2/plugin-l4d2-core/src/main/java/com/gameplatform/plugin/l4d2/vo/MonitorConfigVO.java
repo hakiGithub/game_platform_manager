@@ -17,8 +17,8 @@ public class MonitorConfigVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 是否启用历史持久化 */
-    @Schema(description = "是否启用历史持久化")
+    /** 是否启用历史临时文件存储 */
+    @Schema(description = "是否启用历史临时文件存储")
     private boolean historyEnabled;
 
     /** 采集间隔（毫秒） */

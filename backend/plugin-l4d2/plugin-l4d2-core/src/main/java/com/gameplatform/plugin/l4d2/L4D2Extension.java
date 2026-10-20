@@ -175,9 +175,9 @@ public class L4D2Extension implements GameEnhancementExtension {
 
     @Override
     public void onInstanceDelete(Long instanceId) {
-        // 扩展资源（EnabledPluginResource、PluginConfigResource）的清理由 InstanceService
-        // 在删除实例时通过 ExtensionClient 按 instanceId 过滤删除，此处仅记录日志。
-        log.info("L4D2 实例删除: instanceId={}, 扩展资源将由 InstanceService 清理", instanceId);
+        com.gameplatform.plugin.l4d2.service.MonitorCollectorService
+                .deleteInstanceFromPluginLifecycle(instanceId);
+        log.info("L4D2 实例删除: instanceId={}, 监控临时文件已请求清理", instanceId);
     }
 
     @Override
