@@ -65,6 +65,8 @@ game_platform_manger/
 │   ├── plugin-l4d2/                  # L4D2 游戏增强插件
 │   │   ├── frontend/                 # 插件前端 (Vue 3 + Vite)
 │   │   └── plugin-l4d2-core/         # 插件核心 JAR
+│   ├── plugin-dnf-tw/                # DNF台服 交付载体（无 frontend）
+│   │   └── plugin-dnf-tw-core/       # 插件核心 JAR + version-catalog.yml 占位模板
 │   ├── scripts/                      # 后端重启脚本
 │   └── AGENTS.md                     # 后端开发指南
 │
@@ -138,6 +140,12 @@ D:\program\ai\
 | `../plugin-dst` | `plugin-dst` | `dst` | tmux send-keys + 日志解析（DST 无 RCON） |
 | `../plugin-dnf-tw` | `plugin-dnf-tw` | `dnf_tw` | 直连游戏 MySQL |
 | `../plugin-7dtd` | `plugin-sdtd` | `sdtd` | 游戏自带 HTTP Web API |
+
+主仓库 `backend/` 下另有一个**交付载体模块**（与上面的外部 GM 工具仓库同名但不同物）：
+
+| 模块 | plugin.id | gameCode | 说明 |
+|------|-----------|----------|------|
+| `backend/plugin-dnf-tw` | `plugin-dnf-tw` | `dnf_tw` | MERC-23 交付载体：仅 `plugin-dnf-tw-core` JAR（无插件前端），版本目录为占位模板（不可上线），见 `backend/plugin-dnf-tw/README.md` |
 
 ### 前端模块
 
