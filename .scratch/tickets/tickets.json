@@ -1,24 +1,22 @@
 {
-  "generatedAt": "2026-10-20T18:40:41.399Z",
+  "generatedAt": "2026-10-21T12:09:15.063Z",
   "sourceRoot": ".scratch",
   "policy": "Excluded statuses: done, resolved, closed, wontfix, cancelled. Directory semantics keep backlog and architecture review open.",
   "summary": {
     "total": 94,
-    "unclosed": 15,
+    "unclosed": 10,
     "byStatus": {
       "resolved": 42,
-      "done": 33,
+      "done": 38,
       "ready-for-human": 6,
       "wontfix（裁决：备份功能临时下线，不修复——2026-09-10）": 1,
       "done（2026-09-10 修复，E2E 断言已转正/验证）": 3,
-      "needs-triage": 5,
       "ready-for-agent": 4
     },
     "byTone": {
-      "success": 78,
+      "success": 83,
       "human": 6,
       "muted": 1,
-      "warning": 5,
       "agent": 4
     }
   },
@@ -105,7 +103,7 @@
       "id": "architecture-review-20261021",
       "label": "Architecture review",
       "count": 5,
-      "unclosed": 5
+      "unclosed": 0
     },
     {
       "id": "cloud-drive-host-capability",
@@ -1938,15 +1936,15 @@
       "number": "01",
       "feature": "architecture-review-20261021",
       "area": "Architecture review",
-      "status": "needs-triage",
-      "statusLabel": "待分诊",
-      "statusTone": "warning",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "task",
       "priority": "",
       "source": "架构评审 2026-10-21（候选 1，强度 Strong）",
       "blockedBy": [],
-      "closed": false,
+      "closed": true,
       "summary": "DockerComposeAdapter（1377 行）与 LinuxGsmDockerAdapter（1331 行）各自实现同一批",
       "acceptance": [
         "mountHostCerts 与 env 文件规则各只有一处实现。",
@@ -1966,7 +1964,7 @@
       "href": "../architecture-review-20261021/issues/01-collapse-compose-adapters.md",
       "specHref": "../architecture-review-20261021/README.md",
       "specPath": ".scratch/architecture-review-20261021/README.md",
-      "excerpt": "# 01 — 两个 Compose 适配器逐字重复，副本已漂移\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 1，强度 Strong）\n\n## 现象\n\n`DockerComposeAdapter`（1377 行）与 `LinuxGsmDockerAdapter`（1331 行）各自实现同一批\nCompose 部署规则。逐方法比对行级重合度：\n\n| 方法 | 行重合度 | 是否已漂移 |\n|---|---|---|\n| `getProjectName` | 91% | 否 |\n| `generateEnvFileContent` | 85% | 是（46 vs 39 行） |\n| `getComposeCommand` | 85% | 是（含日志文案差异） |\n| `injectHostCertsMount` | 84% | 是（67 vs 73 行） |\n| `ensureVolumesDeclaration` | 74% | 是（60 vs 72 行） |\n| `resolveWorkDir` | 73% | 是（28 vs 30 行） |\n| `getWorkDir` | 60% | 是（20 vs 14 行） |\n| `uploadEnvFile` | 50% | 是 |\n| `stripAnsiCodes` | 43% | 是（7 vs 14 行） |\n| `summarizeSshError` | 逐字相同 | 否 |\n\n只有 `summarizeSshError` 是逐字相同；其余九项都已各自演化。涉及的行为都是**承重**的：\n`mountHostCerts`（AGENTS.md 明文约定 Docker 类部署统一支持、默认关闭）、\nenv 文件生成、volumes 声明补全、project/workdir 解析、Compose 命令探测与回退。\n\n后果：修其中一份，另一份静默不生效。例如 `mountHostCerts` 相关改动只落在\n`DockerComposeAdapter` 上时，`linuxgsm-docker` 部署的证书挂载行为与\n`docker-compose` 不再一致，且没有任何测试会红。\n\n## 根因\n\n两个部署方式共享「Compose 编排」这一整块实现，但**没有一个 module 拥有它**。\n`DeployAdapter` 接口按部署方式切分，实现却按「是否用 compose」切分，两个维度错位。\n`AbstractDeployAdapter`（794 行、0 个 public 方法）只提供 protected 助手，\n没有承担这块公共实现——删掉它复杂度不会回来，但删掉它也不解决问题。\n\n## 修复建议\n\n抽一个深 mod"
+      "excerpt": "# 01 — 两个 Compose 适配器逐字重复，副本已漂移\n\n**Status:** done\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 1，强度 Strong）\n\n## 现象\n\n`DockerComposeAdapter`（1377 行）与 `LinuxGsmDockerAdapter`（1331 行）各自实现同一批\nCompose 部署规则。逐方法比对行级重合度：\n\n| 方法 | 行重合度 | 是否已漂移 |\n|---|---|---|\n| `getProjectName` | 91% | 否 |\n| `generateEnvFileContent` | 85% | 是（46 vs 39 行） |\n| `getComposeCommand` | 85% | 是（含日志文案差异） |\n| `injectHostCertsMount` | 84% | 是（67 vs 73 行） |\n| `ensureVolumesDeclaration` | 74% | 是（60 vs 72 行） |\n| `resolveWorkDir` | 73% | 是（28 vs 30 行） |\n| `getWorkDir` | 60% | 是（20 vs 14 行） |\n| `uploadEnvFile` | 50% | 是 |\n| `stripAnsiCodes` | 43% | 是（7 vs 14 行） |\n| `summarizeSshError` | 逐字相同 | 否 |\n\n只有 `summarizeSshError` 是逐字相同；其余九项都已各自演化。涉及的行为都是**承重**的：\n`mountHostCerts`（AGENTS.md 明文约定 Docker 类部署统一支持、默认关闭）、\nenv 文件生成、volumes 声明补全、project/workdir 解析、Compose 命令探测与回退。\n\n后果：修其中一份，另一份静默不生效。例如 `mountHostCerts` 相关改动只落在\n`DockerComposeAdapter` 上时，`linuxgsm-docker` 部署的证书挂载行为与\n`docker-compose` 不再一致，且没有任何测试会红。\n\n## 根因\n\n两个部署方式共享「Compose 编排」这一整块实现，但**没有一个 module 拥有它**。\n`DeployAdapter` 接口按部署方式切分，实现却按「是否用 compose」切分，两个维度错位。\n`AbstractDeployAdapter`（794 行、0 个 public 方法）只提供 protected 助手，\n没有承担这块公共实现——删掉它复杂度不会回来，但删掉它也不解决问题。\n\n## 修复建议\n\n抽一个深 module 拥有 C"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/01-patchinstall-payload-drops-fields.md",
@@ -2013,15 +2011,15 @@
       "number": "02",
       "feature": "architecture-review-20261021",
       "area": "Architecture review",
-      "status": "needs-triage",
-      "statusLabel": "待分诊",
-      "statusTone": "warning",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "task",
       "priority": "",
       "source": "架构评审 2026-10-21（候选 2，强度 Strong）",
       "blockedBy": [],
-      "closed": false,
+      "closed": true,
       "summary": "ADR-0005 已把实例状态词汇表收口：后端 DeployAdapter.InstanceStatus 是唯一文本源，",
       "acceptance": [
         "部署方式文案只有一处定义，与 DeployType.getDescription() 一致。",
@@ -2042,7 +2040,7 @@
       "href": "../architecture-review-20261021/issues/02-deploy-type-vocabulary-owner.md",
       "specHref": "../architecture-review-20261021/README.md",
       "specPath": ".scratch/architecture-review-20261021/README.md",
-      "excerpt": "# 02 — 部署方式词汇表无 owner，前端已两处拼写不一致\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 2，强度 Strong）\n\n## 现象\n\nADR-0005 已把实例状态词汇表收口：后端 `DeployAdapter.InstanceStatus` 是唯一文本源，\n前端 `utils/instanceStatus.js` 只留 UI 元数据（颜色、图标、活跃集合）。\n\n但**部署方式**（`DeployType` 的四个 code）没有享受同一待遇，前端多处各自重新建表：\n\n| 站点 | 行 | 内容 |\n|---|---|---|\n| `views/instance/detail.vue` | :238 | `\"linuxgsm-docker\": \"LinuxGSM Docker 部署\"`（完整文案表） |\n| `views/instance/detail.vue` | :249 | `\"linuxgsm-docker\": \"danger\"`（tag 颜色表） |\n| `views/instance/detail.vue` | :260 | `\"linuxgsm-docker\": \"LGSM Docker\"`（简短文案表，第三张） |\n| `views/game/index.vue` | :346 | `\"linuxgsm-docker\": { label: \"LinuxGSM Docker\", type: \"danger\" }` |\n| `components/docker/AdoptInstanceDialog.vue` | :113 | `[\"docker\",\"docker-compose\",\"linuxgsm-docker\"]`（可认领集合） |\n| `views/instance/deploy.vue` | :181, :713, :1332, :1626 | 选项表 + 四处 Docker 类判断数组 |\n\n同一事实的**两种拼写已经并存**：`detail.vue` 用「LinuxGSM Docker 部署」，\n`game/index.vue` 用「LinuxGSM Docker」。同一个 key、同一个枚举，UI 上不一致。\n\n## 根因\n\n`DeployType` 虽是后端枚举，但前端没有一个 module 认领它。\nADR-0005 的模式（后端出文本、前端留 UI 元数据）没有套用到部署方式上，\n于是每个视图按自己需要各建一张表，表与表之间没有约束。\n\n## 修复建议\n\n按 `instanceStatus.js` 的同形做法，建一个部署方式词汇表 module：\n\n```\ndeployTypeLabels: code -> { la"
+      "excerpt": "# 02 — 部署方式词汇表无 owner，前端已两处拼写不一致\n\n**Status:** done\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 2，强度 Strong）\n\n## 现象\n\nADR-0005 已把实例状态词汇表收口：后端 `DeployAdapter.InstanceStatus` 是唯一文本源，\n前端 `utils/instanceStatus.js` 只留 UI 元数据（颜色、图标、活跃集合）。\n\n但**部署方式**（`DeployType` 的四个 code）没有享受同一待遇，前端多处各自重新建表：\n\n| 站点 | 行 | 内容 |\n|---|---|---|\n| `views/instance/detail.vue` | :238 | `\"linuxgsm-docker\": \"LinuxGSM Docker 部署\"`（完整文案表） |\n| `views/instance/detail.vue` | :249 | `\"linuxgsm-docker\": \"danger\"`（tag 颜色表） |\n| `views/instance/detail.vue` | :260 | `\"linuxgsm-docker\": \"LGSM Docker\"`（简短文案表，第三张） |\n| `views/game/index.vue` | :346 | `\"linuxgsm-docker\": { label: \"LinuxGSM Docker\", type: \"danger\" }` |\n| `components/docker/AdoptInstanceDialog.vue` | :113 | `[\"docker\",\"docker-compose\",\"linuxgsm-docker\"]`（可认领集合） |\n| `views/instance/deploy.vue` | :181, :713, :1332, :1626 | 选项表 + 四处 Docker 类判断数组 |\n\n同一事实的**两种拼写已经并存**：`detail.vue` 用「LinuxGSM Docker 部署」，\n`game/index.vue` 用「LinuxGSM Docker」。同一个 key、同一个枚举，UI 上不一致。\n\n## 根因\n\n`DeployType` 虽是后端枚举，但前端没有一个 module 认领它。\nADR-0005 的模式（后端出文本、前端留 UI 元数据）没有套用到部署方式上，\n于是每个视图按自己需要各建一张表，表与表之间没有约束。\n\n## 修复建议\n\n按 `instanceStatus.js` 的同形做法，建一个部署方式词汇表 module：\n\n```\ndeployTypeLabels: code -> { label, tag"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/02-instance-state-reconciliation.md",
@@ -2108,15 +2106,15 @@
       "number": "03",
       "feature": "architecture-review-20261021",
       "area": "Architecture review",
-      "status": "needs-triage",
-      "statusLabel": "待分诊",
-      "statusTone": "warning",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "task",
       "priority": "",
       "source": "架构评审 2026-10-21（候选 3，强度 Worth exploring）",
       "blockedBy": [],
-      "closed": false,
+      "closed": true,
       "summary": "后端 backend/core/.../enums/TaskStatus.java 已是任务状态机唯一 owner，",
       "acceptance": [
         "TaskStatus 仍是状态机唯一 owner；isTerminal() 的判断只存在于后端。",
@@ -2137,7 +2135,7 @@
       "href": "../architecture-review-20261021/issues/03-task-status-vocabulary-deepening.md",
       "specHref": "../architecture-review-20261021/README.md",
       "specPath": ".scratch/architecture-review-20261021/README.md",
-      "excerpt": "# 03 — 任务状态词汇表被两个前端重新实现，插件侧还有两个枚举外的状态\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 3，强度 Worth exploring）\n\n## 现象\n\n后端 `backend/core/.../enums/TaskStatus.java` 已是任务状态机唯一 owner，\n自带 `isTerminal()` 与 `canTransitionTo()`。但两个前端各自重新声明这套词汇：\n\n| 侧 | 文件数 | 字面量数 |\n|---|---|---|\n| 主应用 `frontend/src` | 15 | 42 |\n| 插件 `backend/plugin-l4d2/frontend/src` | 14 | 78 |\n\n合计 **120 处** `PENDING / RUNNING / COMPLETED / FAILED / CANCELLED` 字面量，\n分布在任务详情、部署进度、备份进度、还原确认、地图下载、插件安装等场景。\n\n（初版 HTML 报告写「125 处」，实测为 120，以本表为准。）\n\n**枚举外状态**：插件侧 `api/index.ts:483` 定义了\n\n```\nSTORE_TASK_RUNNING_STATUSES = ['PENDING', 'RUNNING', 'DOWNLOADING', 'INSTALLING']\n```\n\n`DOWNLOADING` 与 `INSTALLING` **不在 `TaskStatus` 枚举中**。这两个词是插件 UI 自己造的\n「进行中」状态，用来让任务条保持转圈。后端状态机不认识它们，所以：\n\n- 若后端某天返回这两个词，主应用侧的状态映射会落到兜底分支。\n- 插件侧判断「任务是否还在跑」靠这张自建表，与 `TaskStatus.isTerminal()` 是两套真值源。\n\n## 根因\n\nSDK 的 `TaskVO` 只暴露 `status` 字符串，没有把**状态机**本身递过去。\n于是每个调用方自己判断「是否终态」「是否在跑」。上一轮评审（票 06）已把\n轮询节奏与进度窗口收口到 `ChildTaskFollower`，但**状态词汇的解释权**仍在各调用方手里。\n\n## 修复建议\n\n让后端在任务 VO 上直接给出语义，前端只留展示：\n\n- 任务 VO 增加 `terminal: boolean`（或 `progressPhase` 枚举），由 `TaskStatus.isTerminal()` 派生。\n- 插件侧删除 `STORE_TASK_RUNNING_STATUSES` 的自建集合，改用 VO 的终态判断；\n  `DOWNLOADING` / `INSTALL"
+      "excerpt": "# 03 — 任务状态词汇表被两个前端重新实现，插件侧还有两个枚举外的状态\n\n**Status:** done\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 3，强度 Worth exploring）\n\n## 现象\n\n后端 `backend/core/.../enums/TaskStatus.java` 已是任务状态机唯一 owner，\n自带 `isTerminal()` 与 `canTransitionTo()`。但两个前端各自重新声明这套词汇：\n\n| 侧 | 文件数 | 字面量数 |\n|---|---|---|\n| 主应用 `frontend/src` | 15 | 42 |\n| 插件 `backend/plugin-l4d2/frontend/src` | 14 | 78 |\n\n合计 **120 处** `PENDING / RUNNING / COMPLETED / FAILED / CANCELLED` 字面量，\n分布在任务详情、部署进度、备份进度、还原确认、地图下载、插件安装等场景。\n\n（初版 HTML 报告写「125 处」，实测为 120，以本表为准。）\n\n**枚举外状态**：插件侧 `api/index.ts:483` 定义了\n\n```\nSTORE_TASK_RUNNING_STATUSES = ['PENDING', 'RUNNING', 'DOWNLOADING', 'INSTALLING']\n```\n\n`DOWNLOADING` 与 `INSTALLING` **不在 `TaskStatus` 枚举中**。这两个词是插件 UI 自己造的\n「进行中」状态，用来让任务条保持转圈。后端状态机不认识它们，所以：\n\n- 若后端某天返回这两个词，主应用侧的状态映射会落到兜底分支。\n- 插件侧判断「任务是否还在跑」靠这张自建表，与 `TaskStatus.isTerminal()` 是两套真值源。\n\n## 根因\n\nSDK 的 `TaskVO` 只暴露 `status` 字符串，没有把**状态机**本身递过去。\n于是每个调用方自己判断「是否终态」「是否在跑」。上一轮评审（票 06）已把\n轮询节奏与进度窗口收口到 `ChildTaskFollower`，但**状态词汇的解释权**仍在各调用方手里。\n\n## 修复建议\n\n让后端在任务 VO 上直接给出语义，前端只留展示：\n\n- 任务 VO 增加 `terminal: boolean`（或 `progressPhase` 枚举），由 `TaskStatus.isTerminal()` 派生。\n- 插件侧删除 `STORE_TASK_RUNNING_STATUSES` 的自建集合，改用 VO 的终态判断；\n  `DOWNLOADING` / `INSTALLING` 降级为"
     },
     {
       "id": ".scratch/architecture-review-20261021/issues/04-typed-deploy-config-seam.md",
@@ -2145,15 +2143,15 @@
       "number": "04",
       "feature": "architecture-review-20261021",
       "area": "Architecture review",
-      "status": "needs-triage",
-      "statusLabel": "待分诊",
-      "statusTone": "warning",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "task",
       "priority": "",
       "source": "架构评审 2026-10-21（候选 4，强度 Worth exploring）",
       "blockedBy": [],
-      "closed": false,
+      "closed": true,
       "summary": "DeployAdapter 的全部 18 个方法都接 Map<String,Object config。",
       "acceptance": [
         "实例配置只经一个入口组装；getInstanceConfig 删除。",
@@ -2174,7 +2172,7 @@
       "href": "../architecture-review-20261021/issues/04-typed-deploy-config-seam.md",
       "specHref": "../architecture-review-20261021/README.md",
       "specPath": ".scratch/architecture-review-20261021/README.md",
-      "excerpt": "# 04 — 部署配置是无类型 Map，同一份数据被组装两遍且规则不同\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 4，强度 Worth exploring）\n\n## 现象\n\n`DeployAdapter` 的全部 18 个方法都接 `Map<String,Object> config`。\n「config 里必须有哪些键」这件事不住在任何地方——每个适配器自己在代码里\n`getConfigString(config, \"image\", \"\")` 猜，缺键就静默用默认值。\n\n同一份实例数据被**组装两遍**，且两遍规则不同：\n\n| 站点 | 行 | 做了什么 |\n|---|---|---|\n| `InstanceServiceImpl.buildDeployConfig` | :714-803 | 6 步合并：游戏元数据模板 &rarr; configInfo（跳过 `database`）&rarr; portConfig &rarr; installPath/instanceId/gameCode &rarr; runtimeMetadata 提升 &rarr; image:tag 拼接 |\n| `DeployService.getInstanceConfig` | :809-822 | 只合并 configInfo + portConfig，共 8 行 |\n\n`buildDeployConfig` 内部还有 `promoteMetadataIfAbsent`，按 key 逐个手写提升\n（`projectName` / `workDir` / `containerName` / `shortname` / `serviceName`）——\n加一个 runtime 字段就要回来改这个方法。\n\n`InstanceServiceImpl` 一个文件里 20 处调用 `buildDeployConfig`，另 11 处在 `DeployService`。\n\n## 根因\n\n部署配置的**形状**没有 owner。它是 DB 三列（`configInfo` / `portConfig` /\n`runtimeMetadata`）加游戏元数据模板的合成产物，但合成规则散落在两个 service 里，\n消费方又按字符串键各自解释。缺键不报错，所以契约只能靠约定维持。\n\n## 修复建议\n\n一个 module 拥有配置组装，向适配器交出类型化记录：\n\n```\nDeployConfig(installPath, workDir, projectName, containerName, serviceName,\n             shortname, image, ports, env"
+      "excerpt": "# 04 — 部署配置是无类型 Map，同一份数据被组装两遍且规则不同\n\n**Status:** done\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 4，强度 Worth exploring）\n\n## 现象\n\n`DeployAdapter` 的全部 18 个方法都接 `Map<String,Object> config`。\n「config 里必须有哪些键」这件事不住在任何地方——每个适配器自己在代码里\n`getConfigString(config, \"image\", \"\")` 猜，缺键就静默用默认值。\n\n同一份实例数据被**组装两遍**，且两遍规则不同：\n\n| 站点 | 行 | 做了什么 |\n|---|---|---|\n| `InstanceServiceImpl.buildDeployConfig` | :714-803 | 6 步合并：游戏元数据模板 &rarr; configInfo（跳过 `database`）&rarr; portConfig &rarr; installPath/instanceId/gameCode &rarr; runtimeMetadata 提升 &rarr; image:tag 拼接 |\n| `DeployService.getInstanceConfig` | :809-822 | 只合并 configInfo + portConfig，共 8 行 |\n\n`buildDeployConfig` 内部还有 `promoteMetadataIfAbsent`，按 key 逐个手写提升\n（`projectName` / `workDir` / `containerName` / `shortname` / `serviceName`）——\n加一个 runtime 字段就要回来改这个方法。\n\n`InstanceServiceImpl` 一个文件里 20 处调用 `buildDeployConfig`，另 11 处在 `DeployService`。\n\n## 根因\n\n部署配置的**形状**没有 owner。它是 DB 三列（`configInfo` / `portConfig` /\n`runtimeMetadata`）加游戏元数据模板的合成产物，但合成规则散落在两个 service 里，\n消费方又按字符串键各自解释。缺键不报错，所以契约只能靠约定维持。\n\n## 修复建议\n\n一个 module 拥有配置组装，向适配器交出类型化记录：\n\n```\nDeployConfig(installPath, workDir, projectName, containerName, serviceName,\n             shortname, image, ports, env, databa"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/04-typed-task-payload.md",
@@ -2211,15 +2209,15 @@
       "number": "05",
       "feature": "architecture-review-20261021",
       "area": "Architecture review",
-      "status": "needs-triage",
-      "statusLabel": "待分诊",
-      "statusTone": "warning",
+      "status": "done",
+      "statusLabel": "已完成",
+      "statusTone": "success",
       "statusSource": "registered",
       "type": "task",
       "priority": "",
       "source": "架构评审 2026-10-21（候选 5，强度 Speculative）",
       "blockedBy": [],
-      "closed": false,
+      "closed": true,
       "summary": "InstanceFileServiceImpl（688 行）同时服务两种传输：宿主机 SSH 与容器内",
       "acceptance": [
         "传输分支从 20 处降为 1 处（路由选择）。",
@@ -2239,7 +2237,7 @@
       "href": "../architecture-review-20261021/issues/05-instance-file-route-adapters.md",
       "specHref": "../architecture-review-20261021/README.md",
       "specPath": ".scratch/architecture-review-20261021/README.md",
-      "excerpt": "# 05 — 实例文件访问靠 20 处 isNative 分支区分两种传输\n\n**Status:** needs-triage\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 5，强度 Speculative）\n\n## 现象\n\n`InstanceFileServiceImpl`（688 行）同时服务两种传输：宿主机 SSH 与容器内\n`docker exec` / `docker cp`。区分方式是 `route.isNative()`，全文件 **20 处分支**，\n外加 24 处 `docker exec` / `docker cp` 引用。\n\n典型形态（上传路径）：\n\n```\nnative:  SFTP 上传到 installPath\ndocker:  SFTP 上传到宿主机临时路径 -> mkdir -p（容器内）-> docker cp 进容器\n         -> 删除宿主机临时文件\n```\n\n后半段（临时文件生命周期、失败清理）**只属于 docker 路径**，却写在同一个方法体里，\n与 native 路径共享 try/catch 尾段。native 路径永远看不到这些代码，却要承担它的复杂度。\n\n`srcRoute.isNative() != dstRoute.isNative()` 的组合判断出现 4 次（跨路由操作）。\n\n## 根因\n\n`AbstractInstanceFileService` 已有正确的 seam 设计：`buildRoute` 由子类实现，\n`FileRoute` 承载路由上下文。但**路由之后的行为没有跟着分叉**——\n只有路由分叉了，执行没有。于是传输差异以 `if` 的形式留在每个方法里。\n\n## 修复建议\n\n沿已有 seam 把实现拆成两个 adapter：\n\n```\nInstanceFileAccess (已有接口)\n  ├── NativeFileAccess     : 直接 SFTP + 宿主机命令\n  └── DockerFileAccess     : 宿主机临时文件 + docker exec/cp + 清理\n```\n\n- `FileRoute` 决定选哪个 adapter，只决定一次。\n- 临时文件生命周期规则收进 `DockerFileAccess`。\n- 跨路由操作（`srcRoute.isNative() != dstRoute.isNative()`）显式建模为\n  「宿主机中转」，而不是 4 处布尔比较。\n\n## 验收\n\n1. 传输分支从 20 处降为 1 处（路由选择）。\n2. 临时文件创建/清理只在一处实现，失败路径有测试覆盖。\n3. 现有 `InstanceFileServiceImplTest` 全绿，行为不变。\n4. 跨路由操作的宿主机"
+      "excerpt": "# 05 — 实例文件访问靠 20 处 isNative 分支区分两种传输\n\n**Status:** done\n**Type:** task\n**来源:** 架构评审 2026-10-21（候选 5，强度 Speculative）\n\n## 现象\n\n`InstanceFileServiceImpl`（688 行）同时服务两种传输：宿主机 SSH 与容器内\n`docker exec` / `docker cp`。区分方式是 `route.isNative()`，全文件 **20 处分支**，\n外加 24 处 `docker exec` / `docker cp` 引用。\n\n典型形态（上传路径）：\n\n```\nnative:  SFTP 上传到 installPath\ndocker:  SFTP 上传到宿主机临时路径 -> mkdir -p（容器内）-> docker cp 进容器\n         -> 删除宿主机临时文件\n```\n\n后半段（临时文件生命周期、失败清理）**只属于 docker 路径**，却写在同一个方法体里，\n与 native 路径共享 try/catch 尾段。native 路径永远看不到这些代码，却要承担它的复杂度。\n\n`srcRoute.isNative() != dstRoute.isNative()` 的组合判断出现 4 次（跨路由操作）。\n\n## 根因\n\n`AbstractInstanceFileService` 已有正确的 seam 设计：`buildRoute` 由子类实现，\n`FileRoute` 承载路由上下文。但**路由之后的行为没有跟着分叉**——\n只有路由分叉了，执行没有。于是传输差异以 `if` 的形式留在每个方法里。\n\n## 修复建议\n\n沿已有 seam 把实现拆成两个 adapter：\n\n```\nInstanceFileAccess (已有接口)\n  ├── NativeFileAccess     : 直接 SFTP + 宿主机命令\n  └── DockerFileAccess     : 宿主机临时文件 + docker exec/cp + 清理\n```\n\n- `FileRoute` 决定选哪个 adapter，只决定一次。\n- 临时文件生命周期规则收进 `DockerFileAccess`。\n- 跨路由操作（`srcRoute.isNative() != dstRoute.isNative()`）显式建模为\n  「宿主机中转」，而不是 4 处布尔比较。\n\n## 验收\n\n1. 传输分支从 20 处降为 1 处（路由选择）。\n2. 临时文件创建/清理只在一处实现，失败路径有测试覆盖。\n3. 现有 `InstanceFileServiceImplTest` 全绿，行为不变。\n4. 跨路由操作的宿主机中转语义显式可测"
     },
     {
       "id": ".scratch/architecture-review-20261015/issues/05-host-tooling-port-neutrality.md",

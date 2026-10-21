@@ -1,6 +1,6 @@
 # 04 — 部署配置是无类型 Map，同一份数据被组装两遍且规则不同
 
-**Status:** needs-triage
+**Status:** done
 **Type:** task
 **来源:** 架构评审 2026-10-21（候选 4，强度 Worth exploring）
 

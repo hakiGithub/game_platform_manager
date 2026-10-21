@@ -1,6 +1,6 @@
 # 05 — 实例文件访问靠 20 处 isNative 分支区分两种传输
 
-**Status:** needs-triage
+**Status:** done
 **Type:** task
 **来源:** 架构评审 2026-10-21（候选 5，强度 Speculative）
 

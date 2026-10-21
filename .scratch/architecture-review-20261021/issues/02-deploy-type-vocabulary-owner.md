@@ -1,6 +1,6 @@
 # 02 — 部署方式词汇表无 owner，前端已两处拼写不一致
 
-**Status:** needs-triage
+**Status:** done
 **Type:** task
 **来源:** 架构评审 2026-10-21（候选 2，强度 Strong）
 

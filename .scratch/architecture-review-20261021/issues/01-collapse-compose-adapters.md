@@ -1,6 +1,6 @@
 # 01 — 两个 Compose 适配器逐字重复，副本已漂移
 
-**Status:** needs-triage
+**Status:** done
 **Type:** task
 **来源:** 架构评审 2026-10-21（候选 1，强度 Strong）
 

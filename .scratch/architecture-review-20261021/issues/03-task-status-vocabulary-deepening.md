@@ -1,6 +1,6 @@
 # 03 — 任务状态词汇表被两个前端重新实现，插件侧还有两个枚举外的状态
 
-**Status:** needs-triage
+**Status:** done
 **Type:** task
 **来源:** 架构评审 2026-10-21（候选 3，强度 Worth exploring）
 
