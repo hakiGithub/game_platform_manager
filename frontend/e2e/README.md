@@ -83,3 +83,45 @@ e2e/
 
 新增一条用例 = 在对应命名空间下新建 `<功能>.spec.js`，文件头按既有格式声明
 「页面 / 用例 / 前置 / 步骤 / 通过标准」。
+首次运行前：`npm install` + `npx playwright install chromium`。
+
+## 容器化执行（WSL + Docker，隔离环境首选）
+
+被测前后端全部跑在 Docker 容器里，Playwright 跑在 WSL 宿主。与 Windows 受管模式等价，
+但不占 Windows 端口、不写 Windows 临时库，也不依赖本机已起的前后端。
+
+```bash
+# WSL 内执行；首次需准备两件事（各约 10s，一次性）
+bash scripts/e2e-docker-browsers.sh    # 装 Playwright Chromium 1228（走 npmmirror 镜像源）
+bash scripts/e2e-docker-frontend.sh    # 装 Linux 版 node_modules 到 Docker 命名卷
+
+# 之后每次
+bash scripts/e2e-docker-run.sh                                  # 全量
+bash scripts/e2e-docker-run.sh e2e/main-app/auth                # 指定 spec
+E2E_KEEP_STACK=1 bash scripts/e2e-docker-run.sh --attach        # 保留栈调试
+```
+
+实测（18 条冒烟+导航+无主机用例）：**从零起栈到跑完 21.4 秒**。
+
+### 为什么前端不能直接复用 Windows 侧 node_modules
+
+npm 只安装当前平台的可选依赖。Windows 侧 `frontend/node_modules` 里实测只有
+`@rollup/rollup-win32-x64-*` 与 `@esbuild/win32-x64`，Linux 容器里 vite 直接报
+`Cannot find module @rollup/rollup-linux-x64-gnu`。所以必须有一份 Linux 版依赖，
+装在 Docker 命名卷 `gpm-e2e_e2e-modules` 里（`e2e-docker-frontend.sh` 负责）。
+
+同理后端不跑容器内 Maven：冷缓存下载实测 27 分钟（且会被超时杀掉），
+改为直接复用 Windows 侧已构建的 fat jar。
+
+### 与其他模式的取舍
+
+| 模式 | 命令 | 适用 |
+|------|------|------|
+| Windows 受管 | `npm run e2e` | 本机开发，要跑主机链路（需要 Windows 能 SSH 到牺牲主机） |
+| Windows 附着 | `npm run e2e -- --attach` | 已有运行中的栈，只想重跑用例 |
+| 容器化 | `bash scripts/e2e-docker-run.sh` | 干净环境、CI、不想污染本机数据 |
+
+容器模式下 `E2E_TEST_HOST_*` 仍可用（牺牲主机照常配），但后端在容器里，
+通过它创建的"主机"实际是 WSL 宿主（`172.17.0.1` 可达，已实测）。
+
+## 牺牲主机凭据（凭据不入库）

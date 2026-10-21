@@ -1,0 +1,84 @@
+# E2E 专用容器栈：前后端都跑在 Docker 里，与 Windows 开发环境完全隔离。
+#
+# 设计原则（"不要保留太重的依赖"）：
+#   1. 零源码复制 —— 主仓库只读挂载进容器，不往 WSL ext4 同步第二份
+#   2. 零 Maven 构建 —— 后端直接用 Windows 侧已构建好的 fat jar
+#   3. 前端依赖装进 Docker 命名卷（容器内 npm ci，约 10s），不占仓库也不占 Windows 盘
+#   4. 前端跑 vite dev（不 build），后端跑 fat jar
+#
+# 为什么前端不直接复用 Windows 侧 node_modules：
+#   npm 只装当前平台的可选依赖，实测 Windows 侧只有 @rollup/rollup-win32-* 与
+#   @esbuild/win32-x64，Linux 容器里 vite 会报 Cannot find module
+#   @rollup/rollup-linux-x64-gnu。所以前端依赖必须有一份 Linux 版。
+#
+# 与 docker/docker-compose.yml（生产部署）刻意分开：E2E 要临时库、可覆盖端口、
+# 只读插件挂载，与生产诉求不同。
+#
+# 用法（WSL 内，首次需先 bash scripts/e2e-docker-frontend.sh）：
+#   REPO_ROOT=/mnt/d/program/ai/game_platform_manger \
+#     docker compose -p gpm-e2e -f scripts/e2e-docker-compose.yml up -d
+#   # 前端: http://localhost:${FRONTEND_E2E_PORT:-8081}
+#   # 清理: docker compose -p gpm-e2e -f scripts/e2e-docker-compose.yml down -v
+services:
+  backend:
+    image: eclipse-temurin:17-jre
+    working_dir: /app
+    # fat jar 由 scripts/e2e-link-jar.sh 软链成固定名 app.jar（避免写死版本号）
+    command: ["sh", "-c", "java $JAVA_OPTS -jar /app/jar/app.jar"]
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPTS: "-Xms512m -Xmx1024m -XX:+UseG1GC"
+      SPRING_DATASOURCE_URL: jdbc:sqlite:/app/data/game_platform.db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.sqlite.JDBC
+      # 后端容器要能创建/管理游戏容器 —— 挂宿主 docker.sock
+      GAME_PLATFORM_DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      # fat jar 与插件目录：只读挂载主仓库，不复制
+      - ${REPO_ROOT:-..}/backend/core/target:/app/jar:ro
+      - ${REPO_ROOT:-..}/backend/plugins:/app/plugins:ro
+      # SQLite 库与日志走命名卷，不污染本机 backend/data
+      - e2e-data:/app/data
+      - e2e-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      # 注意：temurin 镜像的 sh 是 dash，不支持 /dev/tcp，必须用 bash
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 20
+    expose:
+      - "8080"
+    networks:
+      - e2e
+
+  frontend:
+    image: node:20-slim
+    working_dir: /app
+    # vite dev：node_modules 来自命名卷（Linux 版，见 scripts/e2e-docker-frontend.sh）
+    command: ["sh", "-c", "node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3000"]
+    environment:
+      TZ: Asia/Shanghai
+      VITE_PROXY_TARGET: http://backend:8080
+    volumes:
+      - ${REPO_ROOT:-..}/frontend:/app
+      - e2e-modules:/app/node_modules
+      - e2e-vite:/app/.vite
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_E2E_PORT:-8081}:3000"
+    networks:
+      - e2e
+
+volumes:
+  # E2E 临时数据：down -v 一并清掉，不落在仓库里
+  e2e-data:
+  e2e-logs:
+  e2e-modules:
+  e2e-vite:
+
+networks:
+  e2e:
+    driver: bridge
