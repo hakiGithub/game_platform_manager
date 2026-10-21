@@ -88,6 +88,7 @@ game_platform_manger/
 │   ├── api/                          # API 接口文档
 │   ├── design/                       # 设计文档（adr/ 架构决策记录 + ui-design-spec UI规范）
 │   ├── testing/                      # 测试文档（ui-testing/ + 用例）
+│   ├── plugins.md                    # 插件登记表（权威的"游戏 ↔ 插件"映射）
 │   └── archive/                      # 归档文档（历史实施计划）
 ├── .trae/skills/                     # SKILL 文档（插件开发等）
 │   └── gameplatform-plugin-dev/      # 插件开发 SKILL（references/ 分主题文档）
@@ -95,6 +96,27 @@ game_platform_manger/
 ├── AGENTS.md                         # 项目总览 (本文件)
 └── README.md                         # 项目入口
 ```
+
+---
+
+## 插件仓库分布（重要）
+
+**游戏插件不都在本仓库内。** 只有 `plugin-l4d2` 在主仓库 `backend/` 下，其余三个是
+**独立 git 仓库**，位于本仓库的**同级目录**：
+
+```
+D:\program\ai\
+├── game_platform_manger\          # 主平台仓库（本仓库）
+│   └── backend\plugin-l4d2\       # plugin-l4d2
+├── plugin-dst\                    # plugin-dst     （饥荒联机版）
+├── plugin-dnf-tw\                 # plugin-dnf-tw  （DNF 台服 GM 工具）
+└── plugin-7dtd\                   # plugin-sdtd    （7 Days to Die，注意 id 与目录名不同）
+```
+
+四个插件打包后的 jar 都进主仓库的 `backend/plugins/`（构建产物，非源码）。
+
+**完整清单见 [docs/plugins.md](docs/plugins.md)。** 搜索插件时不要只看 `backend/` ——
+2026-10-21 的能力盘点曾因此漏掉三个插件。
 
 ---
 
@@ -107,7 +129,15 @@ game_platform_manger/
 | api | DTO/VO 契约，供 core 与 plugin 共享 |
 | core | 主应用：控制器、服务实现、数据库访问、WebSocket、Docker/SSH 交互 |
 | plugin | 插件 SDK：扩展点接口、插件框架服务、宿主能力服务接口 |
-| plugin-l4d2 | L4D2 游戏增强插件：RCON、地图、SourceMod 插件管理、配置预设 |
+| plugin-l4d2 | L4D2 游戏增强插件（主仓库内）：RCON、地图、SourceMod 插件管理、配置预设 |
+
+### 外部插件仓库（不在本仓库内，见 [docs/plugins.md](docs/plugins.md)）
+
+| 仓库 | plugin.id | gameCode | 通信路线 |
+|------|-----------|----------|---------|
+| `../plugin-dst` | `plugin-dst` | `dst` | tmux send-keys + 日志解析（DST 无 RCON） |
+| `../plugin-dnf-tw` | `plugin-dnf-tw` | `dnf_tw` | 直连游戏 MySQL |
+| `../plugin-7dtd` | `plugin-sdtd` | `sdtd` | 游戏自带 HTTP Web API |
 
 ### 前端模块
 
@@ -115,6 +145,9 @@ game_platform_manger/
 |------|------|
 | frontend | 主应用：主机、实例、游戏、系统管理、插件菜单、Wujie 微前端容器 |
 | plugin-l4d2/frontend | 插件子应用：L4D2 专属管理页面 |
+
+> 四个插件走**四条不同的通信路线**，"照着 l4d2 抄 RCON"只对 Source 引擎系成立。
+> 做新插件前先读 [docs/plugins.md](docs/plugins.md) 的"通信路线说明"。
 
 ---
 
@@ -329,6 +362,7 @@ bash scripts/deploy-plugin.sh --skip-build
 
 - [项目 README](README.md) — 项目总览与快速开始
 - [文档导航](docs/README.md) — docs/ 目录分层说明
+- [插件登记表](docs/plugins.md) — **权威的"游戏 ↔ 插件"映射**（哪些游戏有插件、插件仓库位置、通信路线）。判断某游戏有无插件以此表为准：`games/{code}.yml` 的 `configSchema`/`customOperations` 为 0 **不代表没有插件**
 - [后端开发指南](backend/AGENTS.md)
 - [前端开发指南](frontend/AGENTS.md)
 - [API接口文档](docs/api/api-doc.md)
