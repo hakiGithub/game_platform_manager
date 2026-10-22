@@ -11,16 +11,15 @@
 | [01 E2E 全栈容器化](issues/01-e2e-docker-stack.md) | task | **resolved** | - |
 | [03 结果落盘与交付](issues/03-result-artifact.md) | task | ready-for-agent | 01 |
 | [04 修 l4d2 日志页已知失败](issues/04-fix-log-page-flake.md) | bug | **resolved** | - |
-| [05 sdtd 插件用例包](issues/05-sdtd-plugin-pack.md) | task | ready-for-agent | - |
-| [06 dst 插件用例包](issues/06-dst-plugin-pack.md) | task | ready-for-agent | 05 |
+| [05 sdtd 插件用例包](issues/05-sdtd-plugin-pack.md) | task | **resolved** | - |
+| [06 dst 插件用例包](issues/06-dst-plugin-pack.md) | task | ready-for-agent | - |
 | [07 dnf_tw 插件用例包](issues/07-dnf-tw-plugin-pack.md) | task | ready-for-agent | 06 |
 | [08 CI 冒烟子集](issues/08-ci-smoke-subset.md) | task | ready-for-agent | 01, 03 |
 | [09 l4d2 Docker 路径基准错配](issues/09-l4d2-docker-path-root-mismatch.md) | bug | ready-for-human | - |
 
 ## 执行建议
 
-01、04 已落地。03 可与 05 并行；05 已解除阻塞。
-06 等 05；07 等 06。08 等 03。
+01、04、05 已落地。03、06 可并行。07 等 06；08 等 03。
 09 是 04 暴露出的产品缺陷，需产品决策（A/B/C 择一），不阻塞用例包推进。
 
 ## 当前进度（2026-10-22）
@@ -34,3 +33,9 @@ Part A 完成：`bash scripts/e2e-docker-run.sh` 从零起栈跑 18 条冒烟用
 目录（产品缺陷，另开票 09），用例侧改用平台文件 API 造夹具，
 靠断言"平台能列出 → 插件能列出"保住断言力度。详见
 [票 04](issues/04-fix-log-page-flake.md)。
+
+票 05 完成：sdtd 用例包 **8 条连续两轮全绿**（28.6s / 27.9s），覆盖全部 6 个菜单页
+加一条白名单写操作闭环。范式复制过程踩到 4 个定位器坑（主机 IP 唯一、侧边栏菜单
+定位、Element Plus tab-pane 懒渲染、el-upload 双层 role），都不是范式本身的问题，
+**`e2e/support/` 与 `playwright.config.js` 零改动**。详见
+[票 05](issues/05-sdtd-plugin-pack.md)。
