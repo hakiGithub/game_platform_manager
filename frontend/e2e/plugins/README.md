@@ -19,7 +19,7 @@
 |----|------|--------|---------|------|
 | `l4d2/` | `plugin-l4d2` | 18 | docker | 28 用例，连续两轮全绿（3.2m / 3.3m） |
 | `sdtd/` | `plugin-sdtd`（`plugin-7dtd`） | 6 | linuxgsm-docker | 8 用例，连续两轮全绿（28.6s / 27.9s） |
-| `dst/` | `plugin-dst` | 7 | linuxgsm-docker | 待接入（票 06） |
+| `dst/` | `plugin-dst` | 7 | linuxgsm-docker | 8 用例，连续两轮全绿（1.2m / 1.7m）；写盘强断言待票 10 修复 |
 | `dnf_tw/` | `plugin-dnf-tw` | 10 | docker-compose | 待接入（票 07，依赖游戏自带 5 个 MySQL 库） |
 
 ## 约定
