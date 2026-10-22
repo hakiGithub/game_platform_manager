@@ -31,6 +31,11 @@ import { e2eEnv } from "../../support/env.js";
 import { skipWithoutTestHost } from "../../support/skip.js";
 import { createApi, login, removeHostsByName } from "../../support/api.js";
 import {
+  listInstanceFileNames,
+  removeInstanceFile,
+  writeInstanceFile,
+} from "../../support/instance-files.js";
+import {
   LARGE_PLUGIN,
   ensureLargePluginFixture,
 } from "../../fixtures/build-large-plugin.mjs";
@@ -39,6 +44,11 @@ skipWithoutTestHost();
 
 const HOST_NAME = "e2e-wsl-plugin-host";
 const INSTANCE_NAME = "e2e-l4d2-plugin";
+// SourceMod 日志目录（相对实例根：Native = installPath，Docker = containerWorkDir）
+const SM_LOGS_DIR = "left4dead2/addons/sourcemod/logs";
+// SourceModLogService 只认 L{yyyyMMdd}.log / errors_{yyyyMMdd}.log，且用 matches()
+// 做整名匹配——夹具必须严格按此命名，否则插件侧过滤后为空表。
+const E2E_LOG_FILES = ["L20261022.log", "errors_20261022.log"];
 const FIXTURES_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../fixtures",
@@ -615,13 +625,34 @@ test.describe.serial("l4d2 插件子应用", () => {
    * 页面: l4d2 / 日志
    * 用例: 次要页面可达渲染与刷新冒烟
    * 前置: 共享 fixture 部署的运行中 l4d2 实例
-   * 步骤: 打开 /logs → 刷新文件表 → 点击第二个文件并等待内容请求 →
-   *       输入搜索词并等待远端 grep 请求
+   * 步骤: 经平台文件 API 写入两份符合 SourceMod 命名的日志 → 打开 /logs → 刷新文件表 →
+   *       点击第二个文件并等待内容请求 → 输入搜索词并等待远端 grep 请求 → 清理夹具文件
    * 通过标准: 标题跟随所选文件，内容请求携带 tail 行数，搜索请求携带 keyword
+   *
+   * 为什么自己造日志：E2E 部署的镜像是 laoyutang/l4d2-pure（纯服务端，不含 SourceMod），
+   * 日志目录里天然没有任何 L*.log，插件按 '(L\d{8}\.log|errors_\d{8}\.log)' 过滤后必然是空表。
+   * 造文件既保住"过滤 + 排序 + 点击读内容"这层断言，又不掩盖真实缺陷
+   * （Docker 实例路径解析问题另见票 09）。
    */
   test("服务器日志页渲染文件表与刷新入口", async ({ page }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
     const { injectSession } = await import("../../support/session.js");
+
+    // 夹具：两份日志（一份普通、一份 errors_ 前缀，后者用于验证 errorLog 标记不炸）
+    for (const [index, name] of E2E_LOG_FILES.entries()) {
+      await writeInstanceFile(
+        api,
+        instanceId,
+        `${SM_LOGS_DIR}/${name}`,
+        `[e2e-fixture] sourcemod log ${index} for ${name}\n`,
+      );
+    }
+    // 写入生效的证据：平台侧已能列出（避免"插件路径不对"与"文件没写进去"混淆）
+    expect(await listInstanceFileNames(api, instanceId, SM_LOGS_DIR)).toEqual(
+      expect.arrayContaining(E2E_LOG_FILES),
+    );
+
+    try {
     await injectSession(page);
     await gotoPluginPage(page, "logs", ".logs-page");
     await expect(
@@ -657,7 +688,9 @@ test.describe.serial("l4d2 插件子应用", () => {
     await targetRow.click();
     await contentResponse;
     await expect(page.locator(".log-file-title")).toHaveText(fileName);
-    await expect(page.getByText("已连接", { exact: true })).toBeVisible();
+    // 连接态在两个位置显示（页头 hero-state + 查看器头部 el-tag），
+    // 用 getByText 会命中 2 个元素触发 strict 冲突 —— 只断言页头徽标。
+    await expect(page.locator(".logs-page .hero-state")).toHaveText("已连接");
 
     const keyword = "e2e-grep-missing-token";
     const searchResponse = page.waitForResponse(
@@ -673,6 +706,11 @@ test.describe.serial("l4d2 插件子应用", () => {
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     await searchResponse;
     await expect(page.getByText("暂无日志", { exact: true })).toBeVisible();
+    } finally {
+      for (const name of E2E_LOG_FILES) {
+        await removeInstanceFile(api, instanceId, `${SM_LOGS_DIR}/${name}`);
+      }
+    }
   });
 
   /**
