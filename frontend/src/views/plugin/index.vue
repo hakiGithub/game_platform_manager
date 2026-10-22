@@ -61,15 +61,36 @@ async function fetchPluginList() {
   }
 }
 
-function extractGameCode(pluginId) {
+/**
+ * 从插件 ID 猜 gameCode（仅作为后端未返回 gameCode 时的兜底）。
+ *
+ * 该推断并不总成立：plugin-dnf-tw 推出 "dnf-tw"，而实例的 game_code 是 "dnf_tw"，
+ * 用它查实例会恒为 0 条。因此 resolveGameCode 永远优先取权威值。
+ */
+function guessGameCode(pluginId) {
   if (!pluginId) return "";
   return pluginId.startsWith("plugin-") ? pluginId.substring("plugin-".length) : "";
+}
+
+/**
+ * 解析插件对应的 gameCode：
+ * 1. 后端 PluginStatusVO.gameCode（来自 GameEnhancementExtension.getGameCode()，权威）
+ * 2. supportedGames 首项
+ * 3. 由 pluginId 猜测（兼容旧后端）
+ */
+function resolveGameCode(row) {
+  if (!row) return "";
+  if (row.gameCode) return row.gameCode;
+  if (Array.isArray(row.supportedGames) && row.supportedGames.length) {
+    return row.supportedGames[0];
+  }
+  return guessGameCode(row.pluginId);
 }
 
 function getSupportedGames(row) {
   const codes = Array.isArray(row.supportedGames) && row.supportedGames.length
     ? row.supportedGames
-    : [extractGameCode(row.pluginId)].filter(Boolean);
+    : [resolveGameCode(row)].filter(Boolean);
   return codes.map((code) => ({ code, label: gameLabels[code] || code.toUpperCase() }));
 }
 
@@ -90,7 +111,7 @@ async function handleEnterPlugin(row) {
   }
   if (enteringPluginId.value) return;
 
-  const gameCode = extractGameCode(row.pluginId);
+  const gameCode = resolveGameCode(row);
   if (!gameCode) {
     ElMessage.error("无法识别插件游戏编码");
     return;

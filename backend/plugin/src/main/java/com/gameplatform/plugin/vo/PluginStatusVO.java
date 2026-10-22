@@ -31,6 +31,15 @@ public class PluginStatusVO implements Serializable {
     private String pluginId;
 
     /**
+     * 游戏编码（来自插件扩展点 GameEnhancementExtension.getGameCode()，权威值）。
+     * <p>
+     * 插件 ID 与 gameCode 并非简单的 "plugin-" 前缀关系（如 plugin-dnf-tw → dnf_tw），
+     * 宿主前端不得再从 pluginId 猜测，必须用本字段做实例查询与工作区路由。
+     */
+    @Schema(description = "游戏编码（插件扩展点声明的权威值）")
+    private String gameCode;
+
+    /**
      * 插件名称
      */
     @Schema(description = "插件名称")

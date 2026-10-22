@@ -335,6 +335,7 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
         String description = plugin.getDescriptor().getPluginDescription();
         String provider = plugin.getDescriptor().getProvider();
         String pluginName = description;
+        String gameCode = null;
         try {
             PluginManifestVO manifest = buildManifestFromExtension(plugin.getPluginId());
             if (manifest != null) {
@@ -344,12 +345,16 @@ public class PluginFrameworkServiceImpl implements PluginFrameworkService {
                 if (manifest.getDescription() != null) {
                     description = manifest.getDescription();
                 }
+                // gameCode 必须由扩展点声明，插件 ID 推不出可靠值：
+                // plugin-dnf-tw → dnf-tw，而实例的 game_code 是 dnf_tw
+                gameCode = manifest.getGameCode();
             }
         } catch (Exception ignore) {
             // 回退到 descriptor 值
         }
         return PluginStatusVO.builder()
                 .pluginId(plugin.getPluginId())
+                .gameCode(gameCode)
                 .pluginName(pluginName)
                 .version(plugin.getDescriptor().getVersion().toString())
                 .state(state.name())
