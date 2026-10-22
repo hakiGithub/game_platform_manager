@@ -7,6 +7,7 @@
 # 所以这里显式用绝对路径，不依赖 nvm use。
 #
 # 用法：bash scripts/e2e-docker-pw.sh [playwright 参数...]
+#       bash scripts/e2e-docker-pw.sh --group smoke   # 走 runner 的预设分组
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,6 +25,14 @@ export E2E_BASE_URL="${E2E_BASE_URL:-http://localhost:${FRONTEND_E2E_PORT:-8081}
 export E2E_BACKEND_URL="${E2E_BACKEND_URL:-${E2E_BASE_URL}}"
 
 cd "${FRONTEND_DIR}" || exit 1
+
+# 分组预设只维护一份（frontend/e2e/runner.mjs 的 GROUP_PRESETS，由 ROUND_GROUPS 派生）。
+# 栈已由 e2e-docker-run.sh 起好，这里用 runner 的 --attach 模式复用同一套
+# 分组解析与 summary 落盘逻辑，不另写一套路径列表。
+if [ "${1:-}" = "--group" ] || [[ "${1:-}" == --group=* ]]; then
+  echo "[e2e-docker] 分组模式：交给 e2e/runner.mjs --attach 执行"
+  exec "${NODE}" e2e/runner.mjs --attach "$@"
+fi
 
 # 票 03：结果落盘的数据源 —— 由 playwright.config.js 的 json reporter 写出
 LAST_RUN_DIR="${FRONTEND_DIR}/e2e/.last-run"

@@ -46,9 +46,54 @@ jobs:
           npm ci
           npm run test:run
 
+  # 票 08：冒烟 E2E（不需要牺牲主机的那一组）
+  # 起的是"受管模式"临时栈：临时 SQLite + 本机 Vite dev + Chromium，不碰插件 JAR
+  # （插件 JAR 是 gitignored 构建产物，干净 checkout 里没有，故 --group smoke 已排除
+  #   e2e/main-app/plugins；需要时用 E2E_SMOKE_INCLUDE_PLUGINS=1 手动开启）。
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # fat jar 供 e2e-ci.sh 直接 java -jar 启动（runner 的受管模式依赖
+      # scripts/start-all.sh，而后者是为 WSL 调的 powershell 脚本，托管 runner 不可用）
+      - name: Build backend fat jar
+        working-directory: backend
+        run: mvn -B -q -pl core -am package -DskipTests
+
+      - name: Install frontend deps and Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run smoke E2E
+        run: bash scripts/e2e-ci.sh --group smoke
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-smoke
+          path: |
+            frontend/e2e/.report
+            frontend/e2e/.last-run
+            frontend/e2e/.artifacts
+          if-no-files-found: ignore
+
   # 推送条件：仅 tag 触发时为 true；main push 只做构建验证
   build-push:
-    needs: [test-backend, test-frontend]
+    needs: [test-backend, test-frontend, e2e-smoke]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:

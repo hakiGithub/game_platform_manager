@@ -62,6 +62,23 @@
 - **调试 Wujie 集成** → 阅读 06 中的常见问题章节
 - **环境启动失败** → 阅读 [02-toolchain.md §5.5](./02-toolchain.md) 一键启动脚本参数说明
 
+### E2E 冒烟分组
+
+冒烟子集 = 不依赖 `E2E_TEST_HOST_*`（牺牲主机）的那几组，
+定义在 `frontend/e2e/runner.mjs` 的 `GROUP_PRESETS.smoke`（由 `ROUND_GROUPS` 前两组派生）。
+
+| 场景 | 命令 |
+|------|------|
+| 本地 Windows 受管（自动起临时栈） | `cd frontend; npm run e2e -- --group smoke` |
+| 本地 WSL + Docker 容器栈 | `bash scripts/e2e-docker-run.sh --attach --group smoke` |
+| CI（无 WSL / 无 Docker） | `bash scripts/e2e-ci.sh --group smoke` |
+
+范围：`infra`、`main-app/{auth,workspace,games,system,tasks}`；CI 默认再排除
+`main-app/plugins`（依赖 gitignored 的 124MB l4d2 插件 JAR），本地加
+`E2E_SMOKE_INCLUDE_PLUGINS=1` 可开启。需要牺牲主机的五组（主机纳管 / 容器认领 /
+实例生命周期 / 插件子应用 / 演练腿）不进 CI。详见
+[08-ci-integration.md](./08-ci-integration.md) 与 `.scratch/e2e-wsl-ci-and-plugin-packs/issues/08-ci-smoke-subset.md`。
+
 ## UI Audit 与交互遍历
 
 项目使用 Playwright 进行自动化 UI 审查与交互遍历，覆盖主应用全部页面：

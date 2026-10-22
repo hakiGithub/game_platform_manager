@@ -63,6 +63,57 @@ verify-platform-tools:
     - if: '$CI_COMMIT_TAG =~ /^v/'
     - if: '$CI_COMMIT_BRANCH == "main"'
 
+# 票 08：冒烟 E2E（不需要牺牲主机的那一组）
+# 分两步：先在 maven 镜像里出 fat jar 当 artifact，再用 node 镜像跑 Playwright，
+# 避免同一个 job 里同时装 JDK 与 Node。脚本与 GitHub Actions 共用 scripts/e2e-ci.sh。
+e2e-jar:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17
+  cache:
+    key: maven-repo
+    paths:
+      - .m2/repository
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  script:
+    - mvn -B -q -pl core -am package -DskipTests
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - backend/core/target/*-exec.jar
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+e2e-smoke:
+  stage: test
+  image: node:20-bookworm
+  needs: ["e2e-jar"]
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+  before_script:
+    # 只跑 fat jar，不需要完整 JDK
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends default-jre-headless curl >/dev/null
+    - cd frontend && npm ci && npx playwright install --with-deps chromium && cd ..
+  script:
+    - bash scripts/e2e-ci.sh --group smoke
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - frontend/e2e/.report/
+      - frontend/e2e/.last-run/
+      - frontend/e2e/.artifacts/
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
 .build-template: &build-template
   stage: build
   image: docker:27

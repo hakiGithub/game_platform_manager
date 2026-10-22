@@ -174,6 +174,17 @@ jobs:
 
 ### 2.4 E2E 测试（Nightly）
 
+> **实际落地（2026-10-23）**：E2E 不再是 Nightly 规划，而是常驻门禁的冒烟子集。
+> 仓库里没有 `e2e-nightly.yml`，真实实现是：
+> - `scripts/e2e-ci.sh` — 起 fat jar + Vite dev，再交给 `frontend/e2e/runner.mjs --attach`
+>   （受管模式的 `start-all.sh` 依赖 powershell.exe，托管 runner 不可用）
+> - `.github/workflows/docker-build.yml` 的 `e2e-smoke` job（`build-push` 依赖它）
+> - `.gitlab-ci.yml` 的 `e2e-jar` + `e2e-smoke` job
+> - 分组定义只有一份：`runner.mjs` 的 `GROUP_PRESETS.smoke` 由 `ROUND_GROUPS` 前两组派生
+>
+> 实测：18 passed / 20.3s（排除依赖插件 JAR 的 `main-app/plugins`）。
+> 以下 nightly 配置仅为历史规划参考。
+
 **`.github/workflows/e2e-nightly.yml`**
 
 ```yaml

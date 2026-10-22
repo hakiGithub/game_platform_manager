@@ -12,6 +12,7 @@ describe("parseE2eArgs", () => {
     expect(parsed).toEqual({
       attach: true,
       round: false,
+      group: null,
       playwrightArgs: [
         "e2e/main-app/instance/drill-legs.spec.js",
         "--reporter=list",
@@ -29,6 +30,7 @@ describe("parseE2eArgs", () => {
     expect(parsed).toEqual({
       attach: false,
       round: true,
+      group: null,
       playwrightArgs: ["e2e/main-app/auth"],
     });
   });
@@ -37,7 +39,35 @@ describe("parseE2eArgs", () => {
     expect(parseE2eArgs([])).toEqual({
       attach: false,
       round: false,
+      group: null,
       playwrightArgs: [],
+    });
+  });
+
+  it("--group smoke 消费分组名，不留给 Playwright", () => {
+    expect(parseE2eArgs(["--group", "smoke", "--reporter=list"])).toEqual({
+      attach: false,
+      round: false,
+      group: "smoke",
+      playwrightArgs: ["--reporter=list"],
+    });
+  });
+
+  it("--group=smoke 等价写法", () => {
+    expect(parseE2eArgs(["--group=smoke"])).toEqual({
+      attach: false,
+      round: false,
+      group: "smoke",
+      playwrightArgs: [],
+    });
+  });
+
+  it("--group 缺值时不吞掉后续 Playwright 参数", () => {
+    expect(parseE2eArgs(["--group", "--reporter=list"])).toEqual({
+      attach: false,
+      round: false,
+      group: null,
+      playwrightArgs: ["--reporter=list"],
     });
   });
 });

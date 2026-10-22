@@ -13,8 +13,8 @@
 | [04 修 l4d2 日志页已知失败](issues/04-fix-log-page-flake.md) | bug | **resolved** | - |
 | [05 sdtd 插件用例包](issues/05-sdtd-plugin-pack.md) | task | **resolved** | - |
 | [06 dst 插件用例包](issues/06-dst-plugin-pack.md) | task | **resolved** | - |
-| [07 dnf_tw 插件用例包](issues/07-dnf-tw-plugin-pack.md) | task | ready-for-agent | - |
-| [08 CI 冒烟子集](issues/08-ci-smoke-subset.md) | task | ready-for-agent | 01, 03 ✅ |
+| [07 dnf_tw 插件用例包](issues/07-dnf-tw-plugin-pack.md) | task | **resolved** | - |
+| [08 CI 冒烟子集](issues/08-ci-smoke-subset.md) | task | **resolved** | 01, 03 ✅ |
 | [09 l4d2 Docker 路径基准错配](issues/09-l4d2-docker-path-root-mismatch.md) | bug | ready-for-human | - |
 | [10 DST 读写路径基准错配](issues/10-dst-path-root-mismatch.md) | bug | ready-for-human | - |
 | [11 进入工作区硬编码 dashboard](issues/11-plugin-workspace-entry-hardcodes-dashboard.md) | bug | ready-for-human | - |
@@ -58,3 +58,19 @@ Part A 完成：`bash scripts/e2e-docker-run.sh` 从零起栈跑 18 条冒烟用
 详见 [票 03](issues/03-result-artifact.md)。
 
 现在 07（dnf_tw）与 08（CI 冒烟子集）都不再被阻塞。
+
+票 07 完成（2026-10-23）：dnf_tw 用例包 **11 条全绿 1.5m**，10 个菜单全覆盖，
+docker-compose 部署约 40s 到运行中，5 个 MySQL 库均正常。内存是硬约束：
+上游 `mem_limit=1g` 与 1.5g 都会让两个 `df_game_r` 分片被 cgroup OOM 杀掉，
+用例改用 `memoryLimit=2.5`（可用 `E2E_DNF_MEMORY_LIMIT_G` 覆盖）。
+本轮顺带修掉两个主应用真实缺陷（插件 `gameCode` 缺失导致进不了工作区、
+`ExtensionClientImpl.update()` 不落 `name` 导致改名静默丢失），各带单测。
+详见 [票 07](issues/07-dnf-tw-plugin-pack.md)。
+
+票 08 完成（2026-10-23）：冒烟分组 `--group smoke` 由 `ROUND_GROUPS` 前两组派生，
+Windows / WSL 容器栈 / 托管 CI 三个入口共用一份定义，实测 **18 passed 20.3s**。
+GitHub Actions 与 GitLab CI 都加了 `e2e-smoke` job（失败上传 report/last-run/artifacts）。
+CI 默认排除 `main-app/plugins`（依赖 gitignored 的 124MB l4d2 插件 JAR）。
+详见 [票 08](issues/08-ci-smoke-subset.md)。
+
+剩余：09/10/11 三个产品缺陷票需要人做决策，用例包与 CI 部分已全部落地。

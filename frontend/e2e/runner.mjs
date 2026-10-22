@@ -37,6 +37,7 @@ const VITE_CACHE_DIR = join(FRONTEND_DIR, "node_modules", ".vite");
 const {
   attach: ATTACH,
   round: ROUND,
+  group: GROUP,
   playwrightArgs: PLAYWRIGHT_ARGS,
 } = parseE2eArgs(process.argv.slice(2));
 let BASE_URL = e2eEnv.baseUrl;
@@ -408,6 +409,25 @@ const ROUND_GROUPS = [
   },
 ];
 
+/**
+ * 预设分组：只做路径挑选，不另起一套编排。
+ * `smoke` = 整轮里前两组（冒烟与导航 + 无主机页面组），这两组不依赖
+ * `E2E_TEST_HOST_*`，因此能在没有 WSL / SSH 目标的托管 runner 上跑。
+ *
+ * 例外：`e2e/main-app/plugins` 断言"l4d2 插件卡片已启动"，而插件 JAR 是
+ * gitignored 的构建产物（backend/plugins/*.jar）。干净 checkout 里没有它，
+ * 想把这条也跑起来得先构建 124MB 的 l4d2 插件，与"不保留重依赖"冲突。
+ * 因此 CI 默认排除该目录，本地验证插件时需要时加
+ * `E2E_SMOKE_INCLUDE_PLUGINS=1`。
+ */
+const SMOKE_PATHS = ROUND_GROUPS.slice(0, 2).flatMap((group) => group.paths);
+const GROUP_PRESETS = {
+  smoke:
+    process.env.E2E_SMOKE_INCLUDE_PLUGINS === "1"
+      ? SMOKE_PATHS
+      : SMOKE_PATHS.filter((path) => !path.endsWith("/plugins")),
+};
+
 function runPlaywright(args, opts = {}) {
   const { env: extraEnv, ...runOpts } = opts;
   return run(
@@ -605,9 +625,32 @@ async function main() {
     return runRound();
   }
 
+  if (GROUP) {
+    if (!GROUP_PRESETS[GROUP]) {
+      check(
+        "E2E 分组参数",
+        false,
+        `未知分组 "${GROUP}"`,
+        `可用分组: ${Object.keys(GROUP_PRESETS).join(", ")}`,
+      );
+      return 1;
+    }
+    if (PLAYWRIGHT_ARGS.length > 0) {
+      check(
+        "E2E 分组参数",
+        false,
+        `--group 与显式 Playwright 参数不能同时使用: ${PLAYWRIGHT_ARGS.join(" ")}`,
+        "只用 --group <name>，需要细粒度时直接传 spec 路径",
+      );
+      return 1;
+    }
+    log(`分组模式：${GROUP} → ${GROUP_PRESETS[GROUP].join(", ")}`);
+  }
+
   log("执行 Playwright 用例...");
   // Windows 下 npx 是 .cmd，spawn 不带 shell 会静默失败 —— 直接用 node 调 CLI 入口
-  const r = runPlaywright(PLAYWRIGHT_ARGS, {
+  const resolvedArgs = GROUP ? GROUP_PRESETS[GROUP] : PLAYWRIGHT_ARGS;
+  const r = runPlaywright(resolvedArgs, {
     stdio: ["ignore", "pipe", "inherit"],
     encoding: "utf8",
   });
