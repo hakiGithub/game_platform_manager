@@ -22,12 +22,17 @@
 
 ## 已上线插件（4 个）
 
-| plugin.id | gameCode | 游戏 | 仓库位置 | 仓库类型 | 通信路线 |
-|-----------|----------|------|---------|---------|---------|
-| `plugin-l4d2` | `l4d2` | 求生之路2 | `backend/plugin-l4d2`（主仓库内） | 主仓库子模块 | RCON 直连 |
-| `plugin-dst` | `dst` | 饥荒联机版 | `D:\program\ai\plugin-dst` | 独立 git 仓库 | tmux send-keys + 日志解析 |
-| `plugin-dnf-tw` | `dnf_tw` | DNF 台服 | `D:\program\ai\plugin-dnf-tw` | 独立 git 仓库 | 直连游戏 MySQL |
-| `plugin-sdtd` | `sdtd` | 7 Days to Die | `D:\program\ai\plugin-7dtd` | 独立 git 仓库 | 游戏自带 HTTP Web API |
+| plugin.id | gameCode | 游戏 | 仓库位置 | 仓库类型 | 通信路线 | E2E 用例包 |
+|-----------|----------|------|---------|---------|---------|-----------|
+| `plugin-l4d2` | `l4d2` | 求生之路2 | `backend/plugin-l4d2`（主仓库内） | 主仓库子模块 | RCON 直连 | `e2e/plugins/l4d2`（28） |
+| `plugin-dst` | `dst` | 饥荒联机版 | `D:\program\ai\plugin-dst` | 独立 git 仓库 | tmux send-keys + 日志解析 | `e2e/plugins/dst`（8） |
+| `plugin-dnf-tw` | `dnf_tw` | DNF 台服 | `D:\program\ai\plugin-dnf-tw` | 独立 git 仓库 | 直连游戏 MySQL | `e2e/plugins/dnf_tw`（11） |
+| `plugin-sdtd` | `sdtd` | 7 Days to Die | `D:\program\ai\plugin-7dtd` | 独立 git 仓库 | 游戏自带 HTTP Web API | `e2e/plugins/sdtd`（8） |
+
+> E2E 全部放在**主仓库** `frontend/e2e/plugins/{gameCode}/`，不放插件仓库：
+> 测的是"插件被主应用装上之后的样子"（Wujie 容器、宿主侧边栏、平台 REST、
+> 实例部署），放插件仓库会分裂出四套 Playwright 工程。新增插件时照
+> `e2e/plugins/README.md` 的范式加一个子目录即可，框架层零改动。
 
 > **注意命名不一致**：`plugin-sdtd` 的仓库目录名是 `plugin-7dtd`（游戏俗称），
 > 而 `plugin.id` 与 gameCode 用的是 LinuxGSM 短名 `sdtd`。搜索时两个名字都要试。
