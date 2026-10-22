@@ -28,11 +28,19 @@ export async function login(backendUrl, username, password, attempt = 1) {
   }
 }
 
+/**
+ * 单次请求超时：长链路（插件聚合总览会逐个连接源探活）可能长时间不返回，
+ * 无超时会让 Playwright 用例整体挂到 testTimeout 才失败，产物里看不出是哪一步。
+ * 默认 120s（实例删除要下发 compose down，可能接近一分钟），可用 E2E_API_TIMEOUT_MS 覆盖。
+ */
+const REQUEST_TIMEOUT_MS = Number(process.env.E2E_API_TIMEOUT_MS ?? 120_000);
+
 export function createApi(backendUrl, token) {
   async function request(method, path, jsonBody, attempt = 1) {
     try {
       const res = await fetch(`${backendUrl}${path}`, {
         method,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${token}`,
           ...(jsonBody !== undefined
@@ -44,6 +52,11 @@ export function createApi(backendUrl, token) {
       const body = await res.json().catch(() => null);
       return { status: res.status, body };
     } catch (error) {
+      if (error?.name === "TimeoutError") {
+        throw new Error(
+          `[CHECK][FAIL] ${method} ${path} 超过 ${REQUEST_TIMEOUT_MS}ms 未返回（后端阻塞或连接源探活卡死）; remediation: 查后端日志与实例/数据库连接状态`,
+        );
+      }
       // 长时间演练中宿主机高负载可能造成回环网络瞬时抖动，网络错误重试 2 次
       if (attempt < 3) {
         await new Promise((r) => setTimeout(r, 3000 * attempt));
