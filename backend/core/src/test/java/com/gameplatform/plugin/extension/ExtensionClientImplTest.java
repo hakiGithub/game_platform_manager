@@ -167,6 +167,33 @@ class ExtensionClientImplTest {
     }
 
     @Test
+    @DisplayName("update 会持久化新的 name（重命名不丢）")
+    void update_persistsRenamedName() {
+        SharedResource res = newResource("old-name", "k", "v", 1L);
+        pluginAClient.create(res);
+
+        res.setName("new-name");
+        pluginAClient.update(res);
+
+        assertTrue(pluginAClient.get(SharedResource.class, "old-name").isEmpty(),
+                "旧 name 不应还能查到");
+        SharedResource got = pluginAClient.get(SharedResource.class, "new-name").orElseThrow();
+        assertEquals(res.getId(), got.getId());
+        assertEquals(2, got.getVersion());
+    }
+
+    @Test
+    @DisplayName("update 改名撞已有 name 抛 DuplicateExtensionException")
+    void update_renameToExistingName_throwsDuplicate() {
+        pluginAClient.create(newResource("name-a", "k", "v", 1L));
+        SharedResource b = newResource("name-b", "k", "v", 2L);
+        pluginAClient.create(b);
+
+        b.setName("name-a");
+        assertThrows(DuplicateExtensionException.class, () -> pluginAClient.update(b));
+    }
+
+    @Test
     @DisplayName("update 用旧 version 抛 OptimisticLockException")
     void update_withStaleVersion_throwsOptimisticLock() {
         SharedResource res = newResource("up2", "k", "v", 1L);

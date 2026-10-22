@@ -101,19 +101,30 @@ public class ExtensionClientImpl implements ExtensionClient {
             extension.getMetadata().setUpdateTimestamp(now);
         }
 
+        // name 是资源的业务唯一标识，重命名必须一并落库；否则调用方 set 了新 name 却静默丢失
         String sql = "UPDATE " + route.table()
-                + " SET spec=?, metadata=?, version=version+1, status=?, update_timestamp=?"
+                + " SET name=?, spec=?, metadata=?, version=version+1, status=?, update_timestamp=?"
                 + " WHERE id=? AND version=?";
         int affected;
         try {
             affected = jdbcTemplate.update(sql,
+                    extension.getName(),
                     toJson(extension.getSpec()),
                     toJson(extension.getMetadata()),
                     extension.getStatus(),
                     now,
                     extension.getId(),
                     extension.getVersion());
-        } catch (Exception e) {
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            throw new DuplicateExtensionException(
+                    "资源已存在: " + route.kind() + "/" + extension.getName());
+        } catch (org.springframework.dao.DataAccessException e) {
+            // SQLite JDBC 的 UNIQUE 冲突可能被归类为 UncategorizedSQLException 而非 DuplicateKeyException
+            String msg = e.getMostSpecificCause().getMessage();
+            if (msg != null && (msg.contains("CONSTRAINT") || msg.contains("UNIQUE"))) {
+                throw new DuplicateExtensionException(
+                        "资源已存在: " + route.kind() + "/" + extension.getName());
+            }
             throw new ExtensionStoreException("更新资源失败: " + route.kind() + "/" + extension.getName(), e);
         }
         if (affected == 0) {
