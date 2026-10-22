@@ -64,11 +64,16 @@ fi
 # npm 只装当前平台的可选依赖：Windows 侧 node_modules 缺 @rollup/rollup-linux-x64-gnu，
 # 在 Linux 上直接起 vite 会炸（e2e-docker-frontend.sh 里有同样的记录）。
 # CI 里是干净 npm ci，不会遇到；本地 WSL 想验证请走容器化入口。
-if [ "$(uname -s)" != MINGW* ] && [ -d "${REPO_ROOT}/frontend/node_modules/@rollup/rollup-win32-x64-msvc" ]; then
-  check "FAIL" "frontend/node_modules 是 Windows 版（缺 Linux 版 rollup 原生包）"
-  echo "  remediation: 本地 WSL 请用 bash scripts/e2e-docker-run.sh --attach --group smoke" >&2
-  exit 1
-fi
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;  # Windows 侧：Java/Vite 都能直接用
+  *)
+    if [ -d "${REPO_ROOT}/frontend/node_modules/@rollup/rollup-win32-x64-msvc" ]; then
+      check "FAIL" "frontend/node_modules 是 Windows 版（缺 Linux 版 rollup 原生包）"
+      echo "  remediation: 本地 WSL 请用 bash scripts/e2e-docker-run.sh --attach --group smoke" >&2
+      exit 1
+    fi
+    ;;
+esac
 
 mkdir -p "${WORK_DIR}"
 # 用仓库相对路径启动后端：E2E_CI_JAVA 走 docker 时挂载点是别的绝对路径，
