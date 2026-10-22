@@ -9,19 +9,19 @@
 | 票 | 类型 | 状态 | 阻塞 |
 |----|------|------|------|
 | [01 E2E 全栈容器化](issues/01-e2e-docker-stack.md) | task | **resolved** | - |
-| [03 结果落盘与交付](issues/03-result-artifact.md) | task | ready-for-agent | 01 |
+| [03 结果落盘与交付](issues/03-result-artifact.md) | task | **resolved** | 01 |
 | [04 修 l4d2 日志页已知失败](issues/04-fix-log-page-flake.md) | bug | **resolved** | - |
 | [05 sdtd 插件用例包](issues/05-sdtd-plugin-pack.md) | task | **resolved** | - |
 | [06 dst 插件用例包](issues/06-dst-plugin-pack.md) | task | **resolved** | - |
 | [07 dnf_tw 插件用例包](issues/07-dnf-tw-plugin-pack.md) | task | ready-for-agent | - |
-| [08 CI 冒烟子集](issues/08-ci-smoke-subset.md) | task | ready-for-agent | 01, 03 |
+| [08 CI 冒烟子集](issues/08-ci-smoke-subset.md) | task | ready-for-agent | 01, 03 ✅ |
 | [09 l4d2 Docker 路径基准错配](issues/09-l4d2-docker-path-root-mismatch.md) | bug | ready-for-human | - |
 | [10 DST 读写路径基准错配](issues/10-dst-path-root-mismatch.md) | bug | ready-for-human | - |
 | [11 进入工作区硬编码 dashboard](issues/11-plugin-workspace-entry-hardcodes-dashboard.md) | bug | ready-for-human | - |
 
 ## 执行建议
 
-01、04、05、06 已落地。03 与 07 可并行，08 等 03。
+01、03、04、05、06 已落地。07、08 现在都可开工。
 09、10、11 是用例包暴露出的产品缺陷，需产品决策，不阻塞用例包推进。
 
 ## 当前进度（2026-10-22）
@@ -49,3 +49,12 @@ Part A 完成：`bash scripts/e2e-docker-run.sh` 从零起栈跑 18 条冒烟用
 
 下一个可开工：**票 07（dnf_tw，10 菜单 + docker-compose + 5 个 MySQL 库）**，
 以及 **票 03（结果落盘）→ 08（CI 冒烟子集）**。
+
+票 03 完成：`e2e/.last-run/summary.{json,md}` 四条执行路径全部接上
+（受管 / `--attach` / `--round` / 容器化），数据源是 Playwright JSON reporter
+而不是解析终端输出 —— 失败用例的 `error-context.md`/截图/trace 直接写进 summary。
+`verdict` 同时看 JSON 计数与退出码（起栈失败时 JSON 是空的，只看计数会误判 PASS），
+这个坑实测踩到过。框架层单测 10 条：`npm run e2e:support:test`。
+详见 [票 03](issues/03-result-artifact.md)。
+
+现在 07（dnf_tw）与 08（CI 冒烟子集）都不再被阻塞。

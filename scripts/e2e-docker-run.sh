@@ -125,6 +125,12 @@ if [ "${status}" -eq 0 ]; then
 else
   check "FAIL" "Playwright 失败（exit=${status}）；产物 e2e/.artifacts，报告 e2e/.report"
 fi
+# 票 03：结果落盘（summary 由 e2e-docker-pw.sh 写出）
+if [ -f "${REPO_ROOT}/frontend/e2e/.last-run/summary.md" ]; then
+  check "PASS" "结果摘要: frontend/e2e/.last-run/summary.md（JSON: summary.json）"
+else
+  check "FAIL" "结果摘要未生成（frontend/e2e/.last-run/summary.md 不存在）"
+fi
 exit "${status}"
 
 

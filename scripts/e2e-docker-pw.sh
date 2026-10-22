@@ -24,4 +24,23 @@ export E2E_BASE_URL="${E2E_BASE_URL:-http://localhost:${FRONTEND_E2E_PORT:-8081}
 export E2E_BACKEND_URL="${E2E_BACKEND_URL:-${E2E_BASE_URL}}"
 
 cd "${FRONTEND_DIR}" || exit 1
-exec "${NODE}" node_modules/@playwright/test/cli.js test "$@"
+
+# 票 03：结果落盘的数据源 —— 由 playwright.config.js 的 json reporter 写出
+LAST_RUN_DIR="${FRONTEND_DIR}/e2e/.last-run"
+JSON_REPORT="${LAST_RUN_DIR}/playwright-report.json"
+# 先清上一轮：本轮若中途崩溃，不能让旧 summary 冒充最新结果
+rm -rf "${LAST_RUN_DIR}"
+mkdir -p "${LAST_RUN_DIR}"
+export E2E_JSON_REPORT="${JSON_REPORT}"
+
+STARTED_AT="$(date +%s%3N)"
+"${NODE}" node_modules/@playwright/test/cli.js test "$@"
+STATUS=$?
+
+# 写 summary.{json,md}；失败只 warning，不改变被测结果
+"${NODE}" e2e/support/summarize-cli.mjs \
+  --mode docker --executor wsl \
+  --started-at "${STARTED_AT}" --exit-code "${STATUS}" \
+  --json "${JSON_REPORT}" || true
+
+exit "${STATUS}"

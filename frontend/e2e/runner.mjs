@@ -13,12 +13,16 @@ import { fileURLToPath } from "node:url";
 import { createApi, login } from "./support/api.js";
 import { parseE2eArgs } from "./support/e2e-args.js";
 import { e2eEnv } from "./support/env.js";
+import { DEFAULT_JSON_REPORT, LAST_RUN_DIR, finalizeSummary } from "./support/run-summary.mjs";
 
 const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)));
 const FRONTEND_DIR = resolve(E2E_DIR, "..");
 const PROJECT_DIR = resolve(FRONTEND_DIR, "..");
 const TMP_DIR = join(E2E_DIR, ".tmp");
 const ROUND_BLOB_DIR = join(TMP_DIR, "round-blobs");
+const ROUND_JSON_DIR = join(TMP_DIR, "round-json");
+// 票 03：单轮模式与整轮分组都落盘同一个 summary，数据源是 Playwright JSON 报告
+const SINGLE_JSON_REPORT = DEFAULT_JSON_REPORT;
 const FRONTEND_PORT_FILE = join(PROJECT_DIR, "logs", "frontend.port");
 const BACKEND_PID_FILE = join(PROJECT_DIR, "backend", "logs", "game-platform-manager.pid");
 const BACKEND_ARG_FILE_POINTER = join(
@@ -415,6 +419,8 @@ function runPlaywright(args, opts = {}) {
         ...process.env,
         E2E_BASE_URL: BASE_URL,
         E2E_BACKEND_URL: BACKEND_URL,
+        // 让 playwright.config.js 额外挂一个 json reporter
+        E2E_JSON_REPORT: SINGLE_JSON_REPORT,
         ...extraEnv,
       },
       ...runOpts,
@@ -423,13 +429,17 @@ function runPlaywright(args, opts = {}) {
 }
 
 function runPlaywrightRoundGroup(paths, index) {
+  // CLI 的 --reporter 会整体覆盖 config 里的 reporter，所以这里显式带上 json，
+  // 并用 Playwright 自己的 env 变量指定落点（json reporter 只认这两个变量）。
   return runPlaywright(
-    [...paths, "--reporter=list,blob"],
+    [...paths, "--reporter=list,blob,json"],
     {
       env: {
         PLAYWRIGHT_BLOB_OUTPUT_DIR: ROUND_BLOB_DIR,
         PLAYWRIGHT_BLOB_OUTPUT_NAME: `report-group-${index}.zip`,
         PWTEST_BLOB_DO_NOT_REMOVE: "1",
+        PLAYWRIGHT_JSON_OUTPUT_DIR: ROUND_JSON_DIR,
+        PLAYWRIGHT_JSON_OUTPUT_NAME: `group-${index}.json`,
       },
       stdio: ["ignore", "pipe", "inherit"],
       encoding: "utf8",
@@ -481,20 +491,31 @@ function parseSummary(output) {
 }
 
 async function runRound() {
+  const startedAt = Date.now();
   const deadline =
     Date.now() + Number(process.env.E2E_ROUND_TIMEOUT ?? 150) * 60_000;
   const tally = { passed: 0, failed: 0, skipped: 0, didNotRun: 0 };
+  /** 每组的 JSON 报告路径，供最终 summary 聚合 */
+  const groupReports = [];
+  /** 看门狗超时跳过的分组，summary 里要显式记 SKIP */
+  const skippedGroups = [];
   rmSync(ROUND_BLOB_DIR, {
     recursive: true,
     force: true,
     maxRetries: 10,
     retryDelay: 1000,
   });
+  rmSync(ROUND_JSON_DIR, { recursive: true, force: true, maxRetries: 10 });
   mkdirSync(ROUND_BLOB_DIR, { recursive: true });
+  mkdirSync(ROUND_JSON_DIR, { recursive: true });
   for (const [index, group] of ROUND_GROUPS.entries()) {
     if (Date.now() > deadline) {
       log(`整轮看门狗超时，跳过剩余分组：${group.name}`);
       tally.didNotRun += 1; // 以分组数计的未执行标记
+      skippedGroups.push({
+        name: group.name,
+        reason: `整轮看门狗超时（E2E_ROUND_TIMEOUT=${process.env.E2E_ROUND_TIMEOUT ?? 150} 分钟）`,
+      });
       continue;
     }
     log(`—— 分组[${group.name}]开始 ——`);
@@ -502,6 +523,10 @@ async function runRound() {
     const r = runPlaywrightRoundGroup(group.paths, index + 1);
     if (r.stdout) process.stdout.write(r.stdout);
     const status = r.status ?? 1;
+    groupReports.push({
+      name: group.name,
+      jsonPath: join(ROUND_JSON_DIR, `group-${index + 1}.json`),
+    });
     const summary = parseSummary(r.stdout ?? "");
     tally.passed += summary.passed;
     tally.failed += summary.failed;
@@ -549,10 +574,23 @@ async function runRound() {
       : "先按失败分组重跑定位；环境类问题查看上方 [CHECK][FAIL] 的实际值与 remediation",
   );
   log(`HTML 报告: npm run e2e:report`);
+  // 票 03：整轮同样落盘，含分组粒度
+  finalizeSummary({
+    reports: groupReports,
+    skippedGroups,
+    mode: ATTACH ? "attach" : "managed",
+    executor: process.platform === "win32" ? "local" : "wsl",
+    startedAt,
+    exitCode: verdict === "PASS" ? 0 : 1,
+  });
   return verdict === "PASS" ? 0 : 1;
 }
 
 async function main() {
+  const startedAt = Date.now();
+  // 上一轮的 summary 必须清掉：否则本轮崩溃时会被误读成"最新结果"
+  rmSync(LAST_RUN_DIR, { recursive: true, force: true, maxRetries: 3 });
+  mkdirSync(LAST_RUN_DIR, { recursive: true });
   if (ATTACH) {
     log(`附着模式：直接对 ${BASE_URL} 跑用例（不起栈、不清理）`);
     await waitForBackendLogin(BACKEND_URL);
@@ -589,10 +627,19 @@ async function main() {
       : "查看 e2e/.artifacts 对应用例的 error-context.md、截图与 trace；环境类问题查看上方 [CHECK][FAIL] 的 remediation",
   );
   log(`HTML 报告: npm run e2e:report`);
+  // 票 03：结果落盘（失败也落，写盘异常不影响退出码）
+  finalizeSummary({
+    reports: [{ jsonPath: SINGLE_JSON_REPORT }],
+    mode: ATTACH ? "attach" : "managed",
+    executor: process.platform === "win32" ? "local" : "wsl",
+    startedAt,
+    exitCode: status,
+  });
   return verdict === "PASS" ? 0 : 1;
 }
 
 let exitCode = 1;
+const runStartedAt = Date.now();
 try {
   exitCode = await main();
 } catch (err) {
@@ -602,6 +649,15 @@ try {
     err.message,
     "查看 logs/backend.log、logs/frontend.log 与上方失败检查点；确认端口脚本已启动对应进程",
   );
+  // 起栈阶段就挂了也必须留痕：否则 summary 缺失会被误读成"没跑过"而不是"起不来"
+  finalizeSummary({
+    reports: [{ jsonPath: SINGLE_JSON_REPORT }],
+    mode: ATTACH ? "attach" : "managed",
+    executor: process.platform === "win32" ? "local" : "wsl",
+    startedAt: runStartedAt,
+    exitCode: 1,
+    runnerError: err.message,
+  });
 } finally {
   if (!ATTACH) stopStack();
 }

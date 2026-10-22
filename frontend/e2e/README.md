@@ -70,6 +70,28 @@ E2E_TEST_HOST_AUTH=你的密码
 
 单条用例 = 断言全过即通过；**整轮通过 = 除显式 SKIP 外全部用例通过**。
 
+## 结果落盘（`e2e/.last-run/`，gitignored）
+
+每次跑完（本地 / WSL / 容器化 / 整轮）都会写两个文件，不用守终端：
+
+| 文件 | 给谁看 | 内容 |
+|------|--------|------|
+| `summary.json` | 脚本与 Agent | `verdict`、起止时间、`mode`/`executor`、`totals`、`failures[]`（含 `errorContext`/`screenshot`/`trace` 相对路径）、`skips[]`（含原因）、`didNotRun[]`、`groups[]` |
+| `summary.md` | 人 | 总数/通过/失败/跳过 + 失败清单（用例名 + 错误一行 + 产物路径）+ SKIP 原因汇总 + HTML 报告路径 |
+
+数据源是 Playwright 官方 JSON reporter，不是解析终端输出 —— 终端只有计数，
+没有"哪条失败、产物在哪"。所以 `playwright.config.js` 在 `E2E_JSON_REPORT`
+存在时才额外挂 json reporter，日常 `npx playwright test` 不受影响。
+
+`verdict` 同时看 JSON 计数和 Playwright 退出码：起栈就挂掉时 JSON 里一条用例都没有，
+只看计数会误判 PASS。这种情况 `summary` 里会写 `runnerError`，`summary.md` 里
+标成「**未跑起来**」。
+
+落盘失败（磁盘/权限）只打 warning，**不改变退出码**。
+
+框架层单测：`npm run e2e:support:test`（覆盖 status 归一化、分组聚合、
+退出码压过计数、报告缺失降级、Markdown 产物路径）。
+
 ## 目录约定（新增用例不改框架）
 
 ```
@@ -102,6 +124,7 @@ E2E_KEEP_STACK=1 bash scripts/e2e-docker-run.sh --attach        # 保留栈调�
 ```
 
 实测（18 条冒烟+导航+无主机用例）：**从零起栈到跑完 21.4 秒**。
+跑完会打印 `结果摘要: frontend/e2e/.last-run/summary.md`（失败时为 FAIL 判定与失败清单）。
 
 ### 为什么前端不能直接复用 Windows 侧 node_modules
 
